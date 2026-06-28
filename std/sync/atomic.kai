@@ -1,0 +1,4 @@
+cimport "std/sync/atomic.h"
+
+extern fn atomic_add(ptr: *Void, delta: Int) -> Int
+extern fn atomic_cas(ptr: *Void, old_val: Int, new_val: Int) -> Bool

@@ -17,8 +17,6 @@ fn keyword_type(ident: Str) -> TokenType {
         return TokenType.LET
     } else if ident == "var" {
         return TokenType.VAR
-    } else if ident == "func" {
-        return TokenType.FUNC
     } else if ident == "fn" {
         return TokenType.FUNC
     } else if ident == "if" {

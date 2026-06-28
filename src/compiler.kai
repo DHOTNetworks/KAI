@@ -11,6 +11,7 @@ import substring from std.collections.string
 extern fn system(cmd: *Char) -> Int
 extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn _kai_set_current_allocator(allocator: *Void)
+extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
 
 fn get_base_name(allocator: *Allocator, path: Str) -> Str {
     var last_slash = -1
@@ -110,6 +111,16 @@ fn main(argc: Int, argv: **Char) -> Int {
     allocator.init()
     _kai_set_current_allocator(&allocator as *Void)
 
+    var exe_include_flag = ""
+    unsafe {
+        let buf = allocator.alloc(1024, 1) as *Char
+        if get_exe_dir(buf, 1024) == 0 {
+            let exe_dir = buf as Str
+            exe_include_flag = "-I" + exe_dir
+        }
+        allocator.free(buf)
+    }
+
     let base = get_base_name(&allocator, input_file)
     var bin_name = base
     if length(output_bin) > 0 {
@@ -143,7 +154,7 @@ fn main(argc: Int, argv: **Char) -> Int {
                     if emit_c_only {
                         return 0
                     }
-                    let cmd = "clang " + opt_level + " " + c_file + " -o " + bin_name
+                    let cmd = "clang " + exe_include_flag + " " + opt_level + " " + c_file + " -o " + bin_name
                     unsafe {
                         return system(cmd as *Char)
                     }

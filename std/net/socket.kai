@@ -1,0 +1,67 @@
+cimport "std/net/socket.h"
+
+extern fn kai_socket_create() -> Int
+extern fn kai_socket_bind(fd: Int, port: Int) -> Bool
+extern fn kai_socket_listen(fd: Int, backlog: Int) -> Bool
+extern fn kai_socket_accept(fd: Int) -> Int
+extern fn kai_socket_connect(fd: Int, ip: Str, port: Int) -> Bool
+extern fn kai_socket_send(fd: Int, data: *Char, len: Int) -> Int
+extern fn kai_socket_recv(fd: Int, buf: *Char, max_len: Int) -> Int
+extern fn kai_socket_close(fd: Int)
+
+struct Socket {
+    fd: Int
+}
+
+fn tcp_listen(port: Int) -> Socket {
+    unsafe {
+        let fd = kai_socket_create()
+        if fd >= 0 {
+            if kai_socket_bind(fd, port) {
+                if kai_socket_listen(fd, 128) {
+                    return Socket(fd: fd)
+                }
+            }
+            kai_socket_close(fd)
+        }
+        return Socket(fd: -1)
+    }
+}
+
+fn tcp_accept(server_sock: Socket) -> Socket {
+    unsafe {
+        let fd = kai_socket_accept(server_sock.fd)
+        return Socket(fd: fd)
+    }
+}
+
+fn tcp_connect(ip: Str, port: Int) -> Socket {
+    unsafe {
+        let fd = kai_socket_create()
+        if fd >= 0 {
+            if kai_socket_connect(fd, ip, port) {
+                return Socket(fd: fd)
+            }
+            kai_socket_close(fd)
+        }
+        return Socket(fd: -1)
+    }
+}
+
+fn socket_send(sock: Socket, data: *Char, len: Int) -> Int {
+    unsafe {
+        return kai_socket_send(sock.fd, data, len)
+    }
+}
+
+fn socket_recv(sock: Socket, buf: *Char, max_len: Int) -> Int {
+    unsafe {
+        return kai_socket_recv(sock.fd, buf, max_len)
+    }
+}
+
+fn socket_close(sock: Socket) {
+    unsafe {
+        kai_socket_close(sock.fd)
+    }
+}

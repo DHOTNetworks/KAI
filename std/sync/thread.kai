@@ -1,0 +1,53 @@
+cimport "std/sync/thread.h"
+
+extern fn kai_thread_spawn(f: *Void, arg: *Void) -> *Void
+extern fn kai_thread_join(handle: *Void) -> *Void
+extern fn kai_mutex_init() -> *Void
+extern fn kai_mutex_lock(handle: *Void)
+extern fn kai_mutex_unlock(handle: *Void)
+extern fn kai_mutex_destroy(handle: *Void)
+
+struct Thread {
+    handle: *Void
+}
+
+struct Mutex {
+    handle: *Void
+}
+
+fn spawn(f: *Void, arg: *Void) -> Thread {
+    unsafe {
+        return Thread(handle: kai_thread_spawn(f, arg))
+    }
+}
+
+fn join(thread: Thread) -> *Void {
+    unsafe {
+        return kai_thread_join(thread.handle)
+    }
+}
+
+fn mutex_init(mutex: *Mutex) {
+    unsafe {
+        mutex.handle = kai_mutex_init()
+    }
+}
+
+fn mutex_lock(mutex: *Mutex) {
+    unsafe {
+        kai_mutex_lock(mutex.handle)
+    }
+}
+
+fn mutex_unlock(mutex: *Mutex) {
+    unsafe {
+        kai_mutex_unlock(mutex.handle)
+    }
+}
+
+fn mutex_destroy(mutex: *Mutex) {
+    unsafe {
+        kai_mutex_destroy(mutex.handle)
+        mutex.handle = 0 as *Void
+    }
+}
