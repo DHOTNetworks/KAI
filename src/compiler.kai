@@ -10,7 +10,7 @@ import substring from std.collections.string
 
 extern fn system(cmd: *Char) -> Int
 extern fn strcmp(s1: Str, s2: Str) -> Int
-
+extern fn _kai_set_current_allocator(allocator: *Void)
 
 fn get_base_name(allocator: *Allocator, path: Str) -> Str {
     var last_slash = -1
@@ -39,24 +39,40 @@ fn get_base_name(allocator: *Allocator, path: Str) -> Str {
 
 fn main(argc: Int, argv: **Char) -> Int {
     if argc < 2 {
-        print("Usage: compiler <input.kai> [-o <output_bin>] [-c]")
+        print("Usage: compiler <input.kai> [-o <output_bin>] [-c] [-O0|-O1|-O2|-O3|-Os]")
         return 1
     }
 
     var input_file = ""
     var output_bin = ""
     var emit_c_only = false
+    var opt_level = "-O2"
 
     var i = 1
     while i < argc {
         let arg = argv[i] as Str
         var is_c = false
         var is_o = false
+        var is_o0 = false
+        var is_o1 = false
+        var is_o2 = false
+        var is_o3 = false
+        var is_os = false
         unsafe {
             if strcmp(arg, "-c") == 0 {
                 is_c = true
             } else if strcmp(arg, "-o") == 0 {
                 is_o = true
+            } else if strcmp(arg, "-O0") == 0 {
+                is_o0 = true
+            } else if strcmp(arg, "-O1") == 0 {
+                is_o1 = true
+            } else if strcmp(arg, "-O2") == 0 {
+                is_o2 = true
+            } else if strcmp(arg, "-O3") == 0 {
+                is_o3 = true
+            } else if strcmp(arg, "-Os") == 0 {
+                is_os = true
             }
         }
         if is_c {
@@ -69,6 +85,16 @@ fn main(argc: Int, argv: **Char) -> Int {
                 print("Error: -o requires an argument")
                 return 1
             }
+        } else if is_o0 {
+            opt_level = "-O0"
+        } else if is_o1 {
+            opt_level = "-O1"
+        } else if is_o2 {
+            opt_level = "-O2"
+        } else if is_o3 {
+            opt_level = "-O3"
+        } else if is_os {
+            opt_level = "-Os"
         } else {
             input_file = arg
         }
@@ -82,6 +108,7 @@ fn main(argc: Int, argv: **Char) -> Int {
 
     var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
     allocator.init()
+    _kai_set_current_allocator(&allocator as *Void)
 
     let base = get_base_name(&allocator, input_file)
     var bin_name = base
@@ -116,7 +143,7 @@ fn main(argc: Int, argv: **Char) -> Int {
                     if emit_c_only {
                         return 0
                     }
-                    let cmd = "clang -O1 " + c_file + " -o " + bin_name
+                    let cmd = "clang " + opt_level + " " + c_file + " -o " + bin_name
                     unsafe {
                         return system(cmd as *Char)
                     }
