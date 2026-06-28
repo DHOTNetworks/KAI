@@ -1,0 +1,4 @@
+cimport "std/math/fast.h"
+
+extern fn fast_sqrt(val: Float) -> Float
+extern fn fast_abs(val: Float) -> Float

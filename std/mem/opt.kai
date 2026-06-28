@@ -1,0 +1,4 @@
+cimport "std/mem/opt.h"
+
+extern fn opt_memcpy(dest: *Void, src: *Void, n: Int)
+extern fn opt_memset(s: *Void, c: Int, n: Int)

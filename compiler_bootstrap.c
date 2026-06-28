@@ -1071,6 +1071,7 @@ const char* Codegen_escape_string(Codegen* self, const char* s);
 ArrayList_Str Codegen__collect_loop_drops(Codegen* self);
 const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx);
 extern void _kai_set_current_allocator(void* allocator);
+extern int64_t get_exe_dir(char* buf, int64_t max_len);
 const char* get_base_name(KaiAllocator* allocator, const char* path);
 
 void _kai_set_current_allocator(void* allocator) {
@@ -1558,8 +1559,6 @@ TokenType keyword_type(const char* ident) {
     return TokenType_LET;
 } else if (strcmp(ident, "var") == 0) {
     return TokenType_VAR;
-} else if (strcmp(ident, "func") == 0) {
-    return TokenType_FUNC;
 } else if (strcmp(ident, "fn") == 0) {
     return TokenType_FUNC;
 } else if (strcmp(ident, "if") == 0) {
@@ -9310,6 +9309,15 @@ int main(int argc, char** argv) {
     KaiAllocator allocator = (KaiAllocator){ .heads = (char*)(0), .used = 0 };
     allocator = KaiAllocator_init();
     _kai_set_current_allocator((void*)(&(allocator)));
+    const char* exe_include_flag = "";
+    {
+    char* buf = (char*)(KaiAllocator_alloc(&(allocator), 1024, 1));
+    if (get_exe_dir(buf, 1024) == 0) {
+    const char* exe_dir = (const char*)(buf);
+    exe_include_flag = _kai_str_concat("-I", exe_dir);
+}
+    KaiAllocator_free(&(allocator), buf);
+}
     const char* base = get_base_name(&(allocator), input_file);
     const char* bin_name = base;
     if (strlen(output_bin) > 0) {
@@ -9342,7 +9350,7 @@ int main(int argc, char** argv) {
     if (emit_c_only) {
     return 0;
 }
-    const char* cmd = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("clang ", opt_level), " "), c_file), " -o "), bin_name);
+    const char* cmd = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("clang ", exe_include_flag), " "), opt_level), " "), c_file), " -o "), bin_name);
     {
     return system((char*)(cmd));
 }
