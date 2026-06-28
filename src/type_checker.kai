@@ -14,7 +14,14 @@ import Symbol from symbol_table
 import length from std.collections.string
 import substring from std.collections.string
 import char_to_str from std.collections.string
+import int_to_str from std.collections.string
 import str_array_join from parser
+
+struct PtrRefResult {
+    is_ptr: Bool
+    is_mut: Bool
+    inner: Str
+}
 
 struct StructInfo {
     name: Str
@@ -32,6 +39,7 @@ struct TypeChecker {
     
     struct_info: ArrayList<StructInfo>
     has_error: Bool
+    current_func_ret_type: Str
 }
 
 impl TypeChecker {
@@ -44,6 +52,7 @@ impl TypeChecker {
         self.current_table_idx = -1
         self.struct_info = ArrayList<StructInfo>(allocator)
         self.has_error = false
+        self.current_func_ret_type = ""
     }
 
     fn enter_scope(self) {
@@ -160,6 +169,210 @@ impl TypeChecker {
         return false
     }
 
+    fn parse_ptr_ref(self, type_str: Str) -> PtrRefResult {
+        var is_ptr = false
+        var is_mut = false
+        var inner = type_str
+        if length(inner) > 0 && inner[0] == Char(63) {
+            inner = substring(inner, 1, length(inner))
+        }
+        if length(inner) > 5 && substring(inner, 0, 5) == "*mut " {
+            is_ptr = true
+            is_mut = true
+            inner = substring(inner, 5, length(inner))
+        } else if length(inner) > 1 && inner[0] == Char(42) {
+            is_ptr = true
+            inner = substring(inner, 1, length(inner))
+        } else if length(inner) > 5 && substring(inner, 0, 5) == "&mut " {
+            is_ptr = true
+            is_mut = true
+            inner = substring(inner, 5, length(inner))
+        } else if length(inner) > 1 && inner[0] == Char(38) {
+            is_ptr = true
+            inner = substring(inner, 1, length(inner))
+        }
+        return PtrRefResult(is_ptr: is_ptr, is_mut: is_mut, inner: inner)
+    }
+
+    fn types_compatible(self, target: Str, source: Str) -> Bool {
+        var t = target
+        var s = source
+        if length(t) > 4 && substring(t, 0, 4) == "own " {
+            t = substring(t, 4, length(t))
+        }
+        if length(s) > 4 && substring(s, 0, 4) == "own " {
+            s = substring(s, 4, length(s))
+        }
+        if t == "Void" || s == "Void" {
+            return true
+        }
+        if t == "Allocator" && (s == "KaiAllocator" || s == "CAlloc") {
+            return true
+        }
+        if t == s {
+            return true
+        }
+        if length(t) > 0 && t[0] == Char(63) {
+            if s == "NoneType" {
+                return true
+            }
+            let t_inner = substring(t, 1, length(t))
+            var s_inner = s
+            if length(s) > 0 && s[0] == Char(63) {
+                s_inner = substring(s, 1, length(s))
+            }
+            return self.types_compatible(t_inner, s_inner)
+        }
+        var excl_t = -1
+        var i = 0
+        while i < length(t) {
+            if t[i] == Char(33) {
+                excl_t = i
+            }
+            i = i + 1
+        }
+        if excl_t >= 0 {
+            let target_val = substring(t, 0, excl_t)
+            let target_err = substring(t, excl_t + 1, length(t))
+            var excl_s = -1
+            i = 0
+            while i < length(s) {
+                if s[i] == Char(33) {
+                    excl_s = i
+                }
+                i = i + 1
+            }
+            if excl_s >= 0 {
+                let source_val = substring(s, 0, excl_s)
+                let source_err = substring(s, excl_s + 1, length(s))
+                return self.types_compatible(target_val, source_val) && self.types_compatible(target_err, source_err)
+            }
+            if self.types_compatible(target_val, s) {
+                return true
+            }
+            if s == target_err {
+                return true
+            }
+        }
+        let t_ptr = self.parse_ptr_ref(t)
+        let s_ptr = self.parse_ptr_ref(s)
+        if t_ptr.is_ptr != s_ptr.is_ptr {
+            return false
+        }
+        if t_ptr.is_ptr {
+            if !s_ptr.is_mut && t_ptr.is_mut {
+                return false
+            }
+            return self.types_compatible(t_ptr.inner, s_ptr.inner)
+        }
+        return false
+    }
+
+    fn find_func_decl(self, name: Str) -> Int {
+        var idx = 0
+        while idx < self.stmt_pool.length() {
+            let stmt = self.stmt_pool.get(idx)
+            if stmt.kind == StmtKind.sk_func_decl && stmt.func_name == name {
+                return idx
+            }
+            idx = idx + 1
+        }
+        return -1
+    }
+
+    fn find_method_decl(self, struct_name: Str, meth_name: Str) -> Int {
+        var clean_struct = struct_name
+        var i = 0
+        var clean = ""
+        while i < length(clean_struct) {
+            let c = clean_struct[i]
+            if c != Char(42) && c != Char(38) {
+                clean = clean + char_to_str(c)
+            }
+            i = i + 1
+        }
+        clean_struct = clean
+        if length(clean_struct) > 4 && substring(clean_struct, 0, 4) == "mut " {
+            clean_struct = substring(clean_struct, 4, length(clean_struct))
+        }
+        var lt_pos = -1
+        i = 0
+        while i < length(clean_struct) {
+            if clean_struct[i] == Char(60) {
+                lt_pos = i
+            }
+            i = i + 1
+        }
+        if lt_pos >= 0 {
+            clean_struct = substring(clean_struct, 0, lt_pos)
+        }
+        var idx = 0
+        while idx < self.stmt_pool.length() {
+            let stmt = self.stmt_pool.get(idx)
+            if stmt.kind == StmtKind.sk_impl_block {
+                var impl_name = stmt.impl_struct_name
+                var impl_lt = -1
+                var j = 0
+                while j < length(impl_name) {
+                    if impl_name[j] == Char(60) {
+                        impl_lt = j
+                    }
+                    j = j + 1
+                }
+                if impl_lt >= 0 {
+                    impl_name = substring(impl_name, 0, impl_lt)
+                }
+                if impl_name == clean_struct {
+                    var mi = 0
+                    while mi < stmt.impl_methods.length() {
+                        let m_idx = stmt.impl_methods.get(mi)
+                        let m = self.stmt_pool.get(m_idx)
+                        if m.func_name == meth_name {
+                            return m_idx
+                        }
+                        mi = mi + 1
+                    }
+                }
+            }
+            idx = idx + 1
+        }
+        return -1
+    }
+
+    fn find_struct_decl(self, name: Str) -> Int {
+        var idx = 0
+        while idx < self.stmt_pool.length() {
+            let stmt = self.stmt_pool.get(idx)
+            if stmt.kind == StmtKind.sk_struct_decl && stmt.struct_name == name {
+                return idx
+            }
+            idx = idx + 1
+        }
+        return -1
+    }
+
+    fn get_block_yield_type(self, stmt_idx: Int) -> Str {
+        if stmt_idx < 0 { return "Void" }
+        let stmt = self.stmt_pool.get(stmt_idx)
+        if stmt.kind == StmtKind.sk_block {
+            if stmt.block_stmts.length() == 0 {
+                return "Void"
+            }
+            let last_idx = stmt.block_stmts.get(stmt.block_stmts.length() - 1)
+            let last_stmt = self.stmt_pool.get(last_idx)
+            if last_stmt.kind == StmtKind.sk_expr {
+                return self.get_expr_type(last_stmt.expr_stmt)
+            }
+            if last_stmt.kind == StmtKind.sk_return {
+                return "Void"
+            }
+        }
+        if stmt.kind == StmtKind.sk_expr {
+            return self.get_expr_type(stmt.expr_stmt)
+        }
+        return "Void"
+    }
+
     fn mark_expr_moved(self, expr_idx: Int) {
         if expr_idx < 0 { return }
         let expr = self.expr_pool.get(expr_idx)
@@ -245,6 +458,21 @@ impl TypeChecker {
             return "Void"
         }
         if expr.kind == ExprKind.ek_field_access {
+            let base_node = self.expr_pool.get(expr.field_expr)
+            if base_node.kind == ExprKind.ek_identifier {
+                var is_static = false
+                var s_idx = 0
+                while s_idx < self.stmt_pool.length() {
+                    let stmt = self.stmt_pool.get(s_idx)
+                    if (stmt.kind == StmtKind.sk_enum_decl && stmt.enum_name == base_node.ident_name) || (stmt.kind == StmtKind.sk_error_decl && stmt.error_name == base_node.ident_name) {
+                        is_static = true
+                    }
+                    s_idx = s_idx + 1
+                }
+                if is_static {
+                    return base_node.ident_name
+                }
+            }
             let base_type = self.get_expr_type(expr.field_expr)
             var clean_type = ""
             var i = 0
@@ -309,6 +537,36 @@ impl TypeChecker {
         }
         if expr.kind == ExprKind.ek_struct_init {
             return expr.struct_name
+        }
+        if expr.kind == ExprKind.ek_try {
+            let inner_ty = self.get_expr_type(expr.try_expr)
+            var excl_pos = -1
+            var i = 0
+            while i < length(inner_ty) {
+                if inner_ty[i] == Char(33) {
+                    excl_pos = i
+                }
+                i = i + 1
+            }
+            if excl_pos >= 0 {
+                return substring(inner_ty, 0, excl_pos)
+            }
+            return "Void"
+        }
+        if expr.kind == ExprKind.ek_catch {
+            let inner_ty = self.get_expr_type(expr.catch_expr)
+            var excl_pos = -1
+            var i = 0
+            while i < length(inner_ty) {
+                if inner_ty[i] == Char(33) {
+                    excl_pos = i
+                }
+                i = i + 1
+            }
+            if excl_pos >= 0 {
+                return substring(inner_ty, 0, excl_pos)
+            }
+            return "Void"
         }
         return "Void"
     }
@@ -375,6 +633,7 @@ impl TypeChecker {
 
     fn check_return_stmt(self, stmt_idx: Int) -> Void {
         let stmt = self.stmt_pool.get(stmt_idx)
+        var val_type = "Void"
         if stmt.return_value >= 0 {
             let expr = self.expr_pool.get(stmt.return_value)
             if expr.kind == ExprKind.ek_borrow {
@@ -393,6 +652,18 @@ impl TypeChecker {
             }
             self.check_expr(stmt.return_value)
             self.mark_expr_moved(stmt.return_value)
+            val_type = self.get_expr_type(stmt.return_value)
+        }
+        let expected_ret = self.current_func_ret_type
+        if length(expected_ret) > 0 && expected_ret != "<infer>" {
+            if !self.types_compatible(expected_ret, val_type) {
+                print("error[E0001]: Return type mismatch: expected '")
+                print(expected_ret)
+                print("', got '")
+                print(val_type)
+                print("'\n")
+                self.has_error = true
+            }
         }
     }
 
@@ -418,6 +689,17 @@ impl TypeChecker {
             var var_type = stmt.vardecl_type
             if length(var_type) == 0 {
                 var_type = val_type
+            } else {
+                if !self.types_compatible(var_type, val_type) {
+                    print("error[E0001]: Type mismatch in declaration of '")
+                    print(stmt.vardecl_name)
+                    print("': expected '")
+                    print(var_type)
+                    print("', got '")
+                    print(val_type)
+                    print("'\n")
+                    self.has_error = true
+                }
             }
             self.define_symbol(stmt.vardecl_name, var_type, stmt.vardecl_mut, "var")
             self.mark_expr_moved(stmt.vardecl_value)
@@ -427,7 +709,9 @@ impl TypeChecker {
         if stmt.kind == StmtKind.sk_assignment {
             self.check_expr(stmt.assign_target)
             self.check_expr(stmt.assign_value)
+            var target_type = "Void"
             if stmt.assign_target >= 0 {
+                target_type = self.get_expr_type(stmt.assign_target)
                 let target_expr = self.expr_pool.get(stmt.assign_target)
                 if target_expr.kind == ExprKind.ek_identifier {
                     let table = self.symbol_tables.get(self.current_table_idx)
@@ -440,11 +724,31 @@ impl TypeChecker {
                     }
                 }
             }
+            let val_type = self.get_expr_type(stmt.assign_value)
+            if !self.types_compatible(target_type, val_type) {
+                print("error[E0001]: Type mismatch in assignment: target name: '")
+                if stmt.assign_target >= 0 {
+                    let target_expr = self.expr_pool.get(stmt.assign_target)
+                    if target_expr.kind == ExprKind.ek_identifier {
+                        print(target_expr.ident_name)
+                    } else {
+                        print("<non-ident>")
+                    }
+                }
+                print("', target is '")
+                print(target_type)
+                print("', value is '")
+                print(val_type)
+                print("'\n")
+                self.has_error = true
+            }
             self.mark_expr_moved(stmt.assign_value)
             return
         }
         
         if stmt.kind == StmtKind.sk_func_decl {
+            let old_ret = self.current_func_ret_type
+            self.current_func_ret_type = stmt.func_return_type
             self.define_symbol(stmt.func_name, stmt.func_return_type, false, "func")
             self.enter_scope()
             var i = 0
@@ -455,6 +759,7 @@ impl TypeChecker {
             }
             self.check_stmt(stmt.func_body)
             self.exit_scope()
+            self.current_func_ret_type = old_ret
             return
         }
         
@@ -545,6 +850,9 @@ impl TypeChecker {
                 let mangled_name = stmt.impl_struct_name + "_" + m.func_name
                 self.define_symbol(mangled_name, m.func_return_type, false, "func")
                 
+                let old_ret = self.current_func_ret_type
+                self.current_func_ret_type = m.func_return_type
+                
                 self.enter_scope()
                 self.define_symbol("self", stmt.impl_struct_name, true, "param")
                 var pi = 1
@@ -555,8 +863,12 @@ impl TypeChecker {
                 }
                 self.check_stmt(m.func_body)
                 self.exit_scope()
+                self.current_func_ret_type = old_ret
                 i = i + 1
             }
+            return
+        }
+        if stmt.kind == StmtKind.sk_error_decl {
             return
         }
     }
@@ -586,6 +898,44 @@ impl TypeChecker {
                 self.mark_expr_moved(arg)
                 i = i + 1
             }
+            let name = expr.func_name
+            if name == "cast" || name == "as" || name == "size_of" || name == "Char" || name == "Int" || name == "Float" || name == "Bool" {
+                return
+            }
+            let func_idx = self.find_func_decl(name)
+            if func_idx >= 0 {
+                let decl = self.stmt_pool.get(func_idx)
+                if decl.func_params.length() != expr.func_args.length() {
+                    print("error[E0001]: Argument count mismatch for function '")
+                    print(name)
+                    print("': expected ")
+                    print(int_to_str(decl.func_params.length()))
+                    print(", got ")
+                    print(int_to_str(expr.func_args.length()))
+                    print("\n")
+                    self.has_error = true
+                } else {
+                    var arg_i = 0
+                    while arg_i < expr.func_args.length() {
+                        let arg = expr.func_args.get(arg_i)
+                        let param = decl.func_params.get(arg_i)
+                        let arg_type = self.get_expr_type(arg)
+                        if !self.types_compatible(param.ptype, arg_type) {
+                            print("error[E0001]: Argument type mismatch for function '")
+                            print(name)
+                            print("', parameter '")
+                            print(param.name)
+                            print("': expected '")
+                            print(param.ptype)
+                            print("', got '")
+                            print(arg_type)
+                            print("'\n")
+                            self.has_error = true
+                        }
+                        arg_i = arg_i + 1
+                    }
+                }
+            }
             return
         }
         if expr.kind == ExprKind.ek_field_access {
@@ -602,6 +952,42 @@ impl TypeChecker {
                 self.check_expr(arg)
                 self.mark_expr_moved(arg)
                 i = i + 1
+            }
+            let recv_type = self.get_expr_type(expr.meth_expr)
+            let meth_name = expr.meth_name
+            let meth_idx = self.find_method_decl(recv_type, meth_name)
+            if meth_idx >= 0 {
+                let decl = self.stmt_pool.get(meth_idx)
+                if decl.func_params.length() != expr.meth_args.length() + 1 {
+                    print("error[E0001]: Argument count mismatch for method '")
+                    print(meth_name)
+                    print("': expected ")
+                    print(int_to_str(decl.func_params.length() - 1))
+                    print(", got ")
+                    print(int_to_str(expr.meth_args.length()))
+                    print("\n")
+                    self.has_error = true
+                } else {
+                    var arg_i = 0
+                    while arg_i < expr.meth_args.length() {
+                        let arg = expr.meth_args.get(arg_i)
+                        let param = decl.func_params.get(arg_i + 1)
+                        let arg_type = self.get_expr_type(arg)
+                        if !self.types_compatible(param.ptype, arg_type) {
+                            print("error[E0001]: Argument type mismatch for method '")
+                            print(meth_name)
+                            print("', parameter '")
+                            print(param.name)
+                            print("': expected '")
+                            print(param.ptype)
+                            print("', got '")
+                            print(arg_type)
+                            print("'\n")
+                            self.has_error = true
+                        }
+                        arg_i = arg_i + 1
+                    }
+                }
             }
             return
         }
@@ -624,6 +1010,131 @@ impl TypeChecker {
                 self.check_expr(f.value)
                 self.mark_expr_moved(f.value)
                 i = i + 1
+            }
+            let struct_name = expr.struct_name
+            let struct_idx = self.find_struct_decl(struct_name)
+            if struct_idx >= 0 {
+                let decl = self.stmt_pool.get(struct_idx)
+                var fi = 0
+                while fi < expr.struct_fields.length() {
+                    let f = expr.struct_fields.get(fi)
+                    var found = false
+                    var dfi = 0
+                    while dfi < decl.struct_fields.length() {
+                        let df = decl.struct_fields.get(dfi)
+                        if df.name == f.name {
+                            found = true
+                            let val_type = self.get_expr_type(f.value)
+                            if !self.types_compatible(df.ftype, val_type) {
+                                print("error[E0001]: Type mismatch in initializer for field '")
+                                print(f.name)
+                                print("' of struct '")
+                                print(struct_name)
+                                print("': expected '")
+                                print(df.ftype)
+                                print("', got '")
+                                print(val_type)
+                                print("'\n")
+                                self.has_error = true
+                            }
+                        }
+                        dfi = dfi + 1
+                    }
+                    if !found {
+                        print("error[E0001]: Field '")
+                        print(f.name)
+                        print("' does not exist in struct '")
+                        print(struct_name)
+                        print("'\n")
+                        self.has_error = true
+                    }
+                    fi = fi + 1
+                }
+            }
+            return
+        }
+        if expr.kind == ExprKind.ek_try {
+            self.check_expr(expr.try_expr)
+            let inner_ty = self.get_expr_type(expr.try_expr)
+            var excl_pos = -1
+            var i = 0
+            while i < length(inner_ty) {
+                if inner_ty[i] == Char(33) {
+                    excl_pos = i
+                }
+                i = i + 1
+            }
+            if excl_pos < 0 {
+                print("error[E0001]: Cannot use 'try' on non-error union type '")
+                print(inner_ty)
+                print("'\n")
+                self.has_error = true
+            } else {
+                let error_set = substring(inner_ty, excl_pos + 1, length(inner_ty))
+                let expected_ret = self.current_func_ret_type
+                var func_excl = -1
+                i = 0
+                while i < length(expected_ret) {
+                    if expected_ret[i] == Char(33) {
+                        func_excl = i
+                    }
+                    i = i + 1
+                }
+                if func_excl < 0 {
+                    print("error[E0001]: Cannot use 'try' in a function that returns non-error union type '")
+                    print(expected_ret)
+                    print("'\n")
+                    self.has_error = true
+                } else {
+                    let func_err = substring(expected_ret, func_excl + 1, length(expected_ret))
+                    if !self.types_compatible(func_err, error_set) {
+                        print("error[E0001]: Error set '")
+                        print(error_set)
+                        print("' of try expression is not compatible with function error set '")
+                        print(func_err)
+                        print("'\n")
+                        self.has_error = true
+                    }
+                }
+            }
+            return
+        }
+        if expr.kind == ExprKind.ek_catch {
+            self.check_expr(expr.catch_expr)
+            let inner_ty = self.get_expr_type(expr.catch_expr)
+            var excl_pos = -1
+            var i = 0
+            while i < length(inner_ty) {
+                if inner_ty[i] == Char(33) {
+                    excl_pos = i
+                }
+                i = i + 1
+            }
+            if excl_pos < 0 {
+                print("error[E0001]: Cannot use 'catch' on non-error union type '")
+                print(inner_ty)
+                print("'\n")
+                self.has_error = true
+            } else {
+                let val_type = substring(inner_ty, 0, excl_pos)
+                let error_set = substring(inner_ty, excl_pos + 1, length(inner_ty))
+                
+                self.enter_scope()
+                if length(expr.catch_var) > 0 {
+                    self.define_symbol(expr.catch_var, error_set, false, "var")
+                }
+                self.check_stmt(expr.catch_fallback)
+                self.exit_scope()
+                
+                let fallback_yields = self.get_block_yield_type(expr.catch_fallback)
+                if !self.types_compatible(val_type, fallback_yields) {
+                    print("error[E0001]: Catch fallback type '")
+                    print(fallback_yields)
+                    print("' is not compatible with expected type '")
+                    print(val_type)
+                    print("'\n")
+                    self.has_error = true
+                }
             }
             return
         }
