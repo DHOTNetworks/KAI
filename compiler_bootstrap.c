@@ -8,6 +8,7 @@
 
 static inline void print_int(int64_t i) { printf("%lld\n", (long long)i); }
 
+/* trait Allocator: alloc, realloc, free, deinit */
 typedef struct CAlloc CAlloc;
 struct CAlloc {
     int64_t dummy;
@@ -651,6 +652,9 @@ struct Codegen {
     ArrayList_StrMapEntry current_type_map;
     ArrayList_StrMapEntry enum_decls;
     ArrayList_Str result_definitions;
+    ArrayList_Int defer_stack;
+    ArrayList_Int defer_depths;
+    ArrayList_StrMapEntry func_param_types;
 };
 
 char* CAlloc_alloc(CAlloc* self, int64_t size, int64_t alignment);
@@ -985,18 +989,22 @@ const char* type_map_get(ArrayList_StrMapEntry* arr, const char* key);
 void type_map_put(ArrayList_StrMapEntry* arr, const char* key, const char* value);
 int64_t strlist_find(ArrayList_Str* arr, const char* key);
 Codegen Codegen_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool);
+bool Codegen_is_pointer_type(Codegen* self, const char* t);
 const char* Codegen_map_type(Codegen* self, const char* type_name);
 const char* Codegen_substitute_generic_type(Codegen* self, const char* type_name);
 const char* Codegen_trim_spaces(Codegen* self, const char* s);
 const char* Codegen_clean_type_for_mangling(Codegen* self, const char* s);
 int64_t Codegen_str_to_int(Codegen* self, const char* s);
+ArrayList_Str Codegen_infer_type_args(Codegen* self, int64_t func_stmt_idx, int64_t expr_idx);
 void Codegen_setup_current_type_map(Codegen* self, ArrayList_Str* type_params, ArrayList_Str* type_args);
 void Codegen_monomorphize_struct(Codegen* self, int64_t stmt_idx, const char* concrete_name, ArrayList_Str* type_args);
 void Codegen_monomorphize_enum(Codegen* self, int64_t stmt_idx, const char* concrete_name, ArrayList_Str* type_args);
 void Codegen_monomorphize_methods(Codegen* self, const char* base_struct_name, const char* concrete_struct_name);
+void Codegen_monomorphize_func(Codegen* self, int64_t func_stmt_idx, const char* mangled_name, ArrayList_Str* type_args);
 const char* Codegen_extract_first_type_arg(Codegen* self, const char* type_name);
 void Codegen_build_func_types(Codegen* self);
 const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx);
+const char* Codegen_gen_expr_with_expected_type(Codegen* self, int64_t expr_idx, const char* expected_type);
 const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx);
 bool Codegen_str_contains(Codegen* self, const char* s, char target);
 int64_t Codegen_str_find(Codegen* self, const char* s, char target);
@@ -4471,8 +4479,10 @@ int64_t Parser_parse_print_stmt(Parser* self) {
 int64_t Parser_parse_defer_stmt(Parser* self) {
     (void)(Parser_advance(self));
     int64_t body = (-1);
+    if ((Parser_peek(self, 0).tok_type == TokenType_NEWLINE) || (Parser_peek(self, 0).tok_type == TokenType_LBRACE)) {
     if (Parser_peek(self, 0).tok_type == TokenType_NEWLINE) {
     Parser_expect_end_of_statement(self);
+}
     body = Parser_parse_block(self);
 } else {
     body = Parser_parse_statement(self);
@@ -5895,6 +5905,9 @@ const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx) {
 }
     if (expr.kind == ExprKind_ek_catch) {
     const char* inner_ty = TypeChecker_get_expr_type(self, expr.catch_expr);
+    if ((strlen(inner_ty) > 0) && ((inner_ty)[0] == ((char)(63)))) {
+    return substring(inner_ty, 1, strlen(inner_ty));
+}
     int64_t excl_pos = (-1);
     int64_t i = 0;
     while (i < strlen(inner_ty)) {
@@ -6082,6 +6095,9 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     const char* old_ret = self->current_func_ret_type;
     self->current_func_ret_type = stmt.func_return_type;
     TypeChecker_define_symbol(self, stmt.func_name, stmt.func_return_type, false, "func");
+    if (ArrayList_Str_length(&(stmt.func_type_params)) > 0) {
+    return;
+}
     TypeChecker_enter_scope(self);
     int64_t i = 0;
     while (i < ArrayList_Param_length(&(stmt.func_params))) {
@@ -6092,6 +6108,9 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     TypeChecker_check_stmt(self, stmt.func_body);
     TypeChecker_exit_scope(self);
     self->current_func_ret_type = old_ret;
+    return;
+}
+    if (stmt.kind == StmtKind_sk_trait_decl) {
     return;
 }
     if (stmt.kind == StmtKind_sk_if) {
@@ -6253,18 +6272,23 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     printf("%s\n", "\n");
     self->has_error = true;
 } else {
+    if (ArrayList_Str_length(&(decl.func_type_params)) > 0) {
+    return;
+}
     int64_t arg_i = 0;
     while (arg_i < ArrayList_Int_length(&(expr.func_args))) {
     int64_t arg = ArrayList_Int_get(&(expr.func_args), arg_i);
     Param param = ArrayList_Param_get(&(decl.func_params), arg_i);
     const char* arg_type = TypeChecker_get_expr_type(self, arg);
-    if (!TypeChecker_types_compatible(self, param.ptype, arg_type)) {
+    const char* ptype = param.ptype;
+    bool is_generic_param = (((strlen(ptype) == 1) && ((ptype)[0] >= ((char)(65)))) && ((ptype)[0] <= ((char)(90))));
+    if ((!is_generic_param) && (!TypeChecker_types_compatible(self, ptype, arg_type))) {
     printf("%s\n", "error[E0001]: Argument type mismatch for function '");
     printf("%s\n", name);
     printf("%s\n", "', parameter '");
     printf("%s\n", param.name);
     printf("%s\n", "': expected '");
-    printf("%s\n", param.ptype);
+    printf("%s\n", ptype);
     printf("%s\n", "', got '");
     printf("%s\n", arg_type);
     printf("%s\n", "'\n");
@@ -6440,6 +6464,25 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (expr.kind == ExprKind_ek_catch) {
     TypeChecker_check_expr(self, expr.catch_expr);
     const char* inner_ty = TypeChecker_get_expr_type(self, expr.catch_expr);
+    if ((strlen(inner_ty) > 0) && ((inner_ty)[0] == ((char)(63)))) {
+    const char* val_type = substring(inner_ty, 1, strlen(inner_ty));
+    TypeChecker_enter_scope(self);
+    if (strlen(expr.catch_var) > 0) {
+    TypeChecker_define_symbol(self, expr.catch_var, "Void", false, "var");
+}
+    TypeChecker_check_stmt(self, expr.catch_fallback);
+    TypeChecker_exit_scope(self);
+    const char* fallback_yields = TypeChecker_get_block_yield_type(self, expr.catch_fallback);
+    if (!TypeChecker_types_compatible(self, val_type, fallback_yields)) {
+    printf("%s\n", "error[E0001]: Catch fallback type '");
+    printf("%s\n", fallback_yields);
+    printf("%s\n", "' is not compatible with expected type '");
+    printf("%s\n", val_type);
+    printf("%s\n", "'\n");
+    self->has_error = true;
+}
+    return;
+}
     int64_t excl_pos = (-1);
     int64_t i = 0;
     while (i < strlen(inner_ty)) {
@@ -6591,7 +6634,25 @@ Codegen Codegen_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, Arr
     self.current_type_map = ArrayList_StrMapEntry_init(allocator);
     self.enum_decls = ArrayList_StrMapEntry_init(allocator);
     self.result_definitions = ArrayList_Str_init(allocator);
+    self.defer_stack = ArrayList_Int_init(allocator);
+    self.defer_depths = ArrayList_Int_init(allocator);
+    self.func_param_types = ArrayList_StrMapEntry_init(allocator);
     return self;
+}
+bool Codegen_is_pointer_type(Codegen* self, const char* t) {
+    if (strlen(t) == 0) {
+    return false;
+}
+    if (((t)[0] == ((char)(42))) || ((t)[0] == ((char)(38)))) {
+    return true;
+}
+    if (strcmp(t, "Str") == 0) {
+    return true;
+}
+    if ((strlen(t) >= 2) && (strcmp(substring(t, 0, 2), "[]") == 0)) {
+    return true;
+}
+    return false;
 }
 const char* Codegen_map_type(Codegen* self, const char* type_name) {
     if (strlen(type_name) == 0) {
@@ -6600,6 +6661,141 @@ const char* Codegen_map_type(Codegen* self, const char* type_name) {
     const char* resolved_type = type_name;
     if (ArrayList_StrMapEntry_length(&(self->current_type_map)) > 0) {
     resolved_type = Codegen_substitute_generic_type(self, type_name);
+}
+    if ((strlen(resolved_type) > 0) && ((resolved_type)[0] == ((char)(63)))) {
+    const char* val_type = substring(resolved_type, 1, strlen(resolved_type));
+    if (Codegen_is_pointer_type(self, val_type)) {
+    return Codegen_map_type(self, val_type);
+}
+    const char* clean_val = Codegen_clean_type_for_mangling(self, val_type);
+    const char* concrete_name = /* Str concat */ ({
+  const char* const _tmp_l = "Optional_";
+  const char* const _tmp_r = clean_val;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    if (strlist_find(&(self->result_definitions), concrete_name) < 0) {
+    ArrayList_Str_push(&(self->result_definitions), concrete_name);
+    const char* struct_str = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = "typedef struct ";
+  const char* const _tmp_r = concrete_name;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = concrete_name;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = ";\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    struct_str = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = struct_str;
+  const char* const _tmp_r = "struct ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = concrete_name;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " {\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    struct_str = /* Str concat */ ({
+  const char* const _tmp_l = struct_str;
+  const char* const _tmp_r = "    bool has_value;\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    struct_str = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = struct_str;
+  const char* const _tmp_r = "    ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = Codegen_map_type(self, val_type);
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " value;\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    struct_str = /* Str concat */ ({
+  const char* const _tmp_l = struct_str;
+  const char* const _tmp_r = "};\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    (void)(StringBuilder_append(&(self->struct_decls), struct_str));
+}
+    return concrete_name;
 }
     if (Codegen_str_contains(self, resolved_type, ((char)(33)))) {
     int64_t excl_pos = Codegen_str_find(self, resolved_type, ((char)(33)));
@@ -7093,6 +7289,17 @@ const char* Codegen_clean_type_for_mangling(Codegen* self, const char* s) {
   strcat(buf, _tmp_r);
   buf;
 });
+} else if (c == ((char)(63))) {
+    res = /* Str concat */ ({
+  const char* const _tmp_l = res;
+  const char* const _tmp_r = "opt_";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
 } else if ((((c == ((char)(60))) || (c == ((char)(62)))) || (c == ((char)(44)))) || (c == ((char)(33)))) {
     res = /* Str concat */ ({
   const char* const _tmp_l = res;
@@ -7131,6 +7338,73 @@ int64_t Codegen_str_to_int(Codegen* self, const char* s) {
     i = (i + 1);
 }
     return res;
+}
+ArrayList_Str Codegen_infer_type_args(Codegen* self, int64_t func_stmt_idx, int64_t expr_idx) {
+    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, func_stmt_idx);
+    ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
+    ArrayList_Str type_args = ArrayList_Str_init(self->allocator);
+    int64_t p_idx = 0;
+    while (p_idx < ArrayList_Str_length(&(stmt.func_type_params))) {
+    ArrayList_Str_push(&(type_args), "");
+    p_idx = (p_idx + 1);
+}
+    int64_t arg_i = 0;
+    while ((arg_i < ArrayList_Int_length(&(expr.func_args))) && (arg_i < ArrayList_Param_length(&(stmt.func_params)))) {
+    int64_t arg = ArrayList_Int_get(&(expr.func_args), arg_i);
+    Param param = ArrayList_Param_get(&(stmt.func_params), arg_i);
+    const char* arg_type = Codegen_get_expr_type(self, arg);
+    const char* ptype = param.ptype;
+    const char* atype = arg_type;
+    bool done = false;
+    while (!done) {
+    if ((strlen(ptype) > 0) && (((ptype)[0] == ((char)(42))) || ((ptype)[0] == ((char)(38))))) {
+    ptype = substring(ptype, 1, strlen(ptype));
+} else {
+    done = true;
+}
+}
+    done = false;
+    while (!done) {
+    if ((strlen(atype) > 0) && (((atype)[0] == ((char)(42))) || ((atype)[0] == ((char)(38))))) {
+    atype = substring(atype, 1, strlen(atype));
+} else {
+    done = true;
+}
+}
+    if ((strlen(ptype) >= 4) && (strcmp(substring(ptype, 0, 4), "mut ") == 0)) {
+    ptype = substring(ptype, 4, strlen(ptype));
+}
+    if ((strlen(atype) >= 4) && (strcmp(substring(atype, 0, 4), "mut ") == 0)) {
+    atype = substring(atype, 4, strlen(atype));
+}
+    bool is_param = false;
+    if (((strlen(ptype) == 1) && ((ptype)[0] >= ((char)(65)))) && ((ptype)[0] <= ((char)(90)))) {
+    is_param = true;
+}
+    if (is_param) {
+    int64_t tp_i = 0;
+    while (tp_i < ArrayList_Str_length(&(stmt.func_type_params))) {
+    const char* tp_name = ArrayList_Str_get(&(stmt.func_type_params), tp_i);
+    if (Codegen_str_contains(self, tp_name, ((char)(58)))) {
+    int64_t colon_pos = Codegen_str_find(self, tp_name, ((char)(58)));
+    tp_name = substring(tp_name, 0, colon_pos);
+}
+    if (strcmp(tp_name, ptype) == 0) {
+    ArrayList_Str_set(&(type_args), tp_i, atype);
+}
+    tp_i = (tp_i + 1);
+}
+}
+    arg_i = (arg_i + 1);
+}
+    int64_t i = 0;
+    while (i < ArrayList_Str_length(&(type_args))) {
+    if (strlen(ArrayList_Str_get(&(type_args), i)) == 0) {
+    ArrayList_Str_set(&(type_args), i, "Int");
+}
+    i = (i + 1);
+}
+    return type_args;
 }
 void Codegen_setup_current_type_map(Codegen* self, ArrayList_Str* type_params, ArrayList_Str* type_args) {
     int64_t i = 0;
@@ -7915,6 +8189,203 @@ void Codegen_monomorphize_methods(Codegen* self, const char* base_struct_name, c
     idx = (idx + 1);
 }
 }
+void Codegen_monomorphize_func(Codegen* self, int64_t func_stmt_idx, const char* mangled_name, ArrayList_Str* type_args) {
+    if (strlist_find(&(self->monomorphized_types), mangled_name) >= 0) {
+    return;
+}
+    ArrayList_Str_push(&(self->monomorphized_types), mangled_name);
+    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, func_stmt_idx);
+    ArrayList_StrMapEntry old_type_map = self->current_type_map;
+    self->current_type_map = ArrayList_StrMapEntry_init(self->allocator);
+    Codegen_setup_current_type_map(self, &(stmt.func_type_params), type_args);
+    const char* concrete_ret_type = Codegen_substitute_generic_type(self, stmt.func_return_type);
+    const char* mapped_ret = Codegen_map_type(self, concrete_ret_type);
+    const char* params_str = "";
+    int64_t p_idx = 0;
+    while (p_idx < ArrayList_Param_length(&(stmt.func_params))) {
+    Param p = ArrayList_Param_get(&(stmt.func_params), p_idx);
+    if (p_idx > 0) {
+    params_str = /* Str concat */ ({
+  const char* const _tmp_l = params_str;
+  const char* const _tmp_r = ", ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+}
+    const char* concrete_ptype = Codegen_substitute_generic_type(self, p.ptype);
+    params_str = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = params_str;
+  const char* const _tmp_r = Codegen_map_type(self, concrete_ptype);
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = p.name;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    p_idx = (p_idx + 1);
+}
+    if (strlen(params_str) == 0) {
+    params_str = "void";
+}
+    type_map_put(&(self->func_types), mangled_name, concrete_ret_type);
+    const char* old_fn = self->cur_func_name;
+    const char* old_ret = self->cur_return_type;
+    bool old_init = self->cur_method_is_init;
+    self->cur_func_name = mangled_name;
+    self->cur_return_type = concrete_ret_type;
+    self->cur_method_is_init = false;
+    int64_t old_var_len = ArrayList_StrMapEntry_length(&(self->var_types));
+    int64_t p_reg = 0;
+    while (p_reg < ArrayList_Param_length(&(stmt.func_params))) {
+    Param p = ArrayList_Param_get(&(stmt.func_params), p_reg);
+    const char* concrete_ptype = Codegen_substitute_generic_type(self, p.ptype);
+    type_map_put(&(self->var_types), p.name, concrete_ptype);
+    p_reg = (p_reg + 1);
+}
+    const char* body_str = Codegen_gen_stmt(self, stmt.func_body);
+    while (ArrayList_StrMapEntry_length(&(self->var_types)) > old_var_len) {
+    (void)(ArrayList_StrMapEntry_pop(&(self->var_types)));
+}
+    const char* proto = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = mapped_ret;
+  const char* const _tmp_r = " ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = mangled_name;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = "(";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = params_str;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = ");\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    const char* impl_str = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = mapped_ret;
+  const char* const _tmp_r = " ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = mangled_name;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = "(";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = params_str;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = ") ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = body_str;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = "\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    (void)(StringBuilder_append(&(self->func_decls), proto));
+    (void)(StringBuilder_append(&(self->output), impl_str));
+    self->cur_func_name = old_fn;
+    self->cur_return_type = old_ret;
+    self->cur_method_is_init = old_init;
+    self->current_type_map = old_type_map;
+}
 const char* Codegen_extract_first_type_arg(Codegen* self, const char* type_name) {
     int64_t start = (-1);
     int64_t end = (-1);
@@ -7943,9 +8414,59 @@ void Codegen_build_func_types(Codegen* self) {
     StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, i);
     if (stmt.kind == StmtKind_sk_func_decl) {
     type_map_put(&(self->func_types), stmt.func_name, stmt.func_return_type);
+    int64_t p_i = 0;
+    while (p_i < ArrayList_Param_length(&(stmt.func_params))) {
+    Param p = ArrayList_Param_get(&(stmt.func_params), p_i);
+    const char* p_key = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = stmt.func_name;
+  const char* const _tmp_r = "_param_";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = int_to_str(p_i);
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    type_map_put(&(self->func_param_types), p_key, p.ptype);
+    p_i = (p_i + 1);
+}
 }
     if (stmt.kind == StmtKind_sk_extern) {
     type_map_put(&(self->func_types), stmt.extern_name, stmt.extern_return);
+    int64_t p_i = 0;
+    while (p_i < ArrayList_Param_length(&(stmt.extern_params))) {
+    Param p = ArrayList_Param_get(&(stmt.extern_params), p_i);
+    const char* p_key = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = stmt.extern_name;
+  const char* const _tmp_r = "_param_";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = int_to_str(p_i);
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    type_map_put(&(self->func_param_types), p_key, p.ptype);
+    p_i = (p_i + 1);
+}
 }
     if (stmt.kind == StmtKind_sk_impl_block) {
     const char* struct_name = stmt.impl_struct_name;
@@ -7977,7 +8498,96 @@ void Codegen_build_func_types(Codegen* self) {
     ret = struct_name;
 }
     type_map_put(&(self->func_types), key, ret);
+    int64_t p_i = 0;
+    while (p_i < ArrayList_Param_length(&(m_node.func_params))) {
+    Param p = ArrayList_Param_get(&(m_node.func_params), p_i);
+    const char* p_key = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = key;
+  const char* const _tmp_r = "_param_";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = int_to_str(p_i);
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    type_map_put(&(self->func_param_types), p_key, p.ptype);
+    p_i = (p_i + 1);
+}
     j = (j + 1);
+}
+}
+    if (stmt.kind == StmtKind_sk_struct_decl) {
+    const char* struct_name = stmt.struct_name;
+    int64_t ti = 0;
+    while (ti < ArrayList_Int_length(&(stmt.struct_trait_impls))) {
+    int64_t impl_idx = ArrayList_Int_get(&(stmt.struct_trait_impls), ti);
+    StmtNode impl_node = ArrayList_StmtNode_get(self->stmt_pool, impl_idx);
+    int64_t j = 0;
+    while (j < ArrayList_Int_length(&(impl_node.impl_methods))) {
+    int64_t m_idx = ArrayList_Int_get(&(impl_node.impl_methods), j);
+    StmtNode m_node = ArrayList_StmtNode_get(self->stmt_pool, m_idx);
+    const char* key = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = struct_name;
+  const char* const _tmp_r = "_";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = m_node.func_name;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    const char* ret = m_node.func_return_type;
+    if (strcmp(m_node.func_name, "init") == 0) {
+    ret = struct_name;
+}
+    type_map_put(&(self->func_types), key, ret);
+    int64_t p_i = 0;
+    while (p_i < ArrayList_Param_length(&(m_node.func_params))) {
+    Param p = ArrayList_Param_get(&(m_node.func_params), p_i);
+    const char* p_key = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = key;
+  const char* const _tmp_r = "_param_";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = int_to_str(p_i);
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    type_map_put(&(self->func_param_types), p_key, p.ptype);
+    p_i = (p_i + 1);
+}
+    j = (j + 1);
+}
+    ti = (ti + 1);
 }
 }
     i = (i + 1);
@@ -8141,6 +8751,27 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
 });
 }
     return name;
+}
+    const char* gf_idx_str = type_map_get(&(self->generic_func_decls), name);
+    if (strlen(gf_idx_str) > 0) {
+    int64_t gf_idx = Codegen_str_to_int(self, gf_idx_str);
+    ArrayList_Str type_args = ArrayList_Str_init(self->allocator);
+    if (ArrayList_Str_length(&(expr.func_type_args)) > 0) {
+    int64_t j = 0;
+    while (j < ArrayList_Str_length(&(expr.func_type_args))) {
+    ArrayList_Str_push(&(type_args), ArrayList_Str_get(&(expr.func_type_args), j));
+    j = (j + 1);
+}
+} else {
+    type_args = Codegen_infer_type_args(self, gf_idx, expr_idx);
+}
+    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, gf_idx);
+    ArrayList_StrMapEntry old_type_map = self->current_type_map;
+    self->current_type_map = ArrayList_StrMapEntry_init(self->allocator);
+    Codegen_setup_current_type_map(self, &(stmt.func_type_params), &(type_args));
+    const char* ret_t = Codegen_substitute_generic_type(self, stmt.func_return_type);
+    self->current_type_map = old_type_map;
+    return ret_t;
 }
     const char* fn_t = type_map_get(&(self->func_types), name);
     if (strlen(fn_t) > 0) {
@@ -8401,6 +9032,9 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
 }
     if (expr.kind == ExprKind_ek_catch) {
     const char* inner_ty = Codegen_get_expr_type(self, expr.catch_expr);
+    if ((strlen(inner_ty) > 0) && ((inner_ty)[0] == ((char)(63)))) {
+    return substring(inner_ty, 1, strlen(inner_ty));
+}
     int64_t excl_pos = Codegen_str_find(self, inner_ty, ((char)(33)));
     if (excl_pos >= 0) {
     return substring(inner_ty, 0, excl_pos);
@@ -8408,6 +9042,85 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
     return inner_ty;
 }
     return "Void";
+}
+const char* Codegen_gen_expr_with_expected_type(Codegen* self, int64_t expr_idx, const char* expected_type) {
+    if (expr_idx < 0) {
+    return "";
+}
+    ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
+    const char* actual_type = Codegen_get_expr_type(self, expr_idx);
+    if ((expr.kind == ExprKind_ek_literal) && (strcmp(expr.lit_vkind, "NONE") == 0)) {
+    if ((strlen(expected_type) > 0) && ((expected_type)[0] == ((char)(63)))) {
+    const char* val_type = substring(expected_type, 1, strlen(expected_type));
+    if (Codegen_is_pointer_type(self, val_type)) {
+    return "NULL";
+}
+    return /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = "(";
+  const char* const _tmp_r = Codegen_map_type(self, expected_type);
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = "){0}";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+}
+    return "NULL";
+}
+    const char* gen_val = Codegen_gen_expr(self, expr_idx);
+    if ((strlen(expected_type) > 0) && ((expected_type)[0] == ((char)(63)))) {
+    const char* val_type = substring(expected_type, 1, strlen(expected_type));
+    if ((!Codegen_is_pointer_type(self, val_type)) && (strcmp(actual_type, val_type) == 0)) {
+    return /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = "(";
+  const char* const _tmp_r = Codegen_map_type(self, expected_type);
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = "){ .has_value = true, .value = ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = gen_val;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " }";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+}
+}
+    return gen_val;
 }
 const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (expr_idx < 0) {
@@ -8646,8 +9359,175 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     const char* lhs = Codegen_gen_expr(self, expr.binop_left);
     const char* rhs = Codegen_gen_expr(self, expr.binop_right);
     const char* op = expr.binop_op;
-    ExprNode lhs_node = ArrayList_ExprNode_get(self->expr_pool, expr.binop_left);
     const char* lhs_type = Codegen_get_expr_type(self, expr.binop_left);
+    const char* rhs_type = Codegen_get_expr_type(self, expr.binop_right);
+    if ((strcmp(op, "==") == 0) || (strcmp(op, "!=") == 0)) {
+    if (((strlen(lhs_type) > 0) && ((lhs_type)[0] == ((char)(63)))) && (strcmp(rhs, "NULL") == 0)) {
+    const char* val_type = substring(lhs_type, 1, strlen(lhs_type));
+    if (Codegen_is_pointer_type(self, val_type)) {
+    return /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = "(";
+  const char* const _tmp_r = lhs;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = op;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " NULL)";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+}
+    if (strcmp(op, "==") == 0) {
+    return /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = "(!";
+  const char* const _tmp_r = lhs;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = ".has_value)";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+}
+    return /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = "(";
+  const char* const _tmp_r = lhs;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = ".has_value)";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+}
+    if (((strlen(rhs_type) > 0) && ((rhs_type)[0] == ((char)(63)))) && (strcmp(lhs, "NULL") == 0)) {
+    const char* val_type = substring(rhs_type, 1, strlen(rhs_type));
+    if (Codegen_is_pointer_type(self, val_type)) {
+    return /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = "(NULL ";
+  const char* const _tmp_r = op;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = rhs;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = ")";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+}
+    if (strcmp(op, "==") == 0) {
+    return /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = "(!";
+  const char* const _tmp_r = rhs;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = ".has_value)";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+}
+    return /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = "(";
+  const char* const _tmp_r = rhs;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = ".has_value)";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+}
+}
+    ExprNode lhs_node = ArrayList_ExprNode_get(self->expr_pool, expr.binop_left);
     if (strcmp(lhs_type, "Str") == 0) {
     if (strcmp(op, "+") == 0) {
     return /* Str concat */ ({
@@ -9216,7 +10096,44 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     is_struct = true;
 }
     const char* fn_name = name;
+    ArrayList_Str type_args = ArrayList_Str_init(self->allocator);
+    const char* gf_idx_str = type_map_get(&(self->generic_func_decls), name);
+    if (strlen(gf_idx_str) > 0) {
+    int64_t gf_idx = Codegen_str_to_int(self, gf_idx_str);
     if (ArrayList_Str_length(&(expr.func_type_args)) > 0) {
+    int64_t j = 0;
+    while (j < ArrayList_Str_length(&(expr.func_type_args))) {
+    ArrayList_Str_push(&(type_args), ArrayList_Str_get(&(expr.func_type_args), j));
+    j = (j + 1);
+}
+} else {
+    type_args = Codegen_infer_type_args(self, gf_idx, expr_idx);
+}
+    int64_t j = 0;
+    while (j < ArrayList_Str_length(&(type_args))) {
+    fn_name = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = fn_name;
+  const char* const _tmp_r = "_";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = Codegen_clean_type_for_mangling(self, ArrayList_Str_get(&(type_args), j));
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    j = (j + 1);
+}
+    Codegen_monomorphize_func(self, gf_idx, fn_name, &(type_args));
+} else if (ArrayList_Str_length(&(expr.func_type_args)) > 0) {
     int64_t j = 0;
     while (j < ArrayList_Str_length(&(expr.func_type_args))) {
     fn_name = /* Str concat */ ({
@@ -9268,9 +10185,33 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
   buf;
 });
 }
+    int64_t p_idx = i;
+    if (is_struct) {
+    p_idx = (i + 1);
+}
+    const char* p_key = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = fn_name;
+  const char* const _tmp_r = "_param_";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = int_to_str(p_idx);
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    const char* expected_type = type_map_get(&(self->func_param_types), p_key);
     args_str = /* Str concat */ ({
   const char* const _tmp_l = args_str;
-  const char* const _tmp_r = Codegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), i));
+  const char* const _tmp_r = Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&(expr.func_args), i), expected_type);
   size_t l1 = strlen(_tmp_l);
   size_t l2 = strlen(_tmp_r);
   char* buf = malloc(l1 + l2 + 1);
@@ -10631,6 +11572,16 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
   strcat(buf, _tmp_r);
   buf;
 });
+    if (type_map_find(&(self->func_types), func_name) < 0) {
+    printf("%s\n", "error[E0002]: type '");
+    printf("%s\n", rec_type);
+    printf("%s\n", "' has no method '");
+    printf("%s\n", method_name);
+    printf("%s\n", "'\n");
+    {
+    exit(1);
+}
+}
     const char* args_str = "";
     if ((!is_constructor) && (strcmp(method_name, "init") != 0)) {
     const char* rec_val = Codegen_gen_expr(self, receiver_idx);
@@ -10674,9 +11625,29 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
   buf;
 });
 }
+    const char* p_key = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = func_name;
+  const char* const _tmp_r = "_param_";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = int_to_str((ai + 1));
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    const char* expected_type = type_map_get(&(self->func_param_types), p_key);
     args_str = /* Str concat */ ({
   const char* const _tmp_l = args_str;
-  const char* const _tmp_r = Codegen_gen_expr(self, ArrayList_Int_get(&(expr.meth_args), ai));
+  const char* const _tmp_r = Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&(expr.meth_args), ai), expected_type);
   size_t l1 = strlen(_tmp_l);
   size_t l2 = strlen(_tmp_r);
   char* buf = malloc(l1 + l2 + 1);
@@ -10825,6 +11796,205 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (expr.kind == ExprKind_ek_catch) {
     const char* inner = Codegen_gen_expr(self, expr.catch_expr);
     const char* inner_ty = Codegen_get_expr_type(self, expr.catch_expr);
+    if ((strlen(inner_ty) > 0) && ((inner_ty)[0] == ((char)(63)))) {
+    const char* val_type = substring(inner_ty, 1, strlen(inner_ty));
+    const char* val_ctype = Codegen_map_type(self, val_type);
+    const char* cond_ctype = Codegen_map_type(self, inner_ty);
+    const char* fallback_code = Codegen_gen_stmt(self, expr.catch_fallback);
+    const char* catch_code = "({ ";
+    if (Codegen_is_pointer_type(self, val_type)) {
+    catch_code = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = catch_code;
+  const char* const _tmp_r = val_ctype;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " _kai_opt = (";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = inner;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = "); ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    catch_code = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = catch_code;
+  const char* const _tmp_r = val_ctype;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " _kai_cv; ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    catch_code = /* Str concat */ ({
+  const char* const _tmp_l = catch_code;
+  const char* const _tmp_r = "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    catch_code = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = catch_code;
+  const char* const _tmp_r = "else { _kai_cv = (";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = fallback_code;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = "); } _kai_cv; })";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+} else {
+    catch_code = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = catch_code;
+  const char* const _tmp_r = cond_ctype;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " _kai_opt = (";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = inner;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = "); ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    catch_code = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = catch_code;
+  const char* const _tmp_r = val_ctype;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " _kai_cv; ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    catch_code = /* Str concat */ ({
+  const char* const _tmp_l = catch_code;
+  const char* const _tmp_r = "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    catch_code = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = catch_code;
+  const char* const _tmp_r = "else { _kai_cv = (";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = fallback_code;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = "); } _kai_cv; })";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+}
+    return catch_code;
+}
     int64_t excl_pos = Codegen_str_find(self, inner_ty, ((char)(33)));
     if (excl_pos < 0) {
     return inner;
@@ -11150,6 +12320,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt_idx);
     if (stmt.kind == StmtKind_sk_block) {
     ArrayList_Int_push(&(self->block_stack), stmt_idx);
+    ArrayList_Int_push(&(self->defer_depths), ArrayList_Int_length(&(self->defer_stack)));
     const char* block_str = "{\n";
     int64_t i = 0;
     while (i < ArrayList_Int_length(&(stmt.block_stmts))) {
@@ -11185,6 +12356,42 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 });
 }
     i = (i + 1);
+}
+    int64_t start_idx = ArrayList_Int_pop(&(self->defer_depths));
+    while (ArrayList_Int_length(&(self->defer_stack)) > start_idx) {
+    int64_t def_idx = ArrayList_Int_pop(&(self->defer_stack));
+    StmtNode def_node = ArrayList_StmtNode_get(self->stmt_pool, def_idx);
+    const char* s = Codegen_gen_stmt(self, def_node.defer_body);
+    if (strlen(s) > 0) {
+    block_str = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = block_str;
+  const char* const _tmp_r = "    ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = s;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = "\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+}
 }
     int64_t di = 0;
     while (di < ArrayList_DropVarEntry_length(&(stmt.block_drop_vars))) {
@@ -11250,9 +12457,17 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     (void)(ArrayList_Int_pop(&(self->block_stack)));
     return block_str;
 }
+    if (stmt.kind == StmtKind_sk_defer) {
+    ArrayList_Int_push(&(self->defer_stack), stmt_idx);
+    return "";
+}
     if (stmt.kind == StmtKind_sk_var_decl) {
     const char* name = stmt.vardecl_name;
-    const char* init_val = Codegen_gen_expr(self, stmt.vardecl_value);
+    const char* var_type_name = stmt.vardecl_type;
+    if (strlen(var_type_name) == 0) {
+    var_type_name = Codegen_get_expr_type(self, stmt.vardecl_value);
+}
+    const char* init_val = Codegen_gen_expr_with_expected_type(self, stmt.vardecl_value, var_type_name);
     if (strcmp(name, "_") == 0) {
     return /* Str concat */ ({
   const char* const _tmp_l = /* Str concat */ ({
@@ -11273,10 +12488,6 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
   strcat(buf, _tmp_r);
   buf;
 });
-}
-    const char* var_type_name = stmt.vardecl_type;
-    if (strlen(var_type_name) == 0) {
-    var_type_name = Codegen_get_expr_type(self, stmt.vardecl_value);
 }
     const char* var_type = Codegen_map_type(self, var_type_name);
     type_map_put(&(self->var_types), name, var_type_name);
@@ -11329,7 +12540,8 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 }
     if (stmt.kind == StmtKind_sk_assignment) {
     const char* lhs = Codegen_gen_expr(self, stmt.assign_target);
-    const char* rhs = Codegen_gen_expr(self, stmt.assign_value);
+    const char* lhs_type = Codegen_get_expr_type(self, stmt.assign_target);
+    const char* rhs = Codegen_gen_expr_with_expected_type(self, stmt.assign_value, lhs_type);
     return /* Str concat */ ({
   const char* const _tmp_l = /* Str concat */ ({
   const char* const _tmp_l = /* Str concat */ ({
@@ -11699,6 +12911,81 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
   buf;
 });
     (void)(StringBuilder_append(&(self->struct_decls), struct_str));
+    int64_t ti = 0;
+    while (ti < ArrayList_Int_length(&(stmt.struct_trait_impls))) {
+    int64_t impl_idx = ArrayList_Int_get(&(stmt.struct_trait_impls), ti);
+    (void)(Codegen_gen_stmt(self, impl_idx));
+    ti = (ti + 1);
+}
+    return "";
+}
+    if (stmt.kind == StmtKind_sk_trait_decl) {
+    const char* method_names = "";
+    int64_t mi = 0;
+    while (mi < ArrayList_Int_length(&(stmt.trait_methods))) {
+    StmtNode m_node = ArrayList_StmtNode_get(self->stmt_pool, ArrayList_Int_get(&(stmt.trait_methods), mi));
+    if (mi > 0) {
+    method_names = /* Str concat */ ({
+  const char* const _tmp_l = method_names;
+  const char* const _tmp_r = ", ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+}
+    method_names = /* Str concat */ ({
+  const char* const _tmp_l = method_names;
+  const char* const _tmp_r = m_node.func_name;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    mi = (mi + 1);
+}
+    const char* comment = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = "/* trait ";
+  const char* const _tmp_r = stmt.trait_name;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = ": ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = method_names;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " */\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    (void)(StringBuilder_append(&(self->struct_decls), comment));
     return "";
 }
     if (stmt.kind == StmtKind_sk_error_decl) {
@@ -12677,6 +13964,365 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 }
     return if_str;
 }
+    if (stmt.kind == StmtKind_sk_if_let) {
+    const char* cond_val = Codegen_gen_expr(self, stmt.iflet_expr);
+    const char* cond_type = Codegen_get_expr_type(self, stmt.iflet_expr);
+    const char* unwrapped_type = substring(cond_type, 1, strlen(cond_type));
+    const char* unwrapped_ctype = Codegen_map_type(self, unwrapped_type);
+    const char* cond_ctype = Codegen_map_type(self, cond_type);
+    int64_t old_var_len = ArrayList_StrMapEntry_length(&(self->var_types));
+    type_map_put(&(self->var_types), stmt.iflet_var, unwrapped_type);
+    const char* then_str = Codegen_gen_stmt(self, stmt.iflet_then);
+    const char* else_str = "";
+    if (stmt.iflet_else >= 0) {
+    StmtNode else_node = ArrayList_StmtNode_get(self->stmt_pool, stmt.iflet_else);
+    if ((else_node.kind == StmtKind_sk_block) && (ArrayList_Int_length(&(else_node.block_stmts)) == 1)) {
+    int64_t single_stmt_idx = ArrayList_Int_get(&(else_node.block_stmts), 0);
+    StmtNode single_stmt = ArrayList_StmtNode_get(self->stmt_pool, single_stmt_idx);
+    if (single_stmt.kind == StmtKind_sk_if_let) {
+    else_str = /* Str concat */ ({
+  const char* const _tmp_l = " else ";
+  const char* const _tmp_r = Codegen_gen_stmt(self, single_stmt_idx);
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+} else {
+    else_str = /* Str concat */ ({
+  const char* const _tmp_l = " else ";
+  const char* const _tmp_r = Codegen_gen_stmt(self, stmt.iflet_else);
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+}
+} else {
+    else_str = /* Str concat */ ({
+  const char* const _tmp_l = " else ";
+  const char* const _tmp_r = Codegen_gen_stmt(self, stmt.iflet_else);
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+}
+}
+    while (ArrayList_StrMapEntry_length(&(self->var_types)) > old_var_len) {
+    (void)(ArrayList_StrMapEntry_pop(&(self->var_types)));
+}
+    const char* if_code = "";
+    if (Codegen_is_pointer_type(self, unwrapped_type)) {
+    if_code = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = "if ((";
+  const char* const _tmp_r = cond_val;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = ") != NULL) {\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    if_code = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = if_code;
+  const char* const _tmp_r = "    ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = unwrapped_ctype;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = stmt.iflet_var;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " = ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = cond_val;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = ";\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    if_code = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = if_code;
+  const char* const _tmp_r = "    ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = then_str;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = "\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    if_code = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = if_code;
+  const char* const _tmp_r = "}";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = else_str;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+} else {
+    if_code = "{\n";
+    if_code = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = if_code;
+  const char* const _tmp_r = "    ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = cond_ctype;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " _kai_opt = ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = cond_val;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = ";\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    if_code = /* Str concat */ ({
+  const char* const _tmp_l = if_code;
+  const char* const _tmp_r = "    if (_kai_opt.has_value) {\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    if_code = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = if_code;
+  const char* const _tmp_r = "        ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = unwrapped_ctype;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = stmt.iflet_var;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = " = _kai_opt.value;\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    if_code = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = if_code;
+  const char* const _tmp_r = "        ";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = then_str;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = "\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    if_code = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = /* Str concat */ ({
+  const char* const _tmp_l = if_code;
+  const char* const _tmp_r = "    }";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = else_str;
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+  const char* const _tmp_r = "\n";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+    if_code = /* Str concat */ ({
+  const char* const _tmp_l = if_code;
+  const char* const _tmp_r = "}";
+  size_t l1 = strlen(_tmp_l);
+  size_t l2 = strlen(_tmp_r);
+  char* buf = malloc(l1 + l2 + 1);
+  strcpy(buf, _tmp_l);
+  strcat(buf, _tmp_r);
+  buf;
+});
+}
+    return if_code;
+}
     if (stmt.kind == StmtKind_sk_while) {
     const char* cond_val = Codegen_gen_expr(self, stmt.while_cond);
     const char* cond_str = "";
@@ -12876,6 +14522,21 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     while (bi >= 0) {
     int64_t b_idx = ArrayList_Int_get(&(self->block_stack), bi);
     StmtNode b_node = ArrayList_StmtNode_get(self->stmt_pool, b_idx);
+    int64_t start_idx = ArrayList_Int_get(&(self->defer_depths), bi);
+    int64_t next_start_idx = ArrayList_Int_length(&(self->defer_stack));
+    if (bi < (ArrayList_Int_length(&(self->block_stack)) - 1)) {
+    next_start_idx = ArrayList_Int_get(&(self->defer_depths), (bi + 1));
+}
+    int64_t def_i = (next_start_idx - 1);
+    while (def_i >= start_idx) {
+    int64_t def_idx = ArrayList_Int_get(&(self->defer_stack), def_i);
+    StmtNode def_node = ArrayList_StmtNode_get(self->stmt_pool, def_idx);
+    const char* s = Codegen_gen_stmt(self, def_node.defer_body);
+    if (strlen(s) > 0) {
+    ArrayList_Str_push(&(drop_calls), s);
+}
+    def_i = (def_i - 1);
+}
     int64_t di = 0;
     while (di < ArrayList_DropVarEntry_length(&(b_node.block_drop_vars))) {
     DropVarEntry entry = ArrayList_DropVarEntry_get(&(b_node.block_drop_vars), di);
@@ -14268,6 +15929,21 @@ ArrayList_Str Codegen__collect_loop_drops(Codegen* self) {
     while ((bi >= 0) && (!done)) {
     int64_t b_idx = ArrayList_Int_get(&(self->block_stack), bi);
     StmtNode b_node = ArrayList_StmtNode_get(self->stmt_pool, b_idx);
+    int64_t start_idx = ArrayList_Int_get(&(self->defer_depths), bi);
+    int64_t next_start_idx = ArrayList_Int_length(&(self->defer_stack));
+    if (bi < (ArrayList_Int_length(&(self->block_stack)) - 1)) {
+    next_start_idx = ArrayList_Int_get(&(self->defer_depths), (bi + 1));
+}
+    int64_t def_i = (next_start_idx - 1);
+    while (def_i >= start_idx) {
+    int64_t def_idx = ArrayList_Int_get(&(self->defer_stack), def_i);
+    StmtNode def_node = ArrayList_StmtNode_get(self->stmt_pool, def_idx);
+    const char* s = Codegen_gen_stmt(self, def_node.defer_body);
+    if (strlen(s) > 0) {
+    ArrayList_Str_push(&(drop_calls), s);
+}
+    def_i = (def_i - 1);
+}
     int64_t di = 0;
     while (di < ArrayList_DropVarEntry_length(&(b_node.block_drop_vars))) {
     DropVarEntry entry = ArrayList_DropVarEntry_get(&(b_node.block_drop_vars), di);

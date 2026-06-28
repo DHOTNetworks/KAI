@@ -1377,14 +1377,15 @@ impl Parser {
     fn parse_defer_stmt(self) -> Int {
         let _ = self.advance()
         var body: Int = -1
-        if self.peek(0).tok_type == TokenType.NEWLINE {
-            self.expect_end_of_statement()
+        if self.peek(0).tok_type == TokenType.NEWLINE || self.peek(0).tok_type == TokenType.LBRACE {
+            if self.peek(0).tok_type == TokenType.NEWLINE {
+                self.expect_end_of_statement()
+            }
             body = self.parse_block()
         } else {
             body = self.parse_statement()
         }
         return self.st_defer(body)
-
     }
     fn parse_expr_or_assignment_stmt(self) -> Int {
         let expr = self.parse_expression(0)

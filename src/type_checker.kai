@@ -555,6 +555,9 @@ impl TypeChecker {
         }
         if expr.kind == ExprKind.ek_catch {
             let inner_ty = self.get_expr_type(expr.catch_expr)
+            if length(inner_ty) > 0 && inner_ty[0] == Char(63) {
+                return substring(inner_ty, 1, length(inner_ty))
+            }
             var excl_pos = -1
             var i = 0
             while i < length(inner_ty) {
@@ -750,6 +753,9 @@ impl TypeChecker {
             let old_ret = self.current_func_ret_type
             self.current_func_ret_type = stmt.func_return_type
             self.define_symbol(stmt.func_name, stmt.func_return_type, false, "func")
+            if stmt.func_type_params.length() > 0 {
+                return
+            }
             self.enter_scope()
             var i = 0
             while i < stmt.func_params.length() {
@@ -760,6 +766,9 @@ impl TypeChecker {
             self.check_stmt(stmt.func_body)
             self.exit_scope()
             self.current_func_ret_type = old_ret
+            return
+        }
+        if stmt.kind == StmtKind.sk_trait_decl {
             return
         }
         
@@ -915,18 +924,23 @@ impl TypeChecker {
                     print("\n")
                     self.has_error = true
                 } else {
+                    if decl.func_type_params.length() > 0 {
+                        return
+                    }
                     var arg_i = 0
                     while arg_i < expr.func_args.length() {
                         let arg = expr.func_args.get(arg_i)
                         let param = decl.func_params.get(arg_i)
                         let arg_type = self.get_expr_type(arg)
-                        if !self.types_compatible(param.ptype, arg_type) {
+                        let ptype = param.ptype
+                        let is_generic_param = length(ptype) == 1 && ptype[0] >= Char(65) && ptype[0] <= Char(90)
+                        if !is_generic_param && !self.types_compatible(ptype, arg_type) {
                             print("error[E0001]: Argument type mismatch for function '")
                             print(name)
                             print("', parameter '")
                             print(param.name)
                             print("': expected '")
-                            print(param.ptype)
+                            print(ptype)
                             print("', got '")
                             print(arg_type)
                             print("'\n")
@@ -1102,6 +1116,25 @@ impl TypeChecker {
         if expr.kind == ExprKind.ek_catch {
             self.check_expr(expr.catch_expr)
             let inner_ty = self.get_expr_type(expr.catch_expr)
+            if length(inner_ty) > 0 && inner_ty[0] == Char(63) {
+                let val_type = substring(inner_ty, 1, length(inner_ty))
+                self.enter_scope()
+                if length(expr.catch_var) > 0 {
+                    self.define_symbol(expr.catch_var, "Void", false, "var")
+                }
+                self.check_stmt(expr.catch_fallback)
+                self.exit_scope()
+                let fallback_yields = self.get_block_yield_type(expr.catch_fallback)
+                if !self.types_compatible(val_type, fallback_yields) {
+                    print("error[E0001]: Catch fallback type '")
+                    print(fallback_yields)
+                    print("' is not compatible with expected type '")
+                    print(val_type)
+                    print("'\n")
+                    self.has_error = true
+                }
+                return
+            }
             var excl_pos = -1
             var i = 0
             while i < length(inner_ty) {
