@@ -1,0 +1,28 @@
+extern fn exit(code: Int)
+
+enum Option<T> {
+    case some(value: T)
+    case empty
+}
+
+impl Option {
+    fn is_some(self) -> Bool {
+        match self {
+            case .some(v) => return true
+            case else => return false
+        }
+    }
+
+    fn is_none(self) -> Bool {
+        return self.is_some() == false
+    }
+
+    fn unwrap(self) -> T {
+        match self {
+            case .some(val) => return val
+            case else => unsafe {
+                exit(1)
+            }
+        }
+    }
+}

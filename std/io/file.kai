@@ -1,0 +1,46 @@
+import Allocator from std.core.allocator
+import Result from std.core.result
+
+extern fn fopen(filename: *Char, mode: *Char) -> *Void
+extern fn fread(ptr: *Char, size: Int, count: Int, stream: *Void) -> Int
+extern fn fwrite(ptr: *Char, size: Int, count: Int, stream: *Void) -> Int
+extern fn fclose(stream: *Void) -> Int
+extern fn fseek(stream: *Void, offset: Int, whence: Int) -> Int
+extern fn ftell(stream: *Void) -> Int
+extern fn rewind(stream: *Void)
+extern fn strlen(s: Str) -> Int
+
+fn read_to_string(allocator: *Allocator, path: Str) -> Result<Str, Int> {
+    unsafe {
+        let file = fopen(path as *Char, "rb" as *Char)
+        if file as *Char == none {
+            return Result<Str, Int>.err(value: 1)
+        
+        }
+        fseek(file, 0, 2)
+        let size = ftell(file)
+        rewind(file)
+        
+        let buf = allocator.alloc(size + 1, 1) as *Char
+        let bytes_read = fread(buf, 1, size, file)
+        buf[bytes_read] = Char(0)
+        
+        fclose(file)
+        return Result<Str, Int>.ok(value: buf as Str)
+
+    }
+}
+fn write_string(path: Str, content: Str) -> Result<Bool, Int> {
+    unsafe {
+        let file = fopen(path as *Char, "wb" as *Char)
+        if file as *Char == none {
+            return Result<Bool, Int>.err(value: 1)
+            
+        }
+        let len = strlen(content)
+        let bytes_written = fwrite(content as *Char, 1, len, file)
+        fclose(file)
+        return Result<Bool, Int>.ok(value: true)
+
+    }
+}

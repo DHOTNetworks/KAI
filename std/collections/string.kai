@@ -1,0 +1,169 @@
+extern fn isdigit(c: Char) -> Bool
+extern fn isalpha(c: Char) -> Bool
+extern fn isalnum(c: Char) -> Bool
+extern fn isspace(c: Char) -> Bool
+extern fn toupper(c: Char) -> Char
+extern fn tolower(c: Char) -> Char
+extern fn strlen(s: Str) -> Int
+
+fn char_at(s: Str, i: Int) -> Char {
+    return s[i]
+}
+
+fn is_digit(c: Char) -> Bool {
+    unsafe {
+        return isdigit(c)
+    }
+}
+
+fn is_alpha(c: Char) -> Bool {
+    unsafe {
+        return isalpha(c)
+    }
+}
+
+fn is_alnum(c: Char) -> Bool {
+    unsafe {
+        return isalnum(c)
+    }
+}
+
+fn is_space(c: Char) -> Bool {
+    unsafe {
+        return isspace(c)
+    }
+}
+
+fn to_upper(c: Char) -> Char {
+    unsafe {
+        return toupper(c)
+    }
+}
+
+fn to_lower(c: Char) -> Char {
+    unsafe {
+        return tolower(c)
+    }
+}
+
+fn length(s: Str) -> Int {
+    unsafe {
+        return strlen(s)
+    }
+}
+
+import Allocator from std.core.allocator
+import KaiAllocator from std.core.allocator
+
+struct StringBuilder {
+    data: *Char
+    len: Int
+    cap: Int
+    allocator: *Allocator
+}
+
+impl StringBuilder {
+    fn init(self, allocator: *Allocator) {
+        self.len = 0
+        self.cap = 16
+        self.allocator = allocator
+        unsafe {
+            self.data = allocator.alloc(self.cap * sizeof(Char), 1) as *Char
+        }
+    }
+
+    fn append_char(self, c: Char) {
+        if self.len + 1 >= self.cap {
+            let new_cap = self.cap * 2
+            unsafe {
+                let new_data = self.allocator.alloc(new_cap * sizeof(Char), 1) as *Char
+                var i = 0
+                while i < self.len {
+                    new_data[i] = self.data[i]
+                    i = i + 1
+                }
+                self.allocator.free(self.data)
+                self.data = new_data
+                self.cap = new_cap
+            }
+        }
+        self.data[self.len] = c
+        self.len = self.len + 1
+        self.data[self.len] = Char(0)
+    }
+
+    fn append_str(self, s: Str) {
+        var i = 0
+        while s[i] != Char(0) {
+            self.append_char(s[i])
+            i = i + 1
+        }
+    }
+
+    fn append(self, s: Str) {
+        self.append_str(s)
+    }
+
+    fn to_str(self) -> Str {
+        return self.data as Str
+    }
+
+    fn deinit(self) {
+        unsafe {
+            self.allocator.free(self.data)
+        }
+    }
+}
+
+fn int_to_str(n: Int) -> Str {
+    unsafe {
+        var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
+        allocator.init()
+        let alloc_ptr = &allocator as *Allocator
+        var sb = StringBuilder(alloc_ptr)
+        var num = n
+        if num < 0 {
+            sb.append_char(Char(45))
+            num = -num
+        }
+        var divisor = 1
+        var tmp = num
+        while tmp >= 10 {
+            divisor = divisor * 10
+            tmp = tmp / 10
+        }
+        while divisor > 0 {
+            let digit = (num / divisor) % 10
+            sb.append_char(Char(48 + digit))
+            divisor = divisor / 10
+        }
+        return sb.to_str()
+    }
+}
+
+fn char_to_str(c: Char) -> Str {
+    unsafe {
+        var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
+        allocator.init()
+        var sb = StringBuilder(&allocator as *Allocator)
+        sb.append_char(c)
+        return sb.to_str()
+    }
+}
+
+fn substring(s: Str, start: Int, end: Int) -> Str {
+    unsafe {
+        var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
+        allocator.init()
+        var sb = StringBuilder(&allocator as *Allocator)
+        var i = start
+        if i < 0 {
+            i = 0
+        }
+        while s[i] != Char(0) && i < end {
+            sb.append_char(s[i])
+            i = i + 1
+        }
+        return sb.to_str()
+    }
+}

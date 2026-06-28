@@ -1,0 +1,631 @@
+import ArrayList from std.collections.array
+import Allocator from std.core.allocator
+import StmtNode from ast_nodes
+import ExprNode from ast_nodes
+import PatternNode from ast_nodes
+import StmtKind from ast_nodes
+import ExprKind from ast_nodes
+import PatternKind from ast_nodes
+import Param from ast_nodes
+import StructField from ast_nodes
+import DropVarEntry from ast_nodes
+import SymbolTable from symbol_table
+import Symbol from symbol_table
+import length from std.collections.string
+import substring from std.collections.string
+import char_to_str from std.collections.string
+import str_array_join from parser
+
+struct StructInfo {
+    name: Str
+    has_drop: Bool
+}
+
+struct TypeChecker {
+    allocator: *Allocator
+    stmt_pool: *ArrayList<StmtNode>
+    expr_pool: *ArrayList<ExprNode>
+    pattern_pool: *ArrayList<PatternNode>
+    
+    symbol_tables: ArrayList<SymbolTable>
+    current_table_idx: Int
+    
+    struct_info: ArrayList<StructInfo>
+    has_error: Bool
+}
+
+impl TypeChecker {
+    fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>) {
+        self.allocator = allocator
+        self.stmt_pool = stmt_pool
+        self.expr_pool = expr_pool
+        self.pattern_pool = pattern_pool
+        self.symbol_tables = ArrayList<SymbolTable>(allocator)
+        self.current_table_idx = -1
+        self.struct_info = ArrayList<StructInfo>(allocator)
+        self.has_error = false
+    }
+
+    fn enter_scope(self) {
+        var new_table = SymbolTable(entries: ArrayList<Symbol>(self.allocator), parent_idx: self.current_table_idx, allocator: self.allocator)
+        new_table.init(self.allocator, self.current_table_idx)
+        self.symbol_tables.push(new_table)
+        self.current_table_idx = self.symbol_tables.length() - 1
+    }
+
+    fn exit_scope(self) {
+        if self.current_table_idx >= 0 {
+            let table = self.symbol_tables.get(self.current_table_idx)
+            self.current_table_idx = table.parent_idx
+        }
+    }
+
+    fn define_symbol(self, name: Str, type_name: Str, is_mutable: Bool, kind: Str) {
+        if self.current_table_idx >= 0 {
+            var table = self.symbol_tables.get(self.current_table_idx)
+            table.define(name, type_name, is_mutable, kind, "")
+            self.symbol_tables.set(self.current_table_idx, table)
+        }
+    }
+
+    fn check_program(self, top_stmt_idx: Int) -> Bool {
+        // Pre-pass: register struct drop info
+        self.register_struct_info(top_stmt_idx)
+        
+        // Start checking
+        self.enter_scope()
+        self.check_stmt(top_stmt_idx)
+        self.exit_scope()
+        
+        return !self.has_error
+    }
+
+    fn register_struct_info(self, top_stmt_idx: Int) {
+        let stmt = self.stmt_pool.get(top_stmt_idx)
+        if stmt.kind == StmtKind.sk_block {
+            var i = 0
+            while i < stmt.block_stmts.length() {
+                let s_idx = stmt.block_stmts.get(i)
+                let s = self.stmt_pool.get(s_idx)
+                if s.kind == StmtKind.sk_impl_block {
+                    var has_drop = false
+                    var j = 0
+                    while j < s.impl_methods.length() {
+                        let m_idx = s.impl_methods.get(j)
+                        let m = self.stmt_pool.get(m_idx)
+                        if m.func_name == "drop" {
+                            has_drop = true
+                        }
+                        j = j + 1
+                    }
+                    self.struct_info.push(StructInfo(name: s.impl_struct_name, has_drop: has_drop))
+                }
+                i = i + 1
+            }
+        }
+    }
+
+    fn has_drop_method(self, type_name: Str) -> Bool {
+        var clean_type = type_name
+        if length(type_name) > 4 && substring(type_name, 0, 4) == "own " {
+            clean_type = substring(type_name, 4, length(type_name))
+        }
+        if length(clean_type) > 0 && (clean_type[0] == Char(38) || clean_type[0] == Char(42) || clean_type[0] == Char(63)) {
+            return false
+        }
+        var i = 0
+        while i < self.struct_info.length() {
+            let info = self.struct_info.get(i)
+            if info.name == clean_type {
+                return info.has_drop
+            }
+            i = i + 1
+        }
+        return false
+    }
+
+    fn collect_block_drops(self, stmt_idx: Int) {
+        if self.current_table_idx < 0 { return }
+        let table = self.symbol_tables.get(self.current_table_idx)
+        var drop_vars = ArrayList<DropVarEntry>(self.allocator)
+        
+        var i = table.entries.length() - 1
+        while i >= 0 {
+            let sym = table.entries.get(i)
+            if (sym.kind == "var" || sym.kind == "param") && !sym.moved {
+                let base_type = sym.type_name
+                if self.has_drop_method(base_type) {
+                    drop_vars.push(DropVarEntry(name: sym.name, base_type: base_type))
+                }
+            }
+            i = i - 1
+        }
+        
+        var block_stmt = self.stmt_pool.get(stmt_idx)
+        block_stmt.block_drop_vars = drop_vars
+        self.stmt_pool.set(stmt_idx, block_stmt)
+    }
+
+    fn is_copy_type(self, type_name: Str) -> Bool {
+        if type_name == "Int" { return true }
+        if type_name == "Float" { return true }
+        if type_name == "Bool" { return true }
+        if type_name == "Char" { return true }
+        if type_name == "Str" { return true }
+        if type_name == "Void" { return true }
+        if type_name == "NoneType" { return true }
+        if length(type_name) > 0 && (type_name[0] == Char(42) || type_name[0] == Char(38)) {
+            return true
+        }
+        return false
+    }
+
+    fn mark_expr_moved(self, expr_idx: Int) {
+        if expr_idx < 0 { return }
+        let expr = self.expr_pool.get(expr_idx)
+        if expr.kind == ExprKind.ek_identifier {
+            let t = self.get_expr_type(expr_idx)
+            if !self.is_copy_type(t) {
+                var table = self.symbol_tables.get(self.current_table_idx)
+                table.mark_moved(expr.ident_name, &self.symbol_tables)
+                self.symbol_tables.set(self.current_table_idx, table)
+            }
+        }
+    }
+
+    fn get_expr_type(self, expr_idx: Int) -> Str {
+        if expr_idx < 0 { return "Void" }
+        let expr = self.expr_pool.get(expr_idx)
+        if expr.kind == ExprKind.ek_literal {
+            let vkind = expr.lit_vkind
+            if vkind == "INT" { return "Int" }
+            if vkind == "FLOAT" { return "Float" }
+            if vkind == "STRING" { return "Str" }
+            if vkind == "BOOL" { return "Bool" }
+            if vkind == "CHAR" { return "Char" }
+            return "Void"
+        }
+        if expr.kind == ExprKind.ek_identifier {
+            let name = expr.ident_name
+            let table = self.symbol_tables.get(self.current_table_idx)
+            let sym = table.lookup_symbol(name, &self.symbol_tables)
+            if length(sym.name) > 0 {
+                return sym.type_name
+            }
+            return "Void"
+        }
+        if expr.kind == ExprKind.ek_binary_op {
+            let op = expr.binop_op
+            if op == "==" || op == "!=" || op == "<" || op == ">" || op == "<=" || op == ">=" || op == "&&" || op == "||" {
+                return "Bool"
+            }
+            return self.get_expr_type(expr.binop_left)
+        }
+        if expr.kind == ExprKind.ek_unary_op {
+            let op = expr.unop_op
+            if op == "!" {
+                return "Bool"
+            }
+            return self.get_expr_type(expr.unop_operand)
+        }
+        if expr.kind == ExprKind.ek_func_call {
+            let name = expr.func_name
+            if name == "cast" || name == "as" {
+                return expr.func_type_args.get(0)
+            }
+            if name == "size_of" {
+                return "Int"
+            }
+            if name == "Char" || name == "Int" || name == "Float" || name == "Bool" {
+                return name
+            }
+            var is_struct = false
+            var s_idx = 0
+            while s_idx < self.stmt_pool.length() {
+                let stmt = self.stmt_pool.get(s_idx)
+                if stmt.kind == StmtKind.sk_struct_decl && stmt.struct_name == name {
+                    is_struct = true
+                }
+                s_idx = s_idx + 1
+            }
+            if name == "ArrayList" || name == "HashMap" || name == "StringBuilder" {
+                is_struct = true
+            }
+            if is_struct {
+                if expr.func_type_args.length() > 0 {
+                    return name + "<" + str_array_join(expr.func_type_args, ", ") + ">"
+                }
+                return name
+            }
+            let table = self.symbol_tables.get(self.current_table_idx)
+            let sym = table.lookup_symbol(name, &self.symbol_tables)
+            if length(sym.name) > 0 {
+                return sym.type_name
+            }
+            return "Void"
+        }
+        if expr.kind == ExprKind.ek_field_access {
+            let base_type = self.get_expr_type(expr.field_expr)
+            var clean_type = ""
+            var i = 0
+            while i < length(base_type) {
+                let c = base_type[i]
+                if c != Char(42) && c != Char(38) {
+                    clean_type = clean_type + char_to_str(c)
+                }
+                i = i + 1
+            }
+            if length(clean_type) > 4 && substring(clean_type, 0, 4) == "mut " {
+                clean_type = substring(clean_type, 4, length(clean_type))
+            }
+            var s_idx = 0
+            while s_idx < self.stmt_pool.length() {
+                let stmt = self.stmt_pool.get(s_idx)
+                if stmt.kind == StmtKind.sk_struct_decl {
+                    if stmt.struct_name == clean_type {
+                        var f_idx = 0
+                        while f_idx < stmt.struct_fields.length() {
+                            let f = stmt.struct_fields.get(f_idx)
+                            if f.name == expr.field_name {
+                                return f.ftype
+                            }
+                            f_idx = f_idx + 1
+                        }
+                    }
+                }
+                s_idx = s_idx + 1
+            }
+            return "Void"
+        }
+        if expr.kind == ExprKind.ek_index {
+            let base_type = self.get_expr_type(expr.idx_expr)
+            if base_type == "Str" {
+                return "Char"
+            }
+            if length(base_type) > 0 && base_type[0] == Char(42) {
+                return substring(base_type, 1, length(base_type))
+            }
+            return "Void"
+        }
+        if expr.kind == ExprKind.ek_borrow {
+            let base_type = self.get_expr_type(expr.borrow_expr)
+            if self.expr_is_mutable(expr.borrow_expr) {
+                return "*mut " + base_type
+            }
+            return "*" + base_type
+        }
+        if expr.kind == ExprKind.ek_deref {
+            let base_type = self.get_expr_type(expr.deref_expr)
+            if length(base_type) > 5 && substring(base_type, 0, 5) == "*mut " {
+                return substring(base_type, 5, length(base_type))
+            }
+            if length(base_type) > 5 && substring(base_type, 0, 5) == "&mut " {
+                return substring(base_type, 5, length(base_type))
+            }
+            if length(base_type) > 0 && (base_type[0] == Char(42) || base_type[0] == Char(38)) {
+                return substring(base_type, 1, length(base_type))
+            }
+            return "Void"
+        }
+        if expr.kind == ExprKind.ek_struct_init {
+            return expr.struct_name
+        }
+        return "Void"
+    }
+
+    fn expr_is_mutable(self, expr_idx: Int) -> Bool {
+        if expr_idx < 0 { return false }
+        let expr = self.expr_pool.get(expr_idx)
+        if expr.kind == ExprKind.ek_identifier {
+            let table = self.symbol_tables.get(self.current_table_idx)
+            let sym = table.lookup_symbol(expr.ident_name, &self.symbol_tables)
+            if length(sym.name) > 0 {
+                return sym.is_mutable
+            }
+        }
+        if expr.kind == ExprKind.ek_field_access {
+            return self.expr_is_mutable(expr.field_expr)
+        }
+        if expr.kind == ExprKind.ek_deref {
+            return true
+        }
+        return false
+    }
+
+    fn check_identifier(self, expr_idx: Int) {
+        let expr = self.expr_pool.get(expr_idx)
+        let name = expr.ident_name
+        let table = self.symbol_tables.get(self.current_table_idx)
+        let sym = table.lookup_symbol(name, &self.symbol_tables)
+        if length(sym.name) > 0 {
+            if sym.moved {
+                print("error[E0010]: Cannot use '")
+                print(name)
+                print("' after it has been moved\n")
+                self.has_error = true
+            }
+        }
+    }
+
+    fn check_field_access(self, expr_idx: Int) {
+        let expr = self.expr_pool.get(expr_idx)
+        let recv_type = self.get_expr_type(expr.field_expr)
+        if length(recv_type) > 0 && recv_type[0] == Char(63) { // '?' is 63
+            print("error[E0001]: Cannot access field '")
+            print(expr.field_name)
+            print("' on optional type '")
+            print(recv_type)
+            print("'. Unwrap it first.\n")
+            self.has_error = true
+        }
+    }
+
+    fn check_method_call(self, expr_idx: Int) {
+        let expr = self.expr_pool.get(expr_idx)
+        let recv_type = self.get_expr_type(expr.meth_expr)
+        if length(recv_type) > 0 && recv_type[0] == Char(63) {
+            print("error[E0001]: Cannot call method '")
+            print(expr.meth_name)
+            print("' on optional type '")
+            print(recv_type)
+            print("'. Unwrap it first.\n")
+            self.has_error = true
+        }
+    }
+
+    fn check_return_stmt(self, stmt_idx: Int) -> Void {
+        let stmt = self.stmt_pool.get(stmt_idx)
+        if stmt.return_value >= 0 {
+            let expr = self.expr_pool.get(stmt.return_value)
+            if expr.kind == ExprKind.ek_borrow {
+                let borrowed = self.expr_pool.get(expr.borrow_expr)
+                if borrowed.kind == ExprKind.ek_identifier {
+                    let name = borrowed.ident_name
+                    let table = self.symbol_tables.get(self.current_table_idx)
+                    let sym = table.lookup_symbol(name, &self.symbol_tables)
+                    if sym.kind == "var" || sym.kind == "param" {
+                        print("error[E0001]: Cannot return reference to local variable '")
+                        print(name)
+                        print("'\n")
+                        self.has_error = true
+                    }
+                }
+            }
+            self.check_expr(stmt.return_value)
+            self.mark_expr_moved(stmt.return_value)
+        }
+    }
+
+    fn check_stmt(self, stmt_idx: Int) -> Void {
+        if stmt_idx < 0 { return }
+        let stmt = self.stmt_pool.get(stmt_idx)
+        
+        if stmt.kind == StmtKind.sk_block {
+            self.enter_scope()
+            var i = 0
+            while i < stmt.block_stmts.length() {
+                self.check_stmt(stmt.block_stmts.get(i))
+                i = i + 1
+            }
+            self.collect_block_drops(stmt_idx)
+            self.exit_scope()
+            return
+        }
+        
+        if stmt.kind == StmtKind.sk_var_decl {
+            self.check_expr(stmt.vardecl_value)
+            let val_type = self.get_expr_type(stmt.vardecl_value)
+            var var_type = stmt.vardecl_type
+            if length(var_type) == 0 {
+                var_type = val_type
+            }
+            self.define_symbol(stmt.vardecl_name, var_type, stmt.vardecl_mut, "var")
+            self.mark_expr_moved(stmt.vardecl_value)
+            return
+        }
+        
+        if stmt.kind == StmtKind.sk_assignment {
+            self.check_expr(stmt.assign_target)
+            self.check_expr(stmt.assign_value)
+            if stmt.assign_target >= 0 {
+                let target_expr = self.expr_pool.get(stmt.assign_target)
+                if target_expr.kind == ExprKind.ek_identifier {
+                    let table = self.symbol_tables.get(self.current_table_idx)
+                    let sym = table.lookup_symbol(target_expr.ident_name, &self.symbol_tables)
+                    if length(sym.name) > 0 && !sym.is_mutable {
+                        print("error[E0001]: Cannot assign to immutable variable '")
+                        print(target_expr.ident_name)
+                        print("'\n")
+                        self.has_error = true
+                    }
+                }
+            }
+            self.mark_expr_moved(stmt.assign_value)
+            return
+        }
+        
+        if stmt.kind == StmtKind.sk_func_decl {
+            self.define_symbol(stmt.func_name, stmt.func_return_type, false, "func")
+            self.enter_scope()
+            var i = 0
+            while i < stmt.func_params.length() {
+                let p = stmt.func_params.get(i)
+                self.define_symbol(p.name, p.ptype, false, "param")
+                i = i + 1
+            }
+            self.check_stmt(stmt.func_body)
+            self.exit_scope()
+            return
+        }
+        
+        if stmt.kind == StmtKind.sk_if {
+            self.check_expr(stmt.if_cond)
+            self.check_stmt(stmt.if_then)
+            self.check_stmt(stmt.if_else)
+            return
+        }
+        
+        if stmt.kind == StmtKind.sk_if_let {
+            self.check_expr(stmt.iflet_expr)
+            let opt_type = self.get_expr_type(stmt.iflet_expr)
+            var unwrapped_type = opt_type
+            if length(opt_type) > 0 && opt_type[0] == Char(63) {
+                unwrapped_type = substring(opt_type, 1, length(opt_type))
+            }
+            self.enter_scope()
+            self.define_symbol(stmt.iflet_var, unwrapped_type, false, "var")
+            self.check_stmt(stmt.iflet_then)
+            self.exit_scope()
+            self.check_stmt(stmt.iflet_else)
+            return
+        }
+        
+        if stmt.kind == StmtKind.sk_while {
+            self.check_expr(stmt.while_cond)
+            self.check_stmt(stmt.while_body)
+            return
+        }
+        
+        if stmt.kind == StmtKind.sk_for {
+            self.check_expr(stmt.for_start)
+            self.check_expr(stmt.for_end)
+            self.enter_scope()
+            self.define_symbol(stmt.for_var, "Int", false, "var")
+            self.check_stmt(stmt.for_body)
+            self.exit_scope()
+            return
+        }
+        
+        if stmt.kind == StmtKind.sk_return {
+            self.check_return_stmt(stmt_idx)
+            return
+        }
+        
+        if stmt.kind == StmtKind.sk_print {
+            self.check_expr(stmt.print_value)
+            return
+        }
+        
+        if stmt.kind == StmtKind.sk_expr {
+            self.check_expr(stmt.expr_stmt)
+            return
+        }
+        
+        if stmt.kind == StmtKind.sk_unsafe {
+            self.check_stmt(stmt.unsafe_body)
+            return
+        }
+        
+        if stmt.kind == StmtKind.sk_match {
+            self.check_expr(stmt.match_expr)
+            var i = 0
+            while i < stmt.match_cases.length() {
+                let mc = stmt.match_cases.get(i)
+                self.enter_scope()
+                let pat = self.pattern_pool.get(mc.pattern)
+                if pat.kind == PatternKind.pk_variant {
+                    var bi = 0
+                    while bi < pat.bindings.length() {
+                        self.define_symbol(pat.bindings.get(bi), "Void", false, "var")
+                        bi = bi + 1
+                    }
+                }
+                self.check_stmt(mc.body)
+                self.exit_scope()
+                i = i + 1
+            }
+            return
+        }
+        
+        if stmt.kind == StmtKind.sk_impl_block {
+            var i = 0
+            while i < stmt.impl_methods.length() {
+                let m_idx = stmt.impl_methods.get(i)
+                let m = self.stmt_pool.get(m_idx)
+                let mangled_name = stmt.impl_struct_name + "_" + m.func_name
+                self.define_symbol(mangled_name, m.func_return_type, false, "func")
+                
+                self.enter_scope()
+                self.define_symbol("self", stmt.impl_struct_name, true, "param")
+                var pi = 1
+                while pi < m.func_params.length() {
+                    let p = m.func_params.get(pi)
+                    self.define_symbol(p.name, p.ptype, false, "param")
+                    pi = pi + 1
+                }
+                self.check_stmt(m.func_body)
+                self.exit_scope()
+                i = i + 1
+            }
+            return
+        }
+    }
+
+    fn check_expr(self, expr_idx: Int) -> Void {
+        if expr_idx < 0 { return }
+        let expr = self.expr_pool.get(expr_idx)
+        
+        if expr.kind == ExprKind.ek_identifier {
+            self.check_identifier(expr_idx)
+            return
+        }
+        if expr.kind == ExprKind.ek_binary_op {
+            self.check_expr(expr.binop_left)
+            self.check_expr(expr.binop_right)
+            return
+        }
+        if expr.kind == ExprKind.ek_unary_op {
+            self.check_expr(expr.unop_operand)
+            return
+        }
+        if expr.kind == ExprKind.ek_func_call {
+            var i = 0
+            while i < expr.func_args.length() {
+                let arg = expr.func_args.get(i)
+                self.check_expr(arg)
+                self.mark_expr_moved(arg)
+                i = i + 1
+            }
+            return
+        }
+        if expr.kind == ExprKind.ek_field_access {
+            self.check_expr(expr.field_expr)
+            self.check_field_access(expr_idx)
+            return
+        }
+        if expr.kind == ExprKind.ek_method_call {
+            self.check_expr(expr.meth_expr)
+            self.check_method_call(expr_idx)
+            var i = 0
+            while i < expr.meth_args.length() {
+                let arg = expr.meth_args.get(i)
+                self.check_expr(arg)
+                self.mark_expr_moved(arg)
+                i = i + 1
+            }
+            return
+        }
+        if expr.kind == ExprKind.ek_index {
+            self.check_expr(expr.idx_expr)
+            return
+        }
+        if expr.kind == ExprKind.ek_borrow {
+            self.check_expr(expr.borrow_expr)
+            return
+        }
+        if expr.kind == ExprKind.ek_deref {
+            self.check_expr(expr.deref_expr)
+            return
+        }
+        if expr.kind == ExprKind.ek_struct_init {
+            var i = 0
+            while i < expr.struct_fields.length() {
+                let f = expr.struct_fields.get(i)
+                self.check_expr(f.value)
+                self.mark_expr_moved(f.value)
+                i = i + 1
+            }
+            return
+        }
+    }
+}

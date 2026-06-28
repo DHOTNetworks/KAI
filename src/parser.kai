@@ -1,0 +1,1905 @@
+import ArrayList from std.collections.array
+import Allocator from std.core.allocator
+
+import TokenType from token_defs
+import TokenValue from token_defs
+import Token from token_defs
+
+extern fn print(s: Str)
+extern fn print_int(i: Int)
+extern fn exit(code: Int)
+
+import FieldInit from ast_nodes
+import Param from ast_nodes
+import StructField from ast_nodes
+import Variant from ast_nodes
+import MatchCase from ast_nodes
+import AsmOutput from ast_nodes
+import AsmInput from ast_nodes
+import PatternKind from ast_nodes
+import PatternNode from ast_nodes
+import ExprKind from ast_nodes
+import ExprNode from ast_nodes
+import StmtKind from ast_nodes
+import StmtNode from ast_nodes
+import new_expr_node from ast_nodes
+import new_stmt_node from ast_nodes
+import new_pattern_node from ast_nodes
+
+extern fn exit(code: Int)
+extern fn system(cmd: *Char) -> Int
+
+fn tv_get_str(val: TokenValue) -> Str {
+    var result: Str = ""
+    match val {
+        case .tv_str(s) => result = s
+        case else => unsafe {
+            print("tv_get_str failed!")
+            exit(1)
+        }
+    }
+    return result
+
+}
+fn token_precedence(ttype: TokenType) -> Int {
+    if ttype == TokenType.DOT {
+        return 9
+    } else if ttype == TokenType.LBRACKET {
+        return 8
+    } else if ttype == TokenType.AS {
+        return 8
+    } else if ttype == TokenType.MUL || ttype == TokenType.DIV || ttype == TokenType.MOD {
+        return 7
+    } else if ttype == TokenType.PLUS || ttype == TokenType.MINUS {
+        return 6
+    } else if ttype == TokenType.LSHIFT || ttype == TokenType.RSHIFT {
+        return 5
+    } else if ttype == TokenType.EQ || ttype == TokenType.NE || ttype == TokenType.LT || ttype == TokenType.LE || ttype == TokenType.GT || ttype == TokenType.GE {
+        return 4
+    } else if ttype == TokenType.PIPE || ttype == TokenType.BITXOR || ttype == TokenType.AMP {
+        return 3
+    } else if ttype == TokenType.CATCH {
+        return 3
+    } else if ttype == TokenType.AND {
+        return 2
+    } else if ttype == TokenType.OR {
+        return 1
+    } else if ttype == TokenType.DOTDOT || ttype == TokenType.DOTDOTEQ {
+        return 4
+    }
+    return 0
+
+}
+fn token_op_str(ttype: TokenType) -> Str {
+    if ttype == TokenType.PLUS {
+        return "+"
+    } else if ttype == TokenType.MINUS {
+        return "-"
+    } else if ttype == TokenType.MUL {
+        return "*"
+    } else if ttype == TokenType.DIV {
+        return "/"
+    } else if ttype == TokenType.MOD {
+        return "%"
+    } else if ttype == TokenType.ASSIGN {
+        return "="
+    } else if ttype == TokenType.PLUS_ASSIGN {
+        return "+="
+    } else if ttype == TokenType.MINUS_ASSIGN {
+        return "-="
+    } else if ttype == TokenType.EQ {
+        return "=="
+    } else if ttype == TokenType.NE {
+        return "!="
+    } else if ttype == TokenType.LT {
+        return "<"
+    } else if ttype == TokenType.LE {
+        return "<="
+    } else if ttype == TokenType.GT {
+        return ">"
+    } else if ttype == TokenType.GE {
+        return ">="
+    } else if ttype == TokenType.AND {
+        return "&&"
+    } else if ttype == TokenType.OR {
+        return "||"
+    } else if ttype == TokenType.PIPE {
+        return "|"
+    } else if ttype == TokenType.BITXOR {
+        return "^"
+    } else if ttype == TokenType.AMP {
+        return "&"
+    } else if ttype == TokenType.LSHIFT {
+        return "<<"
+    } else if ttype == TokenType.RSHIFT {
+        return ">>"
+    } else if ttype == TokenType.DOTDOT {
+        return ".."
+    } else if ttype == TokenType.DOTDOTEQ {
+        return "..="
+    } else if ttype == TokenType.DOT {
+        return "."
+    }
+    return "?"
+
+}
+fn str_array_join(arr: ArrayList<Str>, sep: Str) -> Str {
+    if arr.length() == 0 {
+        return ""
+    }
+    var result = arr.get(0)
+    var i = 1
+    while i < arr.length() {
+        result = result + sep + arr.get(i)
+        i = i + 1
+    }
+    return result
+
+}
+struct Parser {
+    allocator: *Allocator
+    tokens: *ArrayList<Token>
+    cursor: Int
+    pending_gt: Bool
+    pending_gt_line: Int
+    pending_gt_col: Int
+    expr_pool: *ArrayList<ExprNode>
+    stmt_pool: *ArrayList<StmtNode>
+    pattern_pool: *ArrayList<PatternNode>
+
+}
+impl Parser {
+    fn init_with_pools(self, allocator: *Allocator, tokens: *ArrayList<Token>, expr_pool: *ArrayList<ExprNode>, stmt_pool: *ArrayList<StmtNode>, pattern_pool: *ArrayList<PatternNode>) -> Parser {
+        self.allocator = allocator
+        self.tokens = tokens
+        self.cursor = 0
+        self.pending_gt = false
+        self.pending_gt_line = 0
+        self.pending_gt_col = 0
+        self.expr_pool = expr_pool
+        self.stmt_pool = stmt_pool
+        self.pattern_pool = pattern_pool
+        return self
+
+    }
+    fn init(self, allocator: *Allocator, tokens: *ArrayList<Token>) {
+        self.allocator = allocator
+        self.tokens = tokens
+        self.cursor = 0
+        self.pending_gt = false
+        self.pending_gt_line = 0
+        self.pending_gt_col = 0
+        unsafe {
+            self.expr_pool = allocator.alloc(sizeof(ArrayList<ExprNode>), 8) as *ArrayList<ExprNode>
+            self.stmt_pool = allocator.alloc(sizeof(ArrayList<StmtNode>), 8) as *ArrayList<StmtNode>
+            self.pattern_pool = allocator.alloc(sizeof(ArrayList<PatternNode>), 8) as *ArrayList<PatternNode>
+        }
+        self.expr_pool.init(allocator)
+        self.stmt_pool.init(allocator)
+        self.pattern_pool.init(allocator)
+
+    }
+    fn peek(self, offset: Int) -> Token {
+        if self.pending_gt && offset == 0 {
+            return Token(tok_type: TokenType.GT, value: TokenValue.tv_str(v: ">"), line: self.pending_gt_line, column: self.pending_gt_col)
+        }
+        let pos = self.cursor + offset
+        if pos >= self.tokens.length() {
+            return self.tokens.get(self.tokens.length() - 1)
+        }
+        return self.tokens.get(pos)
+
+    }
+    fn advance(self) -> Token {
+        if self.pending_gt {
+            self.pending_gt = false
+            return Token(tok_type: TokenType.GT, value: TokenValue.tv_str(v: ">"), line: self.pending_gt_line, column: self.pending_gt_col)
+        }
+        let tok = self.peek(0)
+        if tok.tok_type != TokenType.EOF {
+            self.cursor = self.cursor + 1
+        }
+        return tok
+
+    }
+    fn match_token(self, ttype: TokenType) -> Bool {
+        if self.peek(0).tok_type == ttype {
+            let _ = self.advance()
+            return true
+        }
+        return false
+
+    }
+    fn expect(self, ttype: TokenType) -> Token {
+        if self.pending_gt {
+            if ttype == TokenType.GT {
+                self.pending_gt = false
+                return Token(tok_type: TokenType.GT, value: TokenValue.tv_str(v: ">"), line: self.pending_gt_line, column: self.pending_gt_col)
+            }
+            self.pending_gt = false
+        }
+        let tok = self.peek(0)
+        if ttype == TokenType.GT && tok.tok_type == TokenType.RSHIFT {
+            let _ = self.advance()
+            self.pending_gt = true
+            self.pending_gt_line = tok.line
+            self.pending_gt_col = tok.column + 1
+            return Token(tok_type: TokenType.GT, value: TokenValue.tv_str(v: ">"), line: tok.line, column: tok.column)
+        }
+        if tok.tok_type == ttype {
+            return self.advance()
+        }
+        unsafe {
+            print("expect failed! found token at line:")
+            print_int(tok.line)
+            print("col:")
+            print_int(tok.column)
+            print("expected tag:")
+            print_int(Int(ttype))
+            print("found tag:")
+            print_int(Int(tok.tok_type))
+            match tok.tok_type {
+                case .INT_LIT => exit(0)
+                case .FLOAT_LIT => exit(1)
+                case .BOOL_LIT => exit(2)
+                case .CHAR_LIT => exit(3)
+                case .STRING_LIT => exit(4)
+                case .IDENTIFIER => exit(5)
+                case .LET => exit(6)
+                case .VAR => exit(7)
+                case .FUNC => exit(8)
+                case .IF => exit(9)
+                case .ELSE => exit(10)
+                case .WHILE => exit(11)
+                case .FOR => exit(12)
+                case .IN => exit(13)
+                case .RETURN => exit(14)
+                case .PRINT => exit(15)
+                case .STRUCT => exit(16)
+                case .IMPL => exit(17)
+                case .MUT => exit(18)
+                case .UNSAFE => exit(19)
+                case .EXTERN => exit(20)
+                case .ENUM => exit(21)
+                case .MATCH => exit(22)
+                case .CASE => exit(23)
+                case .USE => exit(24)
+                case .CHECK => exit(25)
+                case .TRAIT => exit(26)
+                case .PUB => exit(27)
+                case .IMPORT => exit(28)
+                case .CIMPORT => exit(99)
+                case .FROM => exit(29)
+                case .AS => exit(30)
+                case .SIZEOF => exit(31)
+                case .DEFER => exit(32)
+                case .NONE => exit(33)
+                case .FN => exit(34)
+                case .TRY => exit(35)
+                case .CATCH => exit(36)
+                case .OWN => exit(37)
+                case .ERROR => exit(38)
+                case .ASM => exit(39)
+                case .VOLATILE => exit(40)
+                case .PLUS => exit(41)
+                case .MINUS => exit(42)
+                case .MUL => exit(43)
+                case .DIV => exit(44)
+                case .MOD => exit(45)
+                case .ASSIGN => exit(46)
+                case .PLUS_ASSIGN => exit(47)
+                case .MINUS_ASSIGN => exit(48)
+                case .AND => exit(49)
+                case .OR => exit(50)
+                case .NOT => exit(51)
+                case .PIPE => exit(52)
+                case .BITXOR => exit(53)
+                case .BITNOT => exit(54)
+                case .LSHIFT => exit(55)
+                case .RSHIFT => exit(56)
+                case .EQ => exit(57)
+                case .NE => exit(58)
+                case .LT => exit(59)
+                case .LE => exit(60)
+                case .GT => exit(61)
+                case .GE => exit(62)
+                case .COLON => exit(63)
+                case .ARROW => exit(64)
+                case .FAT_ARROW => exit(65)
+                case .COMMA => exit(66)
+                case .LPAREN => exit(67)
+                case .RPAREN => exit(68)
+                case .LBRACKET => exit(69)
+                case .RBRACKET => exit(70)
+                case .LBRACE => exit(71)
+                case .RBRACE => exit(72)
+                case .DOTDOT => exit(73)
+                case .DOTDOTEQ => exit(74)
+                case .DOT => exit(75)
+                case .AMP => exit(76)
+                case .HASH => exit(77)
+                case .QUESTION => exit(78)
+                case .SEMICOLON => exit(85)
+                case .BREAK => exit(83)
+                case .CONTINUE => exit(84)
+                case .NEWLINE => exit(79)
+                case .INDENT => exit(80)
+                case .DEDENT => exit(81)
+                case .EOF => exit(82)
+            }
+            exit(255)
+        }
+        return tok
+
+    }
+    fn consume_newlines(self) {
+        var done = false
+        while !done {
+            if self.match_token(TokenType.NEWLINE) {
+                done = false
+            } else {
+                done = true
+
+            }
+        }
+    }
+    fn expect_end_of_statement(self) {
+        let tok = self.peek(0)
+        if tok.tok_type == TokenType.RBRACE || tok.tok_type == TokenType.DEDENT || tok.tok_type == TokenType.EOF || tok.tok_type == TokenType.LBRACE {
+            return
+        }
+        if tok.tok_type == TokenType.SEMICOLON {
+            let _ = self.advance()
+            return
+        }
+        let _ = self.expect(TokenType.NEWLINE)
+
+    }
+    fn is_generic_instantiation(self) -> Bool {
+        if self.peek(1).tok_type != TokenType.LT {
+            return false
+        }
+        var offset = 2
+        var nested = 1
+        var done = false
+        while !done {
+            let tok = self.peek(offset)
+            if tok.tok_type == TokenType.EOF || tok.tok_type == TokenType.NEWLINE || tok.tok_type == TokenType.SEMICOLON {
+                return false
+            }
+            let tt = tok.tok_type
+            if tt == TokenType.IDENTIFIER || tt == TokenType.MUL || tt == TokenType.AMP || tt == TokenType.LBRACKET || tt == TokenType.RBRACKET || tt == TokenType.COMMA || tt == TokenType.QUESTION || tt == TokenType.MUT {
+                done = false
+            } else if tt == TokenType.LT {
+                nested = nested + 1
+            } else if tt == TokenType.GT {
+                nested = nested - 1
+                if nested <= 0 {
+                    return self.peek(offset + 1).tok_type == TokenType.LPAREN || self.peek(offset + 1).tok_type == TokenType.DOT
+                }
+            } else if tt == TokenType.RSHIFT {
+                nested = nested - 2
+                if nested <= 0 {
+                    return self.peek(offset + 1).tok_type == TokenType.LPAREN || self.peek(offset + 1).tok_type == TokenType.DOT
+                }
+            } else {
+                return false
+            }
+            offset = offset + 1
+        }
+        return false
+
+    }
+    fn ex_literal(self, val: TokenValue, vkind: Str) -> Int {
+        var node = new_expr_node(ExprKind.ek_literal)
+        node.lit_value = val
+        node.lit_vkind = vkind
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_ident(self, name: Str) -> Int {
+        var node = new_expr_node(ExprKind.ek_identifier)
+        node.ident_name = name
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_ident_with(self, name: Str, targs: ArrayList<Str>) -> Int {
+        var node = new_expr_node(ExprKind.ek_identifier)
+        node.ident_name = name
+        node.ident_type_args = targs
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_binop(self, op: Str, left: Int, right: Int) -> Int {
+        var node = new_expr_node(ExprKind.ek_binary_op)
+        node.binop_op = op
+        node.binop_left = left
+        node.binop_right = right
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_unop(self, op: Str, operand: Int) -> Int {
+        var node = new_expr_node(ExprKind.ek_unary_op)
+        node.unop_op = op
+        node.unop_operand = operand
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_call(self, name: Str, args: ArrayList<Int>) -> Int {
+        var node = new_expr_node(ExprKind.ek_func_call)
+        node.func_name = name
+        node.func_args = args
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_call_with(self, name: Str, args: ArrayList<Int>, targs: ArrayList<Str>) -> Int {
+        var node = new_expr_node(ExprKind.ek_func_call)
+        node.func_name = name
+        node.func_args = args
+        node.func_type_args = targs
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_struct_init(self, name: Str, fields: ArrayList<FieldInit>) -> Int {
+        var node = new_expr_node(ExprKind.ek_struct_init)
+        node.struct_name = name
+        node.struct_fields = fields
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_field(self, expr: Int, field: Str) -> Int {
+        var node = new_expr_node(ExprKind.ek_field_access)
+        node.field_expr = expr
+        node.field_name = field
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_method(self, expr: Int, method: Str, args: ArrayList<Int>) -> Int {
+        var node = new_expr_node(ExprKind.ek_method_call)
+        node.meth_expr = expr
+        node.meth_name = method
+        node.meth_args = args
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_index(self, expr: Int, idx: Int) -> Int {
+        var node = new_expr_node(ExprKind.ek_index)
+        node.idx_expr = expr
+        node.idx_index = idx
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_check(self, expr: Int) -> Int {
+        var node = new_expr_node(ExprKind.ek_check)
+        node.check_expr = expr
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_slice(self, expr: Int, lower: Int, upper: Int, is_inclusive: Bool) -> Int {
+        var node = new_expr_node(ExprKind.ek_slice)
+        node.slice_expr = expr
+        node.slice_lower = lower
+        node.slice_upper = upper
+        node.slice_inclusive = is_inclusive
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_range(self, start: Int, end: Int, is_inclusive: Bool) -> Int {
+        var node = new_expr_node(ExprKind.ek_range)
+        node.range_start = start
+        node.range_end = end
+        node.range_inclusive = is_inclusive
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_array(self, elements: ArrayList<Int>) -> Int {
+        var node = new_expr_node(ExprKind.ek_array)
+        node.arr_elements = elements
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_tuple(self, elements: ArrayList<Int>) -> Int {
+        var node = new_expr_node(ExprKind.ek_tuple)
+        node.tup_elements = elements
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_borrow(self, expr: Int, is_mut: Bool) -> Int {
+        var node = new_expr_node(ExprKind.ek_borrow)
+        node.borrow_expr = expr
+        node.borrow_mut = is_mut
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_deref(self, expr: Int) -> Int {
+        var node = new_expr_node(ExprKind.ek_deref)
+        node.deref_expr = expr
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_try(self, expr: Int) -> Int {
+        var node = new_expr_node(ExprKind.ek_try)
+        node.try_expr = expr
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_catch(self, expr: Int, var_name: Str, fallback: Int) -> Int {
+        var node = new_expr_node(ExprKind.ek_catch)
+        node.catch_expr = expr
+        node.catch_var = var_name
+        node.catch_fallback = fallback
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn ex_asm(self, code: Str, is_volatile: Bool, outputs: ArrayList<AsmOutput>, inputs: ArrayList<AsmInput>, clobbers: ArrayList<Str>) -> Int {
+        var node = new_expr_node(ExprKind.ek_asm)
+        node.asm_code = code
+        node.asm_is_volatile = is_volatile
+        node.asm_outputs = outputs
+        node.asm_inputs = inputs
+        node.asm_clobbers = clobbers
+        self.expr_pool.push(node)
+        return self.expr_pool.length() - 1
+
+    }
+    fn st_block(self, stmts: ArrayList<Int>) -> Int {
+        var node = new_stmt_node(StmtKind.sk_block)
+        node.block_stmts = stmts
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_error(self, name: Str, variants: ArrayList<Str>) -> Int {
+        var node = new_stmt_node(StmtKind.sk_error_decl)
+        node.error_name = name
+        node.error_variants = variants
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_var_decl(self, name: Str, type_ann: Str, value: Int, is_mut: Bool) -> Int {
+        var node = new_stmt_node(StmtKind.sk_var_decl)
+        node.vardecl_name = name
+        node.vardecl_type = type_ann
+        node.vardecl_value = value
+        node.vardecl_mut = is_mut
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_assign(self, target: Int, value: Int, op: Str) -> Int {
+        var node = new_stmt_node(StmtKind.sk_assignment)
+        node.assign_target = target
+        node.assign_value = value
+        node.assign_op = op
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_func(self, name: Str, params: ArrayList<Param>, ret_type: Str, body: Int, cap: Str, tp: ArrayList<Str>) -> Int {
+        var node = new_stmt_node(StmtKind.sk_func_decl)
+        node.func_name = name
+        node.func_params = params
+        node.func_return_type = ret_type
+        node.func_body = body
+        node.func_capability = cap
+        node.func_type_params = tp
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_struct(self, name: Str, fields: ArrayList<StructField>, tp: ArrayList<Str>, methods: ArrayList<Int>, impls: ArrayList<Int>) -> Int {
+        var node = new_stmt_node(StmtKind.sk_struct_decl)
+        node.struct_name = name
+        node.struct_fields = fields
+        node.struct_type_params = tp
+        node.struct_methods = methods
+        node.struct_trait_impls = impls
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_impl(self, struct_name: Str, trait_name: Str, methods: ArrayList<Int>) -> Int {
+        var node = new_stmt_node(StmtKind.sk_impl_block)
+        node.impl_struct_name = struct_name
+        node.impl_trait_name = trait_name
+        node.impl_methods = methods
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_trait(self, name: Str, methods: ArrayList<Int>) -> Int {
+        var node = new_stmt_node(StmtKind.sk_trait_decl)
+        node.trait_name = name
+        node.trait_methods = methods
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_enum(self, name: Str, variants: ArrayList<Variant>, tp: ArrayList<Str>) -> Int {
+        var node = new_stmt_node(StmtKind.sk_enum_decl)
+        node.enum_name = name
+        node.enum_variants = variants
+        node.enum_type_params = tp
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_match(self, expr: Int, cases: ArrayList<MatchCase>) -> Int {
+        var node = new_stmt_node(StmtKind.sk_match)
+        node.match_expr = expr
+        node.match_cases = cases
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_unsafe(self, body: Int) -> Int {
+        var node = new_stmt_node(StmtKind.sk_unsafe)
+        node.unsafe_body = body
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_extern(self, name: Str, params: ArrayList<Param>, ret: Str) -> Int {
+        var node = new_stmt_node(StmtKind.sk_extern)
+        node.extern_name = name
+        node.extern_params = params
+        node.extern_return = ret
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_if(self, cond: Int, then_b: Int, else_b: Int) -> Int {
+        var node = new_stmt_node(StmtKind.sk_if)
+        node.if_cond = cond
+        node.if_then = then_b
+        node.if_else = else_b
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_if_let(self, vname: Str, expr: Int, then_b: Int, else_b: Int) -> Int {
+        var node = new_stmt_node(StmtKind.sk_if_let)
+        node.iflet_var = vname
+        node.iflet_expr = expr
+        node.iflet_then = then_b
+        node.iflet_else = else_b
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_while(self, cond: Int, body: Int) -> Int {
+        var node = new_stmt_node(StmtKind.sk_while)
+        node.while_cond = cond
+        node.while_body = body
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_for(self, var_name: Str, start: Int, end: Int, inc: Bool, body: Int) -> Int {
+        var node = new_stmt_node(StmtKind.sk_for)
+        node.for_var = var_name
+        node.for_start = start
+        node.for_end = end
+        node.for_inclusive = inc
+        node.for_body = body
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_return(self, value: Int) -> Int {
+        var node = new_stmt_node(StmtKind.sk_return)
+        node.return_value = value
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_print(self, value: Int) -> Int {
+        var node = new_stmt_node(StmtKind.sk_print)
+        node.print_value = value
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_expr(self, expr: Int) -> Int {
+        var node = new_stmt_node(StmtKind.sk_expr)
+        node.expr_stmt = expr
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_defer(self, body: Int) -> Int {
+        var node = new_stmt_node(StmtKind.sk_defer)
+        node.defer_body = body
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_break(self) -> Int {
+        var node = new_stmt_node(StmtKind.sk_break)
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_continue(self) -> Int {
+        var node = new_stmt_node(StmtKind.sk_continue)
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_import(self, path: ArrayList<Str>, alias: Str) -> Int {
+        var node = new_stmt_node(StmtKind.sk_import)
+        node.import_path = path
+        node.import_alias = alias
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn st_cimport(self, header: Str, alias: Str) -> Int {
+        var node = new_stmt_node(StmtKind.sk_cimport)
+        node.cimport_header = header
+        node.cimport_alias = alias
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
+    fn parse_program(self) -> Int {
+        self.consume_newlines()
+        var stmts = ArrayList<Int>(self.allocator)
+        while self.peek(0).tok_type != TokenType.EOF {
+            let stmt = self.parse_statement()
+            if stmt >= 0 {
+                stmts.push(stmt)
+            }
+            self.consume_newlines()
+        }
+        return self.st_block(stmts)
+
+    }
+    fn parse_statement(self) -> Int {
+        self.consume_newlines()
+        var tok = self.peek(0)
+        var is_public = false
+        if tok.tok_type == TokenType.PUB {
+            let _ = self.advance()
+            is_public = true
+            tok = self.peek(0)
+        }
+        if tok.tok_type == TokenType.LET {
+            return self.parse_var_decl(false)
+        } else if tok.tok_type == TokenType.VAR {
+            return self.parse_var_decl(true)
+        } else if tok.tok_type == TokenType.ERROR {
+            return self.parse_error_decl()
+        } else if tok.tok_type == TokenType.FUNC {
+            let idx = self.parse_func_decl()
+            if is_public {
+                var n = self.stmt_pool.get(idx)
+                n.func_public = true
+                self.stmt_pool.set(idx, n)
+            }
+            return idx
+        } else if tok.tok_type == TokenType.STRUCT {
+            let idx = self.parse_struct_decl()
+            if is_public {
+                var n = self.stmt_pool.get(idx)
+                n.struct_public = true
+                self.stmt_pool.set(idx, n)
+            }
+            return idx
+        } else if tok.tok_type == TokenType.IMPL {
+            return self.parse_impl_block()
+        } else if tok.tok_type == TokenType.ENUM {
+            let idx = self.parse_enum_decl()
+            if is_public {
+                var n = self.stmt_pool.get(idx)
+                n.enum_public = true
+                self.stmt_pool.set(idx, n)
+            }
+            return idx
+        } else if tok.tok_type == TokenType.MATCH {
+            return self.parse_match_stmt()
+        } else if tok.tok_type == TokenType.UNSAFE {
+            return self.parse_unsafe_block()
+        } else if tok.tok_type == TokenType.EXTERN {
+            return self.parse_extern_decl()
+        } else if tok.tok_type == TokenType.IF {
+            return self.parse_if_stmt()
+        } else if tok.tok_type == TokenType.WHILE {
+            return self.parse_while_stmt()
+        } else if tok.tok_type == TokenType.FOR {
+            return self.parse_for_stmt()
+        } else if tok.tok_type == TokenType.RETURN {
+            return self.parse_return_stmt()
+        } else if tok.tok_type == TokenType.PRINT {
+            return self.parse_print_stmt()
+        } else if tok.tok_type == TokenType.DEFER {
+            return self.parse_defer_stmt()
+        } else if tok.tok_type == TokenType.BREAK {
+            return self.parse_break_stmt()
+        } else if tok.tok_type == TokenType.CONTINUE {
+            return self.parse_continue_stmt()
+        } else if tok.tok_type == TokenType.USE {
+            return self.parse_import_stmt()
+        } else if tok.tok_type == TokenType.IMPORT {
+            return self.parse_import_stmt_new()
+        } else if tok.tok_type == TokenType.CIMPORT {
+            return self.parse_cimport_stmt()
+        } else if tok.tok_type == TokenType.TRAIT {
+            let idx = self.parse_trait_decl()
+            if is_public {
+                var n = self.stmt_pool.get(idx)
+                n.trait_public = true
+                self.stmt_pool.set(idx, n)
+            }
+            return idx
+        } else {
+            return self.parse_expr_or_assignment_stmt()
+
+        }
+    }
+    fn parse_type(self) -> Str {
+        let base_type = self.parse_base_type()
+        if self.match_token(TokenType.NOT) {
+            let error_set = self.parse_type()
+            return base_type + "!" + error_set
+        }
+        return base_type
+
+    }
+    fn parse_base_type(self) -> Str {
+        if self.match_token(TokenType.OWN) {
+            let inner = self.parse_type()
+            return "own " + inner
+        } else if self.match_token(TokenType.QUESTION) {
+            return "?" + self.parse_type()
+        } else if self.match_token(TokenType.AMP) {
+            var is_mut = false
+            if self.match_token(TokenType.MUT) {
+                is_mut = true
+            }
+            let inner = self.parse_type()
+            if is_mut {
+                return "*mut " + inner
+            }
+            return "*" + inner
+        } else if self.match_token(TokenType.MUL) {
+            var is_mut = false
+            if self.match_token(TokenType.MUT) {
+                is_mut = true
+            }
+            let inner = self.parse_type()
+            if is_mut {
+                return "*mut " + inner
+            }
+            return "*" + inner
+        } else if self.match_token(TokenType.LBRACKET) {
+            let _ = self.expect(TokenType.RBRACKET)
+            return "[]" + self.parse_type()
+        } else if self.match_token(TokenType.LPAREN) {
+            var types = ArrayList<Str>(self.allocator)
+            if self.peek(0).tok_type != TokenType.RPAREN {
+                var done = false
+                while !done {
+                    types.push(self.parse_type())
+                    if !self.match_token(TokenType.COMMA) {
+                        done = true
+                    }
+                }
+            }
+            let _ = self.expect(TokenType.RPAREN)
+            return "(" + str_array_join(types, ", ") + ")"
+        } else {
+            let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+            if self.peek(0).tok_type == TokenType.LT {
+                let _ = self.advance()
+                var type_args = ArrayList<Str>(self.allocator)
+                var done = false
+                while !done {
+                    type_args.push(self.parse_type())
+                    if !self.match_token(TokenType.COMMA) {
+                        done = true
+                    }
+                }
+                let _ = self.expect(TokenType.GT)
+                return name + "<" + str_array_join(type_args, ", ") + ">"
+            }
+            return name
+
+        }
+    }
+    fn parse_generic_params(self) -> ArrayList<Str> {
+        var type_params = ArrayList<Str>(self.allocator)
+        if self.peek(0).tok_type == TokenType.LT {
+            let _ = self.advance()
+            var done = false
+            while !done {
+                let tp_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                if self.match_token(TokenType.COLON) {
+                    type_params.push(tp_name + ":" + tv_get_str(self.expect(TokenType.IDENTIFIER).value))
+                } else {
+                    type_params.push(tp_name)
+                }
+                if !self.match_token(TokenType.COMMA) {
+                    done = true
+                }
+            }
+            let _ = self.expect(TokenType.GT)
+        }
+        return type_params
+
+    }
+    fn parse_var_decl(self, is_mutable: Bool) -> Int {
+        let _ = self.advance()
+        if self.peek(0).tok_type == TokenType.LPAREN {
+            let _ = self.advance()
+            var names = ArrayList<Str>(self.allocator)
+            var done = false
+            while !done {
+                names.push(tv_get_str(self.expect(TokenType.IDENTIFIER).value))
+                if !self.match_token(TokenType.COMMA) {
+                    done = true
+                }
+            }
+            let _ = self.expect(TokenType.RPAREN)
+            let _ = self.expect(TokenType.ASSIGN)
+            let val_expr = self.parse_expression(0)
+            self.expect_end_of_statement()
+            return self.st_var_decl(str_array_join(names, ","), "", val_expr, is_mutable)
+        }
+        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        var type_ann: Str = ""
+        if self.match_token(TokenType.COLON) {
+            type_ann = self.parse_type()
+        }
+        let _ = self.expect(TokenType.ASSIGN)
+        let val_expr = self.parse_expression(0)
+        self.expect_end_of_statement()
+        return self.st_var_decl(name, type_ann, val_expr, is_mutable)
+
+    }
+    fn parse_func_decl(self) -> Int {
+        let _ = self.advance()
+        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        let type_params = self.parse_generic_params()
+        let _ = self.expect(TokenType.LPAREN)
+        var params = ArrayList<Param>(self.allocator)
+        if self.peek(0).tok_type != TokenType.RPAREN {
+            var done = false
+            while !done {
+                let param_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                var param_type: Str = ""
+                if param_name == "self" && self.peek(0).tok_type != TokenType.COLON {
+                    param_type = "self"
+                } else {
+                    let _ = self.expect(TokenType.COLON)
+                    param_type = self.parse_type()
+                }
+                params.push(Param(name: param_name, ptype: param_type))
+                if !self.match_token(TokenType.COMMA) {
+                    done = true
+                }
+            }
+        }
+        let _ = self.expect(TokenType.RPAREN)
+        var return_type: Str = ""
+        if self.match_token(TokenType.ARROW) {
+            return_type = self.parse_type()
+        } else {
+            let next_tok = self.peek(0)
+            if next_tok.tok_type == TokenType.IDENTIFIER || next_tok.tok_type == TokenType.LPAREN || next_tok.tok_type == TokenType.MUL || next_tok.tok_type == TokenType.AMP || next_tok.tok_type == TokenType.LBRACKET {
+                return_type = self.parse_type()
+            }
+        }
+        var capability: Str = ""
+        if self.match_token(TokenType.HASH) {
+            capability = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        }
+        self.expect_end_of_statement()
+        let body = self.parse_block()
+        return self.st_func(name, params, return_type, body, capability, type_params)
+
+    }
+    fn parse_struct_decl(self) -> Int {
+        let _ = self.advance()
+        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        let type_params = self.parse_generic_params()
+        self.expect_end_of_statement()
+        let _ = self.expect(TokenType.LBRACE)
+        var fields = ArrayList<StructField>(self.allocator)
+        var methods = ArrayList<Int>(self.allocator)
+        var trait_impls = ArrayList<Int>(self.allocator)
+        self.consume_newlines()
+        while self.peek(0).tok_type != TokenType.RBRACE && self.peek(0).tok_type != TokenType.EOF {
+            if self.peek(0).tok_type == TokenType.FUNC {
+                methods.push(self.parse_func_decl())
+            } else if self.peek(0).tok_type == TokenType.IMPL {
+                let _ = self.advance()
+                let trait_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                self.expect_end_of_statement()
+                let _ = self.expect(TokenType.LBRACE)
+                var impl_methods = ArrayList<Int>(self.allocator)
+                self.consume_newlines()
+                while self.peek(0).tok_type != TokenType.RBRACE && self.peek(0).tok_type != TokenType.EOF {
+                    impl_methods.push(self.parse_func_decl())
+                    self.consume_newlines()
+                }
+                let _ = self.expect(TokenType.RBRACE)
+                trait_impls.push(self.st_impl(name, trait_name, impl_methods))
+            } else {
+                let fname = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                let _ = self.expect(TokenType.COLON)
+                fields.push(StructField(name: fname, ftype: self.parse_type()))
+                self.expect_end_of_statement()
+            }
+            self.consume_newlines()
+        }
+        let _ = self.expect(TokenType.RBRACE)
+        return self.st_struct(name, fields, type_params, methods, trait_impls)
+
+    }
+    fn parse_impl_block(self) -> Int {
+        let _ = self.advance()
+        let first_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        var struct_name: Str = ""
+        var trait_name: Str = ""
+        if self.peek(0).tok_type == TokenType.FOR {
+            let _ = self.advance()
+            trait_name = first_name
+            struct_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        } else {
+            struct_name = first_name
+        }
+        self.expect_end_of_statement()
+        let _ = self.expect(TokenType.LBRACE)
+        var methods = ArrayList<Int>(self.allocator)
+        self.consume_newlines()
+        while self.peek(0).tok_type != TokenType.RBRACE && self.peek(0).tok_type != TokenType.EOF {
+            methods.push(self.parse_func_decl())
+            self.consume_newlines()
+        }
+        let _ = self.expect(TokenType.RBRACE)
+        return self.st_impl(struct_name, trait_name, methods)
+
+    }
+    fn parse_trait_decl(self) -> Int {
+        let _ = self.advance()
+        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        self.expect_end_of_statement()
+        let _ = self.expect(TokenType.LBRACE)
+        var methods = ArrayList<Int>(self.allocator)
+        self.consume_newlines()
+        while self.peek(0).tok_type != TokenType.RBRACE && self.peek(0).tok_type != TokenType.EOF {
+            methods.push(self.parse_func_decl())
+            self.consume_newlines()
+        }
+        let _ = self.expect(TokenType.RBRACE)
+        return self.st_trait(name, methods)
+
+    }
+    fn parse_enum_decl(self) -> Int {
+        let _ = self.advance()
+        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        let type_params = self.parse_generic_params()
+        self.expect_end_of_statement()
+        let _ = self.expect(TokenType.LBRACE)
+        var variants = ArrayList<Variant>(self.allocator)
+        self.consume_newlines()
+        while self.peek(0).tok_type != TokenType.RBRACE && self.peek(0).tok_type != TokenType.EOF {
+            let _ = self.expect(TokenType.CASE)
+            let v_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+            var v_params = ArrayList<Param>(self.allocator)
+            var unnamed_count = 0
+            if self.match_token(TokenType.LPAREN) {
+                if self.peek(0).tok_type != TokenType.RPAREN {
+                    var done = false
+                    while !done {
+                        let pname_or_type = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                        if self.peek(0).tok_type == TokenType.COLON {
+                            let _ = self.advance()
+                            v_params.push(Param(name: pname_or_type, ptype: self.parse_type()))
+                        } else {
+                            var pname: Str = "value"
+                            if unnamed_count > 0 {
+                                pname = "value0"
+                            }
+                            unnamed_count = unnamed_count + 1
+                            v_params.push(Param(name: pname, ptype: pname_or_type))
+                        }
+                        if !self.match_token(TokenType.COMMA) {
+                            done = true
+                        }
+                    }
+                }
+                let _ = self.expect(TokenType.RPAREN)
+            }
+            variants.push(Variant(vname: v_name, params: v_params))
+            self.expect_end_of_statement()
+            self.consume_newlines()
+        }
+        let _ = self.expect(TokenType.RBRACE)
+        return self.st_enum(name, variants, type_params)
+
+    }
+    fn parse_error_decl(self) -> Int {
+        let _ = self.advance()
+        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        self.expect_end_of_statement()
+        let _ = self.expect(TokenType.LBRACE)
+        var variants = ArrayList<Str>(self.allocator)
+        self.consume_newlines()
+        while self.peek(0).tok_type != TokenType.RBRACE && self.peek(0).tok_type != TokenType.EOF {
+            if self.match_token(TokenType.CASE) {
+                let _ = 0
+            }
+            let v_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+            variants.push(v_name)
+            self.expect_end_of_statement()
+            self.consume_newlines()
+        }
+        let _ = self.expect(TokenType.RBRACE)
+        return self.st_error(name, variants)
+
+    }
+    fn parse_match_stmt(self) -> Int {
+        let _ = self.advance()
+        let expr = self.parse_expression(0)
+        self.expect_end_of_statement()
+        let _ = self.expect(TokenType.LBRACE)
+        var cases = ArrayList<MatchCase>(self.allocator)
+        self.consume_newlines()
+        while self.peek(0).tok_type != TokenType.RBRACE && self.peek(0).tok_type != TokenType.EOF {
+            let _ = self.expect(TokenType.CASE)
+            let pattern = self.parse_pattern()
+            let _ = self.expect(TokenType.FAT_ARROW)
+            self.consume_newlines()
+            var body: Int = -1
+            if self.peek(0).tok_type == TokenType.LBRACE {
+                body = self.parse_block()
+            } else {
+                var stmts = ArrayList<Int>(self.allocator)
+                stmts.push(self.parse_statement())
+                body = self.st_block(stmts)
+            }
+            cases.push(MatchCase(pattern: pattern, body: body))
+            self.consume_newlines()
+        }
+        let _ = self.expect(TokenType.RBRACE)
+        return self.st_match(expr, cases)
+
+    }
+    fn parse_pattern(self) -> Int {
+        let tok = self.peek(0)
+        if tok.tok_type == TokenType.DOT {
+            let _ = self.advance()
+            let v_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+            var bindings = ArrayList<Str>(self.allocator)
+            if self.match_token(TokenType.LPAREN) {
+                if self.peek(0).tok_type != TokenType.RPAREN {
+                    var done = false
+                    while !done {
+                        bindings.push(tv_get_str(self.expect(TokenType.IDENTIFIER).value))
+                        if !self.match_token(TokenType.COMMA) {
+                            done = true
+                        }
+                    }
+                }
+                let _ = self.expect(TokenType.RPAREN)
+            }
+            var node = new_pattern_node(PatternKind.pk_variant)
+            node.variant_name = v_name
+            node.bindings = bindings
+            return self.add_pattern(node)
+        } else if tok.tok_type == TokenType.ELSE {
+            let _ = self.advance()
+            return self.add_pattern(new_pattern_node(PatternKind.pk_else))
+        } else if tok.tok_type == TokenType.INT_LIT || tok.tok_type == TokenType.FLOAT_LIT || tok.tok_type == TokenType.BOOL_LIT || tok.tok_type == TokenType.STRING_LIT || tok.tok_type == TokenType.CHAR_LIT {
+            let _ = self.advance()
+            var node = new_pattern_node(PatternKind.pk_literal)
+            node.lit_value = tok.value
+            return self.add_pattern(node)
+        } else {
+            unsafe {
+                print("parse_pattern failed!")
+                exit(1)
+            }
+            return -1
+
+        }
+    }
+    fn add_pattern(self, p: PatternNode) -> Int {
+        self.pattern_pool.push(p)
+        return self.pattern_pool.length() - 1
+
+    }
+    fn parse_unsafe_block(self) -> Int {
+        let _ = self.advance()
+        self.expect_end_of_statement()
+        return self.st_unsafe(self.parse_block())
+
+    }
+    fn parse_extern_decl(self) -> Int {
+        let _ = self.advance()
+        let _ = self.expect(TokenType.FUNC)
+        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        let _ = self.expect(TokenType.LPAREN)
+        var params = ArrayList<Param>(self.allocator)
+        if self.peek(0).tok_type != TokenType.RPAREN {
+            var done = false
+            while !done {
+                let param_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                let _ = self.expect(TokenType.COLON)
+                params.push(Param(name: param_name, ptype: self.parse_type()))
+                if !self.match_token(TokenType.COMMA) {
+                    done = true
+                }
+            }
+        }
+        let _ = self.expect(TokenType.RPAREN)
+        var return_type: Str = ""
+        if self.match_token(TokenType.ARROW) {
+            return_type = self.parse_type()
+        } else {
+            let next_tok = self.peek(0)
+            if next_tok.tok_type == TokenType.IDENTIFIER || next_tok.tok_type == TokenType.LPAREN || next_tok.tok_type == TokenType.MUL || next_tok.tok_type == TokenType.AMP || next_tok.tok_type == TokenType.LBRACKET {
+                return_type = self.parse_type()
+            }
+        }
+        self.expect_end_of_statement()
+        return self.st_extern(name, params, return_type)
+
+    }
+    fn parse_if_stmt(self) -> Int {
+        let _ = self.advance()
+        if self.peek(0).tok_type == TokenType.LET {
+            let _ = self.advance()
+            let var_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+            let _ = self.expect(TokenType.ASSIGN)
+            let cond_expr = self.parse_expression(0)
+            self.expect_end_of_statement()
+            let then_branch = self.parse_block()
+            var else_branch: Int = -1
+            self.consume_newlines()
+            if self.peek(0).tok_type == TokenType.ELSE {
+                let _ = self.advance()
+                if self.peek(0).tok_type == TokenType.IF {
+                    var stmts = ArrayList<Int>(self.allocator)
+                    stmts.push(self.parse_if_stmt())
+                    else_branch = self.st_block(stmts)
+                } else {
+                    self.expect_end_of_statement()
+                    else_branch = self.parse_block()
+                }
+            }
+            return self.st_if_let(var_name, cond_expr, then_branch, else_branch)
+        }
+        let cond_expr = self.parse_expression(0)
+        self.expect_end_of_statement()
+        let then_branch = self.parse_block()
+        var else_branch: Int = -1
+        self.consume_newlines()
+        if self.peek(0).tok_type == TokenType.ELSE {
+            let _ = self.advance()
+            if self.peek(0).tok_type == TokenType.IF {
+                var stmts = ArrayList<Int>(self.allocator)
+                stmts.push(self.parse_if_stmt())
+                else_branch = self.st_block(stmts)
+            } else {
+                self.expect_end_of_statement()
+                else_branch = self.parse_block()
+            }
+        }
+        return self.st_if(cond_expr, then_branch, else_branch)
+
+    }
+    fn parse_while_stmt(self) -> Int {
+        let _ = self.advance()
+        let cond_expr = self.parse_expression(0)
+        self.expect_end_of_statement()
+        return self.st_while(cond_expr, self.parse_block())
+
+    }
+    fn parse_for_stmt(self) -> Int {
+        let _ = self.advance()
+        let var_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        let _ = self.expect(TokenType.IN)
+        let expr = self.parse_expression(0)
+        let expr_node = self.expr_pool.get(expr)
+        var range_start: Int = -1
+        var range_end: Int = -1
+        var is_inclusive: Bool = false
+        if expr_node.kind == ExprKind.ek_range {
+            range_start = expr_node.range_start
+            range_end = expr_node.range_end
+            is_inclusive = expr_node.range_inclusive
+        } else {
+            unsafe {
+                print("parse_for_stmt failed!")
+                exit(1)
+            }
+        }
+        self.expect_end_of_statement()
+        return self.st_for(var_name, range_start, range_end, is_inclusive, self.parse_block())
+
+    }
+    fn parse_return_stmt(self) -> Int {
+        let _ = self.advance()
+        var val_expr: Int = -1
+        let next = self.peek(0)
+        if next.tok_type != TokenType.NEWLINE && next.tok_type != TokenType.RBRACE && next.tok_type != TokenType.DEDENT && next.tok_type != TokenType.EOF {
+            val_expr = self.parse_expression(0)
+        }
+        self.expect_end_of_statement()
+        return self.st_return(val_expr)
+
+    }
+    fn parse_break_stmt(self) -> Int {
+        let _ = self.advance()
+        self.expect_end_of_statement()
+        return self.st_break()
+
+    }
+    fn parse_continue_stmt(self) -> Int {
+        let _ = self.advance()
+        self.expect_end_of_statement()
+        return self.st_continue()
+
+    }
+    fn parse_print_stmt(self) -> Int {
+        let _ = self.advance()
+        let _ = self.expect(TokenType.LPAREN)
+        let val_expr = self.parse_expression(0)
+        let _ = self.expect(TokenType.RPAREN)
+        self.expect_end_of_statement()
+        return self.st_print(val_expr)
+
+    }
+    fn parse_defer_stmt(self) -> Int {
+        let _ = self.advance()
+        var body: Int = -1
+        if self.peek(0).tok_type == TokenType.NEWLINE {
+            self.expect_end_of_statement()
+            body = self.parse_block()
+        } else {
+            body = self.parse_statement()
+        }
+        return self.st_defer(body)
+
+    }
+    fn parse_expr_or_assignment_stmt(self) -> Int {
+        let expr = self.parse_expression(0)
+        let next = self.peek(0)
+        if next.tok_type == TokenType.ASSIGN || next.tok_type == TokenType.PLUS_ASSIGN || next.tok_type == TokenType.MINUS_ASSIGN {
+            let op_tok = self.advance()
+            let val_expr = self.parse_expression(0)
+            self.expect_end_of_statement()
+            return self.st_assign(expr, val_expr, token_op_str(op_tok.tok_type))
+        }
+        self.expect_end_of_statement()
+        return self.st_expr(expr)
+
+    }
+    fn parse_block(self) -> Int {
+        self.consume_newlines()
+        var stmts = ArrayList<Int>(self.allocator)
+        let _ = self.expect(TokenType.LBRACE)
+        self.consume_newlines()
+        while self.peek(0).tok_type != TokenType.RBRACE && self.peek(0).tok_type != TokenType.EOF {
+            let stmt = self.parse_statement()
+            if stmt >= 0 {
+                stmts.push(stmt)
+            }
+            self.consume_newlines()
+        }
+        if self.peek(0).tok_type == TokenType.EOF {
+            unsafe {
+                print("parse_block LBRACE EOF failed!")
+                exit(1)
+            }
+        }
+        let _ = self.advance() // consume '}'
+        return self.st_block(stmts)
+    }
+    fn parse_import_stmt(self) -> Int {
+        let _ = self.advance()
+        var path = ArrayList<Str>(self.allocator)
+        var done = false
+        while !done {
+            path.push(tv_get_str(self.expect(TokenType.IDENTIFIER).value))
+            if !self.match_token(TokenType.DOT) {
+                done = true
+            }
+        }
+        self.expect_end_of_statement()
+        return self.st_import(path, "")
+
+    }
+    fn parse_import_stmt_new(self) -> Int {
+        let _ = self.advance()
+        let first_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        if self.peek(0).tok_type == TokenType.FROM {
+            let _ = self.advance()
+            var path = ArrayList<Str>(self.allocator)
+            var done = false
+            while !done {
+                path.push(tv_get_str(self.expect(TokenType.IDENTIFIER).value))
+                if !self.match_token(TokenType.DOT) {
+                    done = true
+                }
+            }
+            var alias: Str = ""
+            if self.peek(0).tok_type == TokenType.AS {
+                let _ = self.advance()
+                alias = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+            }
+            self.expect_end_of_statement()
+            return self.st_import(path, alias)
+        } else {
+            var path = ArrayList<Str>(self.allocator)
+            path.push(first_name)
+            while self.match_token(TokenType.DOT) {
+                path.push(tv_get_str(self.expect(TokenType.IDENTIFIER).value))
+            }
+            var alias: Str = ""
+            if self.peek(0).tok_type == TokenType.AS {
+                let _ = self.advance()
+                alias = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+            }
+            self.expect_end_of_statement()
+            return self.st_import(path, alias)
+
+        }
+    }
+    fn parse_cimport_stmt(self) -> Int {
+        let _ = self.advance()
+        let header_tok = self.expect(TokenType.STRING_LIT)
+        let header = tv_get_str(header_tok.value)
+        var alias = ""
+        if self.peek(0).tok_type == TokenType.AS {
+            let _ = self.advance()
+            alias = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        }
+        self.expect_end_of_statement()
+        return self.st_cimport(header, alias)
+    }
+    fn parse_expression(self, precedence: Int) -> Int {
+        var left = self.parse_primary()
+        var done = false
+        while !done {
+            let op_tok = self.peek(0)
+            let op_prec = token_precedence(op_tok.tok_type)
+            if op_prec == 0 || op_prec <= precedence {
+                done = true
+            } else {
+                let _ = self.advance()
+                if op_tok.tok_type == TokenType.DOT {
+                    let member_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                    if self.peek(0).tok_type == TokenType.LPAREN {
+                        let _ = self.advance()
+                        if self.peek(0).tok_type == TokenType.IDENTIFIER && self.peek(1).tok_type == TokenType.COLON {
+                            var fields = ArrayList<FieldInit>(self.allocator)
+                            if self.peek(0).tok_type != TokenType.RPAREN {
+                                var fields_done = false
+                                while !fields_done {
+                                    let f_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                                    let _ = self.expect(TokenType.COLON)
+                                    fields.push(FieldInit(name: f_name, value: self.parse_expression(0)))
+                                    if !self.match_token(TokenType.COMMA) {
+                                        fields_done = true
+                                    }
+                                }
+                            }
+                            let _ = self.expect(TokenType.RPAREN)
+                            let left_node = self.expr_pool.get(left)
+                            var full_name: Str = ""
+                            if left_node.kind == ExprKind.ek_identifier {
+                                full_name = left_node.ident_name
+                                if left_node.ident_type_args.length() > 0 {
+                                    full_name = full_name + "<" + str_array_join(left_node.ident_type_args, ", ") + ">"
+                                }
+                            }
+                            left = self.ex_struct_init(full_name + "." + member_name, fields)
+                        } else {
+                            var args = ArrayList<Int>(self.allocator)
+                            if self.peek(0).tok_type != TokenType.RPAREN {
+                                var args_done = false
+                                while !args_done {
+                                    args.push(self.parse_expression(0))
+                                    if !self.match_token(TokenType.COMMA) {
+                                        args_done = true
+                                    }
+                                }
+                            }
+                            let _ = self.expect(TokenType.RPAREN)
+                            left = self.ex_method(left, member_name, args)
+                        }
+                    } else {
+                        left = self.ex_field(left, member_name)
+                    }
+                } else if op_tok.tok_type == TokenType.LBRACKET {
+                    if self.peek(0).tok_type == TokenType.DOTDOT || self.peek(0).tok_type == TokenType.DOTDOTEQ {
+                        var lower: Int = -1
+                        var upper: Int = -1
+                        let slice_tok = self.advance()
+                        let is_inclusive = slice_tok.tok_type == TokenType.DOTDOTEQ
+                        if self.peek(0).tok_type != TokenType.RBRACKET {
+                            upper = self.parse_expression(0)
+                        }
+                        left = self.ex_slice(left, lower, upper, is_inclusive)
+                    } else {
+                        var lower = self.parse_expression(0)
+                        let lower_node = self.expr_pool.get(lower)
+                        if lower_node.kind == ExprKind.ek_range {
+                            left = self.ex_slice(left, lower_node.range_start, lower_node.range_end, lower_node.range_inclusive)
+                        } else if self.peek(0).tok_type == TokenType.DOTDOT || self.peek(0).tok_type == TokenType.DOTDOTEQ {
+                            let slice_tok = self.advance()
+                            let is_inclusive = slice_tok.tok_type == TokenType.DOTDOTEQ
+                            var upper: Int = -1
+                            if self.peek(0).tok_type != TokenType.RBRACKET {
+                                upper = self.parse_expression(0)
+                            }
+                            left = self.ex_slice(left, lower, upper, is_inclusive)
+                        } else {
+                            left = self.ex_index(left, lower)
+                        }
+                    }
+                    let _ = self.expect(TokenType.RBRACKET)
+                } else if op_tok.tok_type == TokenType.DOTDOT || op_tok.tok_type == TokenType.DOTDOTEQ {
+                    let is_inclusive = op_tok.tok_type == TokenType.DOTDOTEQ
+                    var right: Int = -1
+                    let next = self.peek(0)
+                    if next.tok_type != TokenType.RBRACKET && next.tok_type != TokenType.COMMA && next.tok_type != TokenType.NEWLINE && next.tok_type != TokenType.SEMICOLON && next.tok_type != TokenType.RBRACE && next.tok_type != TokenType.DEDENT && next.tok_type != TokenType.EOF {
+                        right = self.parse_expression(op_prec)
+                    }
+                    left = self.ex_range(left, right, is_inclusive)
+                } else if op_tok.tok_type == TokenType.CATCH {
+                    var var_name: Str = ""
+                    if self.match_token(TokenType.PIPE) {
+                        var_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                        let _ = self.expect(TokenType.PIPE)
+                    }
+                    var fallback: Int = -1
+                    let next = self.peek(0)
+                    if next.tok_type == TokenType.NEWLINE {
+                        fallback = self.parse_block()
+                    } else if next.tok_type == TokenType.RETURN {
+                        let _ = self.advance()
+                        var ret_val: Int = -1
+                        let follow = self.peek(0)
+                        if follow.tok_type != TokenType.NEWLINE && follow.tok_type != TokenType.SEMICOLON && follow.tok_type != TokenType.RBRACE && follow.tok_type != TokenType.DEDENT && follow.tok_type != TokenType.EOF {
+                            ret_val = self.parse_expression(0)
+                        }
+                        let ret_stmt = self.st_return(ret_val)
+                        var stmts = ArrayList<Int>(self.allocator)
+                        stmts.push(ret_stmt)
+                        fallback = self.st_block(stmts)
+                    } else if next.tok_type == TokenType.PRINT {
+                        let _ = self.advance()
+                        let pr_val = self.parse_expression(0)
+                        let pr_stmt = self.st_print(pr_val)
+                        var stmts = ArrayList<Int>(self.allocator)
+                        stmts.push(pr_stmt)
+                        fallback = self.st_block(stmts)
+                    } else {
+                        let expr_val = self.parse_expression(op_prec)
+                        let expr_stmt = self.st_expr(expr_val)
+                        var stmts = ArrayList<Int>(self.allocator)
+                        stmts.push(expr_stmt)
+                        fallback = self.st_block(stmts)
+                    }
+                    left = self.ex_catch(left, var_name, fallback)
+                } else if op_tok.tok_type == TokenType.AS {
+                    let target_type = self.parse_type()
+                    var args = ArrayList<Int>(self.allocator)
+                    args.push(left)
+                    var targs = ArrayList<Str>(self.allocator)
+                    targs.push(target_type)
+                    left = self.ex_call_with("as", args, targs)
+                } else {
+                    let right = self.parse_expression(op_prec)
+                    left = self.ex_binop(token_op_str(op_tok.tok_type), left, right)
+                }
+            }
+        }
+        return left
+
+    }
+    fn parse_primary(self) -> Int {
+        let tok = self.peek(0)
+        if tok.tok_type == TokenType.INT_LIT || tok.tok_type == TokenType.FLOAT_LIT || tok.tok_type == TokenType.BOOL_LIT || tok.tok_type == TokenType.CHAR_LIT {
+            let _ = self.advance()
+            var vkind: Str = ""
+            if tok.tok_type == TokenType.INT_LIT {
+                vkind = "INT"
+            } else if tok.tok_type == TokenType.FLOAT_LIT {
+                vkind = "FLOAT"
+            } else if tok.tok_type == TokenType.BOOL_LIT {
+                vkind = "BOOL"
+            } else {
+                vkind = "CHAR"
+            }
+            return self.ex_literal(tok.value, vkind)
+        } else if tok.tok_type == TokenType.NONE {
+            let _ = self.advance()
+            return self.ex_literal(TokenValue.tv_none, "NONE")
+        } else if tok.tok_type == TokenType.STRING_LIT {
+            let _ = self.advance()
+            return self.ex_literal(tok.value, "STRING")
+        } else if tok.tok_type == TokenType.CHECK {
+            let _ = self.advance()
+            return self.ex_check(self.parse_expression(5))
+        } else if tok.tok_type == TokenType.TRY {
+            let _ = self.advance()
+            return self.ex_try(self.parse_expression(5))
+        } else if tok.tok_type == TokenType.OWN {
+            let _ = self.advance()
+            return self.ex_unop("own", self.parse_expression(5))
+        } else if tok.tok_type == TokenType.ASM {
+            let _ = self.advance()
+            var is_volatile = false
+            if self.match_token(TokenType.VOLATILE) {
+                is_volatile = true
+            }
+            let _ = self.expect(TokenType.LPAREN)
+            let asm_code = tv_get_str(self.expect(TokenType.STRING_LIT).value)
+
+            var outputs = ArrayList<AsmOutput>(self.allocator)
+            var inputs = ArrayList<AsmInput>(self.allocator)
+            var clobbers = ArrayList<Str>(self.allocator)
+
+            if self.match_token(TokenType.COLON) {
+                var done = false
+                while !done {
+                    let next_tt = self.peek(0).tok_type
+                    if next_tt == TokenType.COLON || next_tt == TokenType.RPAREN || next_tt == TokenType.EOF {
+                        done = true
+                    } else {
+                        let _ = self.expect(TokenType.LBRACKET)
+                        let out_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                        let _ = self.expect(TokenType.RBRACKET)
+                        let constraint = tv_get_str(self.expect(TokenType.STRING_LIT).value)
+                        let _ = self.expect(TokenType.LPAREN)
+                        var type_name: Str = ""
+                        var expr_idx: Int = -1
+                        if self.match_token(TokenType.ARROW) {
+                            type_name = self.parse_type()
+                        } else {
+                            expr_idx = self.parse_expression(0)
+                        }
+                        let _ = self.expect(TokenType.RPAREN)
+                        outputs.push(AsmOutput(name: out_name, constraint: constraint, type_name: type_name, expr_idx: expr_idx))
+                        if !self.match_token(TokenType.COMMA) {
+                            done = true
+                        }
+                    }
+                }
+            }
+            if self.match_token(TokenType.COLON) {
+                var done = false
+                while !done {
+                    let next_tt = self.peek(0).tok_type
+                    if next_tt == TokenType.COLON || next_tt == TokenType.RPAREN || next_tt == TokenType.EOF {
+                        done = true
+                    } else {
+                        let _ = self.expect(TokenType.LBRACKET)
+                        let in_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                        let _ = self.expect(TokenType.RBRACKET)
+                        let constraint = tv_get_str(self.expect(TokenType.STRING_LIT).value)
+                        let _ = self.expect(TokenType.LPAREN)
+                        let expr_idx = self.parse_expression(0)
+                        let _ = self.expect(TokenType.RPAREN)
+                        inputs.push(AsmInput(name: in_name, constraint: constraint, expr_idx: expr_idx))
+                        if !self.match_token(TokenType.COMMA) {
+                            done = true
+                        }
+                    }
+                }
+            }
+            if self.match_token(TokenType.COLON) {
+                var done = false
+                while !done {
+                    let next_tt = self.peek(0).tok_type
+                    if next_tt == TokenType.RPAREN || next_tt == TokenType.EOF {
+                        done = true
+                    } else {
+                        let clobber = tv_get_str(self.expect(TokenType.STRING_LIT).value)
+                        clobbers.push(clobber)
+                        if !self.match_token(TokenType.COMMA) {
+                            done = true
+                        }
+                    }
+                }
+            }
+            let _ = self.expect(TokenType.RPAREN)
+            return self.ex_asm(asm_code, is_volatile, outputs, inputs, clobbers)
+        } else if tok.tok_type == TokenType.IDENTIFIER {
+            if self.is_generic_instantiation() {
+                let ident = tv_get_str(self.advance().value)
+                let _ = self.advance()
+                var type_args = ArrayList<Str>(self.allocator)
+                var done = false
+                while !done {
+                    type_args.push(self.parse_type())
+                    if !self.match_token(TokenType.COMMA) {
+                        done = true
+                    }
+                }
+                let _ = self.expect(TokenType.GT)
+                var id_type_args = ArrayList<Str>(self.allocator)
+                var ci = 0
+                while ci < type_args.length() {
+                    id_type_args.push(type_args.get(ci))
+                    ci = ci + 1
+                }
+                if self.peek(0).tok_type == TokenType.LPAREN {
+                    let _ = self.advance()
+                    if self.peek(0).tok_type == TokenType.IDENTIFIER && self.peek(1).tok_type == TokenType.COLON {
+                        var fields = ArrayList<FieldInit>(self.allocator)
+                        if self.peek(0).tok_type != TokenType.RPAREN {
+                            var fields_done = false
+                            while !fields_done {
+                                let f_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                                let _ = self.expect(TokenType.COLON)
+                                fields.push(FieldInit(name: f_name, value: self.parse_expression(0)))
+                                if !self.match_token(TokenType.COMMA) {
+                                    fields_done = true
+                                }
+                            }
+                        }
+                        let _ = self.expect(TokenType.RPAREN)
+                        var sa_type_args = ArrayList<Str>(self.allocator)
+                        var cj = 0
+                        while cj < type_args.length() {
+                            sa_type_args.push(type_args.get(cj))
+                            cj = cj + 1
+                        }
+                        let type_args_str = str_array_join(sa_type_args, ", ")
+                        return self.ex_struct_init(ident + "<" + type_args_str + ">", fields)
+                    }
+                    var args = ArrayList<Int>(self.allocator)
+                    if self.peek(0).tok_type != TokenType.RPAREN {
+                        var args_done = false
+                        while !args_done {
+                            args.push(self.parse_expression(0))
+                            if !self.match_token(TokenType.COMMA) {
+                                args_done = true
+                            }
+                        }
+                    }
+                    let _ = self.expect(TokenType.RPAREN)
+                    return self.ex_call_with(ident, args, type_args)
+                }
+                var id_node = new_expr_node(ExprKind.ek_identifier)
+                id_node.ident_name = ident
+                id_node.ident_type_args = id_type_args
+                self.expr_pool.push(id_node)
+                return self.expr_pool.length() - 1
+            } else if self.peek(1).tok_type == TokenType.LPAREN {
+                let ident = tv_get_str(self.advance().value)
+                let _ = self.advance()
+                if self.peek(0).tok_type == TokenType.IDENTIFIER && self.peek(1).tok_type == TokenType.COLON {
+                    var fields = ArrayList<FieldInit>(self.allocator)
+                    if self.peek(0).tok_type != TokenType.RPAREN {
+                        var fields_done = false
+                        while !fields_done {
+                            let f_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                            let _ = self.expect(TokenType.COLON)
+                            fields.push(FieldInit(name: f_name, value: self.parse_expression(0)))
+                            if !self.match_token(TokenType.COMMA) {
+                                fields_done = true
+                            }
+                        }
+                    }
+                    let _ = self.expect(TokenType.RPAREN)
+                    return self.ex_struct_init(ident, fields)
+                } else {
+                    var args = ArrayList<Int>(self.allocator)
+                    if self.peek(0).tok_type != TokenType.RPAREN {
+                        var args_done = false
+                        while !args_done {
+                            args.push(self.parse_expression(0))
+                            if !self.match_token(TokenType.COMMA) {
+                                args_done = true
+                            }
+                        }
+                    }
+                    let _ = self.expect(TokenType.RPAREN)
+                    return self.ex_call(ident, args)
+                }
+            } else {
+                let _ = self.advance()
+                return self.ex_ident(tv_get_str(tok.value))
+            }
+        } else if tok.tok_type == TokenType.MINUS {
+            let _ = self.advance()
+            return self.ex_unop("-", self.parse_expression(7))
+        } else if tok.tok_type == TokenType.NOT {
+            let _ = self.advance()
+            return self.ex_unop("!", self.parse_expression(7))
+        } else if tok.tok_type == TokenType.BITNOT {
+            let _ = self.advance()
+            return self.ex_unop("~", self.parse_expression(7))
+        } else if tok.tok_type == TokenType.SIZEOF {
+            let _ = self.advance()
+            let _ = self.expect(TokenType.LPAREN)
+            let type_name = self.parse_type()
+            let _ = self.expect(TokenType.RPAREN)
+            var targs = ArrayList<Str>(self.allocator)
+            targs.push(type_name)
+            return self.ex_call_with("size_of", ArrayList<Int>(self.allocator), targs)
+        } else if tok.tok_type == TokenType.AMP {
+            let _ = self.advance()
+            var is_mut = false
+            if self.match_token(TokenType.MUT) {
+                is_mut = true
+            }
+            return self.ex_borrow(self.parse_expression(8), is_mut)
+        } else if tok.tok_type == TokenType.MUL {
+            let _ = self.advance()
+            return self.ex_deref(self.parse_expression(8))
+        } else if tok.tok_type == TokenType.LBRACKET {
+            let _ = self.advance()
+            var elements = ArrayList<Int>(self.allocator)
+            if self.peek(0).tok_type != TokenType.RBRACKET {
+                var done = false
+                while !done {
+                    elements.push(self.parse_expression(0))
+                    if !self.match_token(TokenType.COMMA) {
+                        done = true
+                    }
+                }
+            }
+            let _ = self.expect(TokenType.RBRACKET)
+            return self.ex_array(elements)
+        } else if tok.tok_type == TokenType.LPAREN {
+            let _ = self.advance()
+            let first = self.parse_expression(0)
+            if self.peek(0).tok_type == TokenType.COMMA {
+                var elements = ArrayList<Int>(self.allocator)
+                elements.push(first)
+                while self.match_token(TokenType.COMMA) {
+                    if self.peek(0).tok_type != TokenType.RPAREN {
+                        elements.push(self.parse_expression(0))
+                    }
+                }
+                let _ = self.expect(TokenType.RPAREN)
+                return self.ex_tuple(elements)
+            }
+            let _ = self.expect(TokenType.RPAREN)
+            return first
+        } else {
+            unsafe {
+                print("parse_primary failed!")
+                print("Line: ")
+                print_int(tok.line)
+                print("Col: ")
+                print_int(tok.column)
+                print("Token type int: ")
+                print_int(Int(tok.tok_type))
+                exit(1)
+            }
+            return -1
+
+        }
+    }
+}

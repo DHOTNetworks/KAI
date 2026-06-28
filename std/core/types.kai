@@ -1,0 +1,4 @@
+// Core type aliases
+struct Empty {
+    _dummy: Int
+}

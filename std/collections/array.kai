@@ -1,0 +1,78 @@
+import Allocator from std.core.allocator
+
+extern fn exit(code: Int)
+
+struct ArrayList<T> {
+    data: *T
+    len: Int
+    cap: Int
+    allocator: *Allocator
+}
+
+impl ArrayList {
+    fn init(self, allocator: *Allocator) {
+        self.len = 0
+        self.cap = 4
+        self.allocator = allocator
+        unsafe {
+            self.data = allocator.alloc(self.cap * sizeof(T), 1) as *T
+        }
+    }
+
+    fn push(self, item: T) {
+        if self.len == self.cap {
+            let new_cap = self.cap * 2
+            unsafe {
+                let new_data = self.allocator.alloc(new_cap * sizeof(T), 1) as *T
+                var i = 0
+                while i < self.len {
+                    new_data[i] = self.data[i]
+                    i = i + 1
+                }
+                self.allocator.free(self.data as *Char)
+                self.data = new_data
+                self.cap = new_cap
+            }
+        }
+        self.data[self.len] = item
+        self.len = self.len + 1
+    }
+
+    fn get(self, index: Int) -> T {
+        if index < 0 || index >= self.len {
+            unsafe {
+                exit(1)
+            }
+        }
+        return self.data[index]
+    }
+
+    fn set(self, index: Int, item: T) {
+        if index < 0 || index >= self.len {
+            unsafe {
+                exit(1)
+            }
+        }
+        self.data[index] = item
+    }
+
+    fn pop(self) -> T {
+        if self.len == 0 {
+            unsafe {
+                exit(1)
+            }
+        }
+        self.len = self.len - 1
+        return self.data[self.len]
+    }
+
+    fn length(self) -> Int {
+        return self.len
+    }
+
+    fn deinit(self) {
+        unsafe {
+            self.allocator.free(self.data as *Char)
+        }
+    }
+}
