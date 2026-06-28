@@ -1,0 +1,116 @@
+import KaiAllocator from std.core.allocator
+import int_to_str from std.collections.string
+
+extern fn _kai_set_current_allocator(allocator: *Void)
+
+error FileError
+{
+    case not_found
+    case permission_denied
+}
+
+trait Describable
+{
+    fn describe(self) -> Str {
+    }
+}
+
+struct Point
+{
+    x: Int
+    y: Int
+}
+
+impl Point
+{
+    fn describe(self) -> Str {
+        return "Point(" + int_to_str(self.x) + ", " + int_to_str(self.y) + ")"
+    }
+}
+
+fn identity<T>(val: T) -> T {
+    return val
+}
+
+fn divide_or_error(flag: Bool) -> Int!FileError {
+    if flag {
+        return 42
+    }
+    return FileError.not_found
+}
+
+fn get_optional_value(flag: Bool) -> ?Int {
+    if flag {
+        return 42
+    }
+    return none
+}
+
+fn main() -> Int {
+    var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
+    allocator.init()
+    _kai_set_current_allocator(&allocator as *Void)
+    
+    defer {
+        print("Final defer run: Success\n")
+    }
+
+    let a = 10
+    var b = 20
+    b = b + a
+    print("Arithmetic check: ")
+    print_int(b)
+    print("\n")
+
+    let p = Point(x: 3, y: 4)
+    print("Trait check: ")
+    print(p.describe())
+    print("\n")
+
+    let id_int = identity<Int>(100)
+    print("Generics check: ")
+    print_int(id_int)
+    print("\n")
+
+    let res_ok = divide_or_error(true) catch |err| 99
+    let res_err = divide_or_error(false) catch |err| 100
+    print("Error Union OK: ")
+    print_int(res_ok)
+    print("\n")
+    print("Error Union Catch: ")
+    print_int(res_err)
+    print("\n")
+
+    let opt_some = get_optional_value(true)
+    let opt_none = get_optional_value(false)
+    
+    if let val = opt_some {
+        print("Optional if-let: ")
+        print_int(val)
+        print("\n")
+    }
+    
+    let fallback = opt_none catch 99
+    print("Optional catch: ")
+    print_int(fallback)
+    print("\n")
+
+    var sum = 0
+    var i = 0
+    while i < 5 {
+        sum = sum + i
+        i = i + 1
+    }
+    print("While loop sum: ")
+    print_int(sum)
+    print("\n")
+
+    unsafe {
+        let ptr: *Int = &b
+        print("Unsafe ptr read: ")
+        print_int(*ptr)
+        print("\n")
+    }
+
+    return 0
+}

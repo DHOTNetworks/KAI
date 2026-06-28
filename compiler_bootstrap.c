@@ -6,7 +6,60 @@
 #include <sys/mman.h>
 #include <ctype.h>
 
+#if defined(_WIN32)
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <limits.h>
+#else
+#include <unistd.h>
+#include <limits.h>
+#endif
+
+int64_t get_exe_dir(char* out_buf, int64_t max_len) {
+#if defined(_WIN32)
+    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);
+    if (len == 0 || len >= max_len) return -1;
+    for (int i = len - 1; i >= 0; i--) {
+        if (out_buf[i] == '\\' || out_buf[i] == '/') {
+            out_buf[i] = '\0';
+            break;
+        }
+    }
+    return 0;
+#elif defined(__APPLE__)
+    char path[PATH_MAX];
+    uint32_t size = sizeof(path);
+    if (_NSGetExecutablePath(path, &size) != 0) return -1;
+    char real_path[PATH_MAX];
+    if (realpath(path, real_path) == NULL) return -1;
+    char* last_slash = strrchr(real_path, '/');
+    if (last_slash == NULL) return -1;
+    *last_slash = '\0';
+    strncpy(out_buf, real_path, max_len);
+    out_buf[max_len - 1] = '\0';
+    return 0;
+#else
+    char path[PATH_MAX];
+    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
+    if (len == -1) return -1;
+    path[len] = '\0';
+    char real_path[PATH_MAX];
+    if (realpath(path, real_path) == NULL) return -1;
+    char* last_slash = strrchr(real_path, '/');
+    if (last_slash == NULL) return -1;
+    *last_slash = '\0';
+    strncpy(out_buf, real_path, max_len);
+    out_buf[max_len - 1] = '\0';
+    return 0;
+#endif
+}
+
+
 static inline void print_int(int64_t i) { printf("%lld\n", (long long)i); }
+__thread void* _kai_current_allocator = NULL;
+void _kai_set_current_allocator(void* allocator);
+char* _kai_str_concat(const char* l, const char* r);
 
 /* trait Allocator: alloc, realloc, free, deinit */
 typedef struct CAlloc CAlloc;
@@ -977,6 +1030,7 @@ void TypeChecker_check_method_call(TypeChecker* self, int64_t expr_idx);
 void TypeChecker_check_return_stmt(TypeChecker* self, int64_t stmt_idx);
 void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx);
 void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx);
+extern int64_t get_exe_dir(char* buf, int64_t max_len);
 ArrayList_StrMapEntry ArrayList_StrMapEntry_init(KaiAllocator* allocator);
 void ArrayList_StrMapEntry_push(ArrayList_StrMapEntry* self, StrMapEntry item);
 StrMapEntry ArrayList_StrMapEntry_get(ArrayList_StrMapEntry* self, int64_t index);
@@ -1016,7 +1070,25 @@ bool Codegen_enum_has_payload(Codegen* self, const char* enum_name);
 const char* Codegen_escape_string(Codegen* self, const char* s);
 ArrayList_Str Codegen__collect_loop_drops(Codegen* self);
 const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx);
+extern void _kai_set_current_allocator(void* allocator);
 const char* get_base_name(KaiAllocator* allocator, const char* path);
+
+void _kai_set_current_allocator(void* allocator) {
+    _kai_current_allocator = allocator;
+}
+char* _kai_str_concat(const char* l, const char* r) {
+    size_t l1 = strlen(l);
+    size_t l2 = strlen(r);
+    size_t total = l1 + l2 + 1;
+    char* buf = NULL;
+    if (_kai_current_allocator) {
+        buf = KaiAllocator_alloc((KaiAllocator*)_kai_current_allocator, total, 1);
+    } else {
+        buf = malloc(total);
+    }
+    if (buf) { strcpy(buf, l); strcat(buf, r); }
+    return buf;
+}
 
 char* CAlloc_alloc(CAlloc* self, int64_t size, int64_t alignment) {
     {
@@ -2889,25 +2961,7 @@ const char* str_array_join(ArrayList_Str arr, const char* sep) {
     const char* result = ArrayList_Str_get(&(arr), 0);
     int64_t i = 1;
     while (i < ArrayList_Str_length(&(arr))) {
-    result = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = result;
-  const char* const _tmp_r = sep;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ArrayList_Str_get(&(arr), i);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    result = _kai_str_concat(_kai_str_concat(result, sep), ArrayList_Str_get(&(arr), i));
     i = (i + 1);
 }
     return result;
@@ -3842,52 +3896,16 @@ const char* Parser_parse_type(Parser* self) {
     const char* base_type = Parser_parse_base_type(self);
     if (Parser_match_token(self, TokenType_NOT)) {
     const char* error_set = Parser_parse_type(self);
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = base_type;
-  const char* const _tmp_r = "!";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = error_set;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(base_type, "!"), error_set);
 }
     return base_type;
 }
 const char* Parser_parse_base_type(Parser* self) {
     if (Parser_match_token(self, TokenType_OWN)) {
     const char* inner = Parser_parse_type(self);
-    return /* Str concat */ ({
-  const char* const _tmp_l = "own ";
-  const char* const _tmp_r = inner;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat("own ", inner);
 } else if (Parser_match_token(self, TokenType_QUESTION)) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = "?";
-  const char* const _tmp_r = Parser_parse_type(self);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat("?", Parser_parse_type(self));
 } else if (Parser_match_token(self, TokenType_AMP)) {
     bool is_mut = false;
     if (Parser_match_token(self, TokenType_MUT)) {
@@ -3895,27 +3913,9 @@ const char* Parser_parse_base_type(Parser* self) {
 }
     const char* inner = Parser_parse_type(self);
     if (is_mut) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = "*mut ";
-  const char* const _tmp_r = inner;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat("*mut ", inner);
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = "*";
-  const char* const _tmp_r = inner;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat("*", inner);
 } else if (Parser_match_token(self, TokenType_MUL)) {
     bool is_mut = false;
     if (Parser_match_token(self, TokenType_MUT)) {
@@ -3923,39 +3923,12 @@ const char* Parser_parse_base_type(Parser* self) {
 }
     const char* inner = Parser_parse_type(self);
     if (is_mut) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = "*mut ";
-  const char* const _tmp_r = inner;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat("*mut ", inner);
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = "*";
-  const char* const _tmp_r = inner;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat("*", inner);
 } else if (Parser_match_token(self, TokenType_LBRACKET)) {
     (void)(Parser_expect(self, TokenType_RBRACKET));
-    return /* Str concat */ ({
-  const char* const _tmp_l = "[]";
-  const char* const _tmp_r = Parser_parse_type(self);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat("[]", Parser_parse_type(self));
 } else if (Parser_match_token(self, TokenType_LPAREN)) {
     ArrayList_Str types = ArrayList_Str_init(self->allocator);
     if (Parser_peek(self, 0).tok_type != TokenType_RPAREN) {
@@ -3968,25 +3941,7 @@ const char* Parser_parse_base_type(Parser* self) {
 }
 }
     (void)(Parser_expect(self, TokenType_RPAREN));
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = str_array_join(types, ", ");
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("(", str_array_join(types, ", ")), ")");
 } else {
     const char* name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value);
     if (Parser_peek(self, 0).tok_type == TokenType_LT) {
@@ -4000,34 +3955,7 @@ const char* Parser_parse_base_type(Parser* self) {
 }
 }
     (void)(Parser_expect(self, TokenType_GT));
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = name;
-  const char* const _tmp_r = "<";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = str_array_join(type_args, ", ");
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ">";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(name, "<"), str_array_join(type_args, ", ")), ">");
 }
     return name;
 }
@@ -4040,25 +3968,7 @@ ArrayList_Str Parser_parse_generic_params(Parser* self) {
     while (!done) {
     const char* tp_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value);
     if (Parser_match_token(self, TokenType_COLON)) {
-    ArrayList_Str_push(&(type_params), /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = tp_name;
-  const char* const _tmp_r = ":";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-}));
+    ArrayList_Str_push(&(type_params), _kai_str_concat(_kai_str_concat(tp_name, ":"), tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value)));
 } else {
     ArrayList_Str_push(&(type_params), tp_name);
 }
@@ -4615,55 +4525,10 @@ int64_t Parser_parse_expression(Parser* self, int64_t precedence) {
     if (left_node.kind == ExprKind_ek_identifier) {
     full_name = left_node.ident_name;
     if (ArrayList_Str_length(&(left_node.ident_type_args)) > 0) {
-    full_name = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = full_name;
-  const char* const _tmp_r = "<";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = str_array_join(left_node.ident_type_args, ", ");
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ">";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    full_name = _kai_str_concat(_kai_str_concat(_kai_str_concat(full_name, "<"), str_array_join(left_node.ident_type_args, ", ")), ">");
 }
 }
-    left = Parser_ex_struct_init(self, /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = full_name;
-  const char* const _tmp_r = ".";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = member_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-}), fields);
+    left = Parser_ex_struct_init(self, _kai_str_concat(_kai_str_concat(full_name, "."), member_name), fields);
 } else {
     ArrayList_Int args = ArrayList_Int_init(self->allocator);
     if (Parser_peek(self, 0).tok_type != TokenType_RPAREN) {
@@ -4916,34 +4781,7 @@ int64_t Parser_parse_primary(Parser* self) {
     cj = (cj + 1);
 }
     const char* type_args_str = str_array_join(sa_type_args, ", ");
-    return Parser_ex_struct_init(self, /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = ident;
-  const char* const _tmp_r = "<";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = type_args_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ">";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-}), fields);
+    return Parser_ex_struct_init(self, _kai_str_concat(_kai_str_concat(_kai_str_concat(ident, "<"), type_args_str), ">"), fields);
 }
     ArrayList_Int args = ArrayList_Int_init(self->allocator);
     if (Parser_peek(self, 0).tok_type != TokenType_RPAREN) {
@@ -5562,16 +5400,7 @@ int64_t TypeChecker_find_method_decl(TypeChecker* self, const char* struct_name,
     while (i < strlen(clean_struct)) {
     char c = (clean_struct)[i];
     if ((c != ((char)(42))) && (c != ((char)(38)))) {
-    clean = /* Str concat */ ({
-  const char* const _tmp_l = clean;
-  const char* const _tmp_r = char_to_str(c);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    clean = _kai_str_concat(clean, char_to_str(c));
 }
     i = (i + 1);
 }
@@ -5742,34 +5571,7 @@ const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx) {
 }
     if (is_struct) {
     if (ArrayList_Str_length(&(expr.func_type_args)) > 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = name;
-  const char* const _tmp_r = "<";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = str_array_join(expr.func_type_args, ", ");
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ">";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(name, "<"), str_array_join(expr.func_type_args, ", ")), ">");
 }
     return name;
 }
@@ -5802,16 +5604,7 @@ const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx) {
     while (i < strlen(base_type)) {
     char c = (base_type)[i];
     if ((c != ((char)(42))) && (c != ((char)(38)))) {
-    clean_type = /* Str concat */ ({
-  const char* const _tmp_l = clean_type;
-  const char* const _tmp_r = char_to_str(c);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    clean_type = _kai_str_concat(clean_type, char_to_str(c));
 }
     i = (i + 1);
 }
@@ -5850,27 +5643,9 @@ const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx) {
     if (expr.kind == ExprKind_ek_borrow) {
     const char* base_type = TypeChecker_get_expr_type(self, expr.borrow_expr);
     if (TypeChecker_expr_is_mutable(self, expr.borrow_expr)) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = "*mut ";
-  const char* const _tmp_r = base_type;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat("*mut ", base_type);
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = "*";
-  const char* const _tmp_r = base_type;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat("*", base_type);
 }
     if (expr.kind == ExprKind_ek_deref) {
     const char* base_type = TypeChecker_get_expr_type(self, expr.deref_expr);
@@ -6188,25 +5963,7 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     while (i < ArrayList_Int_length(&(stmt.impl_methods))) {
     int64_t m_idx = ArrayList_Int_get(&(stmt.impl_methods), i);
     StmtNode m = ArrayList_StmtNode_get(self->stmt_pool, m_idx);
-    const char* mangled_name = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = stmt.impl_struct_name;
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = m.func_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* mangled_name = _kai_str_concat(_kai_str_concat(stmt.impl_struct_name, "_"), m.func_name);
     TypeChecker_define_symbol(self, mangled_name, m.func_return_type, false, "func");
     const char* old_ret = self->current_func_ret_type;
     self->current_func_ret_type = m.func_return_type;
@@ -6668,131 +6425,14 @@ const char* Codegen_map_type(Codegen* self, const char* type_name) {
     return Codegen_map_type(self, val_type);
 }
     const char* clean_val = Codegen_clean_type_for_mangling(self, val_type);
-    const char* concrete_name = /* Str concat */ ({
-  const char* const _tmp_l = "Optional_";
-  const char* const _tmp_r = clean_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* concrete_name = _kai_str_concat("Optional_", clean_val);
     if (strlist_find(&(self->result_definitions), concrete_name) < 0) {
     ArrayList_Str_push(&(self->result_definitions), concrete_name);
-    const char* struct_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "typedef struct ";
-  const char* const _tmp_r = concrete_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = concrete_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    struct_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = struct_str;
-  const char* const _tmp_r = "struct ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = concrete_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " {\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    struct_str = /* Str concat */ ({
-  const char* const _tmp_l = struct_str;
-  const char* const _tmp_r = "    bool has_value;\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    struct_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = struct_str;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = Codegen_map_type(self, val_type);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " value;\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    struct_str = /* Str concat */ ({
-  const char* const _tmp_l = struct_str;
-  const char* const _tmp_r = "};\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("typedef struct ", concrete_name), " "), concrete_name), ";\n");
+    struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(struct_str, "struct "), concrete_name), " {\n");
+    struct_str = _kai_str_concat(struct_str, "    bool has_value;\n");
+    struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(struct_str, "    "), Codegen_map_type(self, val_type)), " value;\n");
+    struct_str = _kai_str_concat(struct_str, "};\n");
     (void)(StringBuilder_append(&(self->struct_decls), struct_str));
 }
     return concrete_name;
@@ -6803,151 +6443,16 @@ const char* Codegen_map_type(Codegen* self, const char* type_name) {
     const char* err_type = substring(resolved_type, (excl_pos + 1), strlen(resolved_type));
     const char* clean_val = Codegen_clean_type_for_mangling(self, val_type);
     const char* clean_err = Codegen_clean_type_for_mangling(self, err_type);
-    const char* concrete_name = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "Result_";
-  const char* const _tmp_r = clean_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = clean_err;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* concrete_name = _kai_str_concat(_kai_str_concat(_kai_str_concat("Result_", clean_val), "_"), clean_err);
     if (strlist_find(&(self->result_definitions), concrete_name) < 0) {
     ArrayList_Str_push(&(self->result_definitions), concrete_name);
-    const char* struct_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "typedef struct ";
-  const char* const _tmp_r = concrete_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = concrete_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    struct_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = struct_str;
-  const char* const _tmp_r = "struct ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = concrete_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " {\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    struct_str = /* Str concat */ ({
-  const char* const _tmp_l = struct_str;
-  const char* const _tmp_r = "    int64_t tag;\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("typedef struct ", concrete_name), " "), concrete_name), ";\n");
+    struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(struct_str, "struct "), concrete_name), " {\n");
+    struct_str = _kai_str_concat(struct_str, "    int64_t tag;\n");
     if (strcmp(val_type, "Void") != 0) {
-    struct_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = struct_str;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = Codegen_map_type(self, val_type);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " value;\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(struct_str, "    "), Codegen_map_type(self, val_type)), " value;\n");
 }
-    struct_str = /* Str concat */ ({
-  const char* const _tmp_l = struct_str;
-  const char* const _tmp_r = "};\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    struct_str = _kai_str_concat(struct_str, "};\n");
     (void)(StringBuilder_append(&(self->struct_decls), struct_str));
 }
     return concrete_name;
@@ -6981,16 +6486,7 @@ const char* Codegen_map_type(Codegen* self, const char* type_name) {
 }
     if (strcmp(substring(resolved_type, 0, 2), "[]") == 0) {
     const char* inner = substring(resolved_type, 2, strlen(resolved_type));
-    return /* Str concat */ ({
-  const char* const _tmp_l = Codegen_map_type(self, inner);
-  const char* const _tmp_r = "*";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(Codegen_map_type(self, inner), "*");
 }
     if ((resolved_type)[0] == ((char)(42))) {
     if ((strlen(resolved_type) > 5) && (strcmp(substring(resolved_type, 0, 5), "*mut ") == 0)) {
@@ -6998,58 +6494,22 @@ const char* Codegen_map_type(Codegen* self, const char* type_name) {
     if (strcmp(inner, "Void") == 0) {
     return "void*";
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = Codegen_map_type(self, inner);
-  const char* const _tmp_r = "*";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(Codegen_map_type(self, inner), "*");
 } else {
     const char* inner = substring(resolved_type, 1, strlen(resolved_type));
     if (strcmp(inner, "Void") == 0) {
     return "void*";
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = Codegen_map_type(self, inner);
-  const char* const _tmp_r = "*";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(Codegen_map_type(self, inner), "*");
 }
 }
     if ((resolved_type)[0] == ((char)(38))) {
     if ((strlen(resolved_type) > 5) && (strcmp(substring(resolved_type, 0, 5), "&mut ") == 0)) {
     const char* inner = substring(resolved_type, 5, strlen(resolved_type));
-    return /* Str concat */ ({
-  const char* const _tmp_l = Codegen_map_type(self, inner);
-  const char* const _tmp_r = "*";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(Codegen_map_type(self, inner), "*");
 } else {
     const char* inner = substring(resolved_type, 1, strlen(resolved_type));
-    return /* Str concat */ ({
-  const char* const _tmp_l = Codegen_map_type(self, inner);
-  const char* const _tmp_r = "*";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(Codegen_map_type(self, inner), "*");
 }
 }
     if (Codegen_str_contains(self, resolved_type, ((char)(60)))) {
@@ -7073,25 +6533,7 @@ const char* Codegen_map_type(Codegen* self, const char* type_name) {
     while (ai < ArrayList_Str_length(&(args))) {
     const char* raw_arg = ArrayList_Str_get(&(args), ai);
     const char* clean_arg = Codegen_clean_type_for_mangling(self, raw_arg);
-    concrete_name = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = concrete_name;
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = clean_arg;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    concrete_name = _kai_str_concat(_kai_str_concat(concrete_name, "_"), clean_arg);
     ai = (ai + 1);
 }
     const char* struct_idx_str = type_map_get(&(self->generic_struct_decls), base_name);
@@ -7120,55 +6562,19 @@ const char* Codegen_substitute_generic_type(Codegen* self, const char* type_name
     return mapped;
 }
     if ((type_name)[0] == ((char)(42))) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = "*";
-  const char* const _tmp_r = Codegen_substitute_generic_type(self, substring(type_name, 1, strlen(type_name)));
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat("*", Codegen_substitute_generic_type(self, substring(type_name, 1, strlen(type_name))));
 }
     if ((type_name)[0] == ((char)(38))) {
     if (strcmp(substring(type_name, 0, 5), "&mut ") == 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = "&mut ";
-  const char* const _tmp_r = Codegen_substitute_generic_type(self, substring(type_name, 5, strlen(type_name)));
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat("&mut ", Codegen_substitute_generic_type(self, substring(type_name, 5, strlen(type_name))));
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = "&";
-  const char* const _tmp_r = Codegen_substitute_generic_type(self, substring(type_name, 1, strlen(type_name)));
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat("&", Codegen_substitute_generic_type(self, substring(type_name, 1, strlen(type_name))));
 }
     if (Codegen_str_contains(self, type_name, ((char)(60)))) {
     int64_t lt_pos = Codegen_str_find(self, type_name, ((char)(60)));
     const char* base = substring(type_name, 0, lt_pos);
     const char* inner = substring(type_name, (lt_pos + 1), (strlen(type_name) - 1));
-    const char* res = /* Str concat */ ({
-  const char* const _tmp_l = base;
-  const char* const _tmp_r = "<";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* res = _kai_str_concat(base, "<");
     int64_t start = 0;
     int64_t i = 0;
     int64_t arg_count = 0;
@@ -7177,27 +6583,9 @@ const char* Codegen_substitute_generic_type(Codegen* self, const char* type_name
     if (c == ((char)(44))) {
     const char* arg = Codegen_trim_spaces(self, substring(inner, start, i));
     if (arg_count > 0) {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = ", ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, ", ");
 }
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = Codegen_substitute_generic_type(self, arg);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, Codegen_substitute_generic_type(self, arg));
     start = (i + 1);
     arg_count = (arg_count + 1);
 }
@@ -7205,37 +6593,10 @@ const char* Codegen_substitute_generic_type(Codegen* self, const char* type_name
 }
     const char* arg = Codegen_trim_spaces(self, substring(inner, start, strlen(inner)));
     if (arg_count > 0) {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = ", ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, ", ");
 }
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = Codegen_substitute_generic_type(self, arg);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = ">";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, Codegen_substitute_generic_type(self, arg));
+    res = _kai_str_concat(res, ">");
     return res;
 }
     return type_name;
@@ -7257,71 +6618,17 @@ const char* Codegen_clean_type_for_mangling(Codegen* self, const char* s) {
     while (i < strlen(s)) {
     char c = (s)[i];
     if (c == ((char)(42))) {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "ptr";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, "ptr");
 } else if (c == ((char)(38))) {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "ref";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, "ref");
 } else if (c == ((char)(32))) {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, "_");
 } else if (c == ((char)(63))) {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "opt_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, "opt_");
 } else if ((((c == ((char)(60))) || (c == ((char)(62)))) || (c == ((char)(44)))) || (c == ((char)(33)))) {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, "_");
 } else {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = char_to_str(c);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, char_to_str(c));
 }
     i = (i + 1);
 }
@@ -7424,125 +6731,17 @@ void Codegen_monomorphize_struct(Codegen* self, int64_t stmt_idx, const char* co
     ArrayList_StrMapEntry old_type_map = self->current_type_map;
     self->current_type_map = ArrayList_StrMapEntry_init(self->allocator);
     Codegen_setup_current_type_map(self, &(stmt.struct_type_params), type_args);
-    const char* typedef_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "typedef struct ";
-  const char* const _tmp_r = concrete_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = concrete_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* typedef_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("typedef struct ", concrete_name), " "), concrete_name), ";\n");
     (void)(StringBuilder_append(&(self->struct_decls), typedef_str));
-    const char* body = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "struct ";
-  const char* const _tmp_r = concrete_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " {\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* body = _kai_str_concat(_kai_str_concat("struct ", concrete_name), " {\n");
     int64_t i = 0;
     while (i < ArrayList_StructField_length(&(stmt.struct_fields))) {
     StructField f = ArrayList_StructField_get(&(stmt.struct_fields), i);
     const char* f_type = Codegen_map_type(self, f.ftype);
-    body = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = body;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = f_type;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = f.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    body = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(body, "    "), f_type), " "), f.name), ";\n");
     i = (i + 1);
 }
-    body = /* Str concat */ ({
-  const char* const _tmp_l = body;
-  const char* const _tmp_r = "};\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    body = _kai_str_concat(body, "};\n");
     (void)(StringBuilder_append(&(self->struct_decls), body));
     Codegen_monomorphize_methods(self, stmt.struct_name, concrete_name);
     self->current_type_map = old_type_map;
@@ -7552,290 +6751,38 @@ void Codegen_monomorphize_enum(Codegen* self, int64_t stmt_idx, const char* conc
     ArrayList_StrMapEntry old_type_map = self->current_type_map;
     self->current_type_map = ArrayList_StrMapEntry_init(self->allocator);
     Codegen_setup_current_type_map(self, &(stmt.enum_type_params), type_args);
-    const char* typedef_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "typedef struct ";
-  const char* const _tmp_r = concrete_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = concrete_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* typedef_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("typedef struct ", concrete_name), " "), concrete_name), ";\n");
     (void)(StringBuilder_append(&(self->struct_decls), typedef_str));
-    const char* tags_name = /* Str concat */ ({
-  const char* const _tmp_l = concrete_name;
-  const char* const _tmp_r = "_tags";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* tags_name = _kai_str_concat(concrete_name, "_tags");
     const char* tags_str = "typedef enum {\n";
     int64_t i = 0;
     while (i < ArrayList_Variant_length(&(stmt.enum_variants))) {
     Variant v = ArrayList_Variant_get(&(stmt.enum_variants), i);
-    tags_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = tags_str;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = concrete_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = v.vname;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "_TAG,\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    tags_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(tags_str, "    "), concrete_name), "_"), v.vname), "_TAG,\n");
     i = (i + 1);
 }
-    tags_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = tags_str;
-  const char* const _tmp_r = "} ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = tags_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    tags_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(tags_str, "} "), tags_name), ";\n");
     (void)(StringBuilder_append(&(self->struct_decls), tags_str));
-    const char* body = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "struct ";
-  const char* const _tmp_r = concrete_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " {\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    body = /* Str concat */ ({
-  const char* const _tmp_l = body;
-  const char* const _tmp_r = "    uint8_t tag;\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    body = /* Str concat */ ({
-  const char* const _tmp_l = body;
-  const char* const _tmp_r = "    union {\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* body = _kai_str_concat(_kai_str_concat("struct ", concrete_name), " {\n");
+    body = _kai_str_concat(body, "    uint8_t tag;\n");
+    body = _kai_str_concat(body, "    union {\n");
     i = 0;
     while (i < ArrayList_Variant_length(&(stmt.enum_variants))) {
     Variant v = ArrayList_Variant_get(&(stmt.enum_variants), i);
     if (ArrayList_Param_length(&(v.params)) > 0) {
-    body = /* Str concat */ ({
-  const char* const _tmp_l = body;
-  const char* const _tmp_r = "        struct {\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    body = _kai_str_concat(body, "        struct {\n");
     int64_t p_idx = 0;
     while (p_idx < ArrayList_Param_length(&(v.params))) {
     Param p = ArrayList_Param_get(&(v.params), p_idx);
-    body = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = body;
-  const char* const _tmp_r = "            ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = Codegen_map_type(self, p.ptype);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = p.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    body = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(body, "            "), Codegen_map_type(self, p.ptype)), " "), p.name), ";\n");
     p_idx = (p_idx + 1);
 }
-    body = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = body;
-  const char* const _tmp_r = "        } ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = v.vname;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    body = _kai_str_concat(_kai_str_concat(_kai_str_concat(body, "        } "), v.vname), ";\n");
 }
     i = (i + 1);
 }
-    body = /* Str concat */ ({
-  const char* const _tmp_l = body;
-  const char* const _tmp_r = "    } payload;\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    body = /* Str concat */ ({
-  const char* const _tmp_l = body;
-  const char* const _tmp_r = "};\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    body = _kai_str_concat(body, "    } payload;\n");
+    body = _kai_str_concat(body, "};\n");
     (void)(StringBuilder_append(&(self->struct_decls), body));
     Codegen_monomorphize_methods(self, stmt.enum_name, concrete_name);
     self->current_type_map = old_type_map;
@@ -7850,25 +6797,7 @@ void Codegen_monomorphize_methods(Codegen* self, const char* base_struct_name, c
     int64_t m_idx = ArrayList_Int_get(&(stmt.impl_methods), j);
     StmtNode m_node = ArrayList_StmtNode_get(self->stmt_pool, m_idx);
     const char* method_name = m_node.func_name;
-    bool is_init = ((((strcmp(method_name, "init") == 0) || (strcmp(m_node.func_return_type, base_struct_name) == 0)) || (strcmp(m_node.func_return_type, /* Str concat */ ({
-  const char* const _tmp_l = "*";
-  const char* const _tmp_r = base_struct_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-})) == 0)) || (strcmp(m_node.func_return_type, /* Str concat */ ({
-  const char* const _tmp_l = "&";
-  const char* const _tmp_r = base_struct_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-})) == 0));
+    bool is_init = ((((strcmp(method_name, "init") == 0) || (strcmp(m_node.func_return_type, base_struct_name) == 0)) || (strcmp(m_node.func_return_type, _kai_str_concat("*", base_struct_name)) == 0)) || (strcmp(m_node.func_return_type, _kai_str_concat("&", base_struct_name)) == 0));
     const char* ret_type = "";
     if (is_init) {
     ret_type = concrete_struct_name;
@@ -7877,86 +6806,23 @@ void Codegen_monomorphize_methods(Codegen* self, const char* base_struct_name, c
 }
     const char* params_str = "";
     if (!is_init) {
-    params_str = /* Str concat */ ({
-  const char* const _tmp_l = concrete_struct_name;
-  const char* const _tmp_r = "* self";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    params_str = _kai_str_concat(concrete_struct_name, "* self");
 }
     int64_t p_idx = 0;
     while (p_idx < ArrayList_Param_length(&(m_node.func_params))) {
     Param p = ArrayList_Param_get(&(m_node.func_params), p_idx);
     if (strcmp(p.name, "self") != 0) {
     if (strlen(params_str) > 0) {
-    params_str = /* Str concat */ ({
-  const char* const _tmp_l = params_str;
-  const char* const _tmp_r = ", ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    params_str = _kai_str_concat(params_str, ", ");
 }
-    params_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = params_str;
-  const char* const _tmp_r = Codegen_map_type(self, p.ptype);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = p.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    params_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
 }
     p_idx = (p_idx + 1);
 }
     if (strlen(params_str) == 0) {
     params_str = "void";
 }
-    const char* mangled_fn_name = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = concrete_struct_name;
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = method_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* mangled_fn_name = _kai_str_concat(_kai_str_concat(concrete_struct_name, "_"), method_name);
     const char* concrete_ret = m_node.func_return_type;
     if (ArrayList_StrMapEntry_length(&(self->current_type_map)) > 0) {
     concrete_ret = Codegen_substitute_generic_type(self, concrete_ret);
@@ -7976,16 +6842,7 @@ void Codegen_monomorphize_methods(Codegen* self, const char* base_struct_name, c
     if (is_init) {
     type_map_put(&(self->var_types), "self", concrete_struct_name);
 } else {
-    type_map_put(&(self->var_types), "self", /* Str concat */ ({
-  const char* const _tmp_l = "*";
-  const char* const _tmp_r = concrete_struct_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-}));
+    type_map_put(&(self->var_types), "self", _kai_str_concat("*", concrete_struct_name));
 }
     int64_t p_idx2 = 0;
     while (p_idx2 < ArrayList_Param_length(&(m_node.func_params))) {
@@ -8000,184 +6857,13 @@ void Codegen_monomorphize_methods(Codegen* self, const char* base_struct_name, c
     (void)(ArrayList_StrMapEntry_pop(&(self->var_types)));
 }
     if (is_init) {
-    const char* self_decl = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "    ";
-  const char* const _tmp_r = concrete_struct_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " self = (";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = concrete_struct_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "){0};\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* self_decl = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("    ", concrete_struct_name), " self = ("), concrete_struct_name), "){0};\n");
     const char* self_ret = "    return self;\n}";
     int64_t body_len = strlen(body_str);
-    body_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "{\n";
-  const char* const _tmp_r = self_decl;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = substring(body_str, 2, (body_len - 1));
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = self_ret;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    body_str = _kai_str_concat(_kai_str_concat(_kai_str_concat("{\n", self_decl), substring(body_str, 2, (body_len - 1))), self_ret);
 }
-    const char* proto = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = ret_type;
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = mangled_fn_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "(";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = params_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ");\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    const char* impl_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = ret_type;
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = mangled_fn_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "(";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = params_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ") ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = body_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* proto = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), mangled_fn_name), "("), params_str), ");\n");
+    const char* impl_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), mangled_fn_name), "("), params_str), ") "), body_str), "\n");
     (void)(StringBuilder_append(&(self->func_decls), proto));
     (void)(StringBuilder_append(&(self->output), impl_str));
     self->cur_func_name = old_fn;
@@ -8205,46 +6891,10 @@ void Codegen_monomorphize_func(Codegen* self, int64_t func_stmt_idx, const char*
     while (p_idx < ArrayList_Param_length(&(stmt.func_params))) {
     Param p = ArrayList_Param_get(&(stmt.func_params), p_idx);
     if (p_idx > 0) {
-    params_str = /* Str concat */ ({
-  const char* const _tmp_l = params_str;
-  const char* const _tmp_r = ", ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    params_str = _kai_str_concat(params_str, ", ");
 }
     const char* concrete_ptype = Codegen_substitute_generic_type(self, p.ptype);
-    params_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = params_str;
-  const char* const _tmp_r = Codegen_map_type(self, concrete_ptype);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = p.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    params_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(params_str, Codegen_map_type(self, concrete_ptype)), " "), p.name);
     p_idx = (p_idx + 1);
 }
     if (strlen(params_str) == 0) {
@@ -8265,120 +6915,21 @@ void Codegen_monomorphize_func(Codegen* self, int64_t func_stmt_idx, const char*
     type_map_put(&(self->var_types), p.name, concrete_ptype);
     p_reg = (p_reg + 1);
 }
+    ArrayList_Int old_block_stack = self->block_stack;
+    ArrayList_Int old_defer_stack = self->defer_stack;
+    ArrayList_Int old_defer_depths = self->defer_depths;
+    self->block_stack = ArrayList_Int_init(self->allocator);
+    self->defer_stack = ArrayList_Int_init(self->allocator);
+    self->defer_depths = ArrayList_Int_init(self->allocator);
     const char* body_str = Codegen_gen_stmt(self, stmt.func_body);
+    self->block_stack = old_block_stack;
+    self->defer_stack = old_defer_stack;
+    self->defer_depths = old_defer_depths;
     while (ArrayList_StrMapEntry_length(&(self->var_types)) > old_var_len) {
     (void)(ArrayList_StrMapEntry_pop(&(self->var_types)));
 }
-    const char* proto = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = mapped_ret;
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = mangled_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "(";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = params_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ");\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    const char* impl_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = mapped_ret;
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = mangled_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "(";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = params_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ") ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = body_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* proto = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(mapped_ret, " "), mangled_name), "("), params_str), ");\n");
+    const char* impl_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(mapped_ret, " "), mangled_name), "("), params_str), ") "), body_str), "\n");
     (void)(StringBuilder_append(&(self->func_decls), proto));
     (void)(StringBuilder_append(&(self->output), impl_str));
     self->cur_func_name = old_fn;
@@ -8417,25 +6968,7 @@ void Codegen_build_func_types(Codegen* self) {
     int64_t p_i = 0;
     while (p_i < ArrayList_Param_length(&(stmt.func_params))) {
     Param p = ArrayList_Param_get(&(stmt.func_params), p_i);
-    const char* p_key = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = stmt.func_name;
-  const char* const _tmp_r = "_param_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = int_to_str(p_i);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* p_key = _kai_str_concat(_kai_str_concat(stmt.func_name, "_param_"), int_to_str(p_i));
     type_map_put(&(self->func_param_types), p_key, p.ptype);
     p_i = (p_i + 1);
 }
@@ -8445,25 +6978,7 @@ void Codegen_build_func_types(Codegen* self) {
     int64_t p_i = 0;
     while (p_i < ArrayList_Param_length(&(stmt.extern_params))) {
     Param p = ArrayList_Param_get(&(stmt.extern_params), p_i);
-    const char* p_key = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = stmt.extern_name;
-  const char* const _tmp_r = "_param_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = int_to_str(p_i);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* p_key = _kai_str_concat(_kai_str_concat(stmt.extern_name, "_param_"), int_to_str(p_i));
     type_map_put(&(self->func_param_types), p_key, p.ptype);
     p_i = (p_i + 1);
 }
@@ -8474,25 +6989,7 @@ void Codegen_build_func_types(Codegen* self) {
     while (j < ArrayList_Int_length(&(stmt.impl_methods))) {
     int64_t m_idx = ArrayList_Int_get(&(stmt.impl_methods), j);
     StmtNode m_node = ArrayList_StmtNode_get(self->stmt_pool, m_idx);
-    const char* key = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = struct_name;
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = m_node.func_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* key = _kai_str_concat(_kai_str_concat(struct_name, "_"), m_node.func_name);
     const char* ret = m_node.func_return_type;
     if (strcmp(m_node.func_name, "init") == 0) {
     ret = struct_name;
@@ -8501,25 +6998,7 @@ void Codegen_build_func_types(Codegen* self) {
     int64_t p_i = 0;
     while (p_i < ArrayList_Param_length(&(m_node.func_params))) {
     Param p = ArrayList_Param_get(&(m_node.func_params), p_i);
-    const char* p_key = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = key;
-  const char* const _tmp_r = "_param_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = int_to_str(p_i);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* p_key = _kai_str_concat(_kai_str_concat(key, "_param_"), int_to_str(p_i));
     type_map_put(&(self->func_param_types), p_key, p.ptype);
     p_i = (p_i + 1);
 }
@@ -8536,25 +7015,7 @@ void Codegen_build_func_types(Codegen* self) {
     while (j < ArrayList_Int_length(&(impl_node.impl_methods))) {
     int64_t m_idx = ArrayList_Int_get(&(impl_node.impl_methods), j);
     StmtNode m_node = ArrayList_StmtNode_get(self->stmt_pool, m_idx);
-    const char* key = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = struct_name;
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = m_node.func_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* key = _kai_str_concat(_kai_str_concat(struct_name, "_"), m_node.func_name);
     const char* ret = m_node.func_return_type;
     if (strcmp(m_node.func_name, "init") == 0) {
     ret = struct_name;
@@ -8563,25 +7024,7 @@ void Codegen_build_func_types(Codegen* self) {
     int64_t p_i = 0;
     while (p_i < ArrayList_Param_length(&(m_node.func_params))) {
     Param p = ArrayList_Param_get(&(m_node.func_params), p_i);
-    const char* p_key = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = key;
-  const char* const _tmp_r = "_param_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = int_to_str(p_i);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* p_key = _kai_str_concat(_kai_str_concat(key, "_param_"), int_to_str(p_i));
     type_map_put(&(self->func_param_types), p_key, p.ptype);
     p_i = (p_i + 1);
 }
@@ -8630,52 +7073,16 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
     char first_char = (name)[0];
     if ((first_char >= ((char)(65))) && (first_char <= ((char)(90)))) {
     if (ArrayList_Str_length(&(expr.ident_type_args)) > 0) {
-    const char* full_name = /* Str concat */ ({
-  const char* const _tmp_l = name;
-  const char* const _tmp_r = "<";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* full_name = _kai_str_concat(name, "<");
     int64_t tai = 0;
     while (tai < ArrayList_Str_length(&(expr.ident_type_args))) {
     if (tai > 0) {
-    full_name = /* Str concat */ ({
-  const char* const _tmp_l = full_name;
-  const char* const _tmp_r = ", ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    full_name = _kai_str_concat(full_name, ", ");
 }
-    full_name = /* Str concat */ ({
-  const char* const _tmp_l = full_name;
-  const char* const _tmp_r = ArrayList_Str_get(&(expr.ident_type_args), tai);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    full_name = _kai_str_concat(full_name, ArrayList_Str_get(&(expr.ident_type_args), tai));
     tai = (tai + 1);
 }
-    full_name = /* Str concat */ ({
-  const char* const _tmp_l = full_name;
-  const char* const _tmp_r = ">";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    full_name = _kai_str_concat(full_name, ">");
     return full_name;
 }
     return name;
@@ -8721,34 +7128,7 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
 }
     if (is_struct) {
     if (ArrayList_Str_length(&(expr.func_type_args)) > 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = name;
-  const char* const _tmp_r = "<";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = str_array_join(expr.func_type_args, ", ");
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ">";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(name, "<"), str_array_join(expr.func_type_args, ", ")), ">");
 }
     return name;
 }
@@ -8780,22 +7160,28 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
     return "Void";
 }
     if (expr.kind == ExprKind_ek_field_access) {
+    ExprNode base_node = ArrayList_ExprNode_get(self->expr_pool, expr.field_expr);
+    if (base_node.kind == ExprKind_ek_identifier) {
+    bool is_static = false;
+    int64_t s_idx = 0;
+    while (s_idx < ArrayList_StmtNode_length(self->stmt_pool)) {
+    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, s_idx);
+    if (((stmt.kind == StmtKind_sk_enum_decl) && (strcmp(stmt.enum_name, base_node.ident_name) == 0)) || ((stmt.kind == StmtKind_sk_error_decl) && (strcmp(stmt.error_name, base_node.ident_name) == 0))) {
+    is_static = true;
+}
+    s_idx = (s_idx + 1);
+}
+    if (is_static) {
+    return base_node.ident_name;
+}
+}
     const char* base_type = Codegen_get_expr_type(self, expr.field_expr);
     const char* clean_type = "";
     int64_t i = 0;
     while (i < strlen(base_type)) {
     char c = (base_type)[i];
     if ((c != ((char)(42))) && (c != ((char)(38)))) {
-    clean_type = /* Str concat */ ({
-  const char* const _tmp_l = clean_type;
-  const char* const _tmp_r = char_to_str(c);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    clean_type = _kai_str_concat(clean_type, char_to_str(c));
 }
     i = (i + 1);
 }
@@ -8846,16 +7232,7 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
     return "Void";
 }
     if (expr.kind == ExprKind_ek_borrow) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = "&";
-  const char* const _tmp_r = Codegen_get_expr_type(self, expr.borrow_expr);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat("&", Codegen_get_expr_type(self, expr.borrow_expr));
 }
     if (expr.kind == ExprKind_ek_deref) {
     const char* base_type = Codegen_get_expr_type(self, expr.deref_expr);
@@ -8882,16 +7259,7 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
     while (i < strlen(rec_type)) {
     char c = (rec_type)[i];
     if ((c != ((char)(42))) && (c != ((char)(38)))) {
-    clean_type = /* Str concat */ ({
-  const char* const _tmp_l = clean_type;
-  const char* const _tmp_r = char_to_str(c);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    clean_type = _kai_str_concat(clean_type, char_to_str(c));
 }
     i = (i + 1);
 }
@@ -8909,25 +7277,7 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
     if (strcmp(method_name, "init") == 0) {
     return clean_type;
 }
-    const char* key = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = clean_type;
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = method_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* key = _kai_str_concat(_kai_str_concat(clean_type, "_"), method_name);
     const char* ret = type_map_get(&(self->func_types), key);
     if (strlen(ret) > 0) {
     return ret;
@@ -9055,25 +7405,7 @@ const char* Codegen_gen_expr_with_expected_type(Codegen* self, int64_t expr_idx,
     if (Codegen_is_pointer_type(self, val_type)) {
     return "NULL";
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = Codegen_map_type(self, expected_type);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "){0}";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("(", Codegen_map_type(self, expected_type)), "){0}");
 }
     return "NULL";
 }
@@ -9081,43 +7413,7 @@ const char* Codegen_gen_expr_with_expected_type(Codegen* self, int64_t expr_idx,
     if ((strlen(expected_type) > 0) && ((expected_type)[0] == ((char)(63)))) {
     const char* val_type = substring(expected_type, 1, strlen(expected_type));
     if ((!Codegen_is_pointer_type(self, val_type)) && (strcmp(actual_type, val_type) == 0)) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = Codegen_map_type(self, expected_type);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "){ .has_value = true, .value = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = gen_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " }";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", Codegen_map_type(self, expected_type)), "){ .has_value = true, .value = "), gen_val), " }");
 }
 }
     return gen_val;
@@ -9137,94 +7433,13 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     const char* val_type = substring(inner_ty, 0, excl_pos);
     const char* result_ctype = Codegen_map_type(self, inner_ty);
     const char* ret_ctype = Codegen_map_type(self, self->cur_return_type);
-    const char* try_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "({ ";
-  const char* const _tmp_r = result_ctype;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " _kai_res = (";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = inner;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "); ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    try_code = /* Str concat */ ({
-  const char* const _tmp_l = try_code;
-  const char* const _tmp_r = "if (_kai_res.tag != 0) { ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    try_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = try_code;
-  const char* const _tmp_r = ret_ctype;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " _kai_err_ret; _kai_err_ret.tag = _kai_res.tag; return _kai_err_ret; } ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* try_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("({ ", result_ctype), " _kai_res = ("), inner), "); ");
+    try_code = _kai_str_concat(try_code, "if (_kai_res.tag != 0) { ");
+    try_code = _kai_str_concat(_kai_str_concat(try_code, ret_ctype), " _kai_err_ret; _kai_err_ret.tag = _kai_res.tag; return _kai_err_ret; } ");
     if (strcmp(val_type, "Void") == 0) {
-    try_code = /* Str concat */ ({
-  const char* const _tmp_l = try_code;
-  const char* const _tmp_r = "0; })";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    try_code = _kai_str_concat(try_code, "0; })");
 } else {
-    try_code = /* Str concat */ ({
-  const char* const _tmp_l = try_code;
-  const char* const _tmp_r = "_kai_res.value; })";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    try_code = _kai_str_concat(try_code, "_kai_res.value; })");
 }
     return try_code;
 }
@@ -9256,25 +7471,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (expr.lit_value.tag == TokenValue_tv_str_TAG) {
     const char* v = expr.lit_value.payload.tv_str.v;
 
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "\"";
-  const char* const _tmp_r = Codegen_escape_string(self, v);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\"";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("\"", Codegen_escape_string(self, v)), "\"");
 } else {
     return "\"\"";
 } 
@@ -9324,25 +7521,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (v == ((char)(39))) {
     return "'\\''";
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "'";
-  const char* const _tmp_r = char_to_str(v);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "'";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("'", char_to_str(v)), "'");
 } else {
     return "'\\0'";
 } 
@@ -9365,286 +7544,34 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (((strlen(lhs_type) > 0) && ((lhs_type)[0] == ((char)(63)))) && (strcmp(rhs, "NULL") == 0)) {
     const char* val_type = substring(lhs_type, 1, strlen(lhs_type));
     if (Codegen_is_pointer_type(self, val_type)) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = lhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = op;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " NULL)";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", lhs), " "), op), " NULL)");
 }
     if (strcmp(op, "==") == 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(!";
-  const char* const _tmp_r = lhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ".has_value)";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("(!", lhs), ".has_value)");
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = lhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ".has_value)";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("(", lhs), ".has_value)");
 }
     if (((strlen(rhs_type) > 0) && ((rhs_type)[0] == ((char)(63)))) && (strcmp(lhs, "NULL") == 0)) {
     const char* val_type = substring(rhs_type, 1, strlen(rhs_type));
     if (Codegen_is_pointer_type(self, val_type)) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(NULL ";
-  const char* const _tmp_r = op;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = rhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(NULL ", op), " "), rhs), ")");
 }
     if (strcmp(op, "==") == 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(!";
-  const char* const _tmp_r = rhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ".has_value)";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("(!", rhs), ".has_value)");
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = rhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ".has_value)";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("(", rhs), ".has_value)");
 }
 }
     ExprNode lhs_node = ArrayList_ExprNode_get(self->expr_pool, expr.binop_left);
     if (strcmp(lhs_type, "Str") == 0) {
     if (strcmp(op, "+") == 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "/* Str concat */ ({\n  const char* const _tmp_l = ";
-  const char* const _tmp_r = lhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n  const char* const _tmp_r = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = rhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n  size_t l1 = strlen(_tmp_l);\n  size_t l2 = strlen(_tmp_r);\n  char* buf = malloc(l1 + l2 + 1);\n  strcpy(buf, _tmp_l);\n  strcat(buf, _tmp_r);\n  buf;\n})";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("_kai_str_concat(", lhs), ", "), rhs), ")");
 }
     if (strcmp(op, "==") == 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(strcmp(";
-  const char* const _tmp_r = lhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ", ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = rhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ") == 0)";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(strcmp(", lhs), ", "), rhs), ") == 0)");
 }
     if (strcmp(op, "!=") == 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(strcmp(";
-  const char* const _tmp_r = lhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ", ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = rhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ") != 0)";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(strcmp(", lhs), ", "), rhs), ") != 0)");
 }
 }
     if (((strcmp(op, "==") == 0) || (strcmp(op, "!=") == 0)) && Codegen_is_enum_type(self, lhs_type)) {
@@ -9666,154 +7593,10 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (rhs_is_ptr) {
     rhs_tag_op = "->";
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "((";
-  const char* const _tmp_r = lhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = tag_op;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "tag ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = op;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " (";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = rhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = rhs_tag_op;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "tag)";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("((", lhs), ")"), tag_op), "tag "), op), " ("), rhs), ")"), rhs_tag_op), "tag)");
 }
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = lhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = op;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = rhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", lhs), " "), op), " "), rhs), ")");
 }
     if (expr.kind == ExprKind_ek_unary_op) {
     const char* operand = Codegen_gen_expr(self, expr.unop_operand);
@@ -9821,267 +7604,42 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (strcmp(op, "own") == 0) {
     return operand;
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = op;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = operand;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat("(", op), operand), ")");
 }
     if (expr.kind == ExprKind_ek_func_call) {
     const char* name = expr.func_name;
     if ((strcmp(name, "cast") == 0) || (strcmp(name, "as") == 0)) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = Codegen_map_type(self, ArrayList_Str_get(&(expr.func_type_args), 0));
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")(";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = Codegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0));
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", Codegen_map_type(self, ArrayList_Str_get(&(expr.func_type_args), 0))), ")("), Codegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0))), ")");
 }
     if (strcmp(name, "size_of") == 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "sizeof(";
-  const char* const _tmp_r = Codegen_map_type(self, ArrayList_Str_get(&(expr.func_type_args), 0));
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("sizeof(", Codegen_map_type(self, ArrayList_Str_get(&(expr.func_type_args), 0))), ")");
 }
     if ((((strcmp(name, "Char") == 0) || (strcmp(name, "Int") == 0)) || (strcmp(name, "Float") == 0)) || (strcmp(name, "Bool") == 0)) {
     const char* ctype = Codegen_map_type(self, name);
     const char* arg_val = Codegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0));
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "((";
-  const char* const _tmp_r = ctype;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")(";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = arg_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "))";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("((", ctype), ")("), arg_val), "))");
 }
     if (strcmp(name, "length") == 0) {
     const char* arg_val = Codegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0));
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "strlen(";
-  const char* const _tmp_r = arg_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("strlen(", arg_val), ")");
 }
     if (strcmp(name, "print") == 0) {
     int64_t arg = ArrayList_Int_get(&(expr.func_args), 0);
     const char* val = Codegen_gen_expr(self, arg);
     const char* arg_type = Codegen_get_expr_type(self, arg);
     if (strcmp(arg_type, "Int") == 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "printf(\"%lld\\n\", (long long)(";
-  const char* const _tmp_r = val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "))";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("printf(\"%lld\\n\", (long long)(", val), "))");
 }
     if (strcmp(arg_type, "Float") == 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "printf(\"%f\\n\", (double)(";
-  const char* const _tmp_r = val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "))";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("printf(\"%f\\n\", (double)(", val), "))");
 }
     if (strcmp(arg_type, "Char") == 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "printf(\"%c\\n\", (char)(";
-  const char* const _tmp_r = val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "))";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("printf(\"%c\\n\", (char)(", val), "))");
 }
     if (strcmp(arg_type, "Bool") == 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "printf(\"%s\\n\", (";
-  const char* const _tmp_r = val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ") ? \"true\" : \"false\")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("printf(\"%s\\n\", (", val), ") ? \"true\" : \"false\")");
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "printf(\"%s\\n\", ";
-  const char* const _tmp_r = val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("printf(\"%s\\n\", ", val), ")");
 }
     bool is_struct = false;
     int64_t s_idx = 0;
@@ -10111,144 +7669,36 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
 }
     int64_t j = 0;
     while (j < ArrayList_Str_length(&(type_args))) {
-    fn_name = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = fn_name;
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = Codegen_clean_type_for_mangling(self, ArrayList_Str_get(&(type_args), j));
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    fn_name = _kai_str_concat(_kai_str_concat(fn_name, "_"), Codegen_clean_type_for_mangling(self, ArrayList_Str_get(&(type_args), j)));
     j = (j + 1);
 }
     Codegen_monomorphize_func(self, gf_idx, fn_name, &(type_args));
 } else if (ArrayList_Str_length(&(expr.func_type_args)) > 0) {
     int64_t j = 0;
     while (j < ArrayList_Str_length(&(expr.func_type_args))) {
-    fn_name = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = fn_name;
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = Codegen_clean_type_for_mangling(self, ArrayList_Str_get(&(expr.func_type_args), j));
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    fn_name = _kai_str_concat(_kai_str_concat(fn_name, "_"), Codegen_clean_type_for_mangling(self, ArrayList_Str_get(&(expr.func_type_args), j)));
     j = (j + 1);
 }
 }
     if (is_struct) {
-    fn_name = /* Str concat */ ({
-  const char* const _tmp_l = fn_name;
-  const char* const _tmp_r = "_init";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    fn_name = _kai_str_concat(fn_name, "_init");
 }
     const char* args_str = "";
     int64_t i = 0;
     while (i < ArrayList_Int_length(&(expr.func_args))) {
     if (i > 0) {
-    args_str = /* Str concat */ ({
-  const char* const _tmp_l = args_str;
-  const char* const _tmp_r = ", ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    args_str = _kai_str_concat(args_str, ", ");
 }
     int64_t p_idx = i;
     if (is_struct) {
     p_idx = (i + 1);
 }
-    const char* p_key = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = fn_name;
-  const char* const _tmp_r = "_param_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = int_to_str(p_idx);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* p_key = _kai_str_concat(_kai_str_concat(fn_name, "_param_"), int_to_str(p_idx));
     const char* expected_type = type_map_get(&(self->func_param_types), p_key);
-    args_str = /* Str concat */ ({
-  const char* const _tmp_l = args_str;
-  const char* const _tmp_r = Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&(expr.func_args), i), expected_type);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    args_str = _kai_str_concat(args_str, Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&(expr.func_args), i), expected_type));
     i = (i + 1);
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = fn_name;
-  const char* const _tmp_r = "(";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = args_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(fn_name, "("), args_str), ")");
 }
     if (expr.kind == ExprKind_ek_field_access) {
     ExprNode base_node = ArrayList_ExprNode_get(self->expr_pool, expr.field_expr);
@@ -10256,81 +7706,9 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     const char* enum_name = Codegen_map_type(self, Codegen_get_expr_type(self, expr.field_expr));
     const char* var_name = expr.field_name;
     if (Codegen_enum_has_payload(self, base_node.ident_name)) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = enum_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "){ .tag = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = enum_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = var_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "_TAG }";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", enum_name), "){ .tag = "), enum_name), "_"), var_name), "_TAG }");
 } else {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = enum_name;
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = var_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(enum_name, "_"), var_name);
 }
 }
     const char* base_val = Codegen_gen_expr(self, expr.field_expr);
@@ -10346,146 +7724,20 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
 }
     bool is_complex = (((base_node.kind == ExprKind_ek_func_call) || (base_node.kind == ExprKind_ek_index)) || (base_node.kind == ExprKind_ek_deref));
     if (is_ptr && is_complex) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = base_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = op;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = expr.field_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", base_val), ")"), op), expr.field_name);
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = base_val;
-  const char* const _tmp_r = op;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = expr.field_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(base_val, op), expr.field_name);
 }
     if (expr.kind == ExprKind_ek_index) {
     const char* base_val = Codegen_gen_expr(self, expr.idx_expr);
     const char* idx_val = Codegen_gen_expr(self, expr.idx_index);
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = base_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")[";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = idx_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "]";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", base_val), ")["), idx_val), "]");
 }
     if (expr.kind == ExprKind_ek_borrow) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "&(";
-  const char* const _tmp_r = Codegen_gen_expr(self, expr.borrow_expr);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("&(", Codegen_gen_expr(self, expr.borrow_expr)), ")");
 }
     if (expr.kind == ExprKind_ek_deref) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "*(";
-  const char* const _tmp_r = Codegen_gen_expr(self, expr.deref_expr);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("*(", Codegen_gen_expr(self, expr.deref_expr)), ")");
 }
     if (expr.kind == ExprKind_ek_check) {
     return Codegen_gen_expr(self, expr.check_expr);
@@ -10500,61 +7752,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (expr.range_inclusive) {
     incl = "true";
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(Range){ .start = ";
-  const char* const _tmp_r = start;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ", .end = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = end;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ", .is_inclusive = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = incl;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " }";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(Range){ .start = ", start), ", .end = "), end), ", .is_inclusive = "), incl), " }");
 }
     if (expr.kind == ExprKind_ek_slice) {
     return Codegen_gen_expr(self, expr.slice_expr);
@@ -10575,43 +7773,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     inner_ty = substring(expr.inferred_type, 2, strlen(expr.inferred_type));
 }
     const char* mapped_inner = Codegen_map_type(self, inner_ty);
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = mapped_inner;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "[]){ ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = elems_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " }";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", mapped_inner), "[]){ "), elems_str), " }");
 }
     if (expr.kind == ExprKind_ek_tuple) {
     if (strlen(expr.inferred_type) > 0) {
@@ -10622,43 +7784,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     ArrayList_Str_push(&(elems), Codegen_gen_expr(self, ArrayList_Int_get(&(expr.tup_elements), i)));
     i = (i + 1);
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = mapped_ty;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "){ ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = str_array_join(elems, ", ");
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " }";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", mapped_ty), "){ "), str_array_join(elems, ", ")), " }");
 }
     return "NULL";
 }
@@ -10670,156 +7796,12 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     AsmOutput out = ArrayList_AsmOutput_get(&(expr.asm_outputs), i);
     if (strlen(out.type_name) > 0) {
     const char* mapped_type = Codegen_map_type(self, out.type_name);
-    const char* var_name = /* Str concat */ ({
-  const char* const _tmp_l = "asm_ret_";
-  const char* const _tmp_r = int_to_str(i);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    ArrayList_Str_push(&(decls), /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = mapped_type;
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = var_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-}));
-    ArrayList_Str_push(&(out_ops), /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "[";
-  const char* const _tmp_r = out.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "] \"";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = out.constraint;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\" (";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = var_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-}));
+    const char* var_name = _kai_str_concat("asm_ret_", int_to_str(i));
+    ArrayList_Str_push(&(decls), _kai_str_concat(_kai_str_concat(_kai_str_concat(mapped_type, " "), var_name), ";"));
+    ArrayList_Str_push(&(out_ops), _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("[", out.name), "] \""), out.constraint), "\" ("), var_name), ")"));
 } else if (out.expr_idx >= 0) {
     const char* val_str = Codegen_gen_expr(self, out.expr_idx);
-    ArrayList_Str_push(&(out_ops), /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "[";
-  const char* const _tmp_r = out.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "] \"";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = out.constraint;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\" (";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = val_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-}));
+    ArrayList_Str_push(&(out_ops), _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("[", out.name), "] \""), out.constraint), "\" ("), val_str), ")"));
 }
     i = (i + 1);
 }
@@ -10828,85 +7810,13 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     while (j < ArrayList_AsmInput_length(&(expr.asm_inputs))) {
     AsmInput inp = ArrayList_AsmInput_get(&(expr.asm_inputs), j);
     const char* val_str = Codegen_gen_expr(self, inp.expr_idx);
-    ArrayList_Str_push(&(in_ops), /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "[";
-  const char* const _tmp_r = inp.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "] \"";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = inp.constraint;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\" (";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = val_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-}));
+    ArrayList_Str_push(&(in_ops), _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("[", inp.name), "] \""), inp.constraint), "\" ("), val_str), ")"));
     j = (j + 1);
 }
     ArrayList_Str clobs = ArrayList_Str_init(self->allocator);
     int64_t k = 0;
     while (k < ArrayList_Str_length(&(expr.asm_clobbers))) {
-    ArrayList_Str_push(&(clobs), /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "\"";
-  const char* const _tmp_r = ArrayList_Str_get(&(expr.asm_clobbers), k);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\"";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-}));
+    ArrayList_Str_push(&(clobs), _kai_str_concat(_kai_str_concat("\"", ArrayList_Str_get(&(expr.asm_clobbers), k)), "\""));
     k = (k + 1);
 }
     const char* volatile_prefix = "";
@@ -10918,225 +7828,36 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     while (c_idx < strlen(expr.asm_code)) {
     char c = (expr.asm_code)[c_idx];
     if (c == ((char)(10))) {
-    escaped_asm = /* Str concat */ ({
-  const char* const _tmp_l = escaped_asm;
-  const char* const _tmp_r = "\\n\\t";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    escaped_asm = _kai_str_concat(escaped_asm, "\\n\\t");
 } else if (c == ((char)(34))) {
-    escaped_asm = /* Str concat */ ({
-  const char* const _tmp_l = escaped_asm;
-  const char* const _tmp_r = "\\\"";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    escaped_asm = _kai_str_concat(escaped_asm, "\\\"");
 } else {
-    escaped_asm = /* Str concat */ ({
-  const char* const _tmp_l = escaped_asm;
-  const char* const _tmp_r = char_to_str(c);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    escaped_asm = _kai_str_concat(escaped_asm, char_to_str(c));
 }
     c_idx = (c_idx + 1);
 }
-    const char* asm_stmt = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "__asm__ ";
-  const char* const _tmp_r = volatile_prefix;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " (\"";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = escaped_asm;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\"";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* asm_stmt = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("__asm__ ", volatile_prefix), " (\""), escaped_asm), "\"");
     if (((ArrayList_Str_length(&(out_ops)) > 0) || (ArrayList_Str_length(&(in_ops)) > 0)) || (ArrayList_Str_length(&(clobs)) > 0)) {
-    asm_stmt = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = asm_stmt;
-  const char* const _tmp_r = " : ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = str_array_join(out_ops, ", ");
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    asm_stmt = _kai_str_concat(_kai_str_concat(asm_stmt, " : "), str_array_join(out_ops, ", "));
 }
     if ((ArrayList_Str_length(&(in_ops)) > 0) || (ArrayList_Str_length(&(clobs)) > 0)) {
-    asm_stmt = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = asm_stmt;
-  const char* const _tmp_r = " : ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = str_array_join(in_ops, ", ");
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    asm_stmt = _kai_str_concat(_kai_str_concat(asm_stmt, " : "), str_array_join(in_ops, ", "));
 }
     if (ArrayList_Str_length(&(clobs)) > 0) {
-    asm_stmt = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = asm_stmt;
-  const char* const _tmp_r = " : ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = str_array_join(clobs, ", ");
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    asm_stmt = _kai_str_concat(_kai_str_concat(asm_stmt, " : "), str_array_join(clobs, ", "));
 }
-    asm_stmt = /* Str concat */ ({
-  const char* const _tmp_l = asm_stmt;
-  const char* const _tmp_r = ");";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    asm_stmt = _kai_str_concat(asm_stmt, ");");
     const char* res = "({\n";
     int64_t d_idx = 0;
     while (d_idx < ArrayList_Str_length(&(decls))) {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ArrayList_Str_get(&(decls), d_idx);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(_kai_str_concat(_kai_str_concat(res, "    "), ArrayList_Str_get(&(decls), d_idx)), "\n");
     d_idx = (d_idx + 1);
 }
-    res = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = asm_stmt;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(_kai_str_concat(_kai_str_concat(res, "    "), asm_stmt), "\n");
     if (ArrayList_AsmOutput_length(&(expr.asm_outputs)) == 1) {
     AsmOutput out0 = ArrayList_AsmOutput_get(&(expr.asm_outputs), 0);
     if (strlen(out0.type_name) > 0) {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "    asm_ret_0;\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, "    asm_ret_0;\n");
 }
 } else if (ArrayList_AsmOutput_length(&(expr.asm_outputs)) > 1) {
     ArrayList_Str types = ArrayList_Str_init(self->allocator);
@@ -11151,99 +7872,18 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     ti = (ti + 1);
 }
     if (all_typed) {
-    const char* tuple_type = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = str_array_join(types, ", ");
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* tuple_type = _kai_str_concat(_kai_str_concat("(", str_array_join(types, ", ")), ")");
     const char* mapped_tuple = Codegen_map_type(self, tuple_type);
     ArrayList_Str vals = ArrayList_Str_init(self->allocator);
     int64_t vi = 0;
     while (vi < ArrayList_AsmOutput_length(&(expr.asm_outputs))) {
-    ArrayList_Str_push(&(vals), /* Str concat */ ({
-  const char* const _tmp_l = "asm_ret_";
-  const char* const _tmp_r = int_to_str(vi);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-}));
+    ArrayList_Str_push(&(vals), _kai_str_concat("asm_ret_", int_to_str(vi)));
     vi = (vi + 1);
 }
-    res = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "    (";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = mapped_tuple;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "){ ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = str_array_join(vals, ", ");
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " };\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(res, "    ("), mapped_tuple), "){ "), str_array_join(vals, ", ")), " };\n");
 }
 }
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "})";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, "})");
     return res;
 }
     if (expr.kind == ExprKind_ek_struct_init) {
@@ -11258,169 +7898,16 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     while (i < ArrayList_FieldInit_length(&(expr.struct_fields))) {
     FieldInit f = ArrayList_FieldInit_get(&(expr.struct_fields), i);
     if (i > 0) {
-    fields_str = /* Str concat */ ({
-  const char* const _tmp_l = fields_str;
-  const char* const _tmp_r = ", ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    fields_str = _kai_str_concat(fields_str, ", ");
 }
-    fields_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = fields_str;
-  const char* const _tmp_r = ".";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = f.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = Codegen_gen_expr(self, f.value);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    fields_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(fields_str, "."), f.name), " = "), Codegen_gen_expr(self, f.value));
     i = (i + 1);
 }
     const char* payload_str = "";
     if (strlen(fields_str) > 0) {
-    payload_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = ", .payload = { .";
-  const char* const _tmp_r = variant_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " = { ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = fields_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " } }";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    payload_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(", .payload = { .", variant_name), " = { "), fields_str), " } }");
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = enum_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "){ .tag = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = enum_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = variant_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "_TAG";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = payload_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " }";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", enum_name), "){ .tag = "), enum_name), "_"), variant_name), "_TAG"), payload_str), " }");
 } else {
     const char* struct_name = Codegen_map_type(self, expr.struct_name);
     const char* fields_str = "";
@@ -11428,93 +7915,12 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     while (i < ArrayList_FieldInit_length(&(expr.struct_fields))) {
     FieldInit f = ArrayList_FieldInit_get(&(expr.struct_fields), i);
     if (i > 0) {
-    fields_str = /* Str concat */ ({
-  const char* const _tmp_l = fields_str;
-  const char* const _tmp_r = ", ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    fields_str = _kai_str_concat(fields_str, ", ");
 }
-    fields_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = fields_str;
-  const char* const _tmp_r = ".";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = f.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = Codegen_gen_expr(self, f.value);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    fields_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(fields_str, "."), f.name), " = "), Codegen_gen_expr(self, f.value));
     i = (i + 1);
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = struct_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "){ ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = fields_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " }";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", struct_name), "){ "), fields_str), " }");
 }
 }
     if (expr.kind == ExprKind_ek_method_call) {
@@ -11527,16 +7933,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     while (i < strlen(rec_type)) {
     char c = (rec_type)[i];
     if ((c != ((char)(42))) && (c != ((char)(38)))) {
-    clean_type = /* Str concat */ ({
-  const char* const _tmp_l = clean_type;
-  const char* const _tmp_r = char_to_str(c);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    clean_type = _kai_str_concat(clean_type, char_to_str(c));
 }
     i = (i + 1);
 }
@@ -11553,25 +7950,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     clean_type = Codegen_map_type(self, rec_type);
 }
 }
-    const char* func_name = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = clean_type;
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = method_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* func_name = _kai_str_concat(_kai_str_concat(clean_type, "_"), method_name);
     if (type_map_find(&(self->func_types), func_name) < 0) {
     printf("%s\n", "error[E0002]: type '");
     printf("%s\n", rec_type);
@@ -11590,208 +7969,28 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if ((((rec_inferred)[0] == ((char)(42))) || ((rec_inferred)[0] == ((char)(38)))) || is_self_ptr) {
     args_str = rec_val;
 } else {
-    args_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "&(";
-  const char* const _tmp_r = rec_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    args_str = _kai_str_concat(_kai_str_concat("&(", rec_val), ")");
 }
 }
     int64_t ai = 0;
     while (ai < ArrayList_Int_length(&(expr.meth_args))) {
     if (strlen(args_str) > 0) {
-    args_str = /* Str concat */ ({
-  const char* const _tmp_l = args_str;
-  const char* const _tmp_r = ", ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    args_str = _kai_str_concat(args_str, ", ");
 }
-    const char* p_key = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = func_name;
-  const char* const _tmp_r = "_param_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = int_to_str((ai + 1));
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* p_key = _kai_str_concat(_kai_str_concat(func_name, "_param_"), int_to_str((ai + 1)));
     const char* expected_type = type_map_get(&(self->func_param_types), p_key);
-    args_str = /* Str concat */ ({
-  const char* const _tmp_l = args_str;
-  const char* const _tmp_r = Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&(expr.meth_args), ai), expected_type);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    args_str = _kai_str_concat(args_str, Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&(expr.meth_args), ai), expected_type));
     ai = (ai + 1);
 }
     if ((strcmp(method_name, "init") == 0) && (!is_constructor)) {
     const char* rec_val = Codegen_gen_expr(self, receiver_idx);
     const char* rec_inferred = Codegen_get_expr_type(self, receiver_idx);
     if (((rec_inferred)[0] == ((char)(42))) || ((rec_inferred)[0] == ((char)(38)))) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "*(";
-  const char* const _tmp_r = rec_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ") = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = func_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "(";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = args_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("*(", rec_val), ") = "), func_name), "("), args_str), ")");
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = rec_val;
-  const char* const _tmp_r = " = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = func_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "(";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = args_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(rec_val, " = "), func_name), "("), args_str), ")");
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = func_name;
-  const char* const _tmp_r = "(";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = args_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(func_name, "("), args_str), ")");
 }
     if (expr.kind == ExprKind_ek_catch) {
     const char* inner = Codegen_gen_expr(self, expr.catch_expr);
@@ -11803,195 +8002,15 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     const char* fallback_code = Codegen_gen_stmt(self, expr.catch_fallback);
     const char* catch_code = "({ ";
     if (Codegen_is_pointer_type(self, val_type)) {
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = val_ctype;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " _kai_opt = (";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = inner;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "); ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = val_ctype;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " _kai_cv; ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = "else { _kai_cv = (";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = fallback_code;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "); } _kai_cv; })";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, val_ctype), " _kai_opt = ("), inner), "); ");
+    catch_code = _kai_str_concat(_kai_str_concat(catch_code, val_ctype), " _kai_cv; ");
+    catch_code = _kai_str_concat(catch_code, "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } ");
+    catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
 } else {
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = cond_ctype;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " _kai_opt = (";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = inner;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "); ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = val_ctype;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " _kai_cv; ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = "else { _kai_cv = (";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = fallback_code;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "); } _kai_cv; })";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, cond_ctype), " _kai_opt = ("), inner), "); ");
+    catch_code = _kai_str_concat(_kai_str_concat(catch_code, val_ctype), " _kai_cv; ");
+    catch_code = _kai_str_concat(catch_code, "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } ");
+    catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
 }
     return catch_code;
 }
@@ -12003,201 +8022,21 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     const char* result_ctype = Codegen_map_type(self, inner_ty);
     const char* val_ctype = Codegen_map_type(self, val_type);
     const char* fallback_code = Codegen_gen_stmt(self, expr.catch_fallback);
-    const char* catch_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "({ ";
-  const char* const _tmp_r = result_ctype;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " _kai_cr = (";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = inner;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "); ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("({ ", result_ctype), " _kai_cr = ("), inner), "); ");
     if (strcmp(val_type, "Void") == 0) {
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = "if (_kai_cr.tag != 0) { ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    catch_code = _kai_str_concat(catch_code, "if (_kai_cr.tag != 0) { ");
     if (strlen(expr.catch_var) > 0) {
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = "int64_t ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = expr.catch_var;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " = _kai_cr.tag; ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
 }
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = fallback_code;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " } 0; })";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    catch_code = _kai_str_concat(_kai_str_concat(catch_code, fallback_code), " } 0; })");
 } else {
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = val_ctype;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " _kai_cv; ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = "if (_kai_cr.tag != 0) { ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    catch_code = _kai_str_concat(_kai_str_concat(catch_code, val_ctype), " _kai_cv; ");
+    catch_code = _kai_str_concat(catch_code, "if (_kai_cr.tag != 0) { ");
     if (strlen(expr.catch_var) > 0) {
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = "int64_t ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = expr.catch_var;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " = _kai_cr.tag; ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
 }
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = "_kai_cv = (";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = fallback_code;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "); ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    catch_code = /* Str concat */ ({
-  const char* const _tmp_l = catch_code;
-  const char* const _tmp_r = "} else { _kai_cv = _kai_cr.value; } _kai_cv; })";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "_kai_cv = ("), fallback_code), "); ");
+    catch_code = _kai_str_concat(catch_code, "} else { _kai_cv = _kai_cr.value; } _kai_cv; })");
 }
     return catch_code;
 }
@@ -12326,34 +8165,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     while (i < ArrayList_Int_length(&(stmt.block_stmts))) {
     const char* s = Codegen_gen_stmt(self, ArrayList_Int_get(&(stmt.block_stmts), i));
     if (strlen(s) > 0) {
-    block_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = block_str;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = s;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    block_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(block_str, "    "), s), "\n");
 }
     i = (i + 1);
 }
@@ -12363,97 +8175,16 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     StmtNode def_node = ArrayList_StmtNode_get(self->stmt_pool, def_idx);
     const char* s = Codegen_gen_stmt(self, def_node.defer_body);
     if (strlen(s) > 0) {
-    block_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = block_str;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = s;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    block_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(block_str, "    "), s), "\n");
 }
 }
     int64_t di = 0;
     while (di < ArrayList_DropVarEntry_length(&(stmt.block_drop_vars))) {
     DropVarEntry entry = ArrayList_DropVarEntry_get(&(stmt.block_drop_vars), di);
-    block_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = block_str;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = entry.base_type;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "_drop(&";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = entry.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ");\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    block_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(block_str, "    "), entry.base_type), "_drop(&"), entry.name), ");\n");
     di = (di + 1);
 }
-    block_str = /* Str concat */ ({
-  const char* const _tmp_l = block_str;
-  const char* const _tmp_r = "}";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    block_str = _kai_str_concat(block_str, "}");
     (void)(ArrayList_Int_pop(&(self->block_stack)));
     return block_str;
 }
@@ -12469,107 +8200,17 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 }
     const char* init_val = Codegen_gen_expr_with_expected_type(self, stmt.vardecl_value, var_type_name);
     if (strcmp(name, "_") == 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(void)(";
-  const char* const _tmp_r = init_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ");";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("(void)(", init_val), ");");
 }
     const char* var_type = Codegen_map_type(self, var_type_name);
     type_map_put(&(self->var_types), name, var_type_name);
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = var_type;
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = init_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(var_type, " "), name), " = "), init_val), ";");
 }
     if (stmt.kind == StmtKind_sk_assignment) {
     const char* lhs = Codegen_gen_expr(self, stmt.assign_target);
     const char* lhs_type = Codegen_get_expr_type(self, stmt.assign_target);
     const char* rhs = Codegen_gen_expr_with_expected_type(self, stmt.assign_value, lhs_type);
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = lhs;
-  const char* const _tmp_r = " = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = rhs;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(lhs, " = "), rhs), ";");
 }
     if (stmt.kind == StmtKind_sk_func_decl) {
     if (ArrayList_Str_length(&(stmt.func_type_params)) > 0) {
@@ -12583,45 +8224,9 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     while (i < ArrayList_Param_length(&(stmt.func_params))) {
     Param p = ArrayList_Param_get(&(stmt.func_params), i);
     if (i > 0) {
-    params_str = /* Str concat */ ({
-  const char* const _tmp_l = params_str;
-  const char* const _tmp_r = ", ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    params_str = _kai_str_concat(params_str, ", ");
 }
-    params_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = params_str;
-  const char* const _tmp_r = Codegen_map_type(self, p.ptype);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = p.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    params_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
     i = (i + 1);
 }
     if (strlen(params_str) == 0) {
@@ -12647,127 +8252,10 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     const char* proto = "";
     const char* impl_str = "";
     if (strcmp(name, "main") == 0) {
-    impl_str = /* Str concat */ ({
-  const char* const _tmp_l = "int main(int argc, char** argv) ";
-  const char* const _tmp_r = body_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    impl_str = _kai_str_concat("int main(int argc, char** argv) ", body_str);
 } else {
-    proto = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = ret_type;
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "(";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = params_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ");\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    impl_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = ret_type;
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "(";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = params_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ") ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = body_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    proto = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), name), "("), params_str), ");\n");
+    impl_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), name), "("), params_str), ") "), body_str), "\n");
 }
     if (strlen(proto) > 0) {
     (void)(StringBuilder_append(&(self->func_decls), proto));
@@ -12784,132 +8272,15 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     return "";
 }
     const char* name = Codegen_map_type(self, stmt.struct_name);
-    const char* struct_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "typedef struct ";
-  const char* const _tmp_r = name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    struct_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = struct_str;
-  const char* const _tmp_r = "struct ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " {\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("typedef struct ", name), " "), name), ";\n");
+    struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(struct_str, "struct "), name), " {\n");
     int64_t i = 0;
     while (i < ArrayList_StructField_length(&(stmt.struct_fields))) {
     StructField f = ArrayList_StructField_get(&(stmt.struct_fields), i);
-    struct_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = struct_str;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = Codegen_map_type(self, f.ftype);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = f.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(struct_str, "    "), Codegen_map_type(self, f.ftype)), " "), f.name), ";\n");
     i = (i + 1);
 }
-    struct_str = /* Str concat */ ({
-  const char* const _tmp_l = struct_str;
-  const char* const _tmp_r = "};\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    struct_str = _kai_str_concat(struct_str, "};\n");
     (void)(StringBuilder_append(&(self->struct_decls), struct_str));
     int64_t ti = 0;
     while (ti < ArrayList_Int_length(&(stmt.struct_trait_impls))) {
@@ -12925,66 +8296,12 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     while (mi < ArrayList_Int_length(&(stmt.trait_methods))) {
     StmtNode m_node = ArrayList_StmtNode_get(self->stmt_pool, ArrayList_Int_get(&(stmt.trait_methods), mi));
     if (mi > 0) {
-    method_names = /* Str concat */ ({
-  const char* const _tmp_l = method_names;
-  const char* const _tmp_r = ", ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    method_names = _kai_str_concat(method_names, ", ");
 }
-    method_names = /* Str concat */ ({
-  const char* const _tmp_l = method_names;
-  const char* const _tmp_r = m_node.func_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    method_names = _kai_str_concat(method_names, m_node.func_name);
     mi = (mi + 1);
 }
-    const char* comment = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "/* trait ";
-  const char* const _tmp_r = stmt.trait_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ": ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = method_names;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " */\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* comment = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("/* trait ", stmt.trait_name), ": "), method_names), " */\n");
     (void)(StringBuilder_append(&(self->struct_decls), comment));
     return "";
 }
@@ -12995,100 +8312,10 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     int64_t j = 0;
     while (j < ArrayList_Str_length(&(stmt.error_variants))) {
     const char* vname = ArrayList_Str_get(&(stmt.error_variants), j);
-    enum_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = enum_str;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = vname;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = int_to_str((j + 1));
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ",\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "    "), name), "_"), vname), " = "), int_to_str((j + 1))), ",\n");
     j = (j + 1);
 }
-    enum_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = enum_str;
-  const char* const _tmp_r = "} ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "} "), name), ";\n");
     (void)(StringBuilder_append(&(self->struct_decls), enum_str));
     return "";
 }
@@ -13114,383 +8341,41 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     int64_t j = 0;
     while (j < ArrayList_Variant_length(&(stmt.enum_variants))) {
     Variant v = ArrayList_Variant_get(&(stmt.enum_variants), j);
-    enum_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = enum_str;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = v.vname;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ",\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "    "), name), "_"), v.vname), ",\n");
     j = (j + 1);
 }
-    enum_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = enum_str;
-  const char* const _tmp_r = "} ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "} "), name), ";\n");
 } else {
-    const char* tags_name = /* Str concat */ ({
-  const char* const _tmp_l = name;
-  const char* const _tmp_r = "_tags";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* tags_name = _kai_str_concat(name, "_tags");
     enum_str = "typedef enum {\n";
     int64_t j = 0;
     while (j < ArrayList_Variant_length(&(stmt.enum_variants))) {
     Variant v = ArrayList_Variant_get(&(stmt.enum_variants), j);
-    enum_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = enum_str;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = v.vname;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "_TAG,\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "    "), name), "_"), v.vname), "_TAG,\n");
     j = (j + 1);
 }
-    enum_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = enum_str;
-  const char* const _tmp_r = "} ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = tags_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    enum_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = enum_str;
-  const char* const _tmp_r = "typedef struct ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    enum_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = enum_str;
-  const char* const _tmp_r = "struct ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " {\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    enum_str = /* Str concat */ ({
-  const char* const _tmp_l = enum_str;
-  const char* const _tmp_r = "    uint8_t tag;\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    enum_str = /* Str concat */ ({
-  const char* const _tmp_l = enum_str;
-  const char* const _tmp_r = "    union {\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "} "), tags_name), ";\n");
+    enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "typedef struct "), name), " "), name), ";\n");
+    enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "struct "), name), " {\n");
+    enum_str = _kai_str_concat(enum_str, "    uint8_t tag;\n");
+    enum_str = _kai_str_concat(enum_str, "    union {\n");
     int64_t k = 0;
     while (k < ArrayList_Variant_length(&(stmt.enum_variants))) {
     Variant v = ArrayList_Variant_get(&(stmt.enum_variants), k);
     if (ArrayList_Param_length(&(v.params)) > 0) {
-    enum_str = /* Str concat */ ({
-  const char* const _tmp_l = enum_str;
-  const char* const _tmp_r = "        struct {\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    enum_str = _kai_str_concat(enum_str, "        struct {\n");
     int64_t p_idx = 0;
     while (p_idx < ArrayList_Param_length(&(v.params))) {
     Param p = ArrayList_Param_get(&(v.params), p_idx);
-    enum_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = enum_str;
-  const char* const _tmp_r = "            ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = Codegen_map_type(self, p.ptype);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = p.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "            "), Codegen_map_type(self, p.ptype)), " "), p.name), ";\n");
     p_idx = (p_idx + 1);
 }
-    enum_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = enum_str;
-  const char* const _tmp_r = "        } ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = v.vname;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "        } "), v.vname), ";\n");
 }
     k = (k + 1);
 }
-    enum_str = /* Str concat */ ({
-  const char* const _tmp_l = enum_str;
-  const char* const _tmp_r = "    } payload;\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    enum_str = /* Str concat */ ({
-  const char* const _tmp_l = enum_str;
-  const char* const _tmp_r = "};\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    enum_str = _kai_str_concat(enum_str, "    } payload;\n");
+    enum_str = _kai_str_concat(enum_str, "};\n");
 }
     (void)(StringBuilder_append(&(self->struct_decls), enum_str));
     return "";
@@ -13508,25 +8393,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     int64_t method_stmt_idx = ArrayList_Int_get(&(stmt.impl_methods), idx);
     StmtNode method_node = ArrayList_StmtNode_get(self->stmt_pool, method_stmt_idx);
     const char* method_name = method_node.func_name;
-    bool is_init = ((((strcmp(method_name, "init") == 0) || (strcmp(method_node.func_return_type, struct_name) == 0)) || (strcmp(method_node.func_return_type, /* Str concat */ ({
-  const char* const _tmp_l = "*";
-  const char* const _tmp_r = struct_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-})) == 0)) || (strcmp(method_node.func_return_type, /* Str concat */ ({
-  const char* const _tmp_l = "&";
-  const char* const _tmp_r = struct_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-})) == 0));
+    bool is_init = ((((strcmp(method_name, "init") == 0) || (strcmp(method_node.func_return_type, struct_name) == 0)) || (strcmp(method_node.func_return_type, _kai_str_concat("*", struct_name)) == 0)) || (strcmp(method_node.func_return_type, _kai_str_concat("&", struct_name)) == 0));
     const char* ret_type = "";
     if (is_init) {
     ret_type = mapped_struct_name;
@@ -13535,86 +8402,23 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 }
     const char* params_str = "";
     if (!is_init) {
-    params_str = /* Str concat */ ({
-  const char* const _tmp_l = mapped_struct_name;
-  const char* const _tmp_r = "* self";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    params_str = _kai_str_concat(mapped_struct_name, "* self");
 }
     int64_t p_idx = 0;
     while (p_idx < ArrayList_Param_length(&(method_node.func_params))) {
     Param p = ArrayList_Param_get(&(method_node.func_params), p_idx);
     if (strcmp(p.name, "self") != 0) {
     if (strlen(params_str) > 0) {
-    params_str = /* Str concat */ ({
-  const char* const _tmp_l = params_str;
-  const char* const _tmp_r = ", ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    params_str = _kai_str_concat(params_str, ", ");
 }
-    params_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = params_str;
-  const char* const _tmp_r = Codegen_map_type(self, p.ptype);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = p.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    params_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
 }
     p_idx = (p_idx + 1);
 }
     if (strlen(params_str) == 0) {
     params_str = "void";
 }
-    const char* mangled_fn_name = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = mapped_struct_name;
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = method_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* mangled_fn_name = _kai_str_concat(_kai_str_concat(mapped_struct_name, "_"), method_name);
     const char* old_fn = self->cur_func_name;
     const char* old_ret = self->cur_return_type;
     bool old_init = self->cur_method_is_init;
@@ -13629,16 +8433,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     if (is_init) {
     type_map_put(&(self->var_types), "self", struct_name);
 } else {
-    type_map_put(&(self->var_types), "self", /* Str concat */ ({
-  const char* const _tmp_l = "*";
-  const char* const _tmp_r = struct_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-}));
+    type_map_put(&(self->var_types), "self", _kai_str_concat("*", struct_name));
 }
     int64_t p_reg = 0;
     while (p_reg < ArrayList_Param_length(&(method_node.func_params))) {
@@ -13653,184 +8448,13 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     (void)(ArrayList_StrMapEntry_pop(&(self->var_types)));
 }
     if (is_init) {
-    const char* self_decl = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "    ";
-  const char* const _tmp_r = mapped_struct_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " self = (";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = mapped_struct_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "){0};\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* self_decl = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("    ", mapped_struct_name), " self = ("), mapped_struct_name), "){0};\n");
     const char* self_ret = "    return self;\n}";
     int64_t body_len = strlen(body_str);
-    body_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "{\n";
-  const char* const _tmp_r = self_decl;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = substring(body_str, 2, (body_len - 1));
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = self_ret;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    body_str = _kai_str_concat(_kai_str_concat(_kai_str_concat("{\n", self_decl), substring(body_str, 2, (body_len - 1))), self_ret);
 }
-    const char* proto = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = ret_type;
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = mangled_fn_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "(";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = params_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ");\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    const char* impl_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = ret_type;
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = mangled_fn_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "(";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = params_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ") ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = body_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* proto = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), mangled_fn_name), "("), params_str), ");\n");
+    const char* impl_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), mangled_fn_name), "("), params_str), ") "), body_str), "\n");
     (void)(StringBuilder_append(&(self->func_decls), proto));
     (void)(StringBuilder_append(&(self->output), impl_str));
     self->cur_func_name = old_fn;
@@ -13846,120 +8470,21 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     if (((strlen(cond_val) > 1) && ((cond_val)[0] == ((char)(40)))) && ((cond_val)[(strlen(cond_val) - 1)] == ((char)(41)))) {
     cond_str = cond_val;
 } else {
-    cond_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = cond_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    cond_str = _kai_str_concat(_kai_str_concat("(", cond_val), ")");
 }
-    const char* if_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "if ";
-  const char* const _tmp_r = cond_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = Codegen_gen_stmt(self, stmt.if_then);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* if_str = _kai_str_concat(_kai_str_concat(_kai_str_concat("if ", cond_str), " "), Codegen_gen_stmt(self, stmt.if_then));
     if (stmt.if_else >= 0) {
     StmtNode else_node = ArrayList_StmtNode_get(self->stmt_pool, stmt.if_else);
     if ((else_node.kind == StmtKind_sk_block) && (ArrayList_Int_length(&(else_node.block_stmts)) == 1)) {
     int64_t single_stmt_idx = ArrayList_Int_get(&(else_node.block_stmts), 0);
     StmtNode single_stmt = ArrayList_StmtNode_get(self->stmt_pool, single_stmt_idx);
     if (single_stmt.kind == StmtKind_sk_if) {
-    if_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = if_str;
-  const char* const _tmp_r = " else ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = Codegen_gen_stmt(self, single_stmt_idx);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    if_str = _kai_str_concat(_kai_str_concat(if_str, " else "), Codegen_gen_stmt(self, single_stmt_idx));
 } else {
-    if_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = if_str;
-  const char* const _tmp_r = " else ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = Codegen_gen_stmt(self, stmt.if_else);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    if_str = _kai_str_concat(_kai_str_concat(if_str, " else "), Codegen_gen_stmt(self, stmt.if_else));
 }
 } else {
-    if_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = if_str;
-  const char* const _tmp_r = " else ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = Codegen_gen_stmt(self, stmt.if_else);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    if_str = _kai_str_concat(_kai_str_concat(if_str, " else "), Codegen_gen_stmt(self, stmt.if_else));
 }
 }
     return if_str;
@@ -13980,39 +8505,12 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     int64_t single_stmt_idx = ArrayList_Int_get(&(else_node.block_stmts), 0);
     StmtNode single_stmt = ArrayList_StmtNode_get(self->stmt_pool, single_stmt_idx);
     if (single_stmt.kind == StmtKind_sk_if_let) {
-    else_str = /* Str concat */ ({
-  const char* const _tmp_l = " else ";
-  const char* const _tmp_r = Codegen_gen_stmt(self, single_stmt_idx);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    else_str = _kai_str_concat(" else ", Codegen_gen_stmt(self, single_stmt_idx));
 } else {
-    else_str = /* Str concat */ ({
-  const char* const _tmp_l = " else ";
-  const char* const _tmp_r = Codegen_gen_stmt(self, stmt.iflet_else);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    else_str = _kai_str_concat(" else ", Codegen_gen_stmt(self, stmt.iflet_else));
 }
 } else {
-    else_str = /* Str concat */ ({
-  const char* const _tmp_l = " else ";
-  const char* const _tmp_r = Codegen_gen_stmt(self, stmt.iflet_else);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    else_str = _kai_str_concat(" else ", Codegen_gen_stmt(self, stmt.iflet_else));
 }
 }
     while (ArrayList_StrMapEntry_length(&(self->var_types)) > old_var_len) {
@@ -14020,306 +8518,18 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 }
     const char* if_code = "";
     if (Codegen_is_pointer_type(self, unwrapped_type)) {
-    if_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "if ((";
-  const char* const _tmp_r = cond_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ") != NULL) {\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    if_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = if_code;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = unwrapped_ctype;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = stmt.iflet_var;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = cond_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    if_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = if_code;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = then_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    if_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = if_code;
-  const char* const _tmp_r = "}";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = else_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    if_code = _kai_str_concat(_kai_str_concat("if ((", cond_val), ") != NULL) {\n");
+    if_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(if_code, "    "), unwrapped_ctype), " "), stmt.iflet_var), " = "), cond_val), ";\n");
+    if_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(if_code, "    "), then_str), "\n");
+    if_code = _kai_str_concat(_kai_str_concat(if_code, "}"), else_str);
 } else {
     if_code = "{\n";
-    if_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = if_code;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = cond_ctype;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " _kai_opt = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = cond_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    if_code = /* Str concat */ ({
-  const char* const _tmp_l = if_code;
-  const char* const _tmp_r = "    if (_kai_opt.has_value) {\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    if_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = if_code;
-  const char* const _tmp_r = "        ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = unwrapped_ctype;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = stmt.iflet_var;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " = _kai_opt.value;\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    if_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = if_code;
-  const char* const _tmp_r = "        ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = then_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    if_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = if_code;
-  const char* const _tmp_r = "    }";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = else_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    if_code = /* Str concat */ ({
-  const char* const _tmp_l = if_code;
-  const char* const _tmp_r = "}";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    if_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(if_code, "    "), cond_ctype), " _kai_opt = "), cond_val), ";\n");
+    if_code = _kai_str_concat(if_code, "    if (_kai_opt.has_value) {\n");
+    if_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(if_code, "        "), unwrapped_ctype), " "), stmt.iflet_var), " = _kai_opt.value;\n");
+    if_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(if_code, "        "), then_str), "\n");
+    if_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(if_code, "    }"), else_str), "\n");
+    if_code = _kai_str_concat(if_code, "}");
 }
     return if_code;
 }
@@ -14329,59 +8539,14 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     if (((strlen(cond_val) > 1) && ((cond_val)[0] == ((char)(40)))) && ((cond_val)[(strlen(cond_val) - 1)] == ((char)(41)))) {
     cond_str = cond_val;
 } else {
-    cond_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "(";
-  const char* const _tmp_r = cond_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    cond_str = _kai_str_concat(_kai_str_concat("(", cond_val), ")");
 }
     if (stmt.while_body >= 0) {
     StmtNode body_stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt.while_body);
     body_stmt.block_is_loop_body = true;
     ArrayList_StmtNode_set(self->stmt_pool, stmt.while_body, body_stmt);
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "while ";
-  const char* const _tmp_r = cond_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = Codegen_gen_stmt(self, stmt.while_body);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat("while ", cond_str), " "), Codegen_gen_stmt(self, stmt.while_body));
 }
     if (stmt.kind == StmtKind_sk_for) {
     const char* iter_var = stmt.for_var;
@@ -14397,124 +8562,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     ArrayList_StmtNode_set(self->stmt_pool, stmt.for_body, body_stmt);
 }
     const char* body = Codegen_gen_stmt(self, stmt.for_body);
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "for (int64_t ";
-  const char* const _tmp_r = iter_var;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = start;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "; ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = iter_var;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = op;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = end;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "; ++";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = iter_var;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ") ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = body;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("for (int64_t ", iter_var), " = "), start), "; "), iter_var), " "), op), " "), end), "; ++"), iter_var), ") "), body);
 }
     if (stmt.kind == StmtKind_sk_return) {
     ArrayList_Str drop_calls = ArrayList_Str_init(self->allocator);
@@ -14540,34 +8588,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     int64_t di = 0;
     while (di < ArrayList_DropVarEntry_length(&(b_node.block_drop_vars))) {
     DropVarEntry entry = ArrayList_DropVarEntry_get(&(b_node.block_drop_vars), di);
-    ArrayList_Str_push(&(drop_calls), /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = entry.base_type;
-  const char* const _tmp_r = "_drop(&";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = entry.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ");";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-}));
+    ArrayList_Str_push(&(drop_calls), _kai_str_concat(_kai_str_concat(_kai_str_concat(entry.base_type, "_drop(&"), entry.name), ");"));
     di = (di + 1);
 }
     bi = (bi - 1);
@@ -14593,363 +8614,57 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     const char* expr_ty = Codegen_get_expr_type(self, stmt.return_value);
     int64_t expr_excl_pos = Codegen_str_find(self, expr_ty, ((char)(33)));
     if (expr_excl_pos >= 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "return ";
-  const char* const _tmp_r = val_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("return ", val_str), ";");
 }
     if (is_error_variant) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "return (";
-  const char* const _tmp_r = result_ctype;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "){ .tag = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = val_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " };";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("return (", result_ctype), "){ .tag = "), val_str), " };");
 }
     if (strcmp(val_payload_type, "Void") == 0) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "return (";
-  const char* const _tmp_r = result_ctype;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "){ .tag = 0 };";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("return (", result_ctype), "){ .tag = 0 };");
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "return (";
-  const char* const _tmp_r = result_ctype;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "){ .tag = 0, .value = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = val_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " };";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("return (", result_ctype), "){ .tag = 0, .value = "), val_str), " };");
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "return ";
-  const char* const _tmp_r = Codegen_gen_expr(self, stmt.return_value);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(_kai_str_concat("return ", Codegen_gen_expr_with_expected_type(self, stmt.return_value, self->cur_return_type)), ";");
 }
     return "return;";
 }
     if (stmt.return_value >= 0) {
-    const char* val_str = Codegen_gen_expr(self, stmt.return_value);
+    const char* val_str = Codegen_gen_expr_with_expected_type(self, stmt.return_value, self->cur_return_type);
     const char* val_type = Codegen_get_expr_type(self, stmt.return_value);
     if ((strcmp(val_type, "Void") == 0) || (strcmp(val_type, "NoneType") == 0)) {
-    const char* res = /* Str concat */ ({
-  const char* const _tmp_l = val_str;
-  const char* const _tmp_r = "; ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* res = _kai_str_concat(val_str, "; ");
     int64_t ci = 0;
     while (ci < ArrayList_Str_length(&(drop_calls))) {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = ArrayList_Str_get(&(drop_calls), ci);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(_kai_str_concat(res, ArrayList_Str_get(&(drop_calls), ci)), " ");
     ci = (ci + 1);
 }
-    return /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "return;";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(res, "return;");
 }
-    const char* mapped_type = Codegen_map_type(self, val_type);
+    const char* mapped_type = Codegen_map_type(self, self->cur_return_type);
     const char* res_str = "{\n";
-    res_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = res_str;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = mapped_type;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " __ret_val = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = val_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), mapped_type), " __ret_val = "), val_str), ";\n");
     int64_t ci = 0;
     while (ci < ArrayList_Str_length(&(drop_calls))) {
-    res_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = res_str;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ArrayList_Str_get(&(drop_calls), ci);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), ArrayList_Str_get(&(drop_calls), ci)), "\n");
     ci = (ci + 1);
 }
-    res_str = /* Str concat */ ({
-  const char* const _tmp_l = res_str;
-  const char* const _tmp_r = "    return __ret_val;\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    res_str = /* Str concat */ ({
-  const char* const _tmp_l = res_str;
-  const char* const _tmp_r = "}";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res_str = _kai_str_concat(res_str, "    return __ret_val;\n");
+    res_str = _kai_str_concat(res_str, "}");
     return res_str;
 } else {
     const char* res_str = "{\n";
     int64_t ci = 0;
     while (ci < ArrayList_Str_length(&(drop_calls))) {
-    res_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = res_str;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ArrayList_Str_get(&(drop_calls), ci);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), ArrayList_Str_get(&(drop_calls), ci)), "\n");
     ci = (ci + 1);
 }
-    res_str = /* Str concat */ ({
-  const char* const _tmp_l = res_str;
-  const char* const _tmp_r = "    return;\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    res_str = /* Str concat */ ({
-  const char* const _tmp_l = res_str;
-  const char* const _tmp_r = "}";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res_str = _kai_str_concat(res_str, "    return;\n");
+    res_str = _kai_str_concat(res_str, "}");
     return res_str;
 }
 }
     if (stmt.kind == StmtKind_sk_expr) {
-    return /* Str concat */ ({
-  const char* const _tmp_l = Codegen_gen_expr(self, stmt.expr_stmt);
-  const char* const _tmp_r = ";";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    return _kai_str_concat(Codegen_gen_expr(self, stmt.expr_stmt), ";");
 }
     if (stmt.kind == StmtKind_sk_unsafe) {
     return Codegen_gen_stmt(self, stmt.unsafe_body);
@@ -14965,105 +8680,15 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     while (i < ArrayList_Param_length(&(stmt.extern_params))) {
     Param p = ArrayList_Param_get(&(stmt.extern_params), i);
     if (i > 0) {
-    params_str = /* Str concat */ ({
-  const char* const _tmp_l = params_str;
-  const char* const _tmp_r = ", ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    params_str = _kai_str_concat(params_str, ", ");
 }
-    params_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = params_str;
-  const char* const _tmp_r = Codegen_map_type(self, p.ptype);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = p.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    params_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
     i = (i + 1);
 }
     if (strlen(params_str) == 0) {
     params_str = "void";
 }
-    const char* proto = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "extern ";
-  const char* const _tmp_r = ret_type;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "(";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = params_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ");\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* proto = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("extern ", ret_type), " "), name), "("), params_str), ");\n");
     (void)(StringBuilder_append(&(self->func_decls), proto));
     return "";
 }
@@ -15080,27 +8705,9 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     int64_t pi = 0;
     while (pi < ArrayList_Str_length(&(path))) {
     if (pi > 0) {
-    module_key = /* Str concat */ ({
-  const char* const _tmp_l = module_key;
-  const char* const _tmp_r = ".";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    module_key = _kai_str_concat(module_key, ".");
 }
-    module_key = /* Str concat */ ({
-  const char* const _tmp_l = module_key;
-  const char* const _tmp_r = ArrayList_Str_get(&(path), pi);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    module_key = _kai_str_concat(module_key, ArrayList_Str_get(&(path), pi));
     pi = (pi + 1);
 }
     if (strcmp(module_key, "") == 0) {
@@ -15110,71 +8717,75 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     return "";
 }
     ArrayList_Str_push(&(self->loaded_modules), module_key);
-    const char* file_path = "";
+    bool has_source = false;
+    const char* source = "";
     if ((ArrayList_Str_length(&(path)) > 0) && (strcmp(ArrayList_Str_get(&(path), 0), "std") == 0)) {
     const char* path_str = "";
     int64_t i = 0;
     while (i < ArrayList_Str_length(&(path))) {
     if (i > 0) {
-    path_str = /* Str concat */ ({
-  const char* const _tmp_l = path_str;
-  const char* const _tmp_r = "/";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    path_str = _kai_str_concat(path_str, "/");
 }
-    path_str = /* Str concat */ ({
-  const char* const _tmp_l = path_str;
-  const char* const _tmp_r = ArrayList_Str_get(&(path), i);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    path_str = _kai_str_concat(path_str, ArrayList_Str_get(&(path), i));
     i = (i + 1);
 }
-    file_path = /* Str concat */ ({
-  const char* const _tmp_l = path_str;
-  const char* const _tmp_r = ".kai";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-} else if (ArrayList_Str_length(&(path)) > 0) {
-    file_path = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "src/";
-  const char* const _tmp_r = module_key;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ".kai";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-}
-    if (strcmp(file_path, "") != 0) {
-    Result_Str_Int source_res = read_to_string(self->allocator, file_path);
-    if (source_res.tag == Result_Str_Int_ok_TAG) {
-    const char* source = source_res.payload.ok.value;
+    const char* rel_path = _kai_str_concat(path_str, ".kai");
+    Result_Str_Int res1 = read_to_string(self->allocator, rel_path);
+    if (res1.tag == Result_Str_Int_ok_TAG) {
+    const char* s = res1.payload.ok.value;
 
+    source = s;
+    has_source = true;
+} else if (res1.tag == Result_Str_Int_err_TAG) {
+    {
+    char* buf = (char*)(KaiAllocator_alloc(self->allocator, 1024, 1));
+    if (get_exe_dir(buf, 1024) == 0) {
+    const char* exe_dir = (const char*)(buf);
+    const char* full_path = _kai_str_concat(_kai_str_concat(exe_dir, "/"), rel_path);
+    const char* parent_path = _kai_str_concat(_kai_str_concat(exe_dir, "/../"), rel_path);
+    const char* lib_path = _kai_str_concat(_kai_str_concat(exe_dir, "/../lib/kai/"), rel_path);
+    KaiAllocator_free(self->allocator, buf);
+    Result_Str_Int res2 = read_to_string(self->allocator, full_path);
+    if (res2.tag == Result_Str_Int_ok_TAG) {
+    const char* s = res2.payload.ok.value;
+
+    source = s;
+    has_source = true;
+} else if (res2.tag == Result_Str_Int_err_TAG) {
+    Result_Str_Int res3 = read_to_string(self->allocator, parent_path);
+    if (res3.tag == Result_Str_Int_ok_TAG) {
+    const char* s = res3.payload.ok.value;
+
+    source = s;
+    has_source = true;
+} else if (res3.tag == Result_Str_Int_err_TAG) {
+    Result_Str_Int res4 = read_to_string(self->allocator, lib_path);
+    if (res4.tag == Result_Str_Int_ok_TAG) {
+    const char* s = res4.payload.ok.value;
+
+    source = s;
+    has_source = true;
+} else if (res4.tag == Result_Str_Int_err_TAG) {
+} 
+} 
+} 
+} else {
+    KaiAllocator_free(self->allocator, buf);
+}
+}
+} 
+} else if (ArrayList_Str_length(&(path)) > 0) {
+    const char* file_path = _kai_str_concat(_kai_str_concat("src/", module_key), ".kai");
+    Result_Str_Int res = read_to_string(self->allocator, file_path);
+    if (res.tag == Result_Str_Int_ok_TAG) {
+    const char* s = res.payload.ok.value;
+
+    source = s;
+    has_source = true;
+} else if (res.tag == Result_Str_Int_err_TAG) {
+} 
+}
+    if (has_source) {
     Lexer lexer = Lexer_init(self->allocator, source);
     Lexer_lex(&(lexer));
     if (lexer.has_error) {
@@ -15186,11 +8797,6 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     Codegen_build_func_types(self);
     (void)(Codegen_gen_stmt(self, program_idx));
 }
-} else if (source_res.tag == Result_Str_Int_err_TAG) {
-    int64_t err_code = source_res.payload.err.value;
-
-    return "";
-} 
 }
     return "";
 }
@@ -15202,56 +8808,11 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     const char* res_str = "{\n";
     int64_t ci = 0;
     while (ci < ArrayList_Str_length(&(drop_calls))) {
-    res_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = res_str;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ArrayList_Str_get(&(drop_calls), ci);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), ArrayList_Str_get(&(drop_calls), ci)), "\n");
     ci = (ci + 1);
 }
-    res_str = /* Str concat */ ({
-  const char* const _tmp_l = res_str;
-  const char* const _tmp_r = "    break;\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    res_str = /* Str concat */ ({
-  const char* const _tmp_l = res_str;
-  const char* const _tmp_r = "}";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res_str = _kai_str_concat(res_str, "    break;\n");
+    res_str = _kai_str_concat(res_str, "}");
     return res_str;
 }
     if (stmt.kind == StmtKind_sk_continue) {
@@ -15262,56 +8823,11 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     const char* res_str = "{\n";
     int64_t ci = 0;
     while (ci < ArrayList_Str_length(&(drop_calls))) {
-    res_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = res_str;
-  const char* const _tmp_r = "    ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ArrayList_Str_get(&(drop_calls), ci);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), ArrayList_Str_get(&(drop_calls), ci)), "\n");
     ci = (ci + 1);
 }
-    res_str = /* Str concat */ ({
-  const char* const _tmp_l = res_str;
-  const char* const _tmp_r = "    continue;\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    res_str = /* Str concat */ ({
-  const char* const _tmp_l = res_str;
-  const char* const _tmp_r = "}";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res_str = _kai_str_concat(res_str, "    continue;\n");
+    res_str = _kai_str_concat(res_str, "}");
     return res_str;
 }
     if (stmt.kind == StmtKind_sk_match) {
@@ -15346,25 +8862,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 } else if (pat_node.lit_value.tag == TokenValue_tv_str_TAG) {
     const char* v = pat_node.lit_value.payload.tv_str.v;
 
-    lit_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "\"";
-  const char* const _tmp_r = Codegen_escape_string(self, v);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\"";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    lit_str = _kai_str_concat(_kai_str_concat("\"", Codegen_escape_string(self, v)), "\"");
 } else if (pat_node.lit_value.tag == TokenValue_tv_bool_TAG) {
     bool v = pat_node.lit_value.payload.tv_bool.v;
 
@@ -15387,48 +8885,12 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 } else if (v == ((char)(39))) {
     lit_str = "'\\''";
 } else {
-    lit_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "'";
-  const char* const _tmp_r = char_to_str(v);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "'";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    lit_str = _kai_str_concat(_kai_str_concat("'", char_to_str(v)), "'");
 }
 } else {
     lit_str = "0";
 } 
-    cond = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = expr_val;
-  const char* const _tmp_r = " == ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = lit_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    cond = _kai_str_concat(_kai_str_concat(expr_val, " == "), lit_str);
 } else if (pat_node.kind == PatternKind_pk_variant) {
     const char* var_name = pat_node.variant_name;
     const char* base_type = mapped_expr_type;
@@ -15439,99 +8901,9 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     base_type = substring(base_type, 1, strlen(base_type));
 }
     if (Codegen_enum_has_payload(self, expr_type)) {
-    cond = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = expr_val;
-  const char* const _tmp_r = op;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "tag == ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = base_type;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = var_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "_TAG";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    cond = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(expr_val, op), "tag == "), base_type), "_"), var_name), "_TAG");
 } else {
-    cond = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = expr_val;
-  const char* const _tmp_r = " == ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = base_type;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "_";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = var_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    cond = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(expr_val, " == "), base_type), "_"), var_name);
 }
     if (ArrayList_Str_length(&(pat_node.bindings)) > 0) {
     const char* bind_name = ArrayList_Str_get(&(pat_node.bindings), 0);
@@ -15569,106 +8941,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     field_name = "v";
 }
     const char* mapped_bind_type = Codegen_map_type(self, bind_type);
-    bindings_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "    ";
-  const char* const _tmp_r = mapped_bind_type;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = bind_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " = ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = expr_val;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = op;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "payload.";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = var_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ".";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = field_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ";\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    bindings_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("    ", mapped_bind_type), " "), bind_name), " = "), expr_val), op), "payload."), var_name), "."), field_name), ";\n");
 }
 }
 } else if (pat_node.kind == PatternKind_pk_else) {
@@ -15676,108 +8949,18 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 }
     const char* prefix = "";
     if (case_idx == 0) {
-    prefix = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "if (";
-  const char* const _tmp_r = cond;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    prefix = _kai_str_concat(_kai_str_concat("if (", cond), ")");
 } else if (strcmp(cond, "true") == 0) {
     prefix = "else";
 } else {
-    prefix = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "else if (";
-  const char* const _tmp_r = cond;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ")";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    prefix = _kai_str_concat(_kai_str_concat("else if (", cond), ")");
 }
     const char* full_block = block_str;
     if (strlen(bindings_str) > 0) {
     int64_t body_len = strlen(block_str);
-    full_block = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "{\n";
-  const char* const _tmp_r = bindings_str;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = substring(block_str, 1, body_len);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    full_block = _kai_str_concat(_kai_str_concat("{\n", bindings_str), substring(block_str, 1, body_len));
 }
-    match_str = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = match_str;
-  const char* const _tmp_r = prefix;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = full_block;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    match_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(match_str, prefix), " "), full_block), " ");
     case_idx = (case_idx + 1);
 }
     return match_str;
@@ -15852,71 +9035,17 @@ const char* Codegen_escape_string(Codegen* self, const char* s) {
     while (i < strlen(s)) {
     char c = (s)[i];
     if (c == ((char)(10))) {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "\\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, "\\n");
 } else if (c == ((char)(13))) {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "\\r";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, "\\r");
 } else if (c == ((char)(9))) {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "\\t";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, "\\t");
 } else if (c == ((char)(92))) {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "\\\\";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, "\\\\");
 } else if (c == ((char)(34))) {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = "\\\"";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, "\\\"");
 } else {
-    res = /* Str concat */ ({
-  const char* const _tmp_l = res;
-  const char* const _tmp_r = char_to_str(c);
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    res = _kai_str_concat(res, char_to_str(c));
 }
     i = (i + 1);
 }
@@ -15947,34 +9076,7 @@ ArrayList_Str Codegen__collect_loop_drops(Codegen* self) {
     int64_t di = 0;
     while (di < ArrayList_DropVarEntry_length(&(b_node.block_drop_vars))) {
     DropVarEntry entry = ArrayList_DropVarEntry_get(&(b_node.block_drop_vars), di);
-    ArrayList_Str_push(&(drop_calls), /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = entry.base_type;
-  const char* const _tmp_r = "_drop(&";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = entry.name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ");";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-}));
+    ArrayList_Str_push(&(drop_calls), _kai_str_concat(_kai_str_concat(_kai_str_concat(entry.base_type, "_drop(&"), entry.name), ");"));
     di = (di + 1);
 }
     if (b_node.block_is_loop_body) {
@@ -15988,76 +9090,61 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
     Codegen_build_func_types(self);
     const char* body = Codegen_gen_stmt(self, top_stmt_idx);
     const char* final_code = "";
-    final_code = /* Str concat */ ({
-  const char* const _tmp_l = final_code;
-  const char* const _tmp_r = "#include <stdint.h>\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    final_code = /* Str concat */ ({
-  const char* const _tmp_l = final_code;
-  const char* const _tmp_r = "#include <stdbool.h>\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    final_code = /* Str concat */ ({
-  const char* const _tmp_l = final_code;
-  const char* const _tmp_r = "#include <stdio.h>\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    final_code = /* Str concat */ ({
-  const char* const _tmp_l = final_code;
-  const char* const _tmp_r = "#include <stdlib.h>\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    final_code = /* Str concat */ ({
-  const char* const _tmp_l = final_code;
-  const char* const _tmp_r = "#include <string.h>\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    final_code = /* Str concat */ ({
-  const char* const _tmp_l = final_code;
-  const char* const _tmp_r = "#include <sys/mman.h>\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    final_code = /* Str concat */ ({
-  const char* const _tmp_l = final_code;
-  const char* const _tmp_r = "#include <ctype.h>\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    final_code = _kai_str_concat(final_code, "#include <stdint.h>\n");
+    final_code = _kai_str_concat(final_code, "#include <stdbool.h>\n");
+    final_code = _kai_str_concat(final_code, "#include <stdio.h>\n");
+    final_code = _kai_str_concat(final_code, "#include <stdlib.h>\n");
+    final_code = _kai_str_concat(final_code, "#include <string.h>\n");
+    final_code = _kai_str_concat(final_code, "#include <sys/mman.h>\n");
+    final_code = _kai_str_concat(final_code, "#include <ctype.h>\n");
+    final_code = _kai_str_concat(final_code, "\n");
+    final_code = _kai_str_concat(final_code, "#if defined(_WIN32)\n");
+    final_code = _kai_str_concat(final_code, "#include <windows.h>\n");
+    final_code = _kai_str_concat(final_code, "#elif defined(__APPLE__)\n");
+    final_code = _kai_str_concat(final_code, "#include <mach-o/dyld.h>\n");
+    final_code = _kai_str_concat(final_code, "#include <limits.h>\n");
+    final_code = _kai_str_concat(final_code, "#else\n");
+    final_code = _kai_str_concat(final_code, "#include <unistd.h>\n");
+    final_code = _kai_str_concat(final_code, "#include <limits.h>\n");
+    final_code = _kai_str_concat(final_code, "#endif\n\n");
+    final_code = _kai_str_concat(final_code, "int64_t get_exe_dir(char* out_buf, int64_t max_len) {\n");
+    final_code = _kai_str_concat(final_code, "#if defined(_WIN32)\n");
+    final_code = _kai_str_concat(final_code, "    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);\n");
+    final_code = _kai_str_concat(final_code, "    if (len == 0 || len >= max_len) return -1;\n");
+    final_code = _kai_str_concat(final_code, "    for (int i = len - 1; i >= 0; i--) {\n");
+    final_code = _kai_str_concat(final_code, "        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {\n");
+    final_code = _kai_str_concat(final_code, "            out_buf[i] = '\\0';\n");
+    final_code = _kai_str_concat(final_code, "            break;\n");
+    final_code = _kai_str_concat(final_code, "        }\n");
+    final_code = _kai_str_concat(final_code, "    }\n");
+    final_code = _kai_str_concat(final_code, "    return 0;\n");
+    final_code = _kai_str_concat(final_code, "#elif defined(__APPLE__)\n");
+    final_code = _kai_str_concat(final_code, "    char path[PATH_MAX];\n");
+    final_code = _kai_str_concat(final_code, "    uint32_t size = sizeof(path);\n");
+    final_code = _kai_str_concat(final_code, "    if (_NSGetExecutablePath(path, &size) != 0) return -1;\n");
+    final_code = _kai_str_concat(final_code, "    char real_path[PATH_MAX];\n");
+    final_code = _kai_str_concat(final_code, "    if (realpath(path, real_path) == NULL) return -1;\n");
+    final_code = _kai_str_concat(final_code, "    char* last_slash = strrchr(real_path, '/');\n");
+    final_code = _kai_str_concat(final_code, "    if (last_slash == NULL) return -1;\n");
+    final_code = _kai_str_concat(final_code, "    *last_slash = '\\0';\n");
+    final_code = _kai_str_concat(final_code, "    strncpy(out_buf, real_path, max_len);\n");
+    final_code = _kai_str_concat(final_code, "    out_buf[max_len - 1] = '\\0';\n");
+    final_code = _kai_str_concat(final_code, "    return 0;\n");
+    final_code = _kai_str_concat(final_code, "#else\n");
+    final_code = _kai_str_concat(final_code, "    char path[PATH_MAX];\n");
+    final_code = _kai_str_concat(final_code, "    ssize_t len = readlink(\"/proc/self/exe\", path, sizeof(path) - 1);\n");
+    final_code = _kai_str_concat(final_code, "    if (len == -1) return -1;\n");
+    final_code = _kai_str_concat(final_code, "    path[len] = '\\0';\n");
+    final_code = _kai_str_concat(final_code, "    char real_path[PATH_MAX];\n");
+    final_code = _kai_str_concat(final_code, "    if (realpath(path, real_path) == NULL) return -1;\n");
+    final_code = _kai_str_concat(final_code, "    char* last_slash = strrchr(real_path, '/');\n");
+    final_code = _kai_str_concat(final_code, "    if (last_slash == NULL) return -1;\n");
+    final_code = _kai_str_concat(final_code, "    *last_slash = '\\0';\n");
+    final_code = _kai_str_concat(final_code, "    strncpy(out_buf, real_path, max_len);\n");
+    final_code = _kai_str_concat(final_code, "    out_buf[max_len - 1] = '\\0';\n");
+    final_code = _kai_str_concat(final_code, "    return 0;\n");
+    final_code = _kai_str_concat(final_code, "#endif\n");
+    final_code = _kai_str_concat(final_code, "}\n\n");
     int64_t ci = 0;
     bool has_cimports = false;
     while (ci < ArrayList_Str_length(&(self->cimport_headers))) {
@@ -16080,16 +9167,7 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
 }
     if (!is_baseline) {
     if (!has_cimports) {
-    final_code = /* Str concat */ ({
-  const char* const _tmp_l = final_code;
-  const char* const _tmp_r = "/* C FFI Imports */\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    final_code = _kai_str_concat(final_code, "/* C FFI Imports */\n");
     has_cimports = true;
 }
     bool has_slash = false;
@@ -16107,135 +9185,37 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
 }
 }
     if ((!has_slash) && (!dot_start)) {
-    final_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = final_code;
-  const char* const _tmp_r = "#include <";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = hdr;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = ">\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    final_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(final_code, "#include <"), hdr), ">\n");
 } else {
-    final_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = final_code;
-  const char* const _tmp_r = "#include \"";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = hdr;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\"\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    final_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(final_code, "#include \""), hdr), "\"\n");
 }
 }
     ci = (ci + 1);
 }
-    final_code = /* Str concat */ ({
-  const char* const _tmp_l = final_code;
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    final_code = /* Str concat */ ({
-  const char* const _tmp_l = final_code;
-  const char* const _tmp_r = "static inline void print_int(int64_t i) { printf(\"%lld\\n\", (long long)i); }\n\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    final_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = final_code;
-  const char* const _tmp_r = StringBuilder_to_str(&(self->struct_decls));
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    final_code = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = final_code;
-  const char* const _tmp_r = StringBuilder_to_str(&(self->func_decls));
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = "\n";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-    final_code = /* Str concat */ ({
-  const char* const _tmp_l = final_code;
-  const char* const _tmp_r = StringBuilder_to_str(&(self->output));
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    final_code = _kai_str_concat(final_code, "\n");
+    final_code = _kai_str_concat(final_code, "static inline void print_int(int64_t i) { printf(\"%lld\\n\", (long long)i); }\n");
+    final_code = _kai_str_concat(final_code, "__thread void* _kai_current_allocator = NULL;\n");
+    final_code = _kai_str_concat(final_code, "void _kai_set_current_allocator(void* allocator);\n");
+    final_code = _kai_str_concat(final_code, "char* _kai_str_concat(const char* l, const char* r);\n\n");
+    final_code = _kai_str_concat(_kai_str_concat(final_code, StringBuilder_to_str(&(self->struct_decls))), "\n");
+    final_code = _kai_str_concat(_kai_str_concat(final_code, StringBuilder_to_str(&(self->func_decls))), "\n");
+    final_code = _kai_str_concat(final_code, "void _kai_set_current_allocator(void* allocator) {\n");
+    final_code = _kai_str_concat(final_code, "    _kai_current_allocator = allocator;\n");
+    final_code = _kai_str_concat(final_code, "}\n");
+    final_code = _kai_str_concat(final_code, "char* _kai_str_concat(const char* l, const char* r) {\n");
+    final_code = _kai_str_concat(final_code, "    size_t l1 = strlen(l);\n");
+    final_code = _kai_str_concat(final_code, "    size_t l2 = strlen(r);\n");
+    final_code = _kai_str_concat(final_code, "    size_t total = l1 + l2 + 1;\n");
+    final_code = _kai_str_concat(final_code, "    char* buf = NULL;\n");
+    final_code = _kai_str_concat(final_code, "    if (_kai_current_allocator) {\n");
+    final_code = _kai_str_concat(final_code, "        buf = KaiAllocator_alloc((KaiAllocator*)_kai_current_allocator, total, 1);\n");
+    final_code = _kai_str_concat(final_code, "    } else {\n");
+    final_code = _kai_str_concat(final_code, "        buf = malloc(total);\n");
+    final_code = _kai_str_concat(final_code, "    }\n");
+    final_code = _kai_str_concat(final_code, "    if (buf) { strcpy(buf, l); strcat(buf, r); }\n");
+    final_code = _kai_str_concat(final_code, "    return buf;\n");
+    final_code = _kai_str_concat(final_code, "}\n\n");
+    final_code = _kai_str_concat(final_code, StringBuilder_to_str(&(self->output)));
     return final_code;
 }
 const char* get_base_name(KaiAllocator* allocator, const char* path) {
@@ -16264,22 +9244,38 @@ const char* get_base_name(KaiAllocator* allocator, const char* path) {
 }
 int main(int argc, char** argv) {
     if (argc < 2) {
-    printf("%s\n", "Usage: compiler <input.kai> [-o <output_bin>] [-c]");
+    printf("%s\n", "Usage: compiler <input.kai> [-o <output_bin>] [-c] [-O0|-O1|-O2|-O3|-Os]");
     return 1;
 }
     const char* input_file = "";
     const char* output_bin = "";
     bool emit_c_only = false;
+    const char* opt_level = "-O2";
     int64_t i = 1;
     while (i < argc) {
     const char* arg = (const char*)((argv)[i]);
     bool is_c = false;
     bool is_o = false;
+    bool is_o0 = false;
+    bool is_o1 = false;
+    bool is_o2 = false;
+    bool is_o3 = false;
+    bool is_os = false;
     {
     if (strcmp(arg, "-c") == 0) {
     is_c = true;
 } else if (strcmp(arg, "-o") == 0) {
     is_o = true;
+} else if (strcmp(arg, "-O0") == 0) {
+    is_o0 = true;
+} else if (strcmp(arg, "-O1") == 0) {
+    is_o1 = true;
+} else if (strcmp(arg, "-O2") == 0) {
+    is_o2 = true;
+} else if (strcmp(arg, "-O3") == 0) {
+    is_o3 = true;
+} else if (strcmp(arg, "-Os") == 0) {
+    is_os = true;
 }
 }
     if (is_c) {
@@ -16292,6 +9288,16 @@ int main(int argc, char** argv) {
     printf("%s\n", "Error: -o requires an argument");
     return 1;
 }
+} else if (is_o0) {
+    opt_level = "-O0";
+} else if (is_o1) {
+    opt_level = "-O1";
+} else if (is_o2) {
+    opt_level = "-O2";
+} else if (is_o3) {
+    opt_level = "-O3";
+} else if (is_os) {
+    opt_level = "-Os";
 } else {
     input_file = arg;
 }
@@ -16303,21 +9309,13 @@ int main(int argc, char** argv) {
 }
     KaiAllocator allocator = (KaiAllocator){ .heads = (char*)(0), .used = 0 };
     allocator = KaiAllocator_init();
+    _kai_set_current_allocator((void*)(&(allocator)));
     const char* base = get_base_name(&(allocator), input_file);
     const char* bin_name = base;
     if (strlen(output_bin) > 0) {
     bin_name = output_bin;
 }
-    const char* c_file = /* Str concat */ ({
-  const char* const _tmp_l = base;
-  const char* const _tmp_r = ".c";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* c_file = _kai_str_concat(base, ".c");
     Result_Str_Int source_res = read_to_string(&(allocator), input_file);
     if (source_res.tag == Result_Str_Int_ok_TAG) {
     const char* source = source_res.payload.ok.value;
@@ -16344,34 +9342,7 @@ int main(int argc, char** argv) {
     if (emit_c_only) {
     return 0;
 }
-    const char* cmd = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = /* Str concat */ ({
-  const char* const _tmp_l = "clang -O1 ";
-  const char* const _tmp_r = c_file;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = " -o ";
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
-  const char* const _tmp_r = bin_name;
-  size_t l1 = strlen(_tmp_l);
-  size_t l2 = strlen(_tmp_r);
-  char* buf = malloc(l1 + l2 + 1);
-  strcpy(buf, _tmp_l);
-  strcat(buf, _tmp_r);
-  buf;
-});
+    const char* cmd = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("clang ", opt_level), " "), c_file), " -o "), bin_name);
     {
     return system((char*)(cmd));
 }

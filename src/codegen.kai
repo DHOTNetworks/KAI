@@ -27,6 +27,7 @@ import str_array_join from parser
 
 extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn exit(code: Int)
+extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
 
 struct StrMapEntry {
     key: Str
@@ -657,8 +658,18 @@ fn monomorphize_func(self, func_stmt_idx: Int, mangled_name: Str, type_args: *Ar
         type_map_put(&self.var_types, p.name, concrete_ptype)
         p_reg = p_reg + 1
     }
+    let old_block_stack = self.block_stack
+    let old_defer_stack = self.defer_stack
+    let old_defer_depths = self.defer_depths
+    self.block_stack = ArrayList<Int>(self.allocator)
+    self.defer_stack = ArrayList<Int>(self.allocator)
+    self.defer_depths = ArrayList<Int>(self.allocator)
     
     let body_str = self.gen_stmt(stmt.func_body)
+    
+    self.block_stack = old_block_stack
+    self.defer_stack = old_defer_stack
+    self.defer_depths = old_defer_depths
     
     while self.var_types.length() > old_var_len {
         let _ = self.var_types.pop()
@@ -891,6 +902,21 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
     }
     
     if expr.kind == ExprKind.ek_field_access {
+        let base_node = self.expr_pool.get(expr.field_expr)
+        if base_node.kind == ExprKind.ek_identifier {
+            var is_static = false
+            var s_idx = 0
+            while s_idx < self.stmt_pool.length() {
+                let stmt = self.stmt_pool.get(s_idx)
+                if (stmt.kind == StmtKind.sk_enum_decl && stmt.enum_name == base_node.ident_name) || (stmt.kind == StmtKind.sk_error_decl && stmt.error_name == base_node.ident_name) {
+                    is_static = true
+                }
+                s_idx = s_idx + 1
+            }
+            if is_static {
+                return base_node.ident_name
+            }
+        }
         let base_type = self.get_expr_type(expr.field_expr)
         var clean_type = ""
         var i = 0
@@ -1269,7 +1295,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         let lhs_node = self.expr_pool.get(expr.binop_left)
         if lhs_type == "Str" {
             if op == "+" {
-                return "/* Str concat */ ({\n  const char* const _tmp_l = " + lhs + ";\n  const char* const _tmp_r = " + rhs + ";\n  size_t l1 = strlen(_tmp_l);\n  size_t l2 = strlen(_tmp_r);\n  char* buf = malloc(l1 + l2 + 1);\n  strcpy(buf, _tmp_l);\n  strcat(buf, _tmp_r);\n  buf;\n})"
+                return "_kai_str_concat(" + lhs + ", " + rhs + ")"
             }
             if op == "==" {
                 return "(strcmp(" + lhs + ", " + rhs + ") == 0)"
@@ -2362,13 +2388,13 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
                     }
                     return "return (" + result_ctype + "){ .tag = 0, .value = " + val_str + " };"
                 }
-                return "return " + self.gen_expr(stmt.return_value) + ";"
+                return "return " + self.gen_expr_with_expected_type(stmt.return_value, self.cur_return_type) + ";"
             }
             return "return;"
         }
         
         if stmt.return_value >= 0 {
-            let val_str = self.gen_expr(stmt.return_value)
+            let val_str = self.gen_expr_with_expected_type(stmt.return_value, self.cur_return_type)
             let val_type = self.get_expr_type(stmt.return_value)
             
             if val_type == "Void" || val_type == "NoneType" {
@@ -2381,7 +2407,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
                 return res + "return;"
             }
             
-            let mapped_type = self.map_type(val_type)
+            let mapped_type = self.map_type(self.cur_return_type)
             var res_str = "{\n"
             res_str = res_str + "    " + mapped_type + " __ret_val = " + val_str + ";\n"
             var ci = 0
@@ -2466,7 +2492,8 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
         }
         self.loaded_modules.push(module_key)
 
-        var file_path = ""
+        var has_source = false
+        var source = ""
         if path.length() > 0 && path.get(0) == "std" {
             var path_str = ""
             var i = 0
@@ -2477,29 +2504,83 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
                 path_str = path_str + path.get(i)
                 i = i + 1
             }
-            file_path = path_str + ".kai"
+            let rel_path = path_str + ".kai"
+            
+            // Try 1: Current working directory
+            let res1 = read_to_string(self.allocator, rel_path)
+            match res1 {
+                case .ok(s) => {
+                    source = s
+                    has_source = true
+                }
+                case .err(_) => {
+                    // Try 2: Relative to compiler executable path
+                    unsafe {
+                        let buf = self.allocator.alloc(1024, 1) as *Char
+                        if get_exe_dir(buf, 1024) == 0 {
+                            let exe_dir = buf as Str
+                            let full_path = exe_dir + "/" + rel_path
+                            let parent_path = exe_dir + "/../" + rel_path
+                            let lib_path = exe_dir + "/../lib/kai/" + rel_path
+                            self.allocator.free(buf)
+                            
+                            let res2 = read_to_string(self.allocator, full_path)
+                            match res2 {
+                                case .ok(s) => {
+                                    source = s
+                                    has_source = true
+                                }
+                                case .err(_) => {
+                                    // Try 3: Relative to parent of executable path (e.g. bin/../std)
+                                    let res3 = read_to_string(self.allocator, parent_path)
+                                    match res3 {
+                                        case .ok(s) => {
+                                            source = s
+                                            has_source = true
+                                        }
+                                        case .err(_) => {
+                                            // Try 4: Relative to ../lib/kai
+                                            let res4 = read_to_string(self.allocator, lib_path)
+                                            match res4 {
+                                                case .ok(s) => {
+                                                    source = s
+                                                    has_source = true
+                                                }
+                                                case .err(_) => {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            self.allocator.free(buf)
+                        }
+                    }
+                }
+            }
         } else if path.length() > 0 {
-            file_path = "src/" + module_key + ".kai"
+            let file_path = "src/" + module_key + ".kai"
+            let res = read_to_string(self.allocator, file_path)
+            match res {
+                case .ok(s) => {
+                    source = s
+                    has_source = true
+                }
+                case .err(_) => {}
+            }
         }
-        if file_path != "" {
-            let source_res = read_to_string(self.allocator, file_path)
-            match source_res {
-                case .ok(source) => {
-                    var lexer = Lexer(self.allocator, source)
-                    lexer.lex()
-                    if lexer.has_error {
-                        return ""
-                    }
-                    var parser = Parser.init_with_pools(self.allocator, lexer.tokens, self.expr_pool, self.stmt_pool, self.pattern_pool)
-                    let program_idx = parser.parse_program()
-                    if program_idx >= 0 {
-                        self.build_func_types()
-                        let _ = self.gen_stmt(program_idx)
-                    }
-                }
-                case .err(err_code) => {
-                    return ""
-                }
+
+        if has_source {
+            var lexer = Lexer(self.allocator, source)
+            lexer.lex()
+            if lexer.has_error {
+                return ""
+            }
+            var parser = Parser.init_with_pools(self.allocator, lexer.tokens, self.expr_pool, self.stmt_pool, self.pattern_pool)
+            let program_idx = parser.parse_program()
+            if program_idx >= 0 {
+                self.build_func_types()
+                let _ = self.gen_stmt(program_idx)
             }
         }
         return ""
@@ -2804,6 +2885,56 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     final_code = final_code + "#include <sys/mman.h>\n"
     final_code = final_code + "#include <ctype.h>\n"
 
+    // Emit platform-specific get_exe_dir C implementation
+    final_code = final_code + "\n"
+    final_code = final_code + "#if defined(_WIN32)\n"
+    final_code = final_code + "#include <windows.h>\n"
+    final_code = final_code + "#elif defined(__APPLE__)\n"
+    final_code = final_code + "#include <mach-o/dyld.h>\n"
+    final_code = final_code + "#include <limits.h>\n"
+    final_code = final_code + "#else\n"
+    final_code = final_code + "#include <unistd.h>\n"
+    final_code = final_code + "#include <limits.h>\n"
+    final_code = final_code + "#endif\n\n"
+    final_code = final_code + "int64_t get_exe_dir(char* out_buf, int64_t max_len) {\n"
+    final_code = final_code + "#if defined(_WIN32)\n"
+    final_code = final_code + "    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);\n"
+    final_code = final_code + "    if (len == 0 || len >= max_len) return -1;\n"
+    final_code = final_code + "    for (int i = len - 1; i >= 0; i--) {\n"
+    final_code = final_code + "        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {\n"
+    final_code = final_code + "            out_buf[i] = '\\0';\n"
+    final_code = final_code + "            break;\n"
+    final_code = final_code + "        }\n"
+    final_code = final_code + "    }\n"
+    final_code = final_code + "    return 0;\n"
+    final_code = final_code + "#elif defined(__APPLE__)\n"
+    final_code = final_code + "    char path[PATH_MAX];\n"
+    final_code = final_code + "    uint32_t size = sizeof(path);\n"
+    final_code = final_code + "    if (_NSGetExecutablePath(path, &size) != 0) return -1;\n"
+    final_code = final_code + "    char real_path[PATH_MAX];\n"
+    final_code = final_code + "    if (realpath(path, real_path) == NULL) return -1;\n"
+    final_code = final_code + "    char* last_slash = strrchr(real_path, '/');\n"
+    final_code = final_code + "    if (last_slash == NULL) return -1;\n"
+    final_code = final_code + "    *last_slash = '\\0';\n"
+    final_code = final_code + "    strncpy(out_buf, real_path, max_len);\n"
+    final_code = final_code + "    out_buf[max_len - 1] = '\\0';\n"
+    final_code = final_code + "    return 0;\n"
+    final_code = final_code + "#else\n"
+    final_code = final_code + "    char path[PATH_MAX];\n"
+    final_code = final_code + "    ssize_t len = readlink(\"/proc/self/exe\", path, sizeof(path) - 1);\n"
+    final_code = final_code + "    if (len == -1) return -1;\n"
+    final_code = final_code + "    path[len] = '\\0';\n"
+    final_code = final_code + "    char real_path[PATH_MAX];\n"
+    final_code = final_code + "    if (realpath(path, real_path) == NULL) return -1;\n"
+    final_code = final_code + "    char* last_slash = strrchr(real_path, '/');\n"
+    final_code = final_code + "    if (last_slash == NULL) return -1;\n"
+    final_code = final_code + "    *last_slash = '\\0';\n"
+    final_code = final_code + "    strncpy(out_buf, real_path, max_len);\n"
+    final_code = final_code + "    out_buf[max_len - 1] = '\\0';\n"
+    final_code = final_code + "    return 0;\n"
+    final_code = final_code + "#endif\n"
+    final_code = final_code + "}\n\n"
+
     var ci = 0
     var has_cimports = false
     while ci < self.cimport_headers.length() {
@@ -2841,10 +2972,31 @@ fn generate(self, top_stmt_idx: Int) -> Str {
         ci = ci + 1
     }
     final_code = final_code + "\n"
-    final_code = final_code + "static inline void print_int(int64_t i) { printf(\"%lld\\n\", (long long)i); }\n\n"
+    final_code = final_code + "static inline void print_int(int64_t i) { printf(\"%lld\\n\", (long long)i); }\n"
+    final_code = final_code + "__thread void* _kai_current_allocator = NULL;\n"
+    final_code = final_code + "void _kai_set_current_allocator(void* allocator);\n"
+    final_code = final_code + "char* _kai_str_concat(const char* l, const char* r);\n\n"
     
     final_code = final_code + self.struct_decls.to_str() + "\n"
     final_code = final_code + self.func_decls.to_str() + "\n"
+    
+    final_code = final_code + "void _kai_set_current_allocator(void* allocator) {\n"
+    final_code = final_code + "    _kai_current_allocator = allocator;\n"
+    final_code = final_code + "}\n"
+    final_code = final_code + "char* _kai_str_concat(const char* l, const char* r) {\n"
+    final_code = final_code + "    size_t l1 = strlen(l);\n"
+    final_code = final_code + "    size_t l2 = strlen(r);\n"
+    final_code = final_code + "    size_t total = l1 + l2 + 1;\n"
+    final_code = final_code + "    char* buf = NULL;\n"
+    final_code = final_code + "    if (_kai_current_allocator) {\n"
+    final_code = final_code + "        buf = KaiAllocator_alloc((KaiAllocator*)_kai_current_allocator, total, 1);\n"
+    final_code = final_code + "    } else {\n"
+    final_code = final_code + "        buf = malloc(total);\n"
+    final_code = final_code + "    }\n"
+    final_code = final_code + "    if (buf) { strcpy(buf, l); strcat(buf, r); }\n"
+    final_code = final_code + "    return buf;\n"
+    final_code = final_code + "}\n\n"
+    
     final_code = final_code + self.output.to_str()
     
     return final_code
