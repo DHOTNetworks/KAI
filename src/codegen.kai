@@ -59,6 +59,7 @@ struct Codegen {
     monomorphized_types: ArrayList<Str>
     current_type_map: ArrayList<StrMapEntry>
     enum_decls: ArrayList<StrMapEntry>
+    result_definitions: ArrayList<Str>
 }
 
 fn type_map_find(arr: *ArrayList<StrMapEntry>, key: Str) -> Int {
@@ -118,6 +119,7 @@ fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool:
     self.monomorphized_types = ArrayList<Str>(allocator)
     self.current_type_map = ArrayList<StrMapEntry>(allocator)
     self.enum_decls = ArrayList<StrMapEntry>(allocator)
+    self.result_definitions = ArrayList<Str>(allocator)
 }
 
 fn map_type(self, type_name: Str) -> Str {
@@ -128,6 +130,27 @@ fn map_type(self, type_name: Str) -> Str {
     var resolved_type = type_name
     if self.current_type_map.length() > 0 {
         resolved_type = self.substitute_generic_type(type_name)
+    }
+
+    if self.str_contains(resolved_type, Char(33)) {
+        let excl_pos = self.str_find(resolved_type, Char(33))
+        let val_type = substring(resolved_type, 0, excl_pos)
+        let err_type = substring(resolved_type, excl_pos + 1, length(resolved_type))
+        let clean_val = self.clean_type_for_mangling(val_type)
+        let clean_err = self.clean_type_for_mangling(err_type)
+        let concrete_name = "Result_" + clean_val + "_" + clean_err
+        if strlist_find(&self.result_definitions, concrete_name) < 0 {
+            self.result_definitions.push(concrete_name)
+            var struct_str = "typedef struct " + concrete_name + " " + concrete_name + ";\n"
+            struct_str = struct_str + "struct " + concrete_name + " {\n"
+            struct_str = struct_str + "    int64_t tag;\n"
+            if val_type != "Void" {
+                struct_str = struct_str + "    " + self.map_type(val_type) + " value;\n"
+            }
+            struct_str = struct_str + "};\n"
+            let _ = self.struct_decls.append(struct_str)
+        }
+        return concrete_name
     }
 
     if resolved_type == "Int" { return "int64_t" }
@@ -285,7 +308,7 @@ fn clean_type_for_mangling(self, s: Str) -> Str {
             res = res + "ref"
         } else if c == Char(32) {
             res = res + "_"
-        } else if c == Char(60) || c == Char(62) || c == Char(44) {
+        } else if c == Char(60) || c == Char(62) || c == Char(44) || c == Char(33) {
             res = res + "_"
         } else {
             res = res + char_to_str(c)
@@ -834,12 +857,49 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
     if expr.kind == ExprKind.ek_asm {
         return expr.inferred_type
     }
+    if expr.kind == ExprKind.ek_try {
+        let inner_ty = self.get_expr_type(expr.try_expr)
+        let excl_pos = self.str_find(inner_ty, Char(33))
+        if excl_pos >= 0 {
+            return substring(inner_ty, 0, excl_pos)
+        }
+        return inner_ty
+    }
+    if expr.kind == ExprKind.ek_catch {
+        let inner_ty = self.get_expr_type(expr.catch_expr)
+        let excl_pos = self.str_find(inner_ty, Char(33))
+        if excl_pos >= 0 {
+            return substring(inner_ty, 0, excl_pos)
+        }
+        return inner_ty
+    }
     return "Void"
 }
 
 fn gen_expr(self, expr_idx: Int) -> Str {
     if expr_idx < 0 { return "" }
     let expr = self.expr_pool.get(expr_idx)
+    
+    if expr.kind == ExprKind.ek_try {
+        let inner_ty = self.get_expr_type(expr.try_expr)
+        let excl_pos = self.str_find(inner_ty, Char(33))
+        let inner = self.gen_expr(expr.try_expr)
+        if excl_pos < 0 {
+            return inner
+        }
+        let val_type = substring(inner_ty, 0, excl_pos)
+        let result_ctype = self.map_type(inner_ty)
+        let ret_ctype = self.map_type(self.cur_return_type)
+        var try_code = "({ " + result_ctype + " _kai_res = (" + inner + "); "
+        try_code = try_code + "if (_kai_res.tag != 0) { "
+        try_code = try_code + ret_ctype + " _kai_err_ret; _kai_err_ret.tag = _kai_res.tag; return _kai_err_ret; } "
+        if val_type == "Void" {
+            try_code = try_code + "0; })"
+        } else {
+            try_code = try_code + "_kai_res.value; })"
+        }
+        return try_code
+    }
     
     if expr.kind == ExprKind.ek_literal {
         let vkind = expr.lit_vkind
@@ -1343,6 +1403,36 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         return func_name + "(" + args_str + ")"
     }
     
+    if expr.kind == ExprKind.ek_catch {
+        let inner = self.gen_expr(expr.catch_expr)
+        let inner_ty = self.get_expr_type(expr.catch_expr)
+        let excl_pos = self.str_find(inner_ty, Char(33))
+        if excl_pos < 0 {
+            return inner
+        }
+        let val_type = substring(inner_ty, 0, excl_pos)
+        let result_ctype = self.map_type(inner_ty)
+        let val_ctype = self.map_type(val_type)
+        let fallback_code = self.gen_stmt(expr.catch_fallback)
+        var catch_code = "({ " + result_ctype + " _kai_cr = (" + inner + "); "
+        if val_type == "Void" {
+            catch_code = catch_code + "if (_kai_cr.tag != 0) { "
+            if length(expr.catch_var) > 0 {
+                catch_code = catch_code + "int64_t " + expr.catch_var + " = _kai_cr.tag; "
+            }
+            catch_code = catch_code + fallback_code + " } 0; })"
+        } else {
+            catch_code = catch_code + val_ctype + " _kai_cv; "
+            catch_code = catch_code + "if (_kai_cr.tag != 0) { "
+            if length(expr.catch_var) > 0 {
+                catch_code = catch_code + "int64_t " + expr.catch_var + " = _kai_cr.tag; "
+            }
+            catch_code = catch_code + "_kai_cv = (" + fallback_code + "); "
+            catch_code = catch_code + "} else { _kai_cv = _kai_cr.value; } _kai_cv; })"
+        }
+        return catch_code
+    }
+    
     return "0"
 }
 
@@ -1531,6 +1621,21 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
         }
         struct_str = struct_str + "};\n"
         let _ = self.struct_decls.append(struct_str)
+        return ""
+    }
+    
+    if stmt.kind == StmtKind.sk_error_decl {
+        type_map_put(&self.enum_decls, stmt.error_name, int_to_str(stmt_idx))
+        let name = self.map_type(stmt.error_name)
+        var enum_str = "typedef enum {\n"
+        var j = 0
+        while j < stmt.error_variants.length() {
+            let vname = stmt.error_variants.get(j)
+            enum_str = enum_str + "    " + name + "_" + vname + " = " + int_to_str(j + 1) + ",\n"
+            j = j + 1
+        }
+        enum_str = enum_str + "} " + name + ";\n"
+        let _ = self.struct_decls.append(enum_str)
         return ""
     }
     
@@ -1775,6 +1880,35 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
         
         if drop_calls.length() == 0 {
             if stmt.return_value >= 0 {
+                let ret_excl_pos = self.str_find(self.cur_return_type, Char(33))
+                if ret_excl_pos >= 0 {
+                    let result_ctype = self.map_type(self.cur_return_type)
+                    let val_payload_type = substring(self.cur_return_type, 0, ret_excl_pos)
+                    let err_type = substring(self.cur_return_type, ret_excl_pos + 1, length(self.cur_return_type))
+                    let ret_node = self.expr_pool.get(stmt.return_value)
+                    var is_error_variant = false
+                    if ret_node.kind == ExprKind.ek_field_access {
+                        let base_node = self.expr_pool.get(ret_node.field_expr)
+                        if base_node.kind == ExprKind.ek_identifier {
+                            if self.is_enum_type(base_node.ident_name) {
+                                is_error_variant = true
+                            }
+                        }
+                    }
+                    let val_str = self.gen_expr(stmt.return_value)
+                    let expr_ty = self.get_expr_type(stmt.return_value)
+                    let expr_excl_pos = self.str_find(expr_ty, Char(33))
+                    if expr_excl_pos >= 0 {
+                        return "return " + val_str + ";"
+                    }
+                    if is_error_variant {
+                        return "return (" + result_ctype + "){ .tag = " + val_str + " };"
+                    }
+                    if val_payload_type == "Void" {
+                        return "return (" + result_ctype + "){ .tag = 0 };"
+                    }
+                    return "return (" + result_ctype + "){ .tag = 0, .value = " + val_str + " };"
+                }
                 return "return " + self.gen_expr(stmt.return_value) + ";"
             }
             return "return;"
@@ -1892,7 +2026,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
             }
             file_path = path_str + ".kai"
         } else if path.length() > 0 {
-            file_path = "self/" + module_key + ".kai"
+            file_path = "src/" + module_key + ".kai"
         }
         if file_path != "" {
             let source_res = read_to_string(self.allocator, file_path)
@@ -2135,6 +2269,9 @@ fn enum_has_payload(self, enum_name: Str) -> Bool {
         return false
     }
     let enum_stmt = self.stmt_pool.get(self.str_to_int(idx_str))
+    if enum_stmt.kind == StmtKind.sk_error_decl {
+        return false
+    }
     var has_payload = false
     var vi = 0
     while vi < enum_stmt.enum_variants.length() {
