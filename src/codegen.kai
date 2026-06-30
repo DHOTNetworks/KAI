@@ -938,10 +938,14 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
                 if stmt.struct_name == clean_type {
                     is_match = true
                 } else if self.str_contains(clean_type, Char(95)) { // '_' is 95
-                    let underscore_pos = self.str_find(clean_type, Char(95))
-                    let base_name = substring(clean_type, 0, underscore_pos)
-                    if stmt.struct_name == base_name {
-                        is_match = true
+                    // Only match via underscore fallback if the struct has generic type params
+                    // This prevents false matches with unrelated structs sharing a prefix
+                    if stmt.struct_type_params.length() > 0 {
+                        let underscore_pos = self.str_find(clean_type, Char(95))
+                        let base_name = substring(clean_type, 0, underscore_pos)
+                        if stmt.struct_name == base_name {
+                            is_match = true
+                        }
                     }
                 }
                 
@@ -1257,6 +1261,46 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             return "NULL"
         }
         return "0"
+    }
+    
+    if expr.kind == ExprKind.ek_str_interp {
+        // String interpolation: concatenate literal parts and formatted expression parts
+        if expr.interp_parts.length() == 0 {
+            return "\"\""
+        }
+        var result = ""
+        var i = 0
+        while i < expr.interp_parts.length() {
+            let part = expr.interp_parts.get(i)
+            var part_str = ""
+            if part.kind == 0 {
+                // Literal string part
+                part_str = "\"" + self.escape_string(part.str_val) + "\""
+            } else {
+                // Expression part - generate and format based on type
+                let expr_val = self.gen_expr(part.expr_idx)
+                let expr_type = self.get_expr_type(part.expr_idx)
+                if expr_type == "Int" {
+                    part_str = "int_to_str(" + expr_val + ")"
+                } else if expr_type == "Char" {
+                    part_str = "char_to_str(" + expr_val + ")"
+                } else if expr_type == "Bool" {
+                    part_str = "((" + expr_val + ") ? \"true\" : \"false\")"
+                } else if expr_type == "Str" {
+                    part_str = expr_val
+                } else {
+                    // Default: treat as string
+                    part_str = expr_val
+                }
+            }
+            if i == 0 {
+                result = part_str
+            } else {
+                result = "_kai_str_concat(" + result + ", " + part_str + ")"
+            }
+            i = i + 1
+        }
+        return result
     }
     
     if expr.kind == ExprKind.ek_identifier {
@@ -1678,7 +1722,24 @@ fn gen_expr(self, expr_idx: Int) -> Str {
                 if i > 0 {
                     fields_str = fields_str + ", "
                 }
-                fields_str = fields_str + "." + f.name + " = " + self.gen_expr(f.value)
+                // Look up the expected field type from the struct declaration
+                var field_type = ""
+                var si = 0
+                while si < self.stmt_pool.length() {
+                    let s = self.stmt_pool.get(si)
+                    if s.kind == StmtKind.sk_struct_decl && s.struct_name == expr.struct_name {
+                        var fi = 0
+                        while fi < s.struct_fields.length() {
+                            let sf = s.struct_fields.get(fi)
+                            if sf.name == f.name {
+                                field_type = sf.ftype
+                            }
+                            fi = fi + 1
+                        }
+                    }
+                    si = si + 1
+                }
+                fields_str = fields_str + "." + f.name + " = " + self.gen_expr_with_expected_type(f.value, field_type)
                 i = i + 1
             }
             return "(" + struct_name + "){ " + fields_str + " }"
@@ -1735,7 +1796,15 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             if rec_inferred[0] == Char(42) || rec_inferred[0] == Char(38) || is_self_ptr {
                 args_str = rec_val
             } else {
-                args_str = "&(" + rec_val + ")"
+                // Check if receiver is a complex expression (temporary) that can't have address taken
+                let is_complex = (receiver_node.kind == ExprKind.ek_func_call || receiver_node.kind == ExprKind.ek_method_call)
+                if is_complex {
+                    // Use GCC statement-expression to create a temporary and take its address
+                    let tmp_type = self.map_type(rec_inferred)
+                    args_str = "({ " + tmp_type + " __tmp_recv = " + rec_val + "; &__tmp_recv; })"
+                } else {
+                    args_str = "&(" + rec_val + ")"
+                }
             }
         }
         
@@ -1769,7 +1838,21 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             let val_type = substring(inner_ty, 1, length(inner_ty))
             let val_ctype = self.map_type(val_type)
             let cond_ctype = self.map_type(inner_ty)
-            let fallback_code = self.gen_stmt(expr.catch_fallback)
+            // Generate fallback: if it's an expr statement, use the expression directly
+            var fallback_code = ""
+            if expr.catch_fallback >= 0 {
+                let fb_node = self.stmt_pool.get(expr.catch_fallback)
+                if fb_node.kind == StmtKind.sk_expr {
+                    fallback_code = self.gen_expr(fb_node.expr_stmt)
+                } else if fb_node.kind == StmtKind.sk_block {
+                    // Wrap block as GCC statement-expression
+                    fallback_code = "(" + self.gen_stmt(expr.catch_fallback) + ")"
+                } else {
+                    fallback_code = self.gen_stmt(expr.catch_fallback)
+                }
+            } else {
+                fallback_code = "0"
+            }
             var catch_code = "({ "
             if self.is_pointer_type(val_type) {
                 catch_code = catch_code + val_ctype + " _kai_opt = (" + inner + "); "
@@ -1791,7 +1874,21 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         let val_type = substring(inner_ty, 0, excl_pos)
         let result_ctype = self.map_type(inner_ty)
         let val_ctype = self.map_type(val_type)
-        let fallback_code = self.gen_stmt(expr.catch_fallback)
+        // Generate fallback: if it's an expr statement, use the expression directly
+        var fallback_code = ""
+        if expr.catch_fallback >= 0 {
+            let fb_node = self.stmt_pool.get(expr.catch_fallback)
+            if fb_node.kind == StmtKind.sk_expr {
+                fallback_code = self.gen_expr(fb_node.expr_stmt)
+            } else if fb_node.kind == StmtKind.sk_block {
+                // Wrap block as GCC statement-expression
+                fallback_code = "(" + self.gen_stmt(expr.catch_fallback) + ")"
+            } else {
+                fallback_code = self.gen_stmt(expr.catch_fallback)
+            }
+        } else {
+            fallback_code = "0"
+        }
         var catch_code = "({ " + result_ctype + " _kai_cr = (" + inner + "); "
         if val_type == "Void" {
             catch_code = catch_code + "if (_kai_cr.tag != 0) { "
@@ -1932,7 +2029,11 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
         let lhs = self.gen_expr(stmt.assign_target)
         let lhs_type = self.get_expr_type(stmt.assign_target)
         let rhs = self.gen_expr_with_expected_type(stmt.assign_value, lhs_type)
-        return lhs + " = " + rhs + ";"
+        var op = "="
+        if length(stmt.assign_op) > 0 {
+            op = stmt.assign_op
+        }
+        return lhs + " " + op + " " + rhs + ";"
     }
     
     if stmt.kind == StmtKind.sk_func_decl {
@@ -2312,17 +2413,23 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
         let iter_var = stmt.for_var
         let start = self.gen_expr(stmt.for_start)
         let end = self.gen_expr(stmt.for_end)
-        var op = "<"
-        if stmt.for_inclusive {
-            op = "<="
-        }
         if stmt.for_body >= 0 {
             var body_stmt = self.stmt_pool.get(stmt.for_body)
             body_stmt.block_is_loop_body = true
             self.stmt_pool.set(stmt.for_body, body_stmt)
         }
         let body = self.gen_stmt(stmt.for_body)
-        return "for (int64_t " + iter_var + " = " + start + "; " + iter_var + " " + op + " " + end + "; ++" + iter_var + ") " + body
+        // Generate a for loop that handles both ascending and descending ranges at runtime
+        var cmp_asc = "<"
+        var cmp_desc = ">"
+        if stmt.for_inclusive {
+            cmp_asc = "<="
+            cmp_desc = ">="
+        }
+        var for_str = "for (int64_t " + iter_var + " = " + start + "; "
+        for_str = for_str + "(" + start + " <= " + end + ") ? (" + iter_var + " " + cmp_asc + " " + end + ") : (" + iter_var + " " + cmp_desc + " " + end + "); "
+        for_str = for_str + "(" + start + " <= " + end + ") ? ++" + iter_var + " : --" + iter_var + ") " + body
+        return for_str
     }
     
     if stmt.kind == StmtKind.sk_return {
@@ -2407,7 +2514,49 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
                 return res + "return;"
             }
             
+            let ret_excl_pos = self.str_find(self.cur_return_type, Char(33))
             let mapped_type = self.map_type(self.cur_return_type)
+            
+            if ret_excl_pos >= 0 {
+                // Result type with drops - need to wrap in Result struct
+                let val_payload_type = substring(self.cur_return_type, 0, ret_excl_pos)
+                let ret_node = self.expr_pool.get(stmt.return_value)
+                var is_error_variant = false
+                if ret_node.kind == ExprKind.ek_field_access {
+                    let base_node = self.expr_pool.get(ret_node.field_expr)
+                    if base_node.kind == ExprKind.ek_identifier {
+                        if self.is_enum_type(base_node.ident_name) {
+                            is_error_variant = true
+                        }
+                    }
+                }
+                let raw_val = self.gen_expr(stmt.return_value)
+                let expr_ty = self.get_expr_type(stmt.return_value)
+                let expr_excl_pos = self.str_find(expr_ty, Char(33))
+                
+                var ret_expr = ""
+                if expr_excl_pos >= 0 {
+                    ret_expr = raw_val
+                } else if is_error_variant {
+                    ret_expr = "(" + mapped_type + "){ .tag = " + raw_val + " }"
+                } else if val_payload_type == "Void" {
+                    ret_expr = "(" + mapped_type + "){ .tag = 0 }"
+                } else {
+                    ret_expr = "(" + mapped_type + "){ .tag = 0, .value = " + raw_val + " }"
+                }
+                
+                var res_str = "{\n"
+                res_str = res_str + "    " + mapped_type + " __ret_val = " + ret_expr + ";\n"
+                var ci = 0
+                while ci < drop_calls.length() {
+                    res_str = res_str + "    " + drop_calls.get(ci) + "\n"
+                    ci = ci + 1
+                }
+                res_str = res_str + "    return __ret_val;\n"
+                res_str = res_str + "}"
+                return res_str
+            }
+            
             var res_str = "{\n"
             res_str = res_str + "    " + mapped_type + " __ret_val = " + val_str + ";\n"
             var ci = 0
@@ -2433,6 +2582,25 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
     
     if stmt.kind == StmtKind.sk_expr {
         return self.gen_expr(stmt.expr_stmt) + ";"
+    }
+    
+    if stmt.kind == StmtKind.sk_print {
+        let arg = stmt.print_value
+        let val = self.gen_expr(arg)
+        let arg_type = self.get_expr_type(arg)
+        if arg_type == "Int" {
+            return "printf(\"%lld\\n\", (long long)(" + val + "));"
+        }
+        if arg_type == "Float" {
+            return "printf(\"%f\\n\", (double)(" + val + "));"
+        }
+        if arg_type == "Char" {
+            return "printf(\"%c\\n\", (char)(" + val + "));"
+        }
+        if arg_type == "Bool" {
+            return "printf(\"%s\\n\", (" + val + ") ? \"true\" : \"false\");"
+        }
+        return "printf(\"%s\\n\", " + val + ");"
     }
     
     if stmt.kind == StmtKind.sk_unsafe {
@@ -2882,7 +3050,9 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     final_code = final_code + "#include <stdio.h>\n"
     final_code = final_code + "#include <stdlib.h>\n"
     final_code = final_code + "#include <string.h>\n"
+    final_code = final_code + "#if !defined(_WIN32)\n"
     final_code = final_code + "#include <sys/mman.h>\n"
+    final_code = final_code + "#endif\n"
     final_code = final_code + "#include <ctype.h>\n"
 
     // Emit platform-specific get_exe_dir C implementation

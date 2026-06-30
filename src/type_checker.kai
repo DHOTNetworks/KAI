@@ -804,7 +804,12 @@ impl TypeChecker {
             self.check_expr(stmt.for_start)
             self.check_expr(stmt.for_end)
             self.enter_scope()
-            self.define_symbol(stmt.for_var, "Int", false, "var")
+            // Infer loop variable type from range start expression
+            var iter_type = self.get_expr_type(stmt.for_start)
+            if length(iter_type) == 0 || iter_type == "Void" {
+                iter_type = "Int"
+            }
+            self.define_symbol(stmt.for_var, iter_type, false, "var")
             self.check_stmt(stmt.for_body)
             self.exit_scope()
             return

@@ -3,7 +3,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if !defined(_WIN32)
 #include <sys/mman.h>
+#endif
 #include <ctype.h>
 
 #if defined(_WIN32)
@@ -1210,7 +1212,7 @@ char* KaiAllocator_allocate_slab(KaiAllocator* self, int64_t idx) {
 }
 char* KaiAllocator_alloc_large(KaiAllocator* self, int64_t size) {
     {
-    int64_t total = (size + 8);
+    int64_t total = (size + 16);
     int64_t page_aligned = page_align_up(total);
     char* raw = mmap((char*)(0), (page_aligned + 65536), 3, 4098, (-1), 0);
     if ((int64_t)(raw) == (-1)) {
@@ -1229,7 +1231,7 @@ void KaiAllocator_free_large(KaiAllocator* self, char* ptr) {
     int64_t slab_addr = ((int64_t)(ptr) & (-65536));
     int64_t raw_ptr = ((int64_t*)((char*)(slab_addr)))[0];
     int64_t orig_size = ((int64_t*)((char*)(slab_addr)))[1];
-    int64_t mmap_size = (page_align_up((orig_size + 8)) + 65536);
+    int64_t mmap_size = (page_align_up((orig_size + 16)) + 65536);
     self->used = (self->used - orig_size);
     munmap((char*)(raw_ptr), mmap_size);
 }
@@ -5916,7 +5918,11 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     TypeChecker_check_expr(self, stmt.for_start);
     TypeChecker_check_expr(self, stmt.for_end);
     TypeChecker_enter_scope(self);
-    TypeChecker_define_symbol(self, stmt.for_var, "Int", false, "var");
+    const char* iter_type = TypeChecker_get_expr_type(self, stmt.for_start);
+    if ((strlen(iter_type) == 0) || (strcmp(iter_type, "Void") == 0)) {
+    iter_type = "Int";
+}
+    TypeChecker_define_symbol(self, stmt.for_var, iter_type, false, "var");
     TypeChecker_check_stmt(self, stmt.for_body);
     TypeChecker_exit_scope(self);
     return;
@@ -7195,10 +7201,12 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
     if (strcmp(stmt.struct_name, clean_type) == 0) {
     is_match = true;
 } else if (Codegen_str_contains(self, clean_type, ((char)(95)))) {
+    if (ArrayList_Str_length(&(stmt.struct_type_params)) > 0) {
     int64_t underscore_pos = Codegen_str_find(self, clean_type, ((char)(95)));
     const char* base_name = substring(clean_type, 0, underscore_pos);
     if (strcmp(stmt.struct_name, base_name) == 0) {
     is_match = true;
+}
 }
 }
     if (is_match) {
@@ -7529,6 +7537,41 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     return "NULL";
 }
     return "0";
+}
+    if (expr.kind == ExprKind_ek_str_interp) {
+    if (ArrayList_StrInterpPart_length(&(expr.interp_parts)) == 0) {
+    return "\"\"";
+}
+    const char* result = "";
+    int64_t i = 0;
+    while (i < ArrayList_StrInterpPart_length(&(expr.interp_parts))) {
+    StrInterpPart part = ArrayList_StrInterpPart_get(&(expr.interp_parts), i);
+    const char* part_str = "";
+    if (part.kind == 0) {
+    part_str = _kai_str_concat(_kai_str_concat("\"", Codegen_escape_string(self, part.str_val)), "\"");
+} else {
+    const char* expr_val = Codegen_gen_expr(self, part.expr_idx);
+    const char* expr_type = Codegen_get_expr_type(self, part.expr_idx);
+    if (strcmp(expr_type, "Int") == 0) {
+    part_str = _kai_str_concat(_kai_str_concat("int_to_str(", expr_val), ")");
+} else if (strcmp(expr_type, "Char") == 0) {
+    part_str = _kai_str_concat(_kai_str_concat("char_to_str(", expr_val), ")");
+} else if (strcmp(expr_type, "Bool") == 0) {
+    part_str = _kai_str_concat(_kai_str_concat("((", expr_val), ") ? \"true\" : \"false\")");
+} else if (strcmp(expr_type, "Str") == 0) {
+    part_str = expr_val;
+} else {
+    part_str = expr_val;
+}
+}
+    if (i == 0) {
+    result = part_str;
+} else {
+    result = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("_kai_str_concat(", result), ", "), part_str), ")");
+}
+    i = (i + 1);
+}
+    return result;
 }
     if (expr.kind == ExprKind_ek_identifier) {
     return expr.ident_name;
@@ -7916,7 +7959,23 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (i > 0) {
     fields_str = _kai_str_concat(fields_str, ", ");
 }
-    fields_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(fields_str, "."), f.name), " = "), Codegen_gen_expr(self, f.value));
+    const char* field_type = "";
+    int64_t si = 0;
+    while (si < ArrayList_StmtNode_length(self->stmt_pool)) {
+    StmtNode s = ArrayList_StmtNode_get(self->stmt_pool, si);
+    if ((s.kind == StmtKind_sk_struct_decl) && (strcmp(s.struct_name, expr.struct_name) == 0)) {
+    int64_t fi = 0;
+    while (fi < ArrayList_StructField_length(&(s.struct_fields))) {
+    StructField sf = ArrayList_StructField_get(&(s.struct_fields), fi);
+    if (strcmp(sf.name, f.name) == 0) {
+    field_type = sf.ftype;
+}
+    fi = (fi + 1);
+}
+}
+    si = (si + 1);
+}
+    fields_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(fields_str, "."), f.name), " = "), Codegen_gen_expr_with_expected_type(self, f.value, field_type));
     i = (i + 1);
 }
     return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", struct_name), "){ "), fields_str), " }");
@@ -7968,7 +8027,13 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if ((((rec_inferred)[0] == ((char)(42))) || ((rec_inferred)[0] == ((char)(38)))) || is_self_ptr) {
     args_str = rec_val;
 } else {
+    bool is_complex = ((receiver_node.kind == ExprKind_ek_func_call) || (receiver_node.kind == ExprKind_ek_method_call));
+    if (is_complex) {
+    const char* tmp_type = Codegen_map_type(self, rec_inferred);
+    args_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("({ ", tmp_type), " __tmp_recv = "), rec_val), "; &__tmp_recv; })");
+} else {
     args_str = _kai_str_concat(_kai_str_concat("&(", rec_val), ")");
+}
 }
 }
     int64_t ai = 0;
@@ -7998,7 +8063,19 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     const char* val_type = substring(inner_ty, 1, strlen(inner_ty));
     const char* val_ctype = Codegen_map_type(self, val_type);
     const char* cond_ctype = Codegen_map_type(self, inner_ty);
-    const char* fallback_code = Codegen_gen_stmt(self, expr.catch_fallback);
+    const char* fallback_code = "";
+    if (expr.catch_fallback >= 0) {
+    StmtNode fb_node = ArrayList_StmtNode_get(self->stmt_pool, expr.catch_fallback);
+    if (fb_node.kind == StmtKind_sk_expr) {
+    fallback_code = Codegen_gen_expr(self, fb_node.expr_stmt);
+} else if (fb_node.kind == StmtKind_sk_block) {
+    fallback_code = _kai_str_concat(_kai_str_concat("(", Codegen_gen_stmt(self, expr.catch_fallback)), ")");
+} else {
+    fallback_code = Codegen_gen_stmt(self, expr.catch_fallback);
+}
+} else {
+    fallback_code = "0";
+}
     const char* catch_code = "({ ";
     if (Codegen_is_pointer_type(self, val_type)) {
     catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, val_ctype), " _kai_opt = ("), inner), "); ");
@@ -8020,7 +8097,19 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     const char* val_type = substring(inner_ty, 0, excl_pos);
     const char* result_ctype = Codegen_map_type(self, inner_ty);
     const char* val_ctype = Codegen_map_type(self, val_type);
-    const char* fallback_code = Codegen_gen_stmt(self, expr.catch_fallback);
+    const char* fallback_code = "";
+    if (expr.catch_fallback >= 0) {
+    StmtNode fb_node = ArrayList_StmtNode_get(self->stmt_pool, expr.catch_fallback);
+    if (fb_node.kind == StmtKind_sk_expr) {
+    fallback_code = Codegen_gen_expr(self, fb_node.expr_stmt);
+} else if (fb_node.kind == StmtKind_sk_block) {
+    fallback_code = _kai_str_concat(_kai_str_concat("(", Codegen_gen_stmt(self, expr.catch_fallback)), ")");
+} else {
+    fallback_code = Codegen_gen_stmt(self, expr.catch_fallback);
+}
+} else {
+    fallback_code = "0";
+}
     const char* catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("({ ", result_ctype), " _kai_cr = ("), inner), "); ");
     if (strcmp(val_type, "Void") == 0) {
     catch_code = _kai_str_concat(catch_code, "if (_kai_cr.tag != 0) { ");
@@ -8209,7 +8298,11 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     const char* lhs = Codegen_gen_expr(self, stmt.assign_target);
     const char* lhs_type = Codegen_get_expr_type(self, stmt.assign_target);
     const char* rhs = Codegen_gen_expr_with_expected_type(self, stmt.assign_value, lhs_type);
-    return _kai_str_concat(_kai_str_concat(_kai_str_concat(lhs, " = "), rhs), ";");
+    const char* op = "=";
+    if (strlen(stmt.assign_op) > 0) {
+    op = stmt.assign_op;
+}
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(lhs, " "), op), " "), rhs), ";");
 }
     if (stmt.kind == StmtKind_sk_func_decl) {
     if (ArrayList_Str_length(&(stmt.func_type_params)) > 0) {
@@ -8551,17 +8644,22 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     const char* iter_var = stmt.for_var;
     const char* start = Codegen_gen_expr(self, stmt.for_start);
     const char* end = Codegen_gen_expr(self, stmt.for_end);
-    const char* op = "<";
-    if (stmt.for_inclusive) {
-    op = "<=";
-}
     if (stmt.for_body >= 0) {
     StmtNode body_stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt.for_body);
     body_stmt.block_is_loop_body = true;
     ArrayList_StmtNode_set(self->stmt_pool, stmt.for_body, body_stmt);
 }
     const char* body = Codegen_gen_stmt(self, stmt.for_body);
-    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("for (int64_t ", iter_var), " = "), start), "; "), iter_var), " "), op), " "), end), "; ++"), iter_var), ") "), body);
+    const char* cmp_asc = "<";
+    const char* cmp_desc = ">";
+    if (stmt.for_inclusive) {
+    cmp_asc = "<=";
+    cmp_desc = ">=";
+}
+    const char* for_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("for (int64_t ", iter_var), " = "), start), "; ");
+    for_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(for_str, "("), start), " <= "), end), ") ? ("), iter_var), " "), cmp_asc), " "), end), ") : ("), iter_var), " "), cmp_desc), " "), end), "); ");
+    for_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(for_str, "("), start), " <= "), end), ") ? ++"), iter_var), " : --"), iter_var), ") "), body);
+    return for_str;
 }
     if (stmt.kind == StmtKind_sk_return) {
     ArrayList_Str drop_calls = ArrayList_Str_init(self->allocator);
@@ -8639,7 +8737,44 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 }
     return _kai_str_concat(res, "return;");
 }
+    int64_t ret_excl_pos = Codegen_str_find(self, self->cur_return_type, ((char)(33)));
     const char* mapped_type = Codegen_map_type(self, self->cur_return_type);
+    if (ret_excl_pos >= 0) {
+    const char* val_payload_type = substring(self->cur_return_type, 0, ret_excl_pos);
+    ExprNode ret_node = ArrayList_ExprNode_get(self->expr_pool, stmt.return_value);
+    bool is_error_variant = false;
+    if (ret_node.kind == ExprKind_ek_field_access) {
+    ExprNode base_node = ArrayList_ExprNode_get(self->expr_pool, ret_node.field_expr);
+    if (base_node.kind == ExprKind_ek_identifier) {
+    if (Codegen_is_enum_type(self, base_node.ident_name)) {
+    is_error_variant = true;
+}
+}
+}
+    const char* raw_val = Codegen_gen_expr(self, stmt.return_value);
+    const char* expr_ty = Codegen_get_expr_type(self, stmt.return_value);
+    int64_t expr_excl_pos = Codegen_str_find(self, expr_ty, ((char)(33)));
+    const char* ret_expr = "";
+    if (expr_excl_pos >= 0) {
+    ret_expr = raw_val;
+} else if (is_error_variant) {
+    ret_expr = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", mapped_type), "){ .tag = "), raw_val), " }");
+} else if (strcmp(val_payload_type, "Void") == 0) {
+    ret_expr = _kai_str_concat(_kai_str_concat("(", mapped_type), "){ .tag = 0 }");
+} else {
+    ret_expr = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", mapped_type), "){ .tag = 0, .value = "), raw_val), " }");
+}
+    const char* res_str = "{\n";
+    res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), mapped_type), " __ret_val = "), ret_expr), ";\n");
+    int64_t ci = 0;
+    while (ci < ArrayList_Str_length(&(drop_calls))) {
+    res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), ArrayList_Str_get(&(drop_calls), ci)), "\n");
+    ci = (ci + 1);
+}
+    res_str = _kai_str_concat(res_str, "    return __ret_val;\n");
+    res_str = _kai_str_concat(res_str, "}");
+    return res_str;
+}
     const char* res_str = "{\n";
     res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), mapped_type), " __ret_val = "), val_str), ";\n");
     int64_t ci = 0;
@@ -8664,6 +8799,24 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 }
     if (stmt.kind == StmtKind_sk_expr) {
     return _kai_str_concat(Codegen_gen_expr(self, stmt.expr_stmt), ";");
+}
+    if (stmt.kind == StmtKind_sk_print) {
+    int64_t arg = stmt.print_value;
+    const char* val = Codegen_gen_expr(self, arg);
+    const char* arg_type = Codegen_get_expr_type(self, arg);
+    if (strcmp(arg_type, "Int") == 0) {
+    return _kai_str_concat(_kai_str_concat("printf(\"%lld\\n\", (long long)(", val), "));");
+}
+    if (strcmp(arg_type, "Float") == 0) {
+    return _kai_str_concat(_kai_str_concat("printf(\"%f\\n\", (double)(", val), "));");
+}
+    if (strcmp(arg_type, "Char") == 0) {
+    return _kai_str_concat(_kai_str_concat("printf(\"%c\\n\", (char)(", val), "));");
+}
+    if (strcmp(arg_type, "Bool") == 0) {
+    return _kai_str_concat(_kai_str_concat("printf(\"%s\\n\", (", val), ") ? \"true\" : \"false\");");
+}
+    return _kai_str_concat(_kai_str_concat("printf(\"%s\\n\", ", val), ");");
 }
     if (stmt.kind == StmtKind_sk_unsafe) {
     return Codegen_gen_stmt(self, stmt.unsafe_body);
@@ -9094,7 +9247,9 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
     final_code = _kai_str_concat(final_code, "#include <stdio.h>\n");
     final_code = _kai_str_concat(final_code, "#include <stdlib.h>\n");
     final_code = _kai_str_concat(final_code, "#include <string.h>\n");
+    final_code = _kai_str_concat(final_code, "#if !defined(_WIN32)\n");
     final_code = _kai_str_concat(final_code, "#include <sys/mman.h>\n");
+    final_code = _kai_str_concat(final_code, "#endif\n");
     final_code = _kai_str_concat(final_code, "#include <ctype.h>\n");
     final_code = _kai_str_concat(final_code, "\n");
     final_code = _kai_str_concat(final_code, "#if defined(_WIN32)\n");

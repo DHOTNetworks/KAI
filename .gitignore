@@ -1,6 +1,9 @@
 #artifacts
-
 .DS_Store
+.kiro
+
+#Files
+
 *.bak
 kai
 kai_bootstrap

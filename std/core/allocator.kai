@@ -155,7 +155,7 @@ impl KaiAllocator {
 
     fn alloc_large(self, size: Int) -> *Char {
         unsafe {
-            let total = size + 8
+            let total = size + 16
             let page_aligned = page_align_up(total)
             // Overallocate by 64KB to guarantee 64KB alignment
             let raw = mmap(0 as *Char, page_aligned + 65536, 3, 4098, -1, 0)
@@ -175,8 +175,8 @@ impl KaiAllocator {
             let slab_addr = ptr as Int & (-65536)
             let raw_ptr = (slab_addr as *Char as *Int)[0]
             let orig_size = (slab_addr as *Char as *Int)[1]
-            // Calculate original mmap size: page_align_up(orig_size + 8) + 65536
-            let mmap_size = page_align_up(orig_size + 8) + 65536
+            // Calculate original mmap size: page_align_up(orig_size + 16) + 65536
+            let mmap_size = page_align_up(orig_size + 16) + 65536
             self.used = self.used - orig_size
             munmap(raw_ptr as *Char, mmap_size)
         }
