@@ -8,4 +8,7 @@
 kai
 kai_bootstrap
 language_roadmap.md
-*.md
+walkthrough.md
+traits-comptime.md
+codegen*
+#*.md
