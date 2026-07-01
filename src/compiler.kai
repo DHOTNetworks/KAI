@@ -7,6 +7,8 @@ import TypeChecker from type_checker
 import Codegen from codegen
 import length from std.collections.string
 import substring from std.collections.string
+import fs_exists from std.fs.fs
+import LLVMCodegen from codegen_llvm
 
 extern fn system(cmd: *Char) -> Int
 extern fn strcmp(s1: Str, s2: Str) -> Int
@@ -48,6 +50,7 @@ fn main(argc: Int, argv: **Char) -> Int {
     var output_bin = ""
     var emit_c_only = false
     var opt_level = "-O2"
+    var emit_llvm = false
 
     var i = 1
     while i < argc {
@@ -59,6 +62,7 @@ fn main(argc: Int, argv: **Char) -> Int {
         var is_o2 = false
         var is_o3 = false
         var is_os = false
+        var is_llvm = false
         unsafe {
             if strcmp(arg, "-c") == 0 {
                 is_c = true
@@ -74,10 +78,14 @@ fn main(argc: Int, argv: **Char) -> Int {
                 is_o3 = true
             } else if strcmp(arg, "-Os") == 0 {
                 is_os = true
+            } else if strcmp(arg, "-emit-llvm") == 0 {
+                is_llvm = true
             }
         }
         if is_c {
             emit_c_only = true
+        } else if is_llvm {
+            emit_llvm = true
         } else if is_o {
             if i + 1 < argc {
                 i = i + 1
@@ -121,6 +129,13 @@ fn main(argc: Int, argv: **Char) -> Int {
         allocator.free(buf)
     }
 
+    var llvm_flags = ""
+    if fs_exists("/opt/homebrew/opt/llvm@21") {
+        llvm_flags = " -I /opt/homebrew/opt/llvm@21/include -L /opt/homebrew/opt/llvm@21/lib -lLLVM"
+    } else if fs_exists("/opt/homebrew/opt/llvm@20") {
+        llvm_flags = " -I /opt/homebrew/opt/llvm@20/include -L /opt/homebrew/opt/llvm@20/lib -lLLVM"
+    }
+
     let base = get_base_name(&allocator, input_file)
     var bin_name = base
     if length(output_bin) > 0 {
@@ -146,21 +161,42 @@ fn main(argc: Int, argv: **Char) -> Int {
             if !success {
                 return 4
             }
-            var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
-            let output = gen.generate(program_idx)
-            let write_res = write_string(c_file, output)
-            match write_res {
-                case .ok(_) => {
-                    if emit_c_only {
-                        return 0
+            if emit_llvm {
+                var gen_llvm = LLVMCodegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
+                let output = gen_llvm.generate(program_idx)
+                let ll_file = base + ".ll"
+                let write_res = write_string(ll_file, output)
+                match write_res {
+                    case .ok(_) => {
+                        if emit_c_only {
+                            return 0
+                        }
+                        let cmd = "clang " + ll_file + " -o " + bin_name
+                        unsafe {
+                            return system(cmd as *Char)
+                        }
                     }
-                    let cmd = "clang " + exe_include_flag + " " + opt_level + " " + c_file + " -o " + bin_name
-                    unsafe {
-                        return system(cmd as *Char)
+                    case .err(_) => {
+                        return 5
                     }
                 }
-                case .err(_) => {
-                    return 5
+            } else {
+                var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
+                let output = gen.generate(program_idx)
+                let write_res = write_string(c_file, output)
+                match write_res {
+                    case .ok(_) => {
+                        if emit_c_only {
+                            return 0
+                        }
+                        let cmd = "clang " + exe_include_flag + llvm_flags + " " + opt_level + " " + c_file + " -o " + bin_name
+                        unsafe {
+                            return system(cmd as *Char)
+                        }
+                    }
+                    case .err(_) => {
+                        return 5
+                    }
                 }
             }
         }

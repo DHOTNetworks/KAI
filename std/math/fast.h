@@ -1,6 +1,8 @@
 #ifndef KAI_FAST_MATH_H
 #define KAI_FAST_MATH_H
 
+#include <math.h>
+
 #if defined(__aarch64__)
 static inline double fast_sqrt(double val) {
     double res;
@@ -24,7 +26,6 @@ static inline double fast_abs(double val) {
     return res;
 }
 #else
-#include <math.h>
 static inline double fast_sqrt(double val) {
     return sqrt(val);
 }
@@ -32,5 +33,12 @@ static inline double fast_abs(double val) {
     return fabs(val);
 }
 #endif
+
+static inline double fast_sin(double val) { return sin(val); }
+static inline double fast_cos(double val) { return cos(val); }
+static inline double fast_tan(double val) { return tan(val); }
+static inline double fast_log(double val) { return log(val); }
+static inline double fast_exp(double val) { return exp(val); }
+static inline double fast_pow(double base, double exponent) { return pow(base, exponent); }
 
 #endif
