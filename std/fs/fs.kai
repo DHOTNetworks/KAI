@@ -1,0 +1,59 @@
+cimport "std/fs/fs.h"
+
+extern fn kai_fs_exists(path: Str) -> Bool
+extern fn kai_fs_is_dir(path: Str) -> Bool
+extern fn kai_fs_mkdir(path: Str) -> Bool
+extern fn kai_fs_remove(path: Str) -> Bool
+extern fn kai_fs_opendir(path: Str) -> *Void
+extern fn kai_fs_readdir(handle: *Void) -> *Char
+extern fn kai_fs_closedir(handle: *Void)
+
+fn fs_exists(path: Str) -> Bool {
+    unsafe {
+        return kai_fs_exists(path)
+    }
+}
+
+fn fs_is_dir(path: Str) -> Bool {
+    unsafe {
+        return kai_fs_is_dir(path)
+    }
+}
+
+fn fs_mkdir(path: Str) -> Bool {
+    unsafe {
+        return kai_fs_mkdir(path)
+    }
+}
+
+fn fs_remove(path: Str) -> Bool {
+    unsafe {
+        return kai_fs_remove(path)
+    }
+}
+
+struct Dir {
+    handle: *Void
+}
+
+fn fs_opendir(path: Str) -> Dir {
+    unsafe {
+        return Dir(handle: kai_fs_opendir(path))
+    }
+}
+
+fn fs_readdir(dir: Dir) -> Str {
+    unsafe {
+        let name_ptr = kai_fs_readdir(dir.handle)
+        if name_ptr == 0 as *Char {
+            return ""
+        }
+        return name_ptr as Str
+    }
+}
+
+fn fs_closedir(dir: Dir) {
+    unsafe {
+        kai_fs_closedir(dir.handle)
+    }
+}

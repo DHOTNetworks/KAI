@@ -1,0 +1,235 @@
+
+// ============================================================================
+// LLVM Enums & Constants
+// ============================================================================
+
+// LLVMIntPredicate
+let LLVMIntEQ  = 32
+let LLVMIntNE  = 33
+let LLVMIntUGT = 34
+let LLVMIntUGE = 35
+let LLVMIntULT = 36
+let LLVMIntULE = 37
+let LLVMIntSGT = 38
+let LLVMIntSGE = 39
+let LLVMIntSLT = 40
+let LLVMIntSLE = 41
+
+// LLVMRealPredicate
+let LLVMRealPredicateFalse = 0
+let LLVMRealOEQ            = 1
+let LLVMRealOGT            = 2
+let LLVMRealOGE            = 3
+let LLVMRealOLT            = 4
+let LLVMRealOLE            = 5
+let LLVMRealONE            = 6
+let LLVMRealORD            = 7
+let LLVMRealUNO            = 8
+let LLVMRealUEQ            = 9
+let LLVMRealUGT            = 10
+let LLVMRealUGE            = 11
+let LLVMRealULT            = 12
+let LLVMRealULE            = 13
+let LLVMRealUNE            = 14
+let LLVMRealPredicateTrue  = 15
+
+// LLVMCodeGenFileType
+let LLVMAssemblyFile = 0
+let LLVMObjectFile   = 1
+
+// LLVMCodeGenOptLevel
+let LLVMCodeGenLevelNone        = 0
+let LLVMCodeGenLevelLess        = 1
+let LLVMCodeGenLevelDefault     = 2
+let LLVMCodeGenLevelAggressive  = 3
+
+// LLVMRelocMode
+let LLVMRelocDefault      = 0
+let LLVMRelocStatic       = 1
+let LLVMRelocPIC          = 2
+let LLVMRelocDynamicNoPic = 3
+let LLVMRelocROPI         = 4
+let LLVMRelocRWPI         = 5
+let LLVMRelocROPIRWPI     = 6
+
+// LLVMCodeModel
+let LLVMCodeModelDefault    = 0
+let LLVMCodeModelJITDefault = 1
+let LLVMCodeModelTiny       = 2
+let LLVMCodeModelSmall      = 3
+let LLVMCodeModelKernel     = 4
+let LLVMCodeModelMedium     = 5
+let LLVMCodeModelLarge      = 6
+
+// LLVMVerifierFailureAction
+let LLVMAbortProcessAction = 0
+let LLVMPrintMessageAction = 1
+let LLVMReturnStatusAction = 2
+
+// ============================================================================
+// LLVM FFI Target Initialization
+// ============================================================================
+
+extern fn LLVMInitializeAllTargetInfos()
+extern fn LLVMInitializeAllTargets()
+extern fn LLVMInitializeAllTargetMCs()
+extern fn LLVMInitializeAllAsmPrinters()
+extern fn LLVMInitializeAllAsmParsers()
+
+extern fn LLVMInitializeNativeTarget() -> Int
+extern fn LLVMInitializeNativeAsmPrinter() -> Int
+extern fn LLVMInitializeNativeAsmParser() -> Int
+
+// ============================================================================
+// LLVM FFI Context & Module APIs
+// ============================================================================
+
+extern fn LLVMContextCreate() -> *Void
+extern fn LLVMContextDispose(ctx: *Void)
+extern fn LLVMModuleCreateWithNameInContext(name: Str, ctx: *Void) -> *Void
+extern fn LLVMDisposeModule(m: *Void)
+extern fn LLVMPrintModuleToString(m: *Void) -> *Char
+extern fn LLVMWriteBitcodeToFile(m: *Void, path: Str) -> Int
+
+// ============================================================================
+// LLVM FFI Builder APIs
+// ============================================================================
+
+extern fn LLVMCreateBuilderInContext(ctx: *Void) -> *Void
+extern fn LLVMDisposeBuilder(b: *Void)
+extern fn LLVMAppendBasicBlockInContext(ctx: *Void, f: *Void, name: Str) -> *Void
+extern fn LLVMPositionBuilderAtEnd(b: *Void, block: *Void)
+extern fn LLVMGetInsertBlock(b: *Void) -> *Void
+
+// ============================================================================
+// LLVM FFI Type APIs
+// ============================================================================
+
+extern fn LLVMInt1TypeInContext(ctx: *Void) -> *Void
+extern fn LLVMInt8TypeInContext(ctx: *Void) -> *Void
+extern fn LLVMInt16TypeInContext(ctx: *Void) -> *Void
+extern fn LLVMInt32TypeInContext(ctx: *Void) -> *Void
+extern fn LLVMInt64TypeInContext(ctx: *Void) -> *Void
+extern fn LLVMFloatTypeInContext(ctx: *Void) -> *Void
+extern fn LLVMDoubleTypeInContext(ctx: *Void) -> *Void
+extern fn LLVMVoidTypeInContext(ctx: *Void) -> *Void
+extern fn LLVMPointerType(ty: *Void, addr_space: Int) -> *Void
+extern fn LLVMFunctionType(ret_type: *Void, param_types: *Void, param_count: Int, is_var_arg: Bool) -> *Void
+
+// ============================================================================
+// LLVM FFI Constant APIs
+// ============================================================================
+
+extern fn LLVMConstInt(ty: *Void, val: Int, sign_extend: Bool) -> *Void
+extern fn LLVMConstReal(ty: *Void, val: Float) -> *Void
+extern fn LLVMConstStringInContext(ctx: *Void, s: *Char, len: Int, dont_null_terminate: Bool) -> *Void
+
+// ============================================================================
+// LLVM FFI Value Query & Function APIs
+// ============================================================================
+
+extern fn LLVMAddFunction(m: *Void, name: Str, ty: *Void) -> *Void
+extern fn LLVMGetNamedFunction(m: *Void, name: Str) -> *Void
+extern fn LLVMGetParam(f: *Void, index: Int) -> *Void
+
+// ============================================================================
+// LLVM FFI Instruction Builder APIs
+// ============================================================================
+
+// Terminators
+extern fn LLVMBuildRetVoid(b: *Void) -> *Void
+extern fn LLVMBuildRet(b: *Void, val: *Void) -> *Void
+extern fn LLVMBuildBr(b: *Void, dest_block: *Void) -> *Void
+extern fn LLVMBuildCondBr(b: *Void, cond: *Void, then_block: *Void, else_block: *Void) -> *Void
+
+// Arithmetic
+extern fn LLVMBuildAdd(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildSub(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildMul(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildSDiv(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildUDiv(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildFAdd(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildFSub(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildFMul(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildFDiv(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+
+// Memory
+extern fn LLVMBuildAlloca(b: *Void, ty: *Void, name: Str) -> *Void
+extern fn LLVMBuildLoad2(b: *Void, ty: *Void, val_ptr: *Void, name: Str) -> *Void
+extern fn LLVMBuildStore(b: *Void, val: *Void, val_ptr: *Void) -> *Void
+
+// Comparison & Conversion
+extern fn LLVMBuildICmp(b: *Void, op: Int, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildFCmp(b: *Void, op: Int, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildZExt(b: *Void, val: *Void, dest_type: *Void, name: Str) -> *Void
+extern fn LLVMBuildSExt(b: *Void, val: *Void, dest_type: *Void, name: Str) -> *Void
+extern fn LLVMBuildTrunc(b: *Void, val: *Void, dest_type: *Void, name: Str) -> *Void
+extern fn LLVMBuildFPToSI(b: *Void, val: *Void, dest_type: *Void, name: Str) -> *Void
+extern fn LLVMBuildSIToFP(b: *Void, val: *Void, dest_type: *Void, name: Str) -> *Void
+
+// Calls & Structs
+extern fn LLVMBuildCall2(b: *Void, fn_ty: *Void, fn_val: *Void, args: *Void, num_args: Int, name: Str) -> *Void
+extern fn LLVMBuildStructGEP2(b: *Void, struct_ty: *Void, pointer_val: *Void, idx: Int, name: Str) -> *Void
+
+// ============================================================================
+// LLVM FFI Analysis & Machine target Emission APIs
+// ============================================================================
+
+extern fn LLVMVerifyModule(m: *Void, action: Int, out_msg: *Void) -> Int
+
+extern fn LLVMGetDefaultTargetTriple() -> *Char
+extern fn LLVMGetTargetFromTriple(triple: Str, out_target: *Void, out_error: *Void) -> Int
+
+extern fn LLVMCreateTargetMachine(
+    target: *Void,
+    triple: Str,
+    cpu: Str,
+    features: Str,
+    opt_level: Int,
+    reloc: Int,
+    code_model: Int
+) -> *Void
+
+extern fn LLVMDisposeTargetMachine(tm: *Void)
+
+extern fn LLVMTargetMachineEmitToFile(
+    tm: *Void,
+    m: *Void,
+    path: *Char,
+    codegen: Int,
+    out_error: *Void
+) -> Int
+
+// Struct and Array FFI APIs
+extern fn LLVMStructTypeInContext(ctx: *Void, element_types: *Void, element_count: Int, packed: Bool) -> *Void
+extern fn LLVMStructCreateNamed(ctx: *Void, name: Str) -> *Void
+extern fn LLVMStructSetBody(struct_type: *Void, element_types: *Void, element_count: Int, packed: Bool)
+extern fn LLVMArrayType(element_type: *Void, count: Int) -> *Void
+extern fn LLVMBuildGEP2(b: *Void, ty: *Void, pointer_val: *Void, indices: *Void, num_indices: Int, name: Str) -> *Void
+extern fn LLVMBuildGlobalStringPtr(b: *Void, s: Str, name: Str) -> *Void
+extern fn LLVMBuildBitCast(b: *Void, val: *Void, dest_ty: *Void, name: Str) -> *Void
+extern fn LLVMBuildIntToPtr(b: *Void, val: *Void, dest_ty: *Void, name: Str) -> *Void
+extern fn LLVMBuildPtrToInt(b: *Void, val: *Void, dest_ty: *Void, name: Str) -> *Void
+
+// Remainder and Bitwise Builder APIs
+extern fn LLVMBuildSRem(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildAnd(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildOr(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildXor(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildShl(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildAShr(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildLShr(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildSelect(b: *Void, cond: *Void, then_val: *Void, else_val: *Void, name: Str) -> *Void
+
+// Global Variables & Constants
+extern fn LLVMAddGlobal(module: *Void, ty: *Void, name: Str) -> *Void
+extern fn LLVMSetInitializer(global_val: *Void, constant_val: *Void)
+extern fn LLVMConstNull(ty: *Void) -> *Void
+extern fn LLVMDeleteFunction(fn_val: *Void)
+extern fn LLVMGetFirstBasicBlock(fn_val: *Void) -> *Void
+extern fn LLVMGetReturnType(fn_ty: *Void) -> *Void
+extern fn LLVMTypeOf(val: *Void) -> *Void
+extern fn LLVMGetElementType(ty: *Void) -> *Void
+
+
+

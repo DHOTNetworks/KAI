@@ -1,0 +1,34 @@
+cimport "std/os/os.h"
+
+extern fn kai_os_sleep_ms(ms: Int)
+extern fn kai_os_getpid() -> Int
+extern fn kai_os_getenv(name: Str) -> *Char
+extern fn kai_os_setenv(name: Str, val: Str) -> Int
+
+fn os_sleep_ms(ms: Int) {
+    unsafe {
+        kai_os_sleep_ms(ms)
+    }
+}
+
+fn os_getpid() -> Int {
+    unsafe {
+        return kai_os_getpid()
+    }
+}
+
+fn os_getenv(name: Str) -> Str {
+    unsafe {
+        let ptr = kai_os_getenv(name)
+        if ptr == 0 as *Char {
+            return ""
+        }
+        return ptr as Str
+    }
+}
+
+fn os_setenv(name: Str, val: Str) -> Bool {
+    unsafe {
+        return kai_os_setenv(name, val) == 0
+    }
+}

@@ -1,0 +1,20 @@
+cimport "std/time/time.h"
+
+extern fn kai_time_monotonic_ns() -> Int
+extern fn kai_time_system_ms() -> Int
+
+fn monotonic_ns() -> Int {
+    unsafe {
+        return kai_time_monotonic_ns()
+    }
+}
+
+fn monotonic_ms() -> Int {
+    return monotonic_ns() / 1000000
+}
+
+fn system_ms() -> Int {
+    unsafe {
+        return kai_time_system_ms()
+    }
+}

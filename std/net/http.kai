@@ -1,0 +1,179 @@
+cimport "std/net/http.h"
+
+import Socket from std.net.socket
+import tcp_listen from std.net.socket
+import tcp_accept from std.net.socket
+import socket_send from std.net.socket
+import socket_recv from std.net.socket
+import socket_close from std.net.socket
+
+import Thread from std.sync.thread
+import spawn from std.sync.thread
+
+import KaiAllocator from std.core.allocator
+import Allocator from std.core.allocator
+import malloc from std.core.allocator
+import free from std.core.allocator
+
+import StringBuilder from std.collections.string
+import length from std.collections.string
+import int_to_str from std.collections.string
+
+extern fn kai_http_parse_request(buf: *Char, buflen: Int, req_void: *Void) -> Int
+extern fn kai_http_get_header(req_void: *Void, name: Str, out_len: *Int) -> *Char
+extern fn kai_http_get_method(req_void: *Void, out_len: *Int) -> *Char
+extern fn kai_http_get_path(req_void: *Void, out_len: *Int) -> *Char
+extern fn kai_http_get_minor_version(req_void: *Void) -> Int
+extern fn kai_http_get_body_offset(req_void: *Void) -> Int
+extern fn kai_http_invoke_handler(handler_ptr: *Void, req_ptr: *Void) -> *Char
+
+struct HttpRequest {
+    method: Str
+    path: Str
+    body: Str
+    ffi_ptr: *Void
+    allocator: *Allocator
+}
+
+impl HttpRequest {
+    fn get_header(self, name: Str) -> Str {
+        unsafe {
+            var len = 0
+            let ptr = kai_http_get_header(self.ffi_ptr, name, &len)
+            if ptr == 0 as *Char {
+                return ""
+            }
+            var sb = StringBuilder(self.allocator)
+            sb.init(self.allocator)
+            var i = 0
+            while i < len {
+                sb.append_char(ptr[i])
+                i = i + 1
+            }
+            return sb.to_str()
+        }
+    }
+}
+
+struct ConnectionState {
+    client_sock: Socket
+    handler: *Void
+}
+
+fn http_conn_worker(arg: *Void) -> *Void {
+    var state = arg as *ConnectionState
+    let client = state.client_sock
+    let handler = state.handler
+
+    unsafe {
+        var thread_allocator = KaiAllocator(heads: 0 as *Char, used: 0)
+        thread_allocator.init()
+        let alloc_ptr = &thread_allocator as *Allocator
+
+        let buf = thread_allocator.alloc(4096, 1) as *Char
+        let bytes_received = socket_recv(client, buf, 4096)
+        if bytes_received > 0 {
+            buf[bytes_received] = Char(0)
+
+            // Allocate 2048 bytes for struct kai_http_request
+            let ffi_req = thread_allocator.alloc(2048, 1) as *Void
+
+            let parsed_bytes = kai_http_parse_request(buf, bytes_received, ffi_req)
+            if parsed_bytes > 0 {
+                var len = 0
+                let m_ptr = kai_http_get_method(ffi_req, &len)
+                var sb_method = StringBuilder(alloc_ptr)
+                sb_method.init(alloc_ptr)
+                var i = 0
+                while i < len {
+                    sb_method.append_char(m_ptr[i])
+                    i = i + 1
+                }
+                let method_str = sb_method.to_str()
+
+                let p_ptr = kai_http_get_path(ffi_req, &len)
+                var sb_path = StringBuilder(alloc_ptr)
+                sb_path.init(alloc_ptr)
+                i = 0
+                while i < len {
+                    sb_path.append_char(p_ptr[i])
+                    i = i + 1
+                }
+                let path_str = sb_path.to_str()
+
+                var body_str = ""
+                let body_offset = kai_http_get_body_offset(ffi_req)
+                if body_offset < bytes_received {
+                    var sb_body = StringBuilder(alloc_ptr)
+                    sb_body.init(alloc_ptr)
+                    i = body_offset
+                    while i < bytes_received {
+                        sb_body.append_char(buf[i])
+                        i = i + 1
+                    }
+                    body_str = sb_body.to_str()
+                }
+
+                var req = HttpRequest(
+                    method: method_str,
+                    path: path_str,
+                    body: body_str,
+                    ffi_ptr: ffi_req,
+                    allocator: alloc_ptr
+                )
+
+                // Invoke user's callback
+                let response_body_ptr = kai_http_invoke_handler(handler, &req as *Void)
+                let response_body = response_body_ptr as Str
+
+                let response_body_len = length(response_body)
+                let header_part = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: "
+                let clen_str = int_to_str(response_body_len)
+                let full_response = header_part + clen_str + "\r\nConnection: close\r\n\r\n" + response_body
+
+                let _ = socket_send(client, full_response as *Char, length(full_response))
+            } else {
+                let bad_req_res = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                let _ = socket_send(client, bad_req_res as *Char, length(bad_req_res))
+            }
+        }
+        thread_allocator.deinit()
+    }
+
+    socket_close(client)
+    unsafe {
+        free(arg as *Char)
+    }
+    return 0 as *Void
+}
+
+struct HttpServer {
+    port: Int
+    handler: *Void
+}
+
+impl HttpServer {
+    fn start(self) {
+        let server_sock = tcp_listen(self.port)
+        if server_sock.fd < 0 {
+            print("HTTP Server failed to listen")
+            return
+        }
+
+        print("HTTP Server listening...")
+
+        while true {
+            let client = tcp_accept(server_sock)
+            if client.fd >= 0 {
+                unsafe {
+                    let state_ptr = malloc(sizeof(ConnectionState)) as *ConnectionState
+                    state_ptr.client_sock = client
+                    state_ptr.handler = self.handler
+
+                    let _ = spawn(http_conn_worker as *Void, state_ptr as *Void)
+                }
+            }
+        }
+        socket_close(server_sock)
+    }
+}

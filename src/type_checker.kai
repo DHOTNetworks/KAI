@@ -446,9 +446,9 @@ impl TypeChecker {
             }
             if is_struct {
                 if expr.func_type_args.length() > 0 {
-                    return name + "<" + str_array_join(expr.func_type_args, ", ") + ">"
+                    return "*" + name + "<" + str_array_join(expr.func_type_args, ", ") + ">"
                 }
-                return name
+                return "*" + name
             }
             let table = self.symbol_tables.get(self.current_table_idx)
             let sym = table.lookup_symbol(name, &self.symbol_tables)

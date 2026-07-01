@@ -1,0 +1,65 @@
+import length from std.collections.string
+import substring from std.collections.string
+
+fn is_sep(c: Char) -> Bool {
+    return c == Char(47) || c == Char(92)
+}
+
+fn basename(path: Str) -> Str {
+    let len = length(path)
+    if len == 0 {
+        return ""
+    }
+    var i = len - 1
+    while i >= 0 && is_sep(path[i]) {
+        i = i - 1
+    }
+    if i < 0 {
+        return "/"
+    }
+    let end = i + 1
+    while i >= 0 && !is_sep(path[i]) {
+        i = i - 1
+    }
+    let start = i + 1
+    return substring(path, start, end)
+}
+
+fn dirname(path: Str) -> Str {
+    let len = length(path)
+    if len == 0 {
+        return "."
+    }
+    var i = len - 1
+    while i >= 0 && is_sep(path[i]) {
+        i = i - 1
+    }
+    while i >= 0 && !is_sep(path[i]) {
+        i = i - 1
+    }
+    if i < 0 {
+        return "."
+    }
+    while i >= 0 && is_sep(path[i]) {
+        i = i - 1
+    }
+    if i < 0 {
+        return "/"
+    }
+    return substring(path, 0, i + 1)
+}
+
+fn extension(path: Str) -> Str {
+    let len = length(path)
+    if len == 0 {
+        return ""
+    }
+    var i = len - 1
+    while i >= 0 && !is_sep(path[i]) {
+        if path[i] == Char(46) {
+            return substring(path, i, len)
+        }
+        i = i - 1
+    }
+    return ""
+}

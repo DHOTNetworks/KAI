@@ -2,3 +2,9 @@ cimport "std/math/fast.h"
 
 extern fn fast_sqrt(val: Float) -> Float
 extern fn fast_abs(val: Float) -> Float
+extern fn fast_sin(val: Float) -> Float
+extern fn fast_cos(val: Float) -> Float
+extern fn fast_tan(val: Float) -> Float
+extern fn fast_log(val: Float) -> Float
+extern fn fast_exp(val: Float) -> Float
+extern fn fast_pow(base: Float, exponent: Float) -> Float
