@@ -3,13 +3,13 @@
 // Uses std.llvm.core to construct LLVM IR modules, types, and instructions.
 // ============================================================================
 
-import ArrayList from std.collections.array
+import ArrayList from std.core.array
 import Allocator from std.core.allocator
-import StringBuilder from std.collections.string
-import length from std.collections.string
-import substring from std.collections.string
-import int_to_str from std.collections.string
-import char_to_str from std.collections.string
+import StringBuilder from std.core.string
+import length from std.core.string
+import substring from std.core.string
+import int_to_str from std.core.string
+import char_to_str from std.core.string
 
 import StmtNode from ast_nodes
 import ExprNode from ast_nodes

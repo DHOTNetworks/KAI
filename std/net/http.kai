@@ -15,9 +15,9 @@ import Allocator from std.core.allocator
 import malloc from std.core.allocator
 import free from std.core.allocator
 
-import StringBuilder from std.collections.string
-import length from std.collections.string
-import int_to_str from std.collections.string
+import StringBuilder from std.core.string
+import length from std.core.string
+import int_to_str from std.core.string
 
 extern fn kai_http_parse_request(buf: *Char, buflen: Int, req_void: *Void) -> Int
 extern fn kai_http_get_header(req_void: *Void, name: Str, out_len: *Int) -> *Char

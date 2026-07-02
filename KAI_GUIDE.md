@@ -228,8 +228,8 @@ The standard library under `std/` provides high-performance routines with zero e
 | Module | Purpose | Key API Methods |
 | --- | --- | --- |
 | `std.core.allocator` | Memory Management | `KaiAllocator` (slab allocator), `CAlloc` (malloc/free wrapper) |
-| `std.collections.array` | Dynamic Arrays | `ArrayList<T>` (`init`, `push`, `get`, `set`, `pop`, `deinit`) |
-| `std.collections.string` | String Manipulations | `StringBuilder` (`append_char`, `append_str`), `length`, `substring`, `int_to_str` |
+| `std.core.array` | Dynamic Arrays | `ArrayList<T>` (`init`, `push`, `get`, `set`, `pop`, `deinit`) |
+| `std.core.string` | String Manipulations | `StringBuilder` (`append_char`, `append_str`), `length`, `substring`, `int_to_str` |
 | `std.math.fast` | Optimized Math | `fast_sqrt`, `fast_abs`, `fast_sin`, `fast_cos`, `fast_pow` |
 | `std.sync.thread` | Concurrency | `spawn(fn_ptr, arg_ptr)`, `join(thread)`, `Mutex` |
 | `std.sync.atomic` | Hardware Locks | `atomic_add(ptr, val)`, `atomic_cas(ptr, old, new)` |

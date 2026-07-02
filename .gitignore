@@ -2,9 +2,10 @@
 .DS_Store
 .kiro
 
-#Files
-
+#Redundant
 *.bak
+
+#Files
 kai
 kai_bootstrap
 kai_bootstrap_new
