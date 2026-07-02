@@ -39,7 +39,6 @@ fn tv_get_str(val: TokenValue) -> Str {
         }
     }
     return result
-
 }
 fn token_precedence(ttype: TokenType) -> Int {
     if ttype == TokenType.DOT {

@@ -1840,24 +1840,35 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             let cond_ctype = self.map_type(inner_ty)
             // Generate fallback: if it's an expr statement, use the expression directly
             var fallback_code = ""
+            var fallback_is_stmt2 = false
             if expr.catch_fallback >= 0 {
                 let fb_node = self.stmt_pool.get(expr.catch_fallback)
                 if fb_node.kind == StmtKind.sk_expr {
                     fallback_code = self.gen_expr(fb_node.expr_stmt)
                 } else if fb_node.kind == StmtKind.sk_block {
-                    // Wrap block as GCC statement-expression
-                    fallback_code = "(" + self.gen_stmt(expr.catch_fallback) + ")"
+                    var is_single_expr = false
+                    var expr_idx = -1
+                    if fb_node.block_stmts.length() == 1 {
+                        let single_stmt = self.stmt_pool.get(fb_node.block_stmts.get(0))
+                        if single_stmt.kind == StmtKind.sk_expr {
+                            is_single_expr = true
+                            expr_idx = single_stmt.expr_stmt
+                        }
+                    }
+                    if is_single_expr {
+                        fallback_code = self.gen_expr(expr_idx)
+                    } else {
+                        fallback_code = self.gen_stmt(expr.catch_fallback)
+                        fallback_is_stmt2 = true
+                    }
                 } else {
                     fallback_code = self.gen_stmt(expr.catch_fallback)
+                    fallback_is_stmt2 = true
                 }
             } else {
                 fallback_code = "0"
             }
             var catch_code = "({ "
-            var fallback_is_stmt2 = false
-            if length(fallback_code) > 0 && fallback_code[length(fallback_code) - 1] == Char(59) {
-                fallback_is_stmt2 = true
-            }
             if self.is_pointer_type(val_type) {
                 catch_code = catch_code + val_ctype + " _kai_opt = (" + inner + "); "
                 catch_code = catch_code + val_ctype + " _kai_cv; "
@@ -1888,15 +1899,30 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         let val_ctype = self.map_type(val_type)
         // Generate fallback: if it's an expr statement, use the expression directly
         var fallback_code = ""
+        var fallback_is_stmt = false
         if expr.catch_fallback >= 0 {
             let fb_node = self.stmt_pool.get(expr.catch_fallback)
             if fb_node.kind == StmtKind.sk_expr {
                 fallback_code = self.gen_expr(fb_node.expr_stmt)
             } else if fb_node.kind == StmtKind.sk_block {
-                // Wrap block as GCC statement-expression
-                fallback_code = "(" + self.gen_stmt(expr.catch_fallback) + ")"
+                var is_single_expr = false
+                var expr_idx = -1
+                if fb_node.block_stmts.length() == 1 {
+                    let single_stmt = self.stmt_pool.get(fb_node.block_stmts.get(0))
+                    if single_stmt.kind == StmtKind.sk_expr {
+                        is_single_expr = true
+                        expr_idx = single_stmt.expr_stmt
+                    }
+                }
+                if is_single_expr {
+                    fallback_code = self.gen_expr(expr_idx)
+                } else {
+                    fallback_code = self.gen_stmt(expr.catch_fallback)
+                    fallback_is_stmt = true
+                }
             } else {
                 fallback_code = self.gen_stmt(expr.catch_fallback)
+                fallback_is_stmt = true
             }
         } else {
             fallback_code = "0"
@@ -1913,13 +1939,6 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             catch_code = catch_code + "if (_kai_cr.tag != 0) { "
             if length(expr.catch_var) > 0 {
                 catch_code = catch_code + "int64_t " + expr.catch_var + " = _kai_cr.tag; "
-            }
-            // If fallback ends in ';' it's a statement (e.g. return N;) — can't assign its value.
-            // Emit it as a bare statement and add __builtin_unreachable() so the compiler knows
-            // control doesn't fall through.
-            var fallback_is_stmt = false
-            if length(fallback_code) > 0 && fallback_code[length(fallback_code) - 1] == Char(59) {
-                fallback_is_stmt = true
             }
             if fallback_is_stmt {
                 catch_code = catch_code + fallback_code + " __builtin_unreachable(); "
@@ -1957,6 +1976,24 @@ fn str_find(self, s: Str, target: Char) -> Int {
 }
 
 fn is_standard_c_func(self, name: Str) -> Bool {
+    let l = length(name)
+    if l >= 4 {
+        let sub4 = substring(name, 0, 4)
+        var is_llvm = false
+        unsafe {
+            if strcmp(sub4, "LLVM") == 0 { is_llvm = true }
+        }
+        if is_llvm { return true }
+    }
+    if l >= 8 {
+        let sub8 = substring(name, 0, 8)
+        var is_kai_llvm = false
+        unsafe {
+            if strcmp(sub8, "kai_LLVM") == 0 { is_kai_llvm = true }
+        }
+        if is_kai_llvm { return true }
+    }
+
     if name == "malloc" { return true }
     if name == "free" { return true }
     if name == "realloc" { return true }

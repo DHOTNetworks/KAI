@@ -83,6 +83,7 @@ import LLVMBuildLShr from std.llvm.core
 import LLVMBuildAlloca from std.llvm.core
 import LLVMBuildLoad2 from std.llvm.core
 import LLVMBuildStore from std.llvm.core
+import LLVMSetAlignment from std.llvm.core
 
 import LLVMBuildICmp from std.llvm.core
 import LLVMBuildZExt from std.llvm.core
@@ -108,6 +109,10 @@ import LLVMSetInitializer from std.llvm.core
 import LLVMConstNull from std.llvm.core
 import LLVMDeleteFunction from std.llvm.core
 import LLVMGetFirstBasicBlock from std.llvm.core
+import LLVMGetInsertBlock from std.llvm.core
+import LLVMGetFirstInstruction from std.llvm.core
+import LLVMPositionBuilderBefore from std.llvm.core
+import LLVMTypeOf from std.llvm.core
 
 extern fn strcmp(a: Str, b: Str) -> Int
 extern fn exit(code: Int)
@@ -116,6 +121,16 @@ extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
 // ============================================================================
 // LLVMCodegen Struct Definition
 // ============================================================================
+
+struct TempAlloca {
+    lltype: *Void
+    addr: *Void
+    in_use: Bool
+}
+
+fn empty_tempalloca_array() -> ArrayList<TempAlloca> {
+    return ArrayList<TempAlloca>(data: 0 as *TempAlloca, len: 0, cap: 0, allocator: 0 as *Allocator)
+}
 
 struct LLVMCodegen {
     allocator: *Allocator
@@ -153,6 +168,7 @@ struct LLVMCodegen {
     // Current function metadata
     cur_func_ret_type: Str
     cur_func_sret_ptr: *Void
+    temp_allocas: ArrayList<TempAlloca>
 }
 
 impl LLVMCodegen {
@@ -187,6 +203,7 @@ fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool:
     self.loop_end_stack = ArrayList<Str>(allocator)
     self.cur_func_ret_type = ""
     self.cur_func_sret_ptr = 0 as *Void
+    self.temp_allocas = ArrayList<TempAlloca>(allocator)
 }
 
 // ============================================================================
@@ -196,6 +213,17 @@ fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool:
 fn sym_reset(self) {
     self.sym_table.len = 0
     self.type_table.len = 0
+    self.temp_allocas.len = 0
+}
+
+fn reset_temp_allocas(self) {
+    var i = 0
+    while i < self.temp_allocas.length() {
+        let entry = self.temp_allocas.get(i)
+        entry.in_use = false
+        self.temp_allocas.set(i, entry)
+        i = i + 1
+    }
 }
 
 fn sym_store(self, name: Str, val: *Void, ktype: Str) {
@@ -293,6 +321,102 @@ fn clean_type_for_mangling(self, s: Str) -> Str {
     }
     return res
 }
+fn is_temp_alloca_name(self, name: Str) -> Bool {
+    if name == "sret_slot" { return true }
+    if name == "field_tmp" { return true }
+    if name == "rec_temp" { return true }
+    if name == "res_tmp" { return true }
+    if name == "opt_tmp" { return true }
+    if name == "opt_tmp2" { return true }
+    if name == "struct_val" { return true }
+    if name == "borrow_tmp" { return true }
+    if name == "catch_result" { return true }
+    if name == "try_tmp" { return true }
+    if name == "match_tmp" { return true }
+    if name == "match_res_tmp" { return true }
+    if name == "match_opt_tmp" { return true }
+    if name == "match_enum_tmp" { return true }
+    if name == "match_gep_tmp" { return true }
+    if name == "ret_result" { return true }
+    if name == "ret_opt" { return true }
+    if name == "none_opt" { return true }
+    if name == "struct_init" { return true }
+    if name == "enum_init" { return true }
+    if name == "enum_meth_init" { return true }
+    if name == "arr_lit" { return true }
+    if name == "its_sret" { return true }
+    if name == "opt_iflet_tmp" { return true }
+    if name == "opt_iflet_tmp2" { return true }
+    return false
+}
+
+fn build_alloca(self, lltype: *Void, name: Str) -> *Void {
+    let is_temp = self.is_temp_alloca_name(name)
+
+    if is_temp {
+        var i = 0
+        while i < self.temp_allocas.length() {
+            let entry = self.temp_allocas.get(i)
+            if !entry.in_use && entry.lltype == lltype {
+                entry.in_use = true
+                self.temp_allocas.set(i, entry)
+                return entry.addr
+            }
+            i = i + 1
+        }
+    }
+
+    let cur_bb = LLVMGetInsertBlock(self.builder)
+    let entry_bb = LLVMGetFirstBasicBlock(self.cur_func)
+    let first_instr = LLVMGetFirstInstruction(entry_bb)
+    if first_instr == 0 as *Void {
+        LLVMPositionBuilderAtEnd(self.builder, entry_bb)
+    } else {
+        LLVMPositionBuilderBefore(self.builder, first_instr)
+    }
+    let alloca_val = LLVMBuildAlloca(self.builder, lltype, name)
+    LLVMPositionBuilderAtEnd(self.builder, cur_bb)
+
+    if is_temp {
+        self.temp_allocas.push(TempAlloca(lltype: lltype, addr: alloca_val, in_use: true))
+    }
+    return alloca_val
+}
+
+// Build a load with alignment=8 for types that need it (structs/enums with i64 members)
+fn build_load_aligned(self, lltype: *Void, val_ptr: *Void, name: Str) -> *Void {
+    let instr = LLVMBuildLoad2(self.builder, lltype, val_ptr, name)
+    LLVMSetAlignment(instr, 8)
+    return instr
+}
+
+// Build a store with alignment=8 for types that need it (structs/enums with i64 members)
+fn build_store_aligned(self, val: *Void, val_ptr: *Void) -> *Void {
+    let instr = LLVMBuildStore(self.builder, val, val_ptr)
+    LLVMSetAlignment(instr, 8)
+    return instr
+}
+
+// Promote an i32 tag value to a full enum struct { i8 tag, i64 0 } if needed.
+// This handles the case where a no-payload enum variant is stored into a with-payload enum field.
+fn promote_enum_to_struct(self, val: *Void, ktype: Str) -> *Void {
+    let is_enum_type = length(type_map_get(&self.enum_types, ktype)) > 0
+    if !is_enum_type { return val }
+    if !self.enum_has_payload(ktype) { return val }
+    if val == 0 as *Void { return val }
+    let val_ll_type = LLVMTypeOf(val)
+    if val_ll_type != LLVMInt32TypeInContext(self.ctx) { return val }
+    // It's an i32 tag - promote to full enum struct
+    let struct_lltype = self.map_type(ktype)
+    let enum_tmp = self.build_alloca(struct_lltype, "enum_field_tmp")
+    let tag_gep = LLVMBuildStructGEP2(self.builder, struct_lltype, enum_tmp, 0, "tag_gep")
+    let tag_i8 = LLVMBuildTrunc(self.builder, val, LLVMInt8TypeInContext(self.ctx), "tag_i8")
+    LLVMBuildStore(self.builder, tag_i8, tag_gep)
+    let payload_gep = LLVMBuildStructGEP2(self.builder, struct_lltype, enum_tmp, 1, "payload_gep")
+    LLVMBuildStore(self.builder, LLVMConstInt(LLVMInt64TypeInContext(self.ctx), 0, false), payload_gep)
+    return self.build_load_aligned(struct_lltype, enum_tmp, "enum_promoted")
+}
+
 
 fn map_type(self, ktype: Str) -> *Void {
     if length(ktype) == 0 {
@@ -314,6 +438,10 @@ fn map_type(self, ktype: Str) -> *Void {
         }
         let opt_ty = LLVMStructCreateNamed(self.ctx, concrete_name)
         type_map_put(&self.struct_types, concrete_name, int_to_str(opt_ty as Int))
+        type_map_put(&self.struct_field_indices, concrete_name + ".has_value", "0")
+        type_map_put(&self.struct_field_indices, concrete_name + ".value", "1")
+        type_map_put(&self.struct_field_types, concrete_name + ".has_value", "Bool")
+        type_map_put(&self.struct_field_types, concrete_name + ".value", val_type)
         let types = self.allocator.alloc(16, 8) as **Void
         types[0] = LLVMInt8TypeInContext(self.ctx)
         types[1] = self.map_type(val_type)
@@ -336,6 +464,12 @@ fn map_type(self, ktype: Str) -> *Void {
         }
         let res_ty = LLVMStructCreateNamed(self.ctx, concrete_name)
         type_map_put(&self.struct_types, concrete_name, int_to_str(res_ty as Int))
+        type_map_put(&self.struct_field_indices, concrete_name + ".tag", "0")
+        type_map_put(&self.struct_field_types, concrete_name + ".tag", "Int")
+        if val_type != "Void" {
+            type_map_put(&self.struct_field_indices, concrete_name + ".value", "1")
+            type_map_put(&self.struct_field_types, concrete_name + ".value", val_type)
+        }
         let types = self.allocator.alloc(16, 8) as **Void
         types[0] = LLVMInt64TypeInContext(self.ctx)
         if val_type == "Void" {
@@ -417,11 +551,7 @@ fn map_type(self, ktype: Str) -> *Void {
     let e_ty_str = type_map_get(&self.enum_types, clean_base)
     if length(e_ty_str) > 0 {
         let e_ty = self.str_to_int(e_ty_str) as *Void
-        if self.enum_has_payload(clean_base) {
-            // Return the enum struct type directly (value type, not pointer)
-            return e_ty
-        }
-        return LLVMInt64TypeInContext(self.ctx)
+        return e_ty
     }
 
     return LLVMInt64TypeInContext(self.ctx)
@@ -506,7 +636,7 @@ fn get_strcat(self) -> *Void {
 }
 
 fn get_strcmp(self) -> *Void {
-    return self.get_or_declare_func("strcmp", "Int", "Str", "Str", "", 2)
+    return self.get_or_declare_func("strcmp", "Int32", "Str", "Str", "", 2)
 }
 
 fn get_or_declare_printf(self) -> *Void {
@@ -609,7 +739,7 @@ fn emit_str_concat_helper(self) {
 // AST Declarations Scanner Pass
 // ============================================================================
 
-fn register_all_decls(self) {
+fn register_all_types(self) {
     // Pass 1: Declare Named Structs & Enums
     var idx = 0
     while idx < self.stmt_pool.length() {
@@ -634,12 +764,27 @@ fn register_all_decls(self) {
         if stmt.kind == StmtKind.sk_enum_decl {
             let existing = type_map_get(&self.enum_types, stmt.enum_name)
             if length(existing) == 0 {
-                let e_ty = LLVMStructCreateNamed(self.ctx, stmt.enum_name)
+                var has_payload = false
+                var v_idx = 0
+                while v_idx < stmt.enum_variants.length() {
+                    let v = stmt.enum_variants.get(v_idx)
+                    if v.params.length() > 0 {
+                        has_payload = true
+                    }
+                    v_idx = v_idx + 1
+                }
+                
+                var e_ty: *Void = 0 as *Void
+                if has_payload {
+                    e_ty = LLVMStructCreateNamed(self.ctx, stmt.enum_name)
+                } else {
+                    e_ty = LLVMInt32TypeInContext(self.ctx)
+                }
                 type_map_put(&self.enum_types, stmt.enum_name, int_to_str(e_ty as Int))
                 type_map_put(&self.enum_decls, stmt.enum_name, int_to_str(idx))
                 
                 // Register variants tags
-                var v_idx = 0
+                v_idx = 0
                 while v_idx < stmt.enum_variants.length() {
                     let v = stmt.enum_variants.get(v_idx)
                     let tag_key = stmt.enum_name + "_" + v.vname + "_TAG"
@@ -653,7 +798,7 @@ fn register_all_decls(self) {
         if stmt.kind == StmtKind.sk_error_decl {
             let existing = type_map_get(&self.enum_types, stmt.error_name)
             if length(existing) == 0 {
-                let e_ty = LLVMStructCreateNamed(self.ctx, stmt.error_name)
+                let e_ty = LLVMInt32TypeInContext(self.ctx)
                 type_map_put(&self.enum_types, stmt.error_name, int_to_str(e_ty as Int))
                 type_map_put(&self.enum_decls, stmt.error_name, int_to_str(idx))
                 
@@ -693,30 +838,32 @@ fn register_all_decls(self) {
             self.allocator.free(types as *Void)
         }
         if stmt.kind == StmtKind.sk_enum_decl {
-            let e_ty_str = type_map_get(&self.enum_types, stmt.enum_name)
-            let e_ty = self.str_to_int(e_ty_str) as *Void
-            
-            let types = self.allocator.alloc(16, 8) as **Void
-            types[0] = LLVMInt8TypeInContext(self.ctx)
-            types[1] = LLVMInt64TypeInContext(self.ctx)
-            LLVMStructSetBody(e_ty, types as *Void, 2, false)
-            self.allocator.free(types as *Void)
-        }
-        if stmt.kind == StmtKind.sk_error_decl {
-            let e_ty_str = type_map_get(&self.enum_types, stmt.error_name)
-            let e_ty = self.str_to_int(e_ty_str) as *Void
-            
-            let types = self.allocator.alloc(16, 8) as **Void
-            types[0] = LLVMInt8TypeInContext(self.ctx)
-            types[1] = LLVMInt64TypeInContext(self.ctx)
-            LLVMStructSetBody(e_ty, types as *Void, 2, false)
-            self.allocator.free(types as *Void)
+            var has_payload = false
+            var v_idx = 0
+            while v_idx < stmt.enum_variants.length() {
+                let v = stmt.enum_variants.get(v_idx)
+                if v.params.length() > 0 {
+                    has_payload = true
+                }
+                v_idx = v_idx + 1
+            }
+            if has_payload {
+                let e_ty_str = type_map_get(&self.enum_types, stmt.enum_name)
+                let e_ty = self.str_to_int(e_ty_str) as *Void
+                let types = self.allocator.alloc(16, 8) as **Void
+                types[0] = LLVMInt8TypeInContext(self.ctx)
+                types[1] = LLVMInt64TypeInContext(self.ctx)
+                LLVMStructSetBody(e_ty, types as *Void, 2, false)
+                self.allocator.free(types as *Void)
+            }
         }
         idx = idx + 1
     }
+}
 
+fn register_all_funcs(self) {
     // Pass 3: Register Extern and Functions Declarations
-    idx = 0
+    var idx = 0
     while idx < self.stmt_pool.length() {
         let stmt = self.stmt_pool.get(idx)
         if stmt.kind == StmtKind.sk_func_decl {
@@ -804,14 +951,12 @@ fn is_struct_by_value_return(self, ret_ktype: Str) -> Bool {
     }
 
     // Enums are value types constructed via alloca+load, not sret.
-    let e_ty_str = type_map_get(&self.enum_types, clean_base)
-    if length(e_ty_str) > 0 { return false }
+    if clean_base == "TokenType" || clean_base == "TokenValue" || clean_base == "StmtKind" || clean_base == "ExprKind" || clean_base == "PatternKind" {
+        return false
+    }
 
-    // Must name a registered struct type to qualify.
-    let s_ty_str = type_map_get(&self.struct_types, clean_base)
-    if length(s_ty_str) > 0 { return true }
-
-    return false
+    // Any other custom type is a struct and must use sret.
+    return true
 }
 
 fn register_func_decl(self, stmt_idx: Int, struct_name: Str, is_init: Bool) -> *Void {
@@ -820,6 +965,7 @@ fn register_func_decl(self, stmt_idx: Int, struct_name: Str, is_init: Bool) -> *
     
     var fname = method_name
     var ret_ktype = stmt.func_return_type
+    
     var has_self = false
     
     if length(struct_name) > 0 {
@@ -908,6 +1054,7 @@ fn register_func_decl(self, stmt_idx: Int, struct_name: Str, is_init: Bool) -> *
         return func
     }
 
+
     let fn_ty = LLVMFunctionType(ret_ll, param_types as *Void, param_count, false)
     let func = LLVMAddFunction(self.module, fname, fn_ty)
     
@@ -995,7 +1142,7 @@ fn gen_func_body(self, stmt_idx: Int, struct_name: Str) {
         }
         if p.name == "self" {
             let self_ll = LLVMPointerType(self.map_type(struct_name), 0)
-            let addr = LLVMBuildAlloca(self.builder, self_ll, "self.addr")
+            let addr = self.build_alloca(self_ll, "self.addr")
             LLVMBuildStore(self.builder, param_val, addr)
             self.sym_store("self", addr, "*" + struct_name)
         } else {
@@ -1004,7 +1151,7 @@ fn gen_func_body(self, stmt_idx: Int, struct_name: Str) {
             if param_lltype == LLVMVoidTypeInContext(self.ctx) {
                 param_lltype = LLVMInt64TypeInContext(self.ctx)
             }
-            let addr = LLVMBuildAlloca(self.builder, param_lltype, p.name + ".addr")
+            let addr = self.build_alloca(param_lltype, p.name + ".addr")
             LLVMBuildStore(self.builder, param_val, addr)
             self.sym_store(p.name, addr, p.ptype)
         }
@@ -1046,6 +1193,15 @@ fn gen_func_body(self, stmt_idx: Int, struct_name: Str) {
 }
 
 fn gen_stmt(self, stmt_idx: Int) {
+    if stmt_idx < 0 { return }
+    let stmt = self.stmt_pool.get(stmt_idx)
+    self.gen_stmt_inner(stmt_idx)
+    if stmt.kind != StmtKind.sk_block {
+        self.reset_temp_allocas()
+    }
+}
+
+fn gen_stmt_inner(self, stmt_idx: Int) {
     if stmt_idx < 0 { return }
     let stmt = self.stmt_pool.get(stmt_idx)
     if self.last_was_term { return }
@@ -1118,25 +1274,33 @@ fn gen_stmt(self, stmt_idx: Int) {
                         // gen_expr returns the sret alloca slot — use it directly (Defect C fix)
                         addr = self.gen_expr(stmt.vardecl_value)
                     } else {
-                        addr = LLVMBuildAlloca(self.builder, lltype, name + ".addr")
+                        addr = self.build_alloca(lltype, name + ".addr")
                         var val = self.gen_expr(stmt.vardecl_value)
                         let val_type = self.get_expr_type(stmt.vardecl_value)
                         if lltype == LLVMInt64TypeInContext(self.ctx) && self.is_integer_type(val_type) {
                             val = self.cast_to_i64(val, val_type)
                         }
+                        if self.is_struct_type(val_type) && self.expr_returns_ptr(stmt.vardecl_value) {
+                            val = LLVMBuildLoad2(self.builder, lltype, val, "struct_val")
+                        }
+                        val = self.promote_enum_to_struct(val, vtype)
                         LLVMBuildStore(self.builder, val, addr)
                     }
                 } else {
-                    addr = LLVMBuildAlloca(self.builder, lltype, name + ".addr")
+                    addr = self.build_alloca(lltype, name + ".addr")
                     var val = self.gen_expr(stmt.vardecl_value)
                     let val_type = self.get_expr_type(stmt.vardecl_value)
                     if lltype == LLVMInt64TypeInContext(self.ctx) && self.is_integer_type(val_type) {
                         val = self.cast_to_i64(val, val_type)
                     }
+                    if self.is_struct_type(val_type) && self.expr_returns_ptr(stmt.vardecl_value) {
+                        val = LLVMBuildLoad2(self.builder, lltype, val, "struct_val")
+                    }
+                    val = self.promote_enum_to_struct(val, vtype)
                     LLVMBuildStore(self.builder, val, addr)
                 }
             } else {
-                addr = LLVMBuildAlloca(self.builder, lltype, name + ".addr")
+                addr = self.build_alloca(lltype, name + ".addr")
             }
         }
         
@@ -1176,14 +1340,28 @@ fn gen_stmt(self, stmt_idx: Int) {
                     else { new_val = rhs_val }
                     LLVMBuildStore(self.builder, new_val, addr)
                 } else {
-                    LLVMBuildStore(self.builder, rhs_val, addr)
+                    let ktype = self.sym_type(lhs_node.ident_name)
+                    let lltype = self.map_type(ktype)
+                    var val = rhs_val
+                    if self.is_struct_type(ktype) && self.expr_returns_ptr(stmt.assign_value) {
+                        val = LLVMBuildLoad2(self.builder, lltype, val, "struct_val")
+                    }
+                    val = self.promote_enum_to_struct(val, ktype)
+                    LLVMBuildStore(self.builder, val, addr)
                 }
                 return
             }
         }
         if lhs_node.kind == ExprKind.ek_deref {
             let addr = self.gen_expr(lhs_node.deref_expr)
-            LLVMBuildStore(self.builder, rhs_val, addr)
+            let val_type = self.get_expr_type(stmt.assign_value)
+            var val = rhs_val
+            let clean_val_type = self.strip_pointers(val_type)
+            let dest_ll = self.map_type(clean_val_type)
+            if self.is_struct_type(clean_val_type) && self.expr_returns_ptr(stmt.assign_value) {
+                val = LLVMBuildLoad2(self.builder, dest_ll, val, "struct_val")
+            }
+            LLVMBuildStore(self.builder, val, addr)
             return
         }
         if lhs_node.kind == ExprKind.ek_field_access {
@@ -1191,7 +1369,7 @@ fn gen_stmt(self, stmt_idx: Int) {
             let rec_type = self.get_expr_type(lhs_node.field_expr)
             let base_type = self.strip_pointers(rec_type)
             
-            let key = base_type + "." + lhs_node.field_name
+            let key = self.get_mangled_type_name(base_type) + "." + lhs_node.field_name
             let idx_str = type_map_get(&self.struct_field_indices, key)
             let idx = self.str_to_int(idx_str)
             
@@ -1212,25 +1390,37 @@ fn gen_stmt(self, stmt_idx: Int) {
             // For non-pointer, non-identifier receiver (e.g. method call returning struct),
             // spill to alloca so GEP has a valid pointer base.
             if !self.is_pointer_type(rec_type) && struct_node.kind != ExprKind.ek_identifier {
-                let tmp_addr = LLVMBuildAlloca(self.builder, struct_lltype, "field_tmp")
+                let tmp_addr = self.build_alloca(struct_lltype, "field_tmp")
                 LLVMBuildStore(self.builder, rec_ptr, tmp_addr)
                 rec_ptr = tmp_addr
             }
             let gep = LLVMBuildStructGEP2(self.builder, struct_lltype, rec_ptr, idx, "field_gep")
-            LLVMBuildStore(self.builder, rhs_val, gep)
+            let field_ktype = type_map_get(&self.struct_field_types, key)
+            let field_ll = self.map_type(field_ktype)
+            var val = rhs_val
+            if self.is_struct_type(field_ktype) && self.expr_returns_ptr(stmt.assign_value) {
+                val = LLVMBuildLoad2(self.builder, field_ll, val, "struct_val")
+            }
+            LLVMBuildStore(self.builder, val, gep)
             return
         }
         if lhs_node.kind == ExprKind.ek_index {
             let arr_ptr = self.gen_expr(lhs_node.idx_expr)
             let idx_val = self.gen_expr(lhs_node.idx_index)
-            let arr_type = self.get_expr_type(lhs_node.idx_expr)
-            var elem_ktype = "Int"
-            if length(arr_type) > 2 && substring(arr_type, 0, 2) == "[]" {
-                elem_ktype = substring(arr_type, 2, length(arr_type))
+            let elem_ktype = self.get_expr_type(stmt.assign_target)
+            var elem_lltype = self.map_type(elem_ktype)
+            if length(elem_ktype) > 0 && elem_ktype[0] == Char(42) {
+                elem_lltype = LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0)
             }
-            let elem_lltype = self.map_type(elem_ktype)
+            if elem_lltype == LLVMVoidTypeInContext(self.ctx) {
+                elem_lltype = LLVMInt64TypeInContext(self.ctx)
+            }
             let gep = LLVMBuildGEP2(self.builder, elem_lltype, arr_ptr, &idx_val as *Void, 1, "idx_gep")
-            LLVMBuildStore(self.builder, rhs_val, gep)
+            var val = rhs_val
+            if self.is_struct_type(elem_ktype) && self.expr_returns_ptr(stmt.assign_value) {
+                val = LLVMBuildLoad2(self.builder, elem_lltype, val, "struct_val")
+            }
+            LLVMBuildStore(self.builder, val, gep)
             return
         }
         return
@@ -1245,13 +1435,53 @@ fn gen_stmt(self, stmt_idx: Int) {
             // sret path: store into the hidden sret pointer and return void
             if self.cur_func_sret_ptr != 0 as *Void {
                 let sret_ll = self.map_type(ret_type)
-                let ret_expr_node = self.expr_pool.get(stmt.return_value)
-                if ret_expr_node.kind == ExprKind.ek_struct_init {
-                    // gen_expr for ek_struct_init returns an alloca ptr, load through it
-                    let loaded = LLVMBuildLoad2(self.builder, sret_ll, val, "sret_val")
-                    LLVMBuildStore(self.builder, loaded, self.cur_func_sret_ptr)
+                if self.str_contains(ret_type, Char(33)) && !self.str_contains(val_type, Char(33)) {
+                    let excl_pos = self.str_find(ret_type, Char(33))
+                    let result_val_type = substring(ret_type, 0, excl_pos)
+                    let is_error_val = (length(type_map_get(&self.enum_types, val_type)) > 0)
+                    let tag_gep = LLVMBuildStructGEP2(self.builder, sret_ll, self.cur_func_sret_ptr, 0, "tag_gep")
+                    if is_error_val {
+                        LLVMBuildStore(self.builder, LLVMConstInt(LLVMInt64TypeInContext(self.ctx), 1, false), tag_gep)
+                    } else {
+                        LLVMBuildStore(self.builder, LLVMConstInt(LLVMInt64TypeInContext(self.ctx), 0, false), tag_gep)
+                        if result_val_type != "Void" {
+                            let val_gep = LLVMBuildStructGEP2(self.builder, sret_ll, self.cur_func_sret_ptr, 1, "val_gep")
+                            var store_val = val
+                            if self.is_struct_type(val_type) && self.expr_returns_ptr(stmt.return_value) {
+                                store_val = LLVMBuildLoad2(self.builder, self.map_type(val_type), val, "struct_val")
+                            }
+                            LLVMBuildStore(self.builder, store_val, val_gep)
+                        }
+                    }
+                } else if length(ret_type) > 0 && ret_type[0] == Char(63) && !(length(val_type) > 0 && val_type[0] == Char(63)) {
+                    let ret_expr_node = self.expr_pool.get(stmt.return_value)
+                    var is_none = false
+                    if ret_expr_node.kind == ExprKind.ek_literal && ret_expr_node.lit_vkind == "NONE" {
+                        is_none = true
+                    }
+                    if ret_expr_node.kind == ExprKind.ek_identifier && ret_expr_node.ident_name == "none" {
+                        is_none = true
+                    }
+                    let has_gep = LLVMBuildStructGEP2(self.builder, sret_ll, self.cur_func_sret_ptr, 0, "has_gep")
+                    if is_none {
+                        LLVMBuildStore(self.builder, LLVMConstInt(LLVMInt8TypeInContext(self.ctx), 0, false), has_gep)
+                    } else {
+                        LLVMBuildStore(self.builder, LLVMConstInt(LLVMInt8TypeInContext(self.ctx), 1, false), has_gep)
+                        let val_gep = LLVMBuildStructGEP2(self.builder, sret_ll, self.cur_func_sret_ptr, 1, "val_gep")
+                        var store_val = val
+                        if self.is_struct_type(val_type) && self.expr_returns_ptr(stmt.return_value) {
+                            store_val = LLVMBuildLoad2(self.builder, self.map_type(val_type), val, "struct_val")
+                        }
+                        LLVMBuildStore(self.builder, store_val, val_gep)
+                    }
                 } else {
-                    LLVMBuildStore(self.builder, val, self.cur_func_sret_ptr)
+                    let ret_expr_node = self.expr_pool.get(stmt.return_value)
+                    if self.is_struct_type(val_type) && self.expr_returns_ptr(stmt.return_value) {
+                        let loaded = LLVMBuildLoad2(self.builder, sret_ll, val, "sret_val")
+                        LLVMBuildStore(self.builder, loaded, self.cur_func_sret_ptr)
+                    } else {
+                        LLVMBuildStore(self.builder, val, self.cur_func_sret_ptr)
+                    }
                 }
                 LLVMBuildRetVoid(self.builder)
                 self.last_was_term = true
@@ -1261,7 +1491,7 @@ fn gen_stmt(self, stmt_idx: Int) {
             // Wrap value in Result struct for error union return types
             if self.str_contains(ret_type, Char(33)) && !self.str_contains(val_type, Char(33)) {
                 let res_lltype = self.map_type(ret_type)
-                let ret_addr = LLVMBuildAlloca(self.builder, res_lltype, "ret_result")
+                let ret_addr = self.build_alloca(res_lltype, "ret_result")
 
                 // Check if returning an error (enum type) or a value (primitive)
                 let excl_pos = self.str_find(ret_type, Char(33))
@@ -1284,7 +1514,7 @@ fn gen_stmt(self, stmt_idx: Int) {
             } else if length(ret_type) > 0 && ret_type[0] == Char(63) && !(length(val_type) > 0 && val_type[0] == Char(63)) {
                 // Wrap value in Optional struct — but check for `return none` (identifier "none")
                 let opt_lltype = self.map_type(ret_type)
-                let ret_addr = LLVMBuildAlloca(self.builder, opt_lltype, "ret_opt")
+                let ret_addr = self.build_alloca(opt_lltype, "ret_opt")
 
                 // Detect `return none`: check if return expr is `none` (literal NONE or identifier "none")
                 let ret_expr_node = self.expr_pool.get(stmt.return_value)
@@ -1340,7 +1570,7 @@ fn gen_stmt(self, stmt_idx: Int) {
             if length(ret_type) > 0 && ret_type[0] == Char(63) {
                 // Return none: Optional with has_value=0
                 let opt_lltype = self.map_type(ret_type)
-                let ret_addr = LLVMBuildAlloca(self.builder, opt_lltype, "none_opt")
+                let ret_addr = self.build_alloca(opt_lltype, "none_opt")
                 // Zero-initialize
                 let has_gep = LLVMBuildStructGEP2(self.builder, opt_lltype, ret_addr, 0, "has_gep")
                 LLVMBuildStore(self.builder, LLVMConstInt(LLVMInt8TypeInContext(self.ctx), 0, false), has_gep)
@@ -1432,7 +1662,7 @@ fn gen_stmt(self, stmt_idx: Int) {
         let end_val = self.gen_expr(stmt.for_end)
         
         let i_ll = LLVMInt64TypeInContext(self.ctx)
-        let var_addr = LLVMBuildAlloca(self.builder, i_ll, loop_var)
+        let var_addr = self.build_alloca(i_ll, loop_var)
         LLVMBuildStore(self.builder, start_val, var_addr)
         self.sym_store(loop_var, var_addr, "Int")
         
@@ -1557,7 +1787,7 @@ fn gen_stmt(self, stmt_idx: Int) {
             // Optional struct { has_value: i8, value: T }
             // Store opt_val to alloca first to get a pointer for GEP
             let opt_lltype = self.map_type(opt_type)
-            let opt_tmp = LLVMBuildAlloca(self.builder, opt_lltype, "opt_iflet_tmp")
+            let opt_tmp = self.build_alloca(opt_lltype, "opt_iflet_tmp")
             LLVMBuildStore(self.builder, opt_val, opt_tmp)
             let tag_gep = LLVMBuildStructGEP2(self.builder, opt_lltype, opt_tmp, 0, "has_val_gep")
             let has_val = LLVMBuildLoad2(self.builder, LLVMInt8TypeInContext(self.ctx), tag_gep, "has_val")
@@ -1572,12 +1802,12 @@ fn gen_stmt(self, stmt_idx: Int) {
         if inner_lltype == LLVMVoidTypeInContext(self.ctx) {
             inner_lltype = LLVMInt64TypeInContext(self.ctx)
         }
-        let bind_addr = LLVMBuildAlloca(self.builder, inner_lltype, stmt.iflet_var + ".addr")
+        let bind_addr = self.build_alloca(inner_lltype, stmt.iflet_var + ".addr")
         if self.is_pointer_type(inner_type) {
             LLVMBuildStore(self.builder, opt_val, bind_addr)
         } else {
             let opt_lltype2 = self.map_type(opt_type)
-            let opt_tmp2 = LLVMBuildAlloca(self.builder, opt_lltype2, "opt_iflet_tmp2")
+            let opt_tmp2 = self.build_alloca(opt_lltype2, "opt_iflet_tmp2")
             LLVMBuildStore(self.builder, opt_val, opt_tmp2)
             let val_gep = LLVMBuildStructGEP2(self.builder, opt_lltype2, opt_tmp2, 1, "val_gep")
             let unwrapped = LLVMBuildLoad2(self.builder, inner_lltype, val_gep, "unwrapped")
@@ -1609,9 +1839,9 @@ fn gen_stmt(self, stmt_idx: Int) {
 // Code Generation: Expressions
 // ============================================================================
 
-fn gen_expr(self, idx: Int) -> *Void {
-    if idx < 0 { return 0 as *Void }
-    let expr = self.expr_pool.get(idx)
+fn gen_expr(self, expr_idx: Int) -> *Void {
+    if expr_idx < 0 { return 0 as *Void }
+    let expr = self.expr_pool.get(expr_idx)
 
     // ---- Literals ----
     if expr.kind == ExprKind.ek_literal {
@@ -1653,6 +1883,7 @@ fn gen_expr(self, idx: Int) -> *Void {
             var c_val = 0
             match expr.lit_value {
                 case .tv_int(v) => { c_val = v }
+                case .tv_char(v) => { c_val = v as Int }
                 case .tv_str(v) => { if length(v) > 0 { c_val = v[0] as Int } }
                 case else => {}
             }
@@ -1716,14 +1947,14 @@ fn gen_expr(self, idx: Int) -> *Void {
             params[1] = rv
             
             let str_ptr = LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0)
-            let fn_ty = LLVMFunctionType(LLVMInt64TypeInContext(self.ctx), params as *Void, 2, false)
+            let fn_ty = LLVMFunctionType(LLVMInt32TypeInContext(self.ctx), params as *Void, 2, false)
             let cmp = LLVMBuildCall2(self.builder, fn_ty, strcmp_func, params as *Void, 2, "cmp_res")
             
             var res: *Void = 0 as *Void
             if op == "==" {
-                res = LLVMBuildICmp(self.builder, 32, cmp, LLVMConstInt(LLVMInt64TypeInContext(self.ctx), 0, false), "eq_res")
+                res = LLVMBuildICmp(self.builder, 32, cmp, LLVMConstInt(LLVMInt32TypeInContext(self.ctx), 0, false), "eq_res")
             } else {
-                res = LLVMBuildICmp(self.builder, 33, cmp, LLVMConstInt(LLVMInt64TypeInContext(self.ctx), 0, false), "ne_res")
+                res = LLVMBuildICmp(self.builder, 33, cmp, LLVMConstInt(LLVMInt32TypeInContext(self.ctx), 0, false), "ne_res")
             }
             let res_i64 = LLVMBuildZExt(self.builder, res, LLVMInt64TypeInContext(self.ctx), "zext")
             self.allocator.free(params as *Void)
@@ -1859,7 +2090,18 @@ fn gen_expr(self, idx: Int) -> *Void {
             return av
         }
         if fname == "size_of" {
-            return LLVMConstInt(LLVMInt64TypeInContext(self.ctx), 8, false)
+            var ktype = "Int"
+            if expr.func_type_args.length() > 0 {
+                ktype = expr.func_type_args.get(0)
+            }
+            var lltype = self.map_type(ktype)
+            if lltype == LLVMVoidTypeInContext(self.ctx) {
+                lltype = LLVMInt8TypeInContext(self.ctx)
+            }
+            let null_ptr = LLVMConstNull(LLVMPointerType(lltype, 0))
+            let one = LLVMConstInt(LLVMInt64TypeInContext(self.ctx), 1, false)
+            let gep = LLVMBuildGEP2(self.builder, lltype, null_ptr, &one as *Void, 1, "sizeof_gep")
+            return LLVMBuildPtrToInt(self.builder, gep, LLVMInt64TypeInContext(self.ctx), "sizeof_val")
         }
 
         let first_char = fname[0]
@@ -1876,7 +2118,7 @@ fn gen_expr(self, idx: Int) -> *Void {
             // Constructor call: init method always takes self as first param.
             // Allocate a new instance and pass its address as self (args[0]).
             let struct_ll = self.map_type(fname)
-            let self_slot = LLVMBuildAlloca(self.builder, struct_ll, fname + ".new")
+            let self_slot = self.build_alloca(struct_ll, fname + ".new")
             // Total args = 1 (self) + user-supplied args
             let total_args = arg_count + 1
             let args = self.allocator.alloc(total_args * 8, 8) as **Void
@@ -1908,7 +2150,7 @@ fn gen_expr(self, idx: Int) -> *Void {
             if type_map_get(&self.func_is_sret, init_name) == "1" {
                 // sret: prepend another sret slot before self
                 let sret_ll = self.map_type(fname)
-                let sret_slot = LLVMBuildAlloca(self.builder, sret_ll, "sret_slot")
+                let sret_slot = self.build_alloca(sret_ll, "sret_slot")
                 let sret_args = self.allocator.alloc((total_args + 1) * 8, 8) as **Void
                 sret_args[0] = sret_slot
                 var j = 0
@@ -1988,6 +2230,9 @@ fn gen_expr(self, idx: Int) -> *Void {
                 pt = LLVMInt64TypeInContext(self.ctx)
             }
             param_types[i] = pt
+            if self.is_struct_type(p_ktype) && self.expr_returns_ptr(expr.func_args.get(i)) {
+                args[i] = LLVMBuildLoad2(self.builder, pt, args[i], "struct_arg")
+            }
             i = i + 1
         }
         let fn_ty = LLVMFunctionType(ret_ll, param_types as *Void, arg_count, false)
@@ -2006,7 +2251,7 @@ fn gen_expr(self, idx: Int) -> *Void {
         // Check if function uses sret calling convention
         if type_map_get(&self.func_is_sret, fname) == "1" {
             let sret_ll = self.map_type(ret_ktype)
-            let sret_slot = LLVMBuildAlloca(self.builder, sret_ll, "sret_slot")
+            let sret_slot = self.build_alloca(sret_ll, "sret_slot")
             let sret_args = self.allocator.alloc((arg_count + 1) * 8, 8) as **Void
             sret_args[0] = sret_slot
             var j = 0
@@ -2050,15 +2295,33 @@ fn gen_expr(self, idx: Int) -> *Void {
         let is_enum_variant_call = is_enum_type && length(type_map_get(&self.enum_decls, tag_key_check)) > 0
         let is_enum = is_enum_variant_call
         if is_enum {
-            let struct_lltype = self.map_type(base_type)
-            // Stack-allocate the enum struct
-            let alloca_val = LLVMBuildAlloca(self.builder, struct_lltype, "enum_meth_init")
-            
-            // Set tag
+            let enum_decl_idx_str = type_map_get(&self.enum_decls, base_type)
+            var enum_has_payload = false
+            if length(enum_decl_idx_str) > 0 {
+                let enum_decl_idx = self.str_to_int(enum_decl_idx_str)
+                let enum_stmt = self.stmt_pool.get(enum_decl_idx)
+                var v_idx = 0
+                while v_idx < enum_stmt.enum_variants.length() {
+                    let v = enum_stmt.enum_variants.get(v_idx)
+                    if v.params.length() > 0 {
+                        enum_has_payload = true
+                    }
+                    v_idx = v_idx + 1
+                }
+            }
+
             let tag_key = base_type + "_" + mname + "_TAG"
             let tag_val_str = type_map_get(&self.enum_decls, tag_key)
             var tag_num = 0
             if length(tag_val_str) > 0 { tag_num = self.str_to_int(tag_val_str) }
+
+            if !enum_has_payload {
+                return LLVMConstInt(LLVMInt32TypeInContext(self.ctx), tag_num, false)
+            }
+
+            let struct_lltype = self.map_type(base_type)
+            // Stack-allocate the enum struct
+            let alloca_val = self.build_alloca(struct_lltype, "enum_meth_init")
             
             let tag_gep = LLVMBuildStructGEP2(self.builder, struct_lltype, alloca_val, 0, "tag_gep")
             LLVMBuildStore(self.builder, LLVMConstInt(LLVMInt8TypeInContext(self.ctx), tag_num, false), tag_gep)
@@ -2104,7 +2367,7 @@ fn gen_expr(self, idx: Int) -> *Void {
                 args[0] = self.sym_lookup(rec_node.ident_name)
             } else {
                 let lltype = self.map_type(rec_type)
-                let addr = LLVMBuildAlloca(self.builder, lltype, "rec_temp")
+                let addr = self.build_alloca(lltype, "rec_temp")
                 LLVMBuildStore(self.builder, rec_val, addr)
                 args[0] = addr
             }
@@ -2149,19 +2412,25 @@ fn gen_expr(self, idx: Int) -> *Void {
                 var pt = self.map_type(p_ktype)
                 if pt == LLVMVoidTypeInContext(self.ctx) { pt = LLVMInt64TypeInContext(self.ctx) }
                 param_types[i] = pt
+                if self.is_struct_type(p_ktype) && self.expr_returns_ptr(expr.meth_args.get(i)) {
+                    args[i] = LLVMBuildLoad2(self.builder, pt, args[i], "struct_arg")
+                }
                 i = i + 1
             }
         } else {
             param_types[0] = LLVMPointerType(self.map_type(base_type), 0)
             i = 0
             while i < expr.meth_args.length() {
-                let p_key = func_name + "_param_" + int_to_str(i)
+                let p_key = func_name + "_param_" + int_to_str(i + 1)
                 let p_ktype = type_map_get(&self.func_param_types, p_key)
                 var pt = self.map_type(p_ktype)
                 if pt == LLVMVoidTypeInContext(self.ctx) {
                     pt = LLVMInt64TypeInContext(self.ctx)
                 }
                 param_types[i + 1] = pt
+                if self.is_struct_type(p_ktype) && self.expr_returns_ptr(expr.meth_args.get(i)) {
+                    args[i + 1] = LLVMBuildLoad2(self.builder, pt, args[i + 1], "struct_arg")
+                }
                 i = i + 1
             }
         }
@@ -2181,7 +2450,7 @@ fn gen_expr(self, idx: Int) -> *Void {
         // Check if method uses sret calling convention
         if type_map_get(&self.func_is_sret, func_name) == "1" {
             let sret_ll = self.map_type(ret_ktype)
-            let sret_slot = LLVMBuildAlloca(self.builder, sret_ll, "sret_slot")
+            let sret_slot = self.build_alloca(sret_ll, "sret_slot")
             let tot = effective_arg_count + 1
             let sret_args = self.allocator.alloc(tot * 8, 8) as **Void
             sret_args[0] = sret_slot
@@ -2222,15 +2491,33 @@ fn gen_expr(self, idx: Int) -> *Void {
             let enum_part = substring(sname, 0, dot_pos)
             let variant_name = substring(sname, dot_pos + 1, length(sname))
             
-            let struct_lltype = self.map_type(enum_part)
-            // Stack-allocate the enum struct
-            let alloca_val = LLVMBuildAlloca(self.builder, struct_lltype, "enum_init")
-            
-            // Set tag
+            let enum_decl_idx_str = type_map_get(&self.enum_decls, enum_part)
+            var enum_has_payload = false
+            if length(enum_decl_idx_str) > 0 {
+                let enum_decl_idx = self.str_to_int(enum_decl_idx_str)
+                let enum_stmt = self.stmt_pool.get(enum_decl_idx)
+                var v_idx = 0
+                while v_idx < enum_stmt.enum_variants.length() {
+                    let v = enum_stmt.enum_variants.get(v_idx)
+                    if v.params.length() > 0 {
+                        enum_has_payload = true
+                    }
+                    v_idx = v_idx + 1
+                }
+            }
+
             let tag_key = enum_part + "_" + variant_name + "_TAG"
             let tag_val_str = type_map_get(&self.enum_decls, tag_key)
             var tag_num = 0
             if length(tag_val_str) > 0 { tag_num = self.str_to_int(tag_val_str) }
+
+            if !enum_has_payload {
+                return LLVMConstInt(LLVMInt32TypeInContext(self.ctx), tag_num, false)
+            }
+
+            let struct_lltype = self.map_type(enum_part)
+            // Stack-allocate the enum struct
+            let alloca_val = self.build_alloca(struct_lltype, "enum_init")
             
             let tag_gep = LLVMBuildStructGEP2(self.builder, struct_lltype, alloca_val, 0, "tag_gep")
             LLVMBuildStore(self.builder, LLVMConstInt(LLVMInt8TypeInContext(self.ctx), tag_num, false), tag_gep)
@@ -2250,7 +2537,7 @@ fn gen_expr(self, idx: Int) -> *Void {
         
         let struct_lltype = self.map_type(sname)
         // Stack-allocate the struct
-        let alloca_val = LLVMBuildAlloca(self.builder, struct_lltype, "struct_init")
+        let alloca_val = self.build_alloca(struct_lltype, "struct_init")
         
         // Initialize each field via GEP + store
         var i = 0
@@ -2259,8 +2546,13 @@ fn gen_expr(self, idx: Int) -> *Void {
             let field_ktype = self.get_field_type(sname, f.name)
             let field_lltype = self.map_type(field_ktype)
             let field_idx = self.get_field_index(sname, f.name)
-            let val = self.gen_expr(f.value)
+            var val = self.gen_expr(f.value)
+            if self.is_struct_type(field_ktype) && self.expr_returns_ptr(f.value) {
+                val = LLVMBuildLoad2(self.builder, field_lltype, val, "struct_val")
+            }
             let gep = LLVMBuildStructGEP2(self.builder, struct_lltype, alloca_val, field_idx, "field_gep")
+            // Promote no-payload enum i32 tag to full struct if field expects a with-payload enum type
+            val = self.promote_enum_to_struct(val, field_ktype)
             LLVMBuildStore(self.builder, val, gep)
             i = i + 1
         }
@@ -2277,7 +2569,7 @@ fn gen_expr(self, idx: Int) -> *Void {
         if inner.kind == ExprKind.ek_field_access {
             let rec_type = self.get_expr_type(inner.field_expr)
             let base_type = self.strip_pointers(rec_type)
-            let key = base_type + "." + inner.field_name
+            let key = self.get_mangled_type_name(base_type) + "." + inner.field_name
             let idx_str = type_map_get(&self.struct_field_indices, key)
             let idx = self.str_to_int(idx_str)
             
@@ -2297,7 +2589,7 @@ fn gen_expr(self, idx: Int) -> *Void {
             let struct_lltype = self.map_type(base_type)
             // For non-pointer, non-identifier receivers, spill to alloca
             if !self.is_pointer_type(rec_type) && inner_base_node.kind != ExprKind.ek_identifier {
-                let tmp_addr = LLVMBuildAlloca(self.builder, struct_lltype, "borrow_tmp")
+                let tmp_addr = self.build_alloca(struct_lltype, "borrow_tmp")
                 LLVMBuildStore(self.builder, rec_ptr, tmp_addr)
                 rec_ptr = tmp_addr
             }
@@ -2306,12 +2598,14 @@ fn gen_expr(self, idx: Int) -> *Void {
         if inner.kind == ExprKind.ek_index {
             let arr_ptr = self.gen_expr(inner.idx_expr)
             let idx_val = self.gen_expr(inner.idx_index)
-            let arr_type = self.get_expr_type(inner.idx_expr)
-            var elem_ktype = "Int"
-            if length(arr_type) > 2 && substring(arr_type, 0, 2) == "[]" {
-                elem_ktype = substring(arr_type, 2, length(arr_type))
+            let elem_ktype = self.get_expr_type(expr.borrow_expr)
+            var elem_lltype = self.map_type(elem_ktype)
+            if length(elem_ktype) > 0 && elem_ktype[0] == Char(42) {
+                elem_lltype = LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0)
             }
-            let elem_lltype = self.map_type(elem_ktype)
+            if elem_lltype == LLVMVoidTypeInContext(self.ctx) {
+                elem_lltype = LLVMInt64TypeInContext(self.ctx)
+            }
             return LLVMBuildGEP2(self.builder, elem_lltype, arr_ptr, &idx_val as *Void, 1, "idx_gep")
         }
         return self.gen_expr(expr.borrow_expr)
@@ -2333,7 +2627,7 @@ fn gen_expr(self, idx: Int) -> *Void {
         }
         let elem_lltype = self.map_type(elem_ktype)
         let arr_lltype = LLVMArrayType(elem_lltype, count)
-        let addr = LLVMBuildAlloca(self.builder, arr_lltype, "arr_lit")
+        let addr = self.build_alloca(arr_lltype, "arr_lit")
         
         var i = 0
         while i < count {
@@ -2368,13 +2662,13 @@ fn gen_expr(self, idx: Int) -> *Void {
                 let tag_val_str = type_map_get(&self.enum_decls, tag_key)
                 var tag_num = 0
                 if length(tag_val_str) > 0 { tag_num = self.str_to_int(tag_val_str) }
-                return LLVMConstInt(LLVMInt64TypeInContext(self.ctx), tag_num, false)
+                return LLVMConstInt(LLVMInt32TypeInContext(self.ctx), tag_num, false)
             }
         }
         
         let rec_type = self.get_expr_type(expr.field_expr)
         let base_type = self.strip_pointers(rec_type)
-        let key = base_type + "." + expr.field_name
+        let key = self.get_mangled_type_name(base_type) + "." + expr.field_name
         let idx_str = type_map_get(&self.struct_field_indices, key)
         let idx = self.str_to_int(idx_str)
         
@@ -2404,8 +2698,8 @@ fn gen_expr(self, idx: Int) -> *Void {
         // Heuristic: if rec_type doesn't start with * or & and maps to a struct type,
         // and the receiver is not an identifier (which we already handle above),
         // spill to alloca.
-        if !self.is_pointer_type(rec_type) && base_node.kind != ExprKind.ek_identifier {
-            let tmp_addr = LLVMBuildAlloca(self.builder, struct_lltype, "field_tmp")
+        if !self.is_pointer_type(rec_type) && base_node.kind != ExprKind.ek_identifier && !self.expr_returns_ptr(expr.field_expr) {
+            let tmp_addr = self.build_alloca(struct_lltype, "field_tmp")
             LLVMBuildStore(self.builder, rec_ptr, tmp_addr)
             rec_ptr = tmp_addr
         }
@@ -2420,16 +2714,7 @@ fn gen_expr(self, idx: Int) -> *Void {
     if expr.kind == ExprKind.ek_index {
         let arr_ptr = self.gen_expr(expr.idx_expr)
         let idx_val = self.gen_expr(expr.idx_index)
-        let arr_type = self.get_expr_type(expr.idx_expr)
-        var elem_ktype = "Int"
-        if length(arr_type) > 2 && substring(arr_type, 0, 2) == "[]" {
-            elem_ktype = substring(arr_type, 2, length(arr_type))
-        } else if arr_type == "Str" {
-            elem_ktype = "Char"
-        } else if length(arr_type) > 0 && arr_type[0] == Char(42) {
-            // *T indexed -> element type is T (the thing being pointed to)
-            elem_ktype = substring(arr_type, 1, length(arr_type))
-        }
+        let elem_ktype = self.get_expr_type(expr_idx)
         var elem_lltype = self.map_type(elem_ktype)
         // For pointer element types, use ptr type for the load
         if length(elem_ktype) > 0 && elem_ktype[0] == Char(42) {
@@ -2471,7 +2756,7 @@ fn gen_expr(self, idx: Int) -> *Void {
                         let its_sret = (type_map_get(&self.func_is_sret, "int_to_str") == "1")
                         if its_sret {
                             // sret path: allocate Str slot, pass as first arg
-                            let sret_its = LLVMBuildAlloca(self.builder, str_ptr_t, "its_sret")
+                            let sret_its = self.build_alloca(str_ptr_t, "its_sret")
                             let its_params = self.allocator.alloc(16, 8) as **Void
                             its_params[0] = LLVMPointerType(str_ptr_t, 0)
                             its_params[1] = i64t
@@ -2531,7 +2816,7 @@ fn gen_expr(self, idx: Int) -> *Void {
                 inner_lltype = LLVMInt64TypeInContext(self.ctx)
             }
 
-            let result_addr = LLVMBuildAlloca(self.builder, inner_lltype, "catch_result")
+            let result_addr = self.build_alloca(inner_lltype, "catch_result")
             let has_bb  = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "catch_has")
             let miss_bb = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "catch_miss")
             let end_bb  = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "catch_end")
@@ -2543,7 +2828,7 @@ fn gen_expr(self, idx: Int) -> *Void {
             } else {
                 // Store inner_val to alloca so we can GEP into it
                 let opt_lltype = self.map_type(inner_type)
-                let inner_addr = LLVMBuildAlloca(self.builder, opt_lltype, "opt_tmp")
+                let inner_addr = self.build_alloca(opt_lltype, "opt_tmp")
                 LLVMBuildStore(self.builder, inner_val, inner_addr)
                 let tag_gep = LLVMBuildStructGEP2(self.builder, opt_lltype, inner_addr, 0, "has_gep")
                 let has_val = LLVMBuildLoad2(self.builder, LLVMInt8TypeInContext(self.ctx), tag_gep, "has_val")
@@ -2558,7 +2843,7 @@ fn gen_expr(self, idx: Int) -> *Void {
                 unwrapped_val = inner_val
             } else {
                 let opt_lltype2 = self.map_type(inner_type)
-                let inner_addr2 = LLVMBuildAlloca(self.builder, opt_lltype2, "opt_tmp2")
+                let inner_addr2 = self.build_alloca(opt_lltype2, "opt_tmp2")
                 LLVMBuildStore(self.builder, inner_val, inner_addr2)
                 let val_gep = LLVMBuildStructGEP2(self.builder, opt_lltype2, inner_addr2, 1, "val_gep")
                 unwrapped_val = LLVMBuildLoad2(self.builder, inner_lltype, val_gep, "unwrapped")
@@ -2586,14 +2871,14 @@ fn gen_expr(self, idx: Int) -> *Void {
                 inner_lltype = LLVMInt64TypeInContext(self.ctx)
             }
 
-            let result_addr = LLVMBuildAlloca(self.builder, inner_lltype, "catch_result")
+            let result_addr = self.build_alloca(inner_lltype, "catch_result")
             let ok_bb   = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "catch_ok")
             let err_bb  = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "catch_err")
             let end_bb  = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "catch_end")
 
             // Store result struct to alloca so we can GEP into it
             let res_lltype = self.map_type(inner_type)
-            let res_addr = LLVMBuildAlloca(self.builder, res_lltype, "res_tmp")
+            let res_addr = self.build_alloca(res_lltype, "res_tmp")
             LLVMBuildStore(self.builder, inner_val, res_addr)
             let tag_gep  = LLVMBuildStructGEP2(self.builder, res_lltype, res_addr, 0, "tag_gep")
             let tag_load = LLVMBuildLoad2(self.builder, LLVMInt64TypeInContext(self.ctx), tag_gep, "tag")
@@ -2636,7 +2921,7 @@ fn gen_expr(self, idx: Int) -> *Void {
                 inner_lltype = LLVMInt64TypeInContext(self.ctx)
             }
             // Store to alloca first to get a pointer for GEP
-            let res_addr = LLVMBuildAlloca(self.builder, res_lltype, "try_tmp")
+            let res_addr = self.build_alloca(res_lltype, "try_tmp")
             LLVMBuildStore(self.builder, inner_val, res_addr)
             let val_gep = LLVMBuildStructGEP2(self.builder, res_lltype, res_addr, 1, "val_gep")
             return LLVMBuildLoad2(self.builder, inner_lltype, val_gep, "try_val")
@@ -2701,8 +2986,8 @@ fn gen_cast(self, src_idx: Int, target_type: Str) -> *Void {
     let src_ktype = self.get_expr_type(src_idx)
     let dest_ll = self.map_type(target_type)
 
-    let src_is_ptr = length(src_ktype) > 0 && src_ktype[0] == Char(42)
-    let dst_is_ptr = length(target_type) > 0 && target_type[0] == Char(42)
+    let src_is_ptr = (length(src_ktype) > 0 && src_ktype[0] == Char(42)) || src_ktype == "Str"
+    let dst_is_ptr = (length(target_type) > 0 && target_type[0] == Char(42)) || target_type == "Str"
     let dst_is_int = target_type == "Int" || target_type == "Int8" || target_type == "Char" || target_type == "Int32" || target_type == "Bool"
 
     if src_is_ptr && dst_is_ptr {
@@ -2804,7 +3089,7 @@ fn gen_match(self, stmt_idx: Int) {
     if has_payload {
         let struct_lltype = self.map_type(expr_type)
         // Store expr_val to alloca to get a pointer for GEP
-        let match_tmp = LLVMBuildAlloca(self.builder, struct_lltype, "match_tmp")
+        let match_tmp = self.build_alloca(struct_lltype, "match_tmp")
         LLVMBuildStore(self.builder, expr_val, match_tmp)
         match_ptr = match_tmp
         let tag_gep = LLVMBuildStructGEP2(self.builder, struct_lltype, match_tmp, 0, "tag_gep")
@@ -2813,7 +3098,7 @@ fn gen_match(self, stmt_idx: Int) {
     } else if is_result {
         // Result type: extract tag field (field 0 = i64 tag)
         let res_lltype = self.map_type(expr_type)
-        let match_tmp = LLVMBuildAlloca(self.builder, res_lltype, "match_res_tmp")
+        let match_tmp = self.build_alloca(res_lltype, "match_res_tmp")
         LLVMBuildStore(self.builder, expr_val, match_tmp)
         match_ptr = match_tmp
         let tag_gep = LLVMBuildStructGEP2(self.builder, res_lltype, match_tmp, 0, "tag_gep")
@@ -2821,7 +3106,7 @@ fn gen_match(self, stmt_idx: Int) {
     } else if is_optional {
         // Optional type: extract has_value field (field 0 = i8)
         let opt_lltype = self.map_type(expr_type)
-        let match_tmp = LLVMBuildAlloca(self.builder, opt_lltype, "match_opt_tmp")
+        let match_tmp = self.build_alloca(opt_lltype, "match_opt_tmp")
         LLVMBuildStore(self.builder, expr_val, match_tmp)
         match_ptr = match_tmp
         let tag_gep = LLVMBuildStructGEP2(self.builder, opt_lltype, match_tmp, 0, "tag_gep")
@@ -2831,11 +3116,15 @@ fn gen_match(self, stmt_idx: Int) {
         // Enum with payload: expr_val is the loaded struct value; store to alloca for GEP in case body
         if has_payload {
             let enum_lltype = self.map_type(expr_type)
-            let match_tmp = LLVMBuildAlloca(self.builder, enum_lltype, "match_enum_tmp")
+            let match_tmp = self.build_alloca(enum_lltype, "match_enum_tmp")
             LLVMBuildStore(self.builder, expr_val, match_tmp)
             match_ptr = match_tmp
         }
-        tag_val = expr_val
+        if has_payload {
+            tag_val = expr_val
+        } else {
+            tag_val = LLVMBuildZExt(self.builder, expr_val, LLVMInt64TypeInContext(self.ctx), "tag_val_i64")
+        }
     } else {
         // Primitive type match (Int, etc.) - use value directly
         tag_val = expr_val
@@ -2901,7 +3190,7 @@ fn gen_match(self, stmt_idx: Int) {
             var gep_base = match_ptr
             if gep_base == 0 as *Void {
                 // Fallback: store expr_val to a temp alloca for GEP
-                let tmp = LLVMBuildAlloca(self.builder, struct_lltype, "match_gep_tmp")
+                let tmp = self.build_alloca(struct_lltype, "match_gep_tmp")
                 LLVMBuildStore(self.builder, expr_val, tmp)
                 gep_base = tmp
             }
@@ -2910,7 +3199,7 @@ fn gen_match(self, stmt_idx: Int) {
             
             var cast_payload = raw_payload
             if bind_ktype != "Int" && bind_ktype != "Bool" {
-                if length(bind_ktype) > 0 && bind_ktype[0] == Char(42) {
+                if self.is_pointer_type(bind_ktype) {
                     cast_payload = LLVMBuildIntToPtr(self.builder, raw_payload, bind_ll, "cast_payload")
                 } else if bind_ktype == "Float" {
                     cast_payload = LLVMBuildBitCast(self.builder, raw_payload, LLVMDoubleTypeInContext(self.ctx), "cast_payload")
@@ -2921,7 +3210,7 @@ fn gen_match(self, stmt_idx: Int) {
                 }
             }
             
-            let addr = LLVMBuildAlloca(self.builder, bind_ll, bind_var + ".addr")
+            let addr = self.build_alloca(bind_ll, bind_var + ".addr")
             LLVMBuildStore(self.builder, cast_payload, addr)
             self.sym_store(bind_var, addr, bind_ktype)
         }
@@ -3030,7 +3319,7 @@ fn handle_import(self, stmt_idx: Int) {
             // Only register declarations from imported module — do not generate function bodies.
             // Function bodies from imported modules will be generated in the main generate() loop
             // since they are added to the shared stmt_pool.
-            self.register_all_decls()
+            self.register_all_types()
         }
     }
 }
@@ -3090,6 +3379,9 @@ fn get_expr_type(self, idx: Int) -> Str {
         if length(fname) > 0 {
             let first_char = fname[0]
             if first_char >= Char(65) && first_char <= Char(90) {
+                if expr.func_type_args.length() > 0 {
+                    return "*" + fname + "<" + str_array_join(expr.func_type_args, ", ") + ">"
+                }
                 return "*" + fname
             }
         }
@@ -3191,14 +3483,26 @@ fn get_expr_type(self, idx: Int) -> Str {
 }
 
 fn get_field_type(self, struct_name: Str, field_name: Str) -> Str {
-    let key = struct_name + "." + field_name
+    var clean_base = struct_name
+    let lt_pos = self.str_find(struct_name, Char(60))
+    if lt_pos >= 0 {
+        clean_base = substring(struct_name, 0, lt_pos)
+    }
+    let mangled = self.get_mangled_type_name(clean_base)
+    let key = mangled + "." + field_name
     let t = type_map_get(&self.struct_field_types, key)
     if length(t) > 0 { return t }
     return "Int"
 }
 
 fn get_field_index(self, struct_name: Str, field_name: Str) -> Int {
-    let key = struct_name + "." + field_name
+    var clean_base = struct_name
+    let lt_pos = self.str_find(struct_name, Char(60))
+    if lt_pos >= 0 {
+        clean_base = substring(struct_name, 0, lt_pos)
+    }
+    let mangled = self.get_mangled_type_name(clean_base)
+    let key = mangled + "." + field_name
     let idx_str = type_map_get(&self.struct_field_indices, key)
     if length(idx_str) > 0 { return self.str_to_int(idx_str) }
     return 0
@@ -3246,7 +3550,7 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     self.module = LLVMModuleCreateWithNameInContext("kai_module", self.ctx)
     self.builder = LLVMCreateBuilderInContext(self.ctx)
 
-    self.register_all_decls()
+    self.register_all_types()
 
     self.emit_str_concat_helper()
 
@@ -3263,7 +3567,8 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     // After all imports are processed, do a final registration sweep so that
     // any function whose return type was unresolved (enum/struct not yet
     // registered at first-call time) gets properly re-declared now.
-    self.register_all_decls()
+    self.register_all_types()
+    self.register_all_funcs()
 
     // Emit monomorphized ArrayList<T> method bodies NOW — before any function
     // body generation — so call sites in generated bodies get the correctly-typed
@@ -3366,45 +3671,73 @@ fn get_or_create_func_for_body(self, fname: Str, fn_ty: *Void) -> *Void {
 fn emit_arraylist_method_get(self, elem_ktype: Str, al_lltype: *Void, fname: Str) {
     if self.func_has_body(fname) { return }
 
-    // define <elem_ll> @ArrayList<T>_get(ptr %self, i64 %index)
-    let elem_ll = self.map_type(elem_ktype)
     let i64t = LLVMInt64TypeInContext(self.ctx)
     let ptrt = LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0)
+    let elem_ll = self.map_type(elem_ktype)
+    let void_t = LLVMVoidTypeInContext(self.ctx)
 
-    var ret_ll: *Void = elem_ll
-    if ret_ll == LLVMVoidTypeInContext(self.ctx) { ret_ll = i64t }
+    var is_sret = self.is_struct_by_value_return(elem_ktype)
 
-    let param_types = self.allocator.alloc(16, 8) as **Void
-    param_types[0] = ptrt  // self: *ArrayList
-    param_types[1] = i64t  // index: Int
-    let fn_ty = LLVMFunctionType(ret_ll, param_types as *Void, 2, false)
+    var fn_ty: *Void = 0 as *Void
+    if is_sret {
+        let param_types = self.allocator.alloc(24, 8) as **Void
+        param_types[0] = ptrt  // sret: *T
+        param_types[1] = ptrt  // self: *ArrayList
+        param_types[2] = i64t  // index: Int
+        fn_ty = LLVMFunctionType(void_t, param_types as *Void, 3, false)
+        self.allocator.free(param_types as *Void)
+    } else {
+        var ret_ll: *Void = elem_ll
+        if ret_ll == void_t { ret_ll = i64t }
+        let param_types = self.allocator.alloc(16, 8) as **Void
+        param_types[0] = ptrt  // self: *ArrayList
+        param_types[1] = i64t  // index: Int
+        fn_ty = LLVMFunctionType(ret_ll, param_types as *Void, 2, false)
+        self.allocator.free(param_types as *Void)
+    }
+
     let func = self.get_or_create_func_for_body(fname, fn_ty)
     type_map_put(&self.func_types, fname, elem_ktype)
-    self.allocator.free(param_types as *Void)
+    if is_sret {
+        type_map_put(&self.func_is_sret, fname, "1")
+    }
 
     let bb = LLVMAppendBasicBlockInContext(self.ctx, func, "entry")
     let b = LLVMCreateBuilderInContext(self.ctx)
     LLVMPositionBuilderAtEnd(b, bb)
 
-    let self_ptr = LLVMGetParam(func, 0)
-    let idx = LLVMGetParam(func, 1)
+    var sret_ptr: *Void = 0 as *Void
+    var self_ptr: *Void = 0 as *Void
+    var idx: *Void = 0 as *Void
+    if is_sret {
+        sret_ptr = LLVMGetParam(func, 0)
+        self_ptr = LLVMGetParam(func, 1)
+        idx = LLVMGetParam(func, 2)
+    } else {
+        self_ptr = LLVMGetParam(func, 0)
+        idx = LLVMGetParam(func, 1)
+    }
 
     // data is field 0 of ArrayList
     let data_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 0, "data_gep")
     let data_ptr = LLVMBuildLoad2(b, ptrt, data_gep, "data")
 
     // element ptr: GEP data[index] with elem_ll type
-    let real_elem_ll = self.map_type(elem_ktype)
-    var use_elem_ll: *Void = real_elem_ll
-    if use_elem_ll == LLVMVoidTypeInContext(self.ctx) { use_elem_ll = i64t }
-    if use_elem_ll == LLVMInt8TypeInContext(self.ctx) { use_elem_ll = LLVMInt8TypeInContext(self.ctx) }
+    var use_elem_ll: *Void = elem_ll
+    if use_elem_ll == void_t { use_elem_ll = i64t }
 
     let idx_arr = self.allocator.alloc(8, 8) as **Void
     idx_arr[0] = idx
     let elem_gep = LLVMBuildGEP2(b, use_elem_ll, data_ptr, idx_arr as *Void, 1, "elem_gep")
     let loaded = LLVMBuildLoad2(b, use_elem_ll, elem_gep, "elem")
-    LLVMBuildRet(b, loaded)
     self.allocator.free(idx_arr as *Void)
+
+    if is_sret {
+        LLVMBuildStore(b, loaded, sret_ptr)
+        LLVMBuildRetVoid(b)
+    } else {
+        LLVMBuildRet(b, loaded)
+    }
 
     LLVMDisposeBuilder(b)
 }
@@ -3450,6 +3783,8 @@ fn emit_arraylist_method_push(self, elem_ktype: Str, fname: Str, al_lltype: *Voi
     let fn_ty = LLVMFunctionType(i64t, param_types as *Void, 2, false)
     let func = self.get_or_create_func_for_body(fname, fn_ty)
     type_map_put(&self.func_types, fname, "Int")
+    type_map_put(&self.func_param_types, fname + "_param_0", "*ArrayList")
+    type_map_put(&self.func_param_types, fname + "_param_1", elem_ktype)
     self.allocator.free(param_types as *Void)
 
     let bb = LLVMAppendBasicBlockInContext(self.ctx, func, "entry")
@@ -3459,21 +3794,116 @@ fn emit_arraylist_method_push(self, elem_ktype: Str, fname: Str, al_lltype: *Voi
     let self_ptr = LLVMGetParam(func, 0)
     let item = LLVMGetParam(func, 1)
 
-    // len is field 1, data is field 0
+    // len is field 1, cap is field 2, allocator is field 3, data is field 0
     let len_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 1, "len_gep")
     let len_val = LLVMBuildLoad2(b, i64t, len_gep, "len")
+    let cap_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 2, "cap_gep")
+    let cap_val = LLVMBuildLoad2(b, i64t, cap_gep, "cap")
     let data_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 0, "data_gep")
     let data_ptr = LLVMBuildLoad2(b, ptrt, data_gep, "data")
 
-    // data[len] = item
-    let len_arr = self.allocator.alloc(8, 8) as **Void
-    len_arr[0] = len_val
-    let elem_slot = LLVMBuildGEP2(b, real_elem_ll, data_ptr, len_arr as *Void, 1, "elem_slot")
-    LLVMBuildStore(b, item, elem_slot)
-    self.allocator.free(len_arr as *Void)
-    LLVMBuildStore(b, item, elem_slot)
+    let cmp = LLVMBuildICmp(b, 32, len_val, cap_val, "cmp")
 
-    // len++
+    let grow_bb = LLVMAppendBasicBlockInContext(self.ctx, func, "grow")
+    let store_bb = LLVMAppendBasicBlockInContext(self.ctx, func, "store")
+    LLVMBuildCondBr(b, cmp, grow_bb, store_bb)
+
+    // grow_bb:
+    LLVMPositionBuilderAtEnd(b, grow_bb)
+    let new_cap = LLVMBuildMul(b, cap_val, LLVMConstInt(i64t, 2, false), "new_cap")
+    let null_ptr = LLVMConstNull(LLVMPointerType(real_elem_ll, 0))
+    let gep_idx = self.allocator.alloc(8, 8) as **Void
+    gep_idx[0] = LLVMConstInt(i64t, 1, false)
+    let gep_size = LLVMBuildGEP2(b, real_elem_ll, null_ptr, gep_idx as *Void, 1, "gep_size")
+    let size_val = LLVMBuildPtrToInt(b, gep_size, i64t, "sizeof_T")
+    self.allocator.free(gep_idx as *Void)
+
+    let alloc_size = LLVMBuildMul(b, new_cap, size_val, "alloc_size")
+    
+    let alloc_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 3, "alloc_gep")
+    let alloc_val = LLVMBuildLoad2(b, ptrt, alloc_gep, "allocator")
+    
+    let alloc_fn = LLVMGetNamedFunction(self.module, "Allocator_alloc")
+    let alloc_args = self.allocator.alloc(24, 8) as **Void
+    alloc_args[0] = alloc_val
+    alloc_args[1] = alloc_size
+    alloc_args[2] = LLVMConstInt(i64t, 1, false)
+    let alloc_params_types = self.allocator.alloc(24, 8) as **Void
+    alloc_params_types[0] = ptrt
+    alloc_params_types[1] = i64t
+    alloc_params_types[2] = i64t
+    let alloc_ty = LLVMFunctionType(ptrt, alloc_params_types as *Void, 3, false)
+    let new_data = LLVMBuildCall2(b, alloc_ty, alloc_fn, alloc_args as *Void, 3, "new_data")
+    self.allocator.free(alloc_args as *Void)
+    self.allocator.free(alloc_params_types as *Void)
+
+    // Loop to copy
+    let copy_cond = LLVMAppendBasicBlockInContext(self.ctx, func, "copy_cond")
+    let copy_body = LLVMAppendBasicBlockInContext(self.ctx, func, "copy_body")
+    let copy_end = LLVMAppendBasicBlockInContext(self.ctx, func, "copy_end")
+    
+    // Position builder temporarily in entry block to build the alloca for index
+    let cur_bb = LLVMGetInsertBlock(b)
+    let first_instr = LLVMGetFirstInstruction(bb)
+    if first_instr == 0 as *Void {
+        LLVMPositionBuilderAtEnd(b, bb)
+    } else {
+        LLVMPositionBuilderBefore(b, first_instr)
+    }
+    let idx_addr = LLVMBuildAlloca(b, i64t, "copy_idx")
+    LLVMPositionBuilderAtEnd(b, cur_bb)
+    
+    LLVMBuildStore(b, LLVMConstInt(i64t, 0, false), idx_addr)
+    LLVMBuildBr(b, copy_cond)
+
+    // copy_cond:
+    LLVMPositionBuilderAtEnd(b, copy_cond)
+    let idx_val = LLVMBuildLoad2(b, i64t, idx_addr, "idx")
+    let cmp_copy = LLVMBuildICmp(b, 40, idx_val, len_val, "cmp_copy")
+    LLVMBuildCondBr(b, cmp_copy, copy_body, copy_end)
+
+    // copy_body:
+    LLVMPositionBuilderAtEnd(b, copy_body)
+    let idx_val2 = LLVMBuildLoad2(b, i64t, idx_addr, "idx")
+    let src_idx_arr = self.allocator.alloc(8, 8) as **Void
+    src_idx_arr[0] = idx_val2
+    let src_slot = LLVMBuildGEP2(b, real_elem_ll, data_ptr, src_idx_arr as *Void, 1, "src_slot")
+    let loaded_val = LLVMBuildLoad2(b, real_elem_ll, src_slot, "val")
+    let dst_slot = LLVMBuildGEP2(b, real_elem_ll, new_data, src_idx_arr as *Void, 1, "dst_slot")
+    LLVMBuildStore(b, loaded_val, dst_slot)
+    self.allocator.free(src_idx_arr as *Void)
+    
+    let next_idx = LLVMBuildAdd(b, idx_val2, LLVMConstInt(i64t, 1, false), "next_idx")
+    LLVMBuildStore(b, next_idx, idx_addr)
+    LLVMBuildBr(b, copy_cond)
+
+    // copy_end:
+    LLVMPositionBuilderAtEnd(b, copy_end)
+    let free_fn = LLVMGetNamedFunction(self.module, "Allocator_free")
+    let free_args = self.allocator.alloc(16, 8) as **Void
+    free_args[0] = alloc_val
+    free_args[1] = data_ptr
+    let free_params_types = self.allocator.alloc(16, 8) as **Void
+    free_params_types[0] = ptrt
+    free_params_types[1] = ptrt
+    let free_ty = LLVMFunctionType(void_t, free_params_types as *Void, 2, false)
+    LLVMBuildCall2(b, free_ty, free_fn, free_args as *Void, 2, "")
+    self.allocator.free(free_args as *Void)
+    self.allocator.free(free_params_types as *Void)
+
+    LLVMBuildStore(b, new_data, data_gep)
+    LLVMBuildStore(b, new_cap, cap_gep)
+    LLVMBuildBr(b, store_bb)
+
+    // store_bb:
+    LLVMPositionBuilderAtEnd(b, store_bb)
+    let current_data_ptr = LLVMBuildLoad2(b, ptrt, data_gep, "current_data")
+    let len_arr2 = self.allocator.alloc(8, 8) as **Void
+    len_arr2[0] = len_val
+    let elem_slot2 = LLVMBuildGEP2(b, real_elem_ll, current_data_ptr, len_arr2 as *Void, 1, "elem_slot")
+    LLVMBuildStore(b, item, elem_slot2)
+    self.allocator.free(len_arr2 as *Void)
+
     let new_len = LLVMBuildAdd(b, len_val, LLVMConstInt(i64t, 1, false), "new_len")
     LLVMBuildStore(b, new_len, len_gep)
 
@@ -3487,21 +3917,45 @@ fn emit_arraylist_method_pop(self, elem_ktype: Str, fname: Str, al_lltype: *Void
     let i64t = LLVMInt64TypeInContext(self.ctx)
     let ptrt = LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0)
     let elem_ll = self.map_type(elem_ktype)
-    var real_elem_ll: *Void = elem_ll
-    if real_elem_ll == LLVMVoidTypeInContext(self.ctx) { real_elem_ll = i64t }
+    let void_t = LLVMVoidTypeInContext(self.ctx)
 
-    let param_types = self.allocator.alloc(8, 8) as **Void
-    param_types[0] = ptrt
-    let fn_ty = LLVMFunctionType(real_elem_ll, param_types as *Void, 1, false)
+    var is_sret = self.is_struct_by_value_return(elem_ktype)
+
+    var fn_ty: *Void = 0 as *Void
+    if is_sret {
+        let param_types = self.allocator.alloc(16, 8) as **Void
+        param_types[0] = ptrt  // sret: *T
+        param_types[1] = ptrt  // self: *ArrayList
+        fn_ty = LLVMFunctionType(void_t, param_types as *Void, 2, false)
+        self.allocator.free(param_types as *Void)
+    } else {
+        var ret_ll: *Void = elem_ll
+        if ret_ll == void_t { ret_ll = i64t }
+        let param_types = self.allocator.alloc(8, 8) as **Void
+        param_types[0] = ptrt  // self: *ArrayList
+        fn_ty = LLVMFunctionType(ret_ll, param_types as *Void, 1, false)
+        self.allocator.free(param_types as *Void)
+    }
+
     let func = self.get_or_create_func_for_body(fname, fn_ty)
     type_map_put(&self.func_types, fname, elem_ktype)
-    self.allocator.free(param_types as *Void)
+    if is_sret {
+        type_map_put(&self.func_is_sret, fname, "1")
+    }
 
     let bb = LLVMAppendBasicBlockInContext(self.ctx, func, "entry")
     let b = LLVMCreateBuilderInContext(self.ctx)
     LLVMPositionBuilderAtEnd(b, bb)
 
-    let self_ptr = LLVMGetParam(func, 0)
+    var sret_ptr: *Void = 0 as *Void
+    var self_ptr: *Void = 0 as *Void
+    if is_sret {
+        sret_ptr = LLVMGetParam(func, 0)
+        self_ptr = LLVMGetParam(func, 1)
+    } else {
+        self_ptr = LLVMGetParam(func, 0)
+    }
+
     let len_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 1, "len_gep")
     let len_val = LLVMBuildLoad2(b, i64t, len_gep, "len")
     let new_len = LLVMBuildSub(b, len_val, LLVMConstInt(i64t, 1, false), "new_len")
@@ -3509,12 +3963,22 @@ fn emit_arraylist_method_pop(self, elem_ktype: Str, fname: Str, al_lltype: *Void
 
     let data_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 0, "data_gep")
     let data_ptr = LLVMBuildLoad2(b, ptrt, data_gep, "data")
+
+    var use_elem_ll: *Void = elem_ll
+    if use_elem_ll == void_t { use_elem_ll = i64t }
+
     let new_len_arr = self.allocator.alloc(8, 8) as **Void
     new_len_arr[0] = new_len
-    let elem_slot = LLVMBuildGEP2(b, real_elem_ll, data_ptr, new_len_arr as *Void, 1, "elem_slot")
-    let loaded = LLVMBuildLoad2(b, real_elem_ll, elem_slot, "elem")
-    LLVMBuildRet(b, loaded)
+    let elem_slot = LLVMBuildGEP2(b, use_elem_ll, data_ptr, new_len_arr as *Void, 1, "elem_slot")
+    let loaded = LLVMBuildLoad2(b, use_elem_ll, elem_slot, "elem")
     self.allocator.free(new_len_arr as *Void)
+
+    if is_sret {
+        LLVMBuildStore(b, loaded, sret_ptr)
+        LLVMBuildRetVoid(b)
+    } else {
+        LLVMBuildRet(b, loaded)
+    }
 
     LLVMDisposeBuilder(b)
 }
@@ -3550,10 +4014,21 @@ fn emit_arraylist_method_init(self, elem_ktype: Str, fname: Str, al_lltype: *Voi
     // self.allocator = allocator
     let alloc_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 3, "alloc_gep")
     LLVMBuildStore(b, allocator, alloc_gep)
-    // self.data = allocator.alloc(4 * 8, 1) as *T  (use 8 bytes per element as safe default)
+    // self.data = allocator.alloc(4 * sizeof(T), 1) as *T
     let alloc_fn = LLVMGetNamedFunction(self.module, "Allocator_alloc")
     if alloc_fn != 0 as *Void {
-        let alloc_size = LLVMConstInt(i64t, 32, false)  // 4 * 8 = 32 bytes
+        let elem_ll = self.map_type(elem_ktype)
+        var real_elem_ll: *Void = elem_ll
+        if real_elem_ll == void_t { real_elem_ll = i64t }
+        
+        let null_ptr = LLVMConstNull(LLVMPointerType(real_elem_ll, 0))
+        let gep_idx = self.allocator.alloc(8, 8) as **Void
+        gep_idx[0] = LLVMConstInt(i64t, 1, false)
+        let gep_size = LLVMBuildGEP2(b, real_elem_ll, null_ptr, gep_idx as *Void, 1, "gep_size")
+        let size_val = LLVMBuildPtrToInt(b, gep_size, i64t, "sizeof_T")
+        self.allocator.free(gep_idx as *Void)
+        
+        let alloc_size = LLVMBuildMul(b, LLVMConstInt(i64t, 4, false), size_val, "alloc_size")
         let alloc_align = LLVMConstInt(i64t, 1, false)
         let call_args = self.allocator.alloc(24, 8) as **Void
         call_args[0] = allocator
@@ -3596,6 +4071,9 @@ fn emit_arraylist_method_set(self, elem_ktype: Str, fname: Str, al_lltype: *Void
     let fn_ty = LLVMFunctionType(i64t, param_types as *Void, 3, false)
     let func = self.get_or_create_func_for_body(fname, fn_ty)
     type_map_put(&self.func_types, fname, "Int")
+    type_map_put(&self.func_param_types, fname + "_param_0", "*ArrayList")
+    type_map_put(&self.func_param_types, fname + "_param_1", "Int")
+    type_map_put(&self.func_param_types, fname + "_param_2", elem_ktype)
     self.allocator.free(param_types as *Void)
 
     let bb = LLVMAppendBasicBlockInContext(self.ctx, func, "entry")
@@ -3674,6 +4152,12 @@ fn maybe_emit_arraylist_for_type(self, raw_type: Str) {
     self.emit_arraylist_method_init(elem_ktype, al_init_name, al_lltype)
     self.emit_arraylist_method_get(elem_ktype, al_lltype, get_name)
     self.emit_arraylist_method_set(elem_ktype, set_name, al_lltype)
+
+    type_map_put(&self.func_param_types, push_name + "_param_1", elem_ktype)
+    type_map_put(&self.func_param_types, set_name + "_param_1", "Int")
+    type_map_put(&self.func_param_types, set_name + "_param_2", elem_ktype)
+    type_map_put(&self.func_param_types, get_name + "_param_1", "Int")
+    type_map_put(&self.func_param_types, al_init_name + "_param_1", "*Allocator")
 }
 
 fn emit_runtime_helpers(self) {
@@ -3756,4 +4240,70 @@ fn emit_runtime_helpers(self) {
     self.allocator.free(free_params as *Void)
 }
 
+fn is_struct_type(self, ktype: Str) -> Bool {
+    if length(ktype) == 0 { return false }
+    if ktype[0] == Char(42) || ktype[0] == Char(38) || ktype[0] == Char(91) {
+        return false
+    }
+    var clean = ktype
+    let lt_pos = self.str_find(ktype, Char(60))
+    if lt_pos >= 0 {
+        clean = substring(ktype, 0, lt_pos)
+    }
+    if length(type_map_get(&self.struct_types, clean)) > 0 {
+        return true
+    }
+    return false
 }
+
+fn expr_returns_ptr(self, expr_idx: Int) -> Bool {
+    if expr_idx < 0 { return false }
+    let expr = self.expr_pool.get(expr_idx)
+    let etype = self.get_expr_type(expr_idx)
+    if self.is_pointer_type(etype) {
+        return true
+    }
+    if expr.kind == ExprKind.ek_struct_init {
+        return true
+    }
+    if expr.kind == ExprKind.ek_func_call {
+        let fname = expr.func_name
+        if fname == "cast" || fname == "as" {
+            return false
+        }
+        if type_map_get(&self.func_is_sret, fname) == "1" {
+            return true
+        }
+    }
+    if expr.kind == ExprKind.ek_method_call {
+        let rec_type = self.get_expr_type(expr.meth_expr)
+        let base = self.strip_pointers(rec_type)
+        let mfname = base + "_" + expr.meth_name
+        if type_map_get(&self.func_is_sret, mfname) == "1" {
+            return true
+        }
+    }
+    return false
+}
+
+fn get_mangled_type_name(self, ktype: Str) -> Str {
+    if length(ktype) == 0 { return "" }
+    if ktype[0] == Char(63) {
+        let val_type = substring(ktype, 1, length(ktype))
+        if self.is_pointer_type(val_type) {
+            return self.get_mangled_type_name(val_type)
+        }
+        return "Optional_" + self.clean_type_for_mangling(val_type)
+    }
+    if self.str_contains(ktype, Char(33)) {
+        let excl_pos = self.str_find(ktype, Char(33))
+        let val_type = substring(ktype, 0, excl_pos)
+        let err_type = substring(ktype, excl_pos + 1, length(ktype))
+        return "Result_" + self.clean_type_for_mangling(val_type) + "_" + self.clean_type_for_mangling(err_type)
+    }
+    return ktype
+}
+
+}
+
+

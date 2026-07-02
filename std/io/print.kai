@@ -1,3 +1,8 @@
 // Standard print module — utility functions
-fn print_separator() #io
-    print("---")
+import KaiAllocator from std.core.allocator
+
+extern fn printf(format: *Void) Str
+
+fn print_separator () {
+    printf("---\n")
+}

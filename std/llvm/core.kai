@@ -1,3 +1,4 @@
+cimport "std/llvm/core.h"
 
 // ============================================================================
 // LLVM Enums & Constants
@@ -70,15 +71,15 @@ let LLVMReturnStatusAction = 2
 // LLVM FFI Target Initialization
 // ============================================================================
 
-extern fn LLVMInitializeAllTargetInfos()
-extern fn LLVMInitializeAllTargets()
-extern fn LLVMInitializeAllTargetMCs()
-extern fn LLVMInitializeAllAsmPrinters()
-extern fn LLVMInitializeAllAsmParsers()
+extern fn kai_LLVMInitializeAllTargetInfos()
+extern fn kai_LLVMInitializeAllTargets()
+extern fn kai_LLVMInitializeAllTargetMCs()
+extern fn kai_LLVMInitializeAllAsmPrinters()
+extern fn kai_LLVMInitializeAllAsmParsers()
 
-extern fn LLVMInitializeNativeTarget() -> Int
-extern fn LLVMInitializeNativeAsmPrinter() -> Int
-extern fn LLVMInitializeNativeAsmParser() -> Int
+extern fn kai_LLVMInitializeNativeTarget() -> Int
+extern fn kai_LLVMInitializeNativeAsmPrinter() -> Int
+extern fn kai_LLVMInitializeNativeAsmParser() -> Int
 
 // ============================================================================
 // LLVM FFI Context & Module APIs
@@ -99,7 +100,9 @@ extern fn LLVMCreateBuilderInContext(ctx: *Void) -> *Void
 extern fn LLVMDisposeBuilder(b: *Void)
 extern fn LLVMAppendBasicBlockInContext(ctx: *Void, f: *Void, name: Str) -> *Void
 extern fn LLVMPositionBuilderAtEnd(b: *Void, block: *Void)
+extern fn LLVMPositionBuilderBefore(b: *Void, instr: *Void)
 extern fn LLVMGetInsertBlock(b: *Void) -> *Void
+extern fn LLVMGetFirstInstruction(block: *Void) -> *Void
 
 // ============================================================================
 // LLVM FFI Type APIs
@@ -157,6 +160,9 @@ extern fn LLVMBuildFDiv(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
 extern fn LLVMBuildAlloca(b: *Void, ty: *Void, name: Str) -> *Void
 extern fn LLVMBuildLoad2(b: *Void, ty: *Void, val_ptr: *Void, name: Str) -> *Void
 extern fn LLVMBuildStore(b: *Void, val: *Void, val_ptr: *Void) -> *Void
+extern fn LLVMSetAlignment(val: *Void, bytes: Int)
+extern fn LLVMGetABITypeAlignment(td: *Void, ty: *Void) -> Int
+extern fn LLVMCreateTargetData(s: Str) -> *Void
 
 // Comparison & Conversion
 extern fn LLVMBuildICmp(b: *Void, op: Int, lhs: *Void, rhs: *Void, name: Str) -> *Void
@@ -231,5 +237,5 @@ extern fn LLVMGetReturnType(fn_ty: *Void) -> *Void
 extern fn LLVMTypeOf(val: *Void) -> *Void
 extern fn LLVMGetElementType(ty: *Void) -> *Void
 
-
-
+// Memory release function to avoid string leaks
+extern fn LLVMDisposeMessage(message: *Char)
