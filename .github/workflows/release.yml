@@ -1,0 +1,52 @@
+name: Build and Release Kai Compiler (Linux)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Install LLVM and Clang Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-dev clang libz-dev libtinfo-dev
+
+      - name: Compile Kai Compiler (Linux x86_64)
+        run: |
+          # Use llvm-config to dynamically get correct header paths, library paths, and LLVM/system libraries
+          clang -O3 \
+            compiler_bootstrap.c \
+            $(llvm-config --cflags --ldflags --libs --system-libs) \
+            -o kai
+
+      - name: Structure Staging Directory
+        run: |
+          mkdir -p build_linux/kai-compiler/bin
+          mkdir -p build_linux/kai-compiler/lib/kai
+          
+          # Copy the compiled compiler binary and runtime helper
+          cp kai build_linux/kai-compiler/bin/
+          cp kai_runtime.c build_linux/kai-compiler/bin/
+          
+          # Copy the custom language standard library
+          cp -R std build_linux/kai-compiler/lib/kai/
+
+      - name: Create Linux Tarball Archive
+        run: |
+          tar -czvf kai-compiler-linux-x64.tar.gz -C build_linux kai-compiler
+
+      - name: Create GitHub Release and Upload Archive
+        uses: softprops/action-gh-release@v2
+        with:
+          files: kai-compiler-linux-x64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

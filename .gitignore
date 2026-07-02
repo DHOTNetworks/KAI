@@ -1,11 +1,11 @@
-#artifacts
-.DS_Store
-.kiro
-
 #Redundant
 *.bak
+.DS_Store
+SCRATCH.md
 
 #Files
+
+.kiro
 kai
 kai_bootstrap
 kai_bootstrap_new
