@@ -14,3 +14,6 @@ traits-comptime.md
 codegen*
 *.md
 *.ll
+*.py
+output.kai
+tests/compiler.c

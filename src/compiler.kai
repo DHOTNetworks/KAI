@@ -120,11 +120,14 @@ fn main(argc: Int, argv: **Char) -> Int {
     _kai_set_current_allocator(&allocator as *Void)
 
     var exe_include_flag = ""
+    var exe_dir = ""
+    var runtime_path = ""
     unsafe {
         let buf = allocator.alloc(1024, 1) as *Char
         if get_exe_dir(buf, 1024) == 0 {
-            let exe_dir = buf as Str
+            exe_dir = buf as Str
             exe_include_flag = "-I" + exe_dir
+            runtime_path = exe_dir + "/kai_runtime.c"
         }
         allocator.free(buf)
     }
@@ -143,7 +146,11 @@ fn main(argc: Int, argv: **Char) -> Int {
     }
     let c_file = base + ".c"
 
-    let source = read_to_string(&allocator, input_file) catch |err| return 4
+    let source_res = read_to_string(&allocator, input_file)
+    if source_res.tag != 0 {
+        return 4
+    }
+    let source = source_res.value as Str
 
     var lexer = Lexer(&allocator, source)
     lexer.lex()
@@ -164,18 +171,24 @@ fn main(argc: Int, argv: **Char) -> Int {
         var gen_llvm = LLVMCodegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
         let output = gen_llvm.generate(program_idx)
         let ll_file = base + ".ll"
-        let _ = write_string(ll_file, output) catch |err| return 5
+        let write_res = write_string(ll_file, output)
+        if write_res.tag != 0 {
+            return 5
+        }
         if emit_c_only {
             return 0
         }
-        let cmd = "clang " + ll_file + " -o " + bin_name
+        let cmd = "clang" + llvm_flags + " " + ll_file + " " + runtime_path + " -o " + bin_name
         unsafe {
             return system(cmd as *Char)
         }
     } else {
         var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
         let output = gen.generate(program_idx)
-        let _ = write_string(c_file, output) catch |err| return 5
+        let write_res = write_string(c_file, output)
+        if write_res.tag != 0 {
+            return 5
+        }
         if emit_c_only {
             return 0
         }
