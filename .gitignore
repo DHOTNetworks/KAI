@@ -7,8 +7,10 @@
 *.bak
 kai
 kai_bootstrap
+kai_bootstrap_new
 language_roadmap.md
 walkthrough.md
 traits-comptime.md
 codegen*
-#*.md
+*.md
+*.ll

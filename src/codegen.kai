@@ -1854,16 +1854,28 @@ fn gen_expr(self, expr_idx: Int) -> Str {
                 fallback_code = "0"
             }
             var catch_code = "({ "
+            var fallback_is_stmt2 = false
+            if length(fallback_code) > 0 && fallback_code[length(fallback_code) - 1] == Char(59) {
+                fallback_is_stmt2 = true
+            }
             if self.is_pointer_type(val_type) {
                 catch_code = catch_code + val_ctype + " _kai_opt = (" + inner + "); "
                 catch_code = catch_code + val_ctype + " _kai_cv; "
                 catch_code = catch_code + "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } "
-                catch_code = catch_code + "else { _kai_cv = (" + fallback_code + "); } _kai_cv; })"
+                if fallback_is_stmt2 {
+                    catch_code = catch_code + "else { " + fallback_code + " __builtin_unreachable(); } _kai_cv; })"
+                } else {
+                    catch_code = catch_code + "else { _kai_cv = (" + fallback_code + "); } _kai_cv; })"
+                }
             } else {
                 catch_code = catch_code + cond_ctype + " _kai_opt = (" + inner + "); "
                 catch_code = catch_code + val_ctype + " _kai_cv; "
                 catch_code = catch_code + "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } "
-                catch_code = catch_code + "else { _kai_cv = (" + fallback_code + "); } _kai_cv; })"
+                if fallback_is_stmt2 {
+                    catch_code = catch_code + "else { " + fallback_code + " __builtin_unreachable(); } _kai_cv; })"
+                } else {
+                    catch_code = catch_code + "else { _kai_cv = (" + fallback_code + "); } _kai_cv; })"
+                }
             }
             return catch_code
         }
@@ -1902,7 +1914,18 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             if length(expr.catch_var) > 0 {
                 catch_code = catch_code + "int64_t " + expr.catch_var + " = _kai_cr.tag; "
             }
-            catch_code = catch_code + "_kai_cv = (" + fallback_code + "); "
+            // If fallback ends in ';' it's a statement (e.g. return N;) — can't assign its value.
+            // Emit it as a bare statement and add __builtin_unreachable() so the compiler knows
+            // control doesn't fall through.
+            var fallback_is_stmt = false
+            if length(fallback_code) > 0 && fallback_code[length(fallback_code) - 1] == Char(59) {
+                fallback_is_stmt = true
+            }
+            if fallback_is_stmt {
+                catch_code = catch_code + fallback_code + " __builtin_unreachable(); "
+            } else {
+                catch_code = catch_code + "_kai_cv = (" + fallback_code + "); "
+            }
             catch_code = catch_code + "} else { _kai_cv = _kai_cr.value; } _kai_cv; })"
         }
         return catch_code
@@ -2675,66 +2698,51 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
             let rel_path = path_str + ".kai"
             
             // Try 1: Current working directory
-            let res1 = read_to_string(self.allocator, rel_path)
-            match res1 {
-                case .ok(s) => {
-                    source = s
-                    has_source = true
-                }
-                case .err(_) => {
-                    // Try 2: Relative to compiler executable path
-                    unsafe {
-                        let buf = self.allocator.alloc(1024, 1) as *Char
-                        if get_exe_dir(buf, 1024) == 0 {
-                            let exe_dir = buf as Str
-                            let full_path = exe_dir + "/" + rel_path
-                            let parent_path = exe_dir + "/../" + rel_path
-                            let lib_path = exe_dir + "/../lib/kai/" + rel_path
-                            self.allocator.free(buf)
-                            
-                            let res2 = read_to_string(self.allocator, full_path)
-                            match res2 {
-                                case .ok(s) => {
-                                    source = s
+            let s1 = read_to_string(self.allocator, rel_path) catch |err| ""
+            if length(s1) > 0 {
+                source = s1
+                has_source = true
+            } else {
+                // Try 2: Relative to compiler executable path
+                unsafe {
+                    let buf = self.allocator.alloc(1024, 1) as *Char
+                    if get_exe_dir(buf, 1024) == 0 {
+                        let exe_dir = buf as Str
+                        let full_path = exe_dir + "/" + rel_path
+                        let parent_path = exe_dir + "/../" + rel_path
+                        let lib_path = exe_dir + "/../lib/kai/" + rel_path
+                        self.allocator.free(buf)
+                        
+                        let s2 = read_to_string(self.allocator, full_path) catch |err| ""
+                        if length(s2) > 0 {
+                            source = s2
+                            has_source = true
+                        } else {
+                            // Try 3: Relative to parent of executable path (e.g. bin/../std)
+                            let s3 = read_to_string(self.allocator, parent_path) catch |err| ""
+                            if length(s3) > 0 {
+                                source = s3
+                                has_source = true
+                            } else {
+                                // Try 4: Relative to ../lib/kai
+                                let s4 = read_to_string(self.allocator, lib_path) catch |err| ""
+                                if length(s4) > 0 {
+                                    source = s4
                                     has_source = true
                                 }
-                                case .err(_) => {
-                                    // Try 3: Relative to parent of executable path (e.g. bin/../std)
-                                    let res3 = read_to_string(self.allocator, parent_path)
-                                    match res3 {
-                                        case .ok(s) => {
-                                            source = s
-                                            has_source = true
-                                        }
-                                        case .err(_) => {
-                                            // Try 4: Relative to ../lib/kai
-                                            let res4 = read_to_string(self.allocator, lib_path)
-                                            match res4 {
-                                                case .ok(s) => {
-                                                    source = s
-                                                    has_source = true
-                                                }
-                                                case .err(_) => {}
-                                            }
-                                        }
-                                    }
-                                }
                             }
-                        } else {
-                            self.allocator.free(buf)
                         }
+                    } else {
+                        self.allocator.free(buf)
                     }
                 }
             }
         } else if path.length() > 0 {
             let file_path = "src/" + module_key + ".kai"
-            let res = read_to_string(self.allocator, file_path)
-            match res {
-                case .ok(s) => {
-                    source = s
-                    has_source = true
-                }
-                case .err(_) => {}
+            let s = read_to_string(self.allocator, file_path) catch |err| ""
+            if length(s) > 0 {
+                source = s
+                has_source = true
             }
         }
 

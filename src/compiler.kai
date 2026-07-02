@@ -143,66 +143,45 @@ fn main(argc: Int, argv: **Char) -> Int {
     }
     let c_file = base + ".c"
 
-    let source_res = read_to_string(&allocator, input_file)
-    match source_res {
-        case .ok(source) => {
-            var lexer = Lexer(&allocator, source)
-            lexer.lex()
-            if lexer.has_error {
-                return 2
-            }
-            var parser = Parser(&allocator, lexer.tokens)
-            let program_idx = parser.parse_program()
-            if program_idx < 0 {
-                return 3
-            }
-            var checker = TypeChecker(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
-            let success = checker.check_program(program_idx)
-            if !success {
-                return 4
-            }
-            if emit_llvm {
-                var gen_llvm = LLVMCodegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
-                let output = gen_llvm.generate(program_idx)
-                let ll_file = base + ".ll"
-                let write_res = write_string(ll_file, output)
-                match write_res {
-                    case .ok(_) => {
-                        if emit_c_only {
-                            return 0
-                        }
-                        let cmd = "clang " + ll_file + " -o " + bin_name
-                        unsafe {
-                            return system(cmd as *Char)
-                        }
-                    }
-                    case .err(_) => {
-                        return 5
-                    }
-                }
-            } else {
-                var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
-                let output = gen.generate(program_idx)
-                let write_res = write_string(c_file, output)
-                match write_res {
-                    case .ok(_) => {
-                        if emit_c_only {
-                            return 0
-                        }
-                        let cmd = "clang " + exe_include_flag + llvm_flags + " " + opt_level + " " + c_file + " -o " + bin_name
-                        unsafe {
-                            return system(cmd as *Char)
-                        }
-                    }
-                    case .err(_) => {
-                        return 5
-                    }
-                }
-            }
+    let source = read_to_string(&allocator, input_file) catch |err| return 4
+
+    var lexer = Lexer(&allocator, source)
+    lexer.lex()
+    if lexer.has_error {
+        return 2
+    }
+    var parser = Parser(&allocator, lexer.tokens)
+    let program_idx = parser.parse_program()
+    if program_idx < 0 {
+        return 3
+    }
+    var checker = TypeChecker(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
+    let success = checker.check_program(program_idx)
+    if !success {
+        return 4
+    }
+    if emit_llvm {
+        var gen_llvm = LLVMCodegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
+        let output = gen_llvm.generate(program_idx)
+        let ll_file = base + ".ll"
+        let _ = write_string(ll_file, output) catch |err| return 5
+        if emit_c_only {
+            return 0
         }
-        case .err(err_code) => {
-            return 4
+        let cmd = "clang " + ll_file + " -o " + bin_name
+        unsafe {
+            return system(cmd as *Char)
+        }
+    } else {
+        var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
+        let output = gen.generate(program_idx)
+        let _ = write_string(c_file, output) catch |err| return 5
+        if emit_c_only {
+            return 0
+        }
+        let cmd = "clang " + exe_include_flag + llvm_flags + " " + opt_level + " " + c_file + " -o " + bin_name
+        unsafe {
+            return system(cmd as *Char)
         }
     }
-    return 0
 }

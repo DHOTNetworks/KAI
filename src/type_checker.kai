@@ -1075,6 +1075,12 @@ impl TypeChecker {
         if expr.kind == ExprKind.ek_try {
             self.check_expr(expr.try_expr)
             let inner_ty = self.get_expr_type(expr.try_expr)
+            // "Void" means the type couldn't be resolved (e.g. a function imported
+            // from another module whose signature isn't visible to this pass) —
+            // skip validation rather than raising a spurious error.
+            if inner_ty == "Void" {
+                return
+            }
             var excl_pos = -1
             var i = 0
             while i < length(inner_ty) {
@@ -1121,6 +1127,18 @@ impl TypeChecker {
         if expr.kind == ExprKind.ek_catch {
             self.check_expr(expr.catch_expr)
             let inner_ty = self.get_expr_type(expr.catch_expr)
+            // "Void" means the type couldn't be resolved (e.g. a function imported
+            // from another module whose signature isn't visible to this pass) —
+            // skip validation rather than raising a spurious error.
+            if inner_ty == "Void" {
+                self.enter_scope()
+                if length(expr.catch_var) > 0 {
+                    self.define_symbol(expr.catch_var, "Void", false, "var")
+                }
+                self.check_stmt(expr.catch_fallback)
+                self.exit_scope()
+                return
+            }
             if length(inner_ty) > 0 && inner_ty[0] == Char(63) {
                 let val_type = substring(inner_ty, 1, length(inner_ty))
                 self.enter_scope()
