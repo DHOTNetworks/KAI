@@ -235,47 +235,36 @@ struct StmtNode {
 }
 fn empty_dropvarentry_array() -> ArrayList<DropVarEntry> {
     return ArrayList<DropVarEntry>(data: 0 as *DropVarEntry, len: 0, cap: 0, allocator: 0 as *Allocator)
-
 }
 fn empty_str_array() -> ArrayList<Str> {
     return ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
-
 }
 fn empty_int_array() -> ArrayList<Int> {
     return ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-
 }
 fn empty_fieldinit_array() -> ArrayList<FieldInit> {
     return ArrayList<FieldInit>(data: 0 as *FieldInit, len: 0, cap: 0, allocator: 0 as *Allocator)
-
 }
 fn empty_param_array() -> ArrayList<Param> {
     return ArrayList<Param>(data: 0 as *Param, len: 0, cap: 0, allocator: 0 as *Allocator)
-
 }
 fn empty_structfield_array() -> ArrayList<StructField> {
     return ArrayList<StructField>(data: 0 as *StructField, len: 0, cap: 0, allocator: 0 as *Allocator)
-
 }
 fn empty_variant_array() -> ArrayList<Variant> {
     return ArrayList<Variant>(data: 0 as *Variant, len: 0, cap: 0, allocator: 0 as *Allocator)
-
 }
 fn empty_matchcase_array() -> ArrayList<MatchCase> {
     return ArrayList<MatchCase>(data: 0 as *MatchCase, len: 0, cap: 0, allocator: 0 as *Allocator)
-
 }
 fn empty_strinterp_array() -> ArrayList<StrInterpPart> {
     return ArrayList<StrInterpPart>(data: 0 as *StrInterpPart, len: 0, cap: 0, allocator: 0 as *Allocator)
-
 }
 fn empty_asmoutput_array() -> ArrayList<AsmOutput> {
     return ArrayList<AsmOutput>(data: 0 as *AsmOutput, len: 0, cap: 0, allocator: 0 as *Allocator)
-
 }
 fn empty_asminput_array() -> ArrayList<AsmInput> {
     return ArrayList<AsmInput>(data: 0 as *AsmInput, len: 0, cap: 0, allocator: 0 as *Allocator)
-
 }
 fn new_expr_node(kind: ExprKind) -> ExprNode {
     var node = ExprNode(

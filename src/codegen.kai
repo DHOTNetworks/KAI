@@ -24,6 +24,8 @@ import Lexer from lexer
 import Parser from parser
 import read_to_string from std.io.file
 import str_array_join from parser
+import std.io.print
+
 
 extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn exit(code: Int)
@@ -1401,25 +1403,6 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             let arg_val = self.gen_expr(expr.func_args.get(0))
             return "strlen(" + arg_val + ")"
         }
-        if name == "print" {
-            let arg = expr.func_args.get(0)
-            let val = self.gen_expr(arg)
-            let arg_type = self.get_expr_type(arg)
-            if arg_type == "Int" {
-                return "printf(\"%lld\\n\", (long long)(" + val + "))"
-            }
-            if arg_type == "Float" {
-                return "printf(\"%f\\n\", (double)(" + val + "))"
-            }
-            if arg_type == "Char" {
-                return "printf(\"%c\\n\", (char)(" + val + "))"
-            }
-            if arg_type == "Bool" {
-                return "printf(\"%s\\n\", (" + val + ") ? \"true\" : \"false\")"
-            }
-            return "printf(\"%s\\n\", " + val + ")"
-        }
-        
         var is_struct = false
         var s_idx = 0
         while s_idx < self.stmt_pool.length() {
@@ -1778,11 +1761,11 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         
         let func_name = clean_type + "_" + method_name
         if type_map_find(&self.func_types, func_name) < 0 {
-            print("error[E0002]: type '")
-            print(rec_type)
-            print("' has no method '")
-            print(method_name)
-            print("'\n")
+            printf("error[E0002]: type ")
+            prints(rec_type)
+            printf(" has no method ")
+            prints(method_name)
+            printf("'\n")
             unsafe {
                 exit(1)
             }
@@ -2016,7 +1999,7 @@ fn is_standard_c_func(self, name: Str) -> Bool {
     if name == "fseek" { return true }
     if name == "ftell" { return true }
     if name == "rewind" { return true }
-    if name == "print_int" { return true }
+    //if name == "print_int" { return true }
     if name == "strcmp" { return true }
     if name == "printf" { return true }
     if name == "fprintf" { return true }
@@ -3187,7 +3170,7 @@ fn generate(self, top_stmt_idx: Int) -> Str {
         ci = ci + 1
     }
     final_code = final_code + "\n"
-    final_code = final_code + "static inline void print_int(int64_t i) { printf(\"%lld\\n\", (long long)i); }\n"
+    //final_code = final_code + "static inline void print_int(int64_t i) { printf(\"%lld\\n\", (long long)i); }\n"
     final_code = final_code + "__thread void* _kai_current_allocator = NULL;\n"
     final_code = final_code + "void _kai_set_current_allocator(void* allocator);\n"
     final_code = final_code + "char* _kai_str_concat(const char* l, const char* r);\n\n"

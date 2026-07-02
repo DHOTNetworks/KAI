@@ -9,6 +9,7 @@ import length from std.collections.string
 import substring from std.collections.string
 import fs_exists from std.fs.fs
 import LLVMCodegen from codegen_llvm
+import std.io.print
 
 extern fn system(cmd: *Char) -> Int
 extern fn strcmp(s1: Str, s2: Str) -> Int
@@ -42,7 +43,7 @@ fn get_base_name(allocator: *Allocator, path: Str) -> Str {
 
 fn main(argc: Int, argv: **Char) -> Int {
     if argc < 2 {
-        print("Usage: compiler <input.kai> [-o <output_bin>] [-c] [-O0|-O1|-O2|-O3|-Os]")
+        printf("Usage: compiler <input.kai> [-o <output_bin>] [-c] [-O0|-O1|-O2|-O3|-Os]")
         return 1
     }
 
@@ -91,7 +92,7 @@ fn main(argc: Int, argv: **Char) -> Int {
                 i = i + 1
                 output_bin = argv[i] as Str
             } else {
-                print("Error: -o requires an argument")
+                printf("Error: -o requires an argument")
                 return 1
             }
         } else if is_o0 {
@@ -111,7 +112,7 @@ fn main(argc: Int, argv: **Char) -> Int {
     }
 
     if length(input_file) == 0 {
-        print("Error: No input file specified")
+        printf("Error: No input file specified")
         return 1
     }
 

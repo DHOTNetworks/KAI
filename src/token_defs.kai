@@ -18,7 +18,6 @@ enum TokenType {
     case FOR
     case IN
     case RETURN
-    case PRINT
     case STRUCT
     case IMPL
     case MUT
