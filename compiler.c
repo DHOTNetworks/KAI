@@ -61,7 +61,6 @@ int64_t get_exe_dir(char* out_buf, int64_t max_len) {
 #include "std/fs/fs.h"
 #include "std/llvm/core.h"
 
-static inline void print_int(int64_t i) { printf("%lld\n", (long long)i); }
 __thread void* _kai_current_allocator = NULL;
 void _kai_set_current_allocator(void* allocator);
 char* _kai_str_concat(const char* l, const char* r);
@@ -128,7 +127,6 @@ typedef enum {
     TokenType_FOR,
     TokenType_IN,
     TokenType_RETURN,
-    TokenType_PRINT,
     TokenType_STRUCT,
     TokenType_IMPL,
     TokenType_MUT,
@@ -809,7 +807,11 @@ void Lexer_lex_string(Lexer* self);
 void Lexer_lex_char(Lexer* self);
 int64_t Lexer_compute_indent(Lexer* self);
 void Lexer_lex(Lexer* self);
-extern void print(const char* s);
+void print_separator(void);
+void printi(int64_t i);
+void printff(double f);
+void prints(const char* s);
+void printc(char c);
 ArrayList_Param ArrayList_Param_init(KaiAllocator* allocator);
 void ArrayList_Param_push(ArrayList_Param* self, Param item);
 Param ArrayList_Param_get(ArrayList_Param* self, int64_t index);
@@ -966,7 +968,6 @@ int64_t Parser_st_if_let(Parser* self, const char* vname, int64_t expr, int64_t 
 int64_t Parser_st_while(Parser* self, int64_t cond, int64_t body);
 int64_t Parser_st_for(Parser* self, const char* var_name, int64_t start, int64_t end, bool inc, int64_t body);
 int64_t Parser_st_return(Parser* self, int64_t value);
-int64_t Parser_st_print(Parser* self, int64_t value);
 int64_t Parser_st_expr(Parser* self, int64_t expr);
 int64_t Parser_st_defer(Parser* self, int64_t body);
 int64_t Parser_st_break(Parser* self);
@@ -996,7 +997,6 @@ int64_t Parser_parse_for_stmt(Parser* self);
 int64_t Parser_parse_return_stmt(Parser* self);
 int64_t Parser_parse_break_stmt(Parser* self);
 int64_t Parser_parse_continue_stmt(Parser* self);
-int64_t Parser_parse_print_stmt(Parser* self);
 int64_t Parser_parse_defer_stmt(Parser* self);
 int64_t Parser_parse_expr_or_assignment_stmt(Parser* self);
 int64_t Parser_parse_block(Parser* self);
@@ -2274,6 +2274,21 @@ void Lexer_lex(Lexer* self) {
 }
     Lexer_emit(self, TokenType_EOF, (TokenValue){ .tag = TokenValue_tv_none_TAG });
 }
+void print_separator(void) {
+    printf("---\n");
+}
+void printi(int64_t i) {
+    printf("%lld\n", i);
+}
+void printff(double f) {
+    printf("%f\n", f);
+}
+void prints(const char* s) {
+    printf("%s\n", s);
+}
+void printc(char c) {
+    printf("%c\n", c);
+}
 ArrayList_Param ArrayList_Param_init(KaiAllocator* allocator) {
     ArrayList_Param self = (ArrayList_Param){0};
     self.len = 0;
@@ -2937,7 +2952,7 @@ const char* tv_get_str(TokenValue val) {
     result = s;
 } else {
     {
-    printf("%s\n", "tv_get_str failed!");
+    printf("tv_get_str failed!\n");
     exit(1);
 }
 } 
@@ -2947,7 +2962,7 @@ int64_t token_precedence(TokenType ttype) {
     if (ttype == TokenType_DOT) {
     return 9;
 } else if (ttype == TokenType_LBRACKET) {
-    return 8;
+    return 9;
 } else if (ttype == TokenType_AS) {
     return 8;
 } else if (((ttype == TokenType_MUL) || (ttype == TokenType_DIV)) || (ttype == TokenType_MOD)) {
@@ -2958,10 +2973,14 @@ int64_t token_precedence(TokenType ttype) {
     return 5;
 } else if ((((((ttype == TokenType_EQ) || (ttype == TokenType_NE)) || (ttype == TokenType_LT)) || (ttype == TokenType_LE)) || (ttype == TokenType_GT)) || (ttype == TokenType_GE)) {
     return 4;
-} else if (((ttype == TokenType_PIPE) || (ttype == TokenType_BITXOR)) || (ttype == TokenType_AMP)) {
+} else if (ttype == TokenType_AMP) {
+    return 5;
+} else if (ttype == TokenType_BITXOR) {
+    return 4;
+} else if (ttype == TokenType_PIPE) {
     return 3;
 } else if (ttype == TokenType_CATCH) {
-    return 3;
+    return 2;
 } else if (ttype == TokenType_AND) {
     return 2;
 } else if (ttype == TokenType_OR) {
@@ -3298,14 +3317,14 @@ Token Parser_expect(Parser* self, TokenType ttype) {
     return Parser_advance(self);
 }
     {
-    printf("%s\n", "expect failed! found token at line:");
-    print_int(tok.line);
-    printf("%s\n", "col:");
-    print_int(tok.column);
-    printf("%s\n", "expected tag:");
-    print_int(((int64_t)(ttype)));
-    printf("%s\n", "found tag:");
-    print_int(((int64_t)(tok.tok_type)));
+    printf("expect failed! found token at line:\n");
+    printi(tok.line);
+    printf("col:\n");
+    printi(tok.column);
+    printf("expected tag:\n");
+    printi(((int64_t)(ttype)));
+    printf("found tag:\n");
+    printi(((int64_t)(tok.tok_type)));
     if (tok.tok_type == TokenType_INT_LIT) {
     exit(0);
 } else if (tok.tok_type == TokenType_FLOAT_LIT) {
@@ -3336,8 +3355,6 @@ Token Parser_expect(Parser* self, TokenType ttype) {
     exit(13);
 } else if (tok.tok_type == TokenType_RETURN) {
     exit(14);
-} else if (tok.tok_type == TokenType_PRINT) {
-    exit(15);
 } else if (tok.tok_type == TokenType_STRUCT) {
     exit(16);
 } else if (tok.tok_type == TokenType_IMPL) {
@@ -3486,13 +3503,7 @@ Token Parser_expect(Parser* self, TokenType ttype) {
     return tok;
 }
 void Parser_consume_newlines(Parser* self) {
-    bool done = false;
-    while (!done) {
-    if (Parser_match_token(self, TokenType_NEWLINE)) {
-    done = false;
-} else {
-    done = true;
-}
+    while (Parser_match_token(self, TokenType_NEWLINE)) {
 }
 }
 void Parser_expect_end_of_statement(Parser* self) {
@@ -3826,12 +3837,6 @@ int64_t Parser_st_return(Parser* self, int64_t value) {
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1);
 }
-int64_t Parser_st_print(Parser* self, int64_t value) {
-    StmtNode node = new_stmt_node(StmtKind_sk_print);
-    node.print_value = value;
-    ArrayList_StmtNode_push(self->stmt_pool, node);
-    return (ArrayList_StmtNode_length(self->stmt_pool) - 1);
-}
 int64_t Parser_st_expr(Parser* self, int64_t expr) {
     StmtNode node = new_stmt_node(StmtKind_sk_expr);
     node.expr_stmt = expr;
@@ -3935,8 +3940,6 @@ int64_t Parser_parse_statement(Parser* self) {
     return Parser_parse_for_stmt(self);
 } else if (tok.tok_type == TokenType_RETURN) {
     return Parser_parse_return_stmt(self);
-} else if (tok.tok_type == TokenType_PRINT) {
-    return Parser_parse_print_stmt(self);
 } else if (tok.tok_type == TokenType_DEFER) {
     return Parser_parse_defer_stmt(self);
 } else if (tok.tok_type == TokenType_BREAK) {
@@ -4312,7 +4315,7 @@ int64_t Parser_parse_pattern(Parser* self) {
     return Parser_add_pattern(self, node);
 } else {
     {
-    printf("%s\n", "parse_pattern failed!");
+    printf("parse_pattern failed!\n");
     exit(1);
 }
     return (-1);
@@ -4420,7 +4423,7 @@ int64_t Parser_parse_for_stmt(Parser* self) {
     is_inclusive = expr_node.range_inclusive;
 } else {
     {
-    printf("%s\n", "parse_for_stmt failed!");
+    printf("parse_for_stmt failed!\n");
     exit(1);
 }
 }
@@ -4446,14 +4449,6 @@ int64_t Parser_parse_continue_stmt(Parser* self) {
     (void)(Parser_advance(self));
     Parser_expect_end_of_statement(self);
     return Parser_st_continue(self);
-}
-int64_t Parser_parse_print_stmt(Parser* self) {
-    (void)(Parser_advance(self));
-    (void)(Parser_expect(self, TokenType_LPAREN));
-    int64_t val_expr = Parser_parse_expression(self, 0);
-    (void)(Parser_expect(self, TokenType_RPAREN));
-    Parser_expect_end_of_statement(self);
-    return Parser_st_print(self, val_expr);
 }
 int64_t Parser_parse_defer_stmt(Parser* self) {
     (void)(Parser_advance(self));
@@ -4494,7 +4489,7 @@ int64_t Parser_parse_block(Parser* self) {
 }
     if (Parser_peek(self, 0).tok_type == TokenType_EOF) {
     {
-    printf("%s\n", "parse_block LBRACE EOF failed!");
+    printf("parse_block LBRACE EOF failed!\n");
     exit(1);
 }
 }
@@ -4671,13 +4666,6 @@ int64_t Parser_parse_expression(Parser* self, int64_t precedence) {
     int64_t ret_stmt = Parser_st_return(self, ret_val);
     ArrayList_Int stmts = ArrayList_Int_init(self->allocator);
     ArrayList_Int_push(&(stmts), ret_stmt);
-    fallback = Parser_st_block(self, stmts);
-} else if (next.tok_type == TokenType_PRINT) {
-    (void)(Parser_advance(self));
-    int64_t pr_val = Parser_parse_expression(self, 0);
-    int64_t pr_stmt = Parser_st_print(self, pr_val);
-    ArrayList_Int stmts = ArrayList_Int_init(self->allocator);
-    ArrayList_Int_push(&(stmts), pr_stmt);
     fallback = Parser_st_block(self, stmts);
 } else {
     int64_t expr_val = Parser_parse_expression(self, op_prec);
@@ -4965,13 +4953,13 @@ int64_t Parser_parse_primary(Parser* self) {
     return first;
 } else {
     {
-    printf("%s\n", "parse_primary failed!");
-    printf("%s\n", "Line: ");
-    print_int(tok.line);
-    printf("%s\n", "Col: ");
-    print_int(tok.column);
-    printf("%s\n", "Token type int: ");
-    print_int(((int64_t)(tok.tok_type)));
+    printf("parse_primary failed!\n");
+    printf("Line: ");
+    printi(tok.line);
+    printf("Col: ");
+    printi(tok.column);
+    printf("Token type int: ");
+    printi(((int64_t)(tok.tok_type)));
     exit(1);
 }
     return (-1);
@@ -5794,9 +5782,9 @@ void TypeChecker_check_identifier(TypeChecker* self, int64_t expr_idx) {
     Symbol sym = SymbolTable_lookup_symbol(&(table), name, &(self->symbol_tables));
     if (strlen(sym.name) > 0) {
     if (sym.moved) {
-    printf("%s\n", "error[E0010]: Cannot use '");
-    printf("%s\n", name);
-    printf("%s\n", "' after it has been moved\n");
+    printf("error[E0010]: Cannot use: ");
+    prints(name);
+    printf(" after it has been moved\n");
     self->has_error = true;
 }
 }
@@ -5805,11 +5793,11 @@ void TypeChecker_check_field_access(TypeChecker* self, int64_t expr_idx) {
     ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
     const char* recv_type = TypeChecker_get_expr_type(self, expr.field_expr);
     if ((strlen(recv_type) > 0) && ((recv_type)[0] == ((char)(63)))) {
-    printf("%s\n", "error[E0001]: Cannot access field '");
-    printf("%s\n", expr.field_name);
-    printf("%s\n", "' on optional type '");
-    printf("%s\n", recv_type);
-    printf("%s\n", "'. Unwrap it first.\n");
+    printf("error[E0001]: Cannot access field '");
+    prints(expr.field_name);
+    printf("' on optional type '");
+    prints(recv_type);
+    printf("'. Unwrap it first.\n");
     self->has_error = true;
 }
 }
@@ -5817,11 +5805,11 @@ void TypeChecker_check_method_call(TypeChecker* self, int64_t expr_idx) {
     ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
     const char* recv_type = TypeChecker_get_expr_type(self, expr.meth_expr);
     if ((strlen(recv_type) > 0) && ((recv_type)[0] == ((char)(63)))) {
-    printf("%s\n", "error[E0001]: Cannot call method '");
-    printf("%s\n", expr.meth_name);
-    printf("%s\n", "' on optional type '");
-    printf("%s\n", recv_type);
-    printf("%s\n", "'. Unwrap it first.\n");
+    printf("error[E0001]: Cannot call method '");
+    prints(expr.meth_name);
+    printf(" on optional type '");
+    prints(recv_type);
+    printf(". Unwrap it first.\n");
     self->has_error = true;
 }
 }
@@ -5837,9 +5825,9 @@ void TypeChecker_check_return_stmt(TypeChecker* self, int64_t stmt_idx) {
     SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
     Symbol sym = SymbolTable_lookup_symbol(&(table), name, &(self->symbol_tables));
     if ((strcmp(sym.kind, "var") == 0) || (strcmp(sym.kind, "param") == 0)) {
-    printf("%s\n", "error[E0001]: Cannot return reference to local variable '");
-    printf("%s\n", name);
-    printf("%s\n", "'\n");
+    printf("error[E0001]: Cannot return reference to local variable '");
+    prints(name);
+    printf("'\n");
     self->has_error = true;
 }
 }
@@ -5851,11 +5839,11 @@ void TypeChecker_check_return_stmt(TypeChecker* self, int64_t stmt_idx) {
     const char* expected_ret = self->current_func_ret_type;
     if ((strlen(expected_ret) > 0) && (strcmp(expected_ret, "<infer>") != 0)) {
     if (!TypeChecker_types_compatible(self, expected_ret, val_type)) {
-    printf("%s\n", "error[E0001]: Return type mismatch: expected '");
-    printf("%s\n", expected_ret);
-    printf("%s\n", "', got '");
-    printf("%s\n", val_type);
-    printf("%s\n", "'\n");
+    printf("error[E0001]: Return type mismatch: expected '");
+    prints(expected_ret);
+    printf("', got '");
+    prints(val_type);
+    printf("'\n");
     self->has_error = true;
 }
 }
@@ -5883,13 +5871,13 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     if (strlen(var_type) == 0) {
     var_type = val_type;
 } else if (!TypeChecker_types_compatible(self, var_type, val_type)) {
-    printf("%s\n", "error[E0001]: Type mismatch in declaration of '");
-    printf("%s\n", stmt.vardecl_name);
-    printf("%s\n", "': expected '");
-    printf("%s\n", var_type);
-    printf("%s\n", "', got '");
-    printf("%s\n", val_type);
-    printf("%s\n", "'\n");
+    printf("error[E0001]: Type mismatch in declaration of '");
+    prints(stmt.vardecl_name);
+    printf("': expected '");
+    prints(var_type);
+    printf("', got '");
+    prints(val_type);
+    printf("'\n");
     self->has_error = true;
 }
     TypeChecker_define_symbol(self, stmt.vardecl_name, var_type, stmt.vardecl_mut, "var");
@@ -5907,29 +5895,29 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
     Symbol sym = SymbolTable_lookup_symbol(&(table), target_expr.ident_name, &(self->symbol_tables));
     if ((strlen(sym.name) > 0) && (!sym.is_mutable)) {
-    printf("%s\n", "error[E0001]: Cannot assign to immutable variable '");
-    printf("%s\n", target_expr.ident_name);
-    printf("%s\n", "'\n");
+    printf("error[E0001]: Cannot assign to immutable variable '");
+    prints(target_expr.ident_name);
+    printf("'\n");
     self->has_error = true;
 }
 }
 }
     const char* val_type = TypeChecker_get_expr_type(self, stmt.assign_value);
     if (!TypeChecker_types_compatible(self, target_type, val_type)) {
-    printf("%s\n", "error[E0001]: Type mismatch in assignment: target name: '");
+    printf("error[E0001]: Type mismatch in assignment: target name: '");
     if (stmt.assign_target >= 0) {
     ExprNode target_expr = ArrayList_ExprNode_get(self->expr_pool, stmt.assign_target);
     if (target_expr.kind == ExprKind_ek_identifier) {
-    printf("%s\n", target_expr.ident_name);
+    prints(target_expr.ident_name);
 } else {
-    printf("%s\n", "<non-ident>");
+    printf("<non-ident>");
 }
 }
-    printf("%s\n", "', target is '");
-    printf("%s\n", target_type);
-    printf("%s\n", "', value is '");
-    printf("%s\n", val_type);
-    printf("%s\n", "'\n");
+    printf("', target is '");
+    prints(target_type);
+    printf("', value is '");
+    prints(val_type);
+    printf("'\n");
     self->has_error = true;
 }
     TypeChecker_mark_expr_moved(self, stmt.assign_value);
@@ -5997,10 +5985,6 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
 }
     if (stmt.kind == StmtKind_sk_return) {
     TypeChecker_check_return_stmt(self, stmt_idx);
-    return;
-}
-    if (stmt.kind == StmtKind_sk_print) {
-    TypeChecker_check_expr(self, stmt.print_value);
     return;
 }
     if (stmt.kind == StmtKind_sk_expr) {
@@ -6093,13 +6077,13 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (func_idx >= 0) {
     StmtNode decl = ArrayList_StmtNode_get(self->stmt_pool, func_idx);
     if (ArrayList_Param_length(&(decl.func_params)) != ArrayList_Int_length(&(expr.func_args))) {
-    printf("%s\n", "error[E0001]: Argument count mismatch for function '");
-    printf("%s\n", name);
-    printf("%s\n", "': expected ");
-    printf("%s\n", int_to_str(ArrayList_Param_length(&(decl.func_params))));
-    printf("%s\n", ", got ");
-    printf("%s\n", int_to_str(ArrayList_Int_length(&(expr.func_args))));
-    printf("%s\n", "\n");
+    printf("error[E0001]: Argument count mismatch for function '");
+    prints(name);
+    printf("': expected ");
+    prints(int_to_str(ArrayList_Param_length(&(decl.func_params))));
+    printf(", got ");
+    prints(int_to_str(ArrayList_Int_length(&(expr.func_args))));
+    printf("\n");
     self->has_error = true;
 } else {
     if (ArrayList_Str_length(&(decl.func_type_params)) > 0) {
@@ -6113,15 +6097,15 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     const char* ptype = param.ptype;
     bool is_generic_param = (((strlen(ptype) == 1) && ((ptype)[0] >= ((char)(65)))) && ((ptype)[0] <= ((char)(90))));
     if ((!is_generic_param) && (!TypeChecker_types_compatible(self, ptype, arg_type))) {
-    printf("%s\n", "error[E0001]: Argument type mismatch for function '");
-    printf("%s\n", name);
-    printf("%s\n", "', parameter '");
-    printf("%s\n", param.name);
-    printf("%s\n", "': expected '");
-    printf("%s\n", ptype);
-    printf("%s\n", "', got '");
-    printf("%s\n", arg_type);
-    printf("%s\n", "'\n");
+    printf("error[E0001]: Argument type mismatch for function '");
+    prints(name);
+    printf("', parameter '");
+    prints(param.name);
+    printf("': expected '");
+    prints(ptype);
+    printf("', got '");
+    prints(arg_type);
+    printf("'\n");
     self->has_error = true;
 }
     arg_i = (arg_i + 1);
@@ -6151,13 +6135,13 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (meth_idx >= 0) {
     StmtNode decl = ArrayList_StmtNode_get(self->stmt_pool, meth_idx);
     if (ArrayList_Param_length(&(decl.func_params)) != (ArrayList_Int_length(&(expr.meth_args)) + 1)) {
-    printf("%s\n", "error[E0001]: Argument count mismatch for method '");
-    printf("%s\n", meth_name);
-    printf("%s\n", "': expected ");
-    printf("%s\n", int_to_str((ArrayList_Param_length(&(decl.func_params)) - 1)));
-    printf("%s\n", ", got ");
-    printf("%s\n", int_to_str(ArrayList_Int_length(&(expr.meth_args))));
-    printf("%s\n", "\n");
+    printf("error[E0001]: Argument count mismatch for method '");
+    prints(meth_name);
+    printf("': expected ");
+    prints(int_to_str((ArrayList_Param_length(&(decl.func_params)) - 1)));
+    printf(", got ");
+    prints(int_to_str(ArrayList_Int_length(&(expr.meth_args))));
+    printf("\n");
     self->has_error = true;
 } else {
     int64_t arg_i = 0;
@@ -6166,15 +6150,15 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     Param param = ArrayList_Param_get(&(decl.func_params), (arg_i + 1));
     const char* arg_type = TypeChecker_get_expr_type(self, arg);
     if (!TypeChecker_types_compatible(self, param.ptype, arg_type)) {
-    printf("%s\n", "error[E0001]: Argument type mismatch for method '");
-    printf("%s\n", meth_name);
-    printf("%s\n", "', parameter '");
-    printf("%s\n", param.name);
-    printf("%s\n", "': expected '");
-    printf("%s\n", param.ptype);
-    printf("%s\n", "', got '");
-    printf("%s\n", arg_type);
-    printf("%s\n", "'\n");
+    printf("error[E0001]: Argument type mismatch for method '");
+    prints(meth_name);
+    printf("', parameter '");
+    prints(param.name);
+    printf("': expected '");
+    prints(param.ptype);
+    printf("', got '");
+    prints(arg_type);
+    printf("'\n");
     self->has_error = true;
 }
     arg_i = (arg_i + 1);
@@ -6218,26 +6202,26 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     found = true;
     const char* val_type = TypeChecker_get_expr_type(self, f.value);
     if (!TypeChecker_types_compatible(self, df.ftype, val_type)) {
-    printf("%s\n", "error[E0001]: Type mismatch in initializer for field '");
-    printf("%s\n", f.name);
-    printf("%s\n", "' of struct '");
-    printf("%s\n", struct_name);
-    printf("%s\n", "': expected '");
-    printf("%s\n", df.ftype);
-    printf("%s\n", "', got '");
-    printf("%s\n", val_type);
-    printf("%s\n", "'\n");
+    printf("error[E0001]: Type mismatch in initializer for field '");
+    prints(f.name);
+    printf("' of struct '");
+    prints(struct_name);
+    printf("': expected '");
+    prints(df.ftype);
+    printf("', got '");
+    prints(val_type);
+    printf("'\n");
     self->has_error = true;
 }
 }
     dfi = (dfi + 1);
 }
     if (!found) {
-    printf("%s\n", "error[E0001]: Field '");
-    printf("%s\n", f.name);
-    printf("%s\n", "' does not exist in struct '");
-    printf("%s\n", struct_name);
-    printf("%s\n", "'\n");
+    printf("error[E0001]: Field '");
+    prints(f.name);
+    printf("' does not exist in struct '");
+    prints(struct_name);
+    printf("'\n");
     self->has_error = true;
 }
     fi = (fi + 1);
@@ -6260,9 +6244,9 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1);
 }
     if (excl_pos < 0) {
-    printf("%s\n", "error[E0001]: Cannot use 'try' on non-error union type '");
-    printf("%s\n", inner_ty);
-    printf("%s\n", "'\n");
+    printf("error[E0001]: Cannot use 'try' on non-error union type '");
+    prints(inner_ty);
+    printf("'\n");
     self->has_error = true;
 } else {
     const char* error_set = substring(inner_ty, (excl_pos + 1), strlen(inner_ty));
@@ -6276,18 +6260,18 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1);
 }
     if (func_excl < 0) {
-    printf("%s\n", "error[E0001]: Cannot use 'try' in a function that returns non-error union type '");
-    printf("%s\n", expected_ret);
-    printf("%s\n", "'\n");
+    printf("error[E0001]: Cannot use 'try' in a function that returns non-error union type '");
+    prints(expected_ret);
+    printf("'\n");
     self->has_error = true;
 } else {
     const char* func_err = substring(expected_ret, (func_excl + 1), strlen(expected_ret));
     if (!TypeChecker_types_compatible(self, func_err, error_set)) {
-    printf("%s\n", "error[E0001]: Error set '");
-    printf("%s\n", error_set);
-    printf("%s\n", "' of try expression is not compatible with function error set '");
-    printf("%s\n", func_err);
-    printf("%s\n", "'\n");
+    printf("error[E0001]: Error set '");
+    prints(error_set);
+    printf("' of try expression is not compatible with function error set '");
+    prints(func_err);
+    printf("'\n");
     self->has_error = true;
 }
 }
@@ -6316,11 +6300,11 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     TypeChecker_exit_scope(self);
     const char* fallback_yields = TypeChecker_get_block_yield_type(self, expr.catch_fallback);
     if (!TypeChecker_types_compatible(self, val_type, fallback_yields)) {
-    printf("%s\n", "error[E0001]: Catch fallback type '");
-    printf("%s\n", fallback_yields);
-    printf("%s\n", "' is not compatible with expected type '");
-    printf("%s\n", val_type);
-    printf("%s\n", "'\n");
+    printf("error[E0001]: Catch fallback type '");
+    prints(fallback_yields);
+    printf("' is not compatible with expected type '");
+    prints(val_type);
+    printf("'\n");
     self->has_error = true;
 }
     return;
@@ -6334,9 +6318,9 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1);
 }
     if (excl_pos < 0) {
-    printf("%s\n", "error[E0001]: Cannot use 'catch' on non-error union type '");
-    printf("%s\n", inner_ty);
-    printf("%s\n", "'\n");
+    printf("error[E0001]: Cannot use 'catch' on non-error union type '");
+    prints(inner_ty);
+    printf("'\n");
     self->has_error = true;
 } else {
     const char* val_type = substring(inner_ty, 0, excl_pos);
@@ -6349,11 +6333,11 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     TypeChecker_exit_scope(self);
     const char* fallback_yields = TypeChecker_get_block_yield_type(self, expr.catch_fallback);
     if (!TypeChecker_types_compatible(self, val_type, fallback_yields)) {
-    printf("%s\n", "error[E0001]: Catch fallback type '");
-    printf("%s\n", fallback_yields);
-    printf("%s\n", "' is not compatible with expected type '");
-    printf("%s\n", val_type);
-    printf("%s\n", "'\n");
+    printf("error[E0001]: Catch fallback type '");
+    prints(fallback_yields);
+    printf("' is not compatible with expected type '");
+    prints(val_type);
+    printf("'\n");
     self->has_error = true;
 }
 }
@@ -7745,24 +7729,6 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     const char* arg_val = Codegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0));
     return _kai_str_concat(_kai_str_concat("strlen(", arg_val), ")");
 }
-    if (strcmp(name, "print") == 0) {
-    int64_t arg = ArrayList_Int_get(&(expr.func_args), 0);
-    const char* val = Codegen_gen_expr(self, arg);
-    const char* arg_type = Codegen_get_expr_type(self, arg);
-    if (strcmp(arg_type, "Int") == 0) {
-    return _kai_str_concat(_kai_str_concat("printf(\"%lld\\n\", (long long)(", val), "))");
-}
-    if (strcmp(arg_type, "Float") == 0) {
-    return _kai_str_concat(_kai_str_concat("printf(\"%f\\n\", (double)(", val), "))");
-}
-    if (strcmp(arg_type, "Char") == 0) {
-    return _kai_str_concat(_kai_str_concat("printf(\"%c\\n\", (char)(", val), "))");
-}
-    if (strcmp(arg_type, "Bool") == 0) {
-    return _kai_str_concat(_kai_str_concat("printf(\"%s\\n\", (", val), ") ? \"true\" : \"false\")");
-}
-    return _kai_str_concat(_kai_str_concat("printf(\"%s\\n\", ", val), ")");
-}
     bool is_struct = false;
     int64_t s_idx = 0;
     while (s_idx < ArrayList_StmtNode_length(self->stmt_pool)) {
@@ -8090,11 +8056,11 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
 }
     const char* func_name = _kai_str_concat(_kai_str_concat(clean_type, "_"), method_name);
     if (type_map_find(&(self->func_types), func_name) < 0) {
-    printf("%s\n", "error[E0002]: type '");
-    printf("%s\n", rec_type);
-    printf("%s\n", "' has no method '");
-    printf("%s\n", method_name);
-    printf("%s\n", "'\n");
+    printf("error[E0002]: type ");
+    prints(rec_type);
+    printf(" has no method ");
+    prints(method_name);
+    printf("'\n");
     {
     exit(1);
 }
@@ -8364,9 +8330,6 @@ bool Codegen_is_standard_c_func(Codegen* self, const char* name) {
     return true;
 }
     if (strcmp(name, "rewind") == 0) {
-    return true;
-}
-    if (strcmp(name, "print_int") == 0) {
     return true;
 }
     if (strcmp(name, "strcmp") == 0) {
@@ -9484,7 +9447,6 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
     ci = (ci + 1);
 }
     final_code = _kai_str_concat(final_code, "\n");
-    final_code = _kai_str_concat(final_code, "static inline void print_int(int64_t i) { printf(\"%lld\\n\", (long long)i); }\n");
     final_code = _kai_str_concat(final_code, "__thread void* _kai_current_allocator = NULL;\n");
     final_code = _kai_str_concat(final_code, "void _kai_set_current_allocator(void* allocator);\n");
     final_code = _kai_str_concat(final_code, "char* _kai_str_concat(const char* l, const char* r);\n\n");
@@ -13430,7 +13392,7 @@ const char* get_base_name(KaiAllocator* allocator, const char* path) {
 }
 int main(int argc, char** argv) {
     if (argc < 2) {
-    printf("%s\n", "Usage: compiler <input.kai> [-o <output_bin>] [-c] [-O0|-O1|-O2|-O3|-Os]");
+    printf("Usage: compiler <input.kai> [-o <output_bin>] [-c] [-O0|-O1|-O2|-O3|-Os]");
     return 1;
 }
     const char* input_file = "";
@@ -13477,7 +13439,7 @@ int main(int argc, char** argv) {
     i = (i + 1);
     output_bin = (const char*)((argv)[i]);
 } else {
-    printf("%s\n", "Error: -o requires an argument");
+    printf("Error: -o requires an argument");
     return 1;
 }
 } else if (is_o0) {
@@ -13496,7 +13458,7 @@ int main(int argc, char** argv) {
     i = (i + 1);
 }
     if (strlen(input_file) == 0) {
-    printf("%s\n", "Error: No input file specified");
+    printf("Error: No input file specified");
     return 1;
 }
     KaiAllocator allocator = (KaiAllocator){ .heads = (char*)(0), .used = 0 };

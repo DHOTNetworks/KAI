@@ -1,12 +1,11 @@
 import ArrayList from std.collections.array
 import Allocator from std.core.allocator
+import std.io.print
 
 import TokenType from token_defs
 import TokenValue from token_defs
 import Token from token_defs
 
-extern fn print(s: Str)
-extern fn print_int(i: Int)
 extern fn exit(code: Int)
 
 import FieldInit from ast_nodes
@@ -34,7 +33,7 @@ fn tv_get_str(val: TokenValue) -> Str {
     match val {
         case .tv_str(s) => result = s
         case else => unsafe {
-            print("tv_get_str failed!")
+            printf("tv_get_str failed!\n")
             exit(1)
         }
     }
@@ -44,7 +43,7 @@ fn token_precedence(ttype: TokenType) -> Int {
     if ttype == TokenType.DOT {
         return 9
     } else if ttype == TokenType.LBRACKET {
-        return 8
+        return 9
     } else if ttype == TokenType.AS {
         return 8
     } else if ttype == TokenType.MUL || ttype == TokenType.DIV || ttype == TokenType.MOD {
@@ -55,10 +54,14 @@ fn token_precedence(ttype: TokenType) -> Int {
         return 5
     } else if ttype == TokenType.EQ || ttype == TokenType.NE || ttype == TokenType.LT || ttype == TokenType.LE || ttype == TokenType.GT || ttype == TokenType.GE {
         return 4
-    } else if ttype == TokenType.PIPE || ttype == TokenType.BITXOR || ttype == TokenType.AMP {
+    } else if ttype == TokenType.AMP {
+        return 5 
+    } else if ttype == TokenType.BITXOR {
+        return 4
+    } else if ttype == TokenType.PIPE {
         return 3
     } else if ttype == TokenType.CATCH {
-        return 3
+        return 2
     } else if ttype == TokenType.AND {
         return 2
     } else if ttype == TokenType.OR {
@@ -229,14 +232,14 @@ impl Parser {
             return self.advance()
         }
         unsafe {
-            print("expect failed! found token at line:")
-            print_int(tok.line)
-            print("col:")
-            print_int(tok.column)
-            print("expected tag:")
-            print_int(Int(ttype))
-            print("found tag:")
-            print_int(Int(tok.tok_type))
+            printf("expect failed! found token at line:\n")
+            printi(tok.line)
+            printf("col:\n")
+            printi(tok.column)
+            printf("expected tag:\n")
+            printi(Int(ttype))
+            printf("found tag:\n")
+            printi(Int(tok.tok_type))
             match tok.tok_type {
                 case .INT_LIT => exit(0)
                 case .FLOAT_LIT => exit(1)
@@ -253,7 +256,6 @@ impl Parser {
                 case .FOR => exit(12)
                 case .IN => exit(13)
                 case .RETURN => exit(14)
-                case .PRINT => exit(15)
                 case .STRUCT => exit(16)
                 case .IMPL => exit(17)
                 case .MUT => exit(18)
@@ -332,15 +334,7 @@ impl Parser {
 
     }
     fn consume_newlines(self) {
-        var done = false
-        while !done {
-            if self.match_token(TokenType.NEWLINE) {
-                done = false
-            } else {
-                done = true
-
-            }
-        }
+        while self.match_token(TokenType.NEWLINE) {}
     }
     fn expect_end_of_statement(self) {
         let tok = self.peek(0)
@@ -713,13 +707,6 @@ impl Parser {
         return self.stmt_pool.length() - 1
 
     }
-    fn st_print(self, value: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_print)
-        node.print_value = value
-        self.stmt_pool.push(node)
-        return self.stmt_pool.length() - 1
-
-    }
     fn st_expr(self, expr: Int) -> Int {
         var node = new_stmt_node(StmtKind.sk_expr)
         node.expr_stmt = expr
@@ -830,8 +817,6 @@ impl Parser {
             return self.parse_for_stmt()
         } else if tok.tok_type == TokenType.RETURN {
             return self.parse_return_stmt()
-        } else if tok.tok_type == TokenType.PRINT {
-            return self.parse_print_stmt()
         } else if tok.tok_type == TokenType.DEFER {
             return self.parse_defer_stmt()
         } else if tok.tok_type == TokenType.BREAK {
@@ -1219,7 +1204,7 @@ impl Parser {
             return self.add_pattern(node)
         } else {
             unsafe {
-                print("parse_pattern failed!")
+                printf("parse_pattern failed!\n")
                 exit(1)
             }
             return -1
@@ -1333,7 +1318,7 @@ impl Parser {
             is_inclusive = expr_node.range_inclusive
         } else {
             unsafe {
-                print("parse_for_stmt failed!")
+                printf("parse_for_stmt failed!\n")
                 exit(1)
             }
         }
@@ -1362,15 +1347,6 @@ impl Parser {
         let _ = self.advance()
         self.expect_end_of_statement()
         return self.st_continue()
-
-    }
-    fn parse_print_stmt(self) -> Int {
-        let _ = self.advance()
-        let _ = self.expect(TokenType.LPAREN)
-        let val_expr = self.parse_expression(0)
-        let _ = self.expect(TokenType.RPAREN)
-        self.expect_end_of_statement()
-        return self.st_print(val_expr)
 
     }
     fn parse_defer_stmt(self) -> Int {
@@ -1413,7 +1389,7 @@ impl Parser {
         }
         if self.peek(0).tok_type == TokenType.EOF {
             unsafe {
-                print("parse_block LBRACE EOF failed!")
+                printf("parse_block LBRACE EOF failed!\n")
                 exit(1)
             }
         }
@@ -1592,13 +1568,6 @@ impl Parser {
                         let ret_stmt = self.st_return(ret_val)
                         var stmts = ArrayList<Int>(self.allocator)
                         stmts.push(ret_stmt)
-                        fallback = self.st_block(stmts)
-                    } else if next.tok_type == TokenType.PRINT {
-                        let _ = self.advance()
-                        let pr_val = self.parse_expression(0)
-                        let pr_stmt = self.st_print(pr_val)
-                        var stmts = ArrayList<Int>(self.allocator)
-                        stmts.push(pr_stmt)
                         fallback = self.st_block(stmts)
                     } else {
                         let expr_val = self.parse_expression(op_prec)
@@ -1889,13 +1858,13 @@ impl Parser {
             return first
         } else {
             unsafe {
-                print("parse_primary failed!")
-                print("Line: ")
-                print_int(tok.line)
-                print("Col: ")
-                print_int(tok.column)
-                print("Token type int: ")
-                print_int(Int(tok.tok_type))
+                printf("parse_primary failed!\n")
+                printf("Line: ")
+                printi(tok.line)
+                printf("Col: ")
+                printi(tok.column)
+                printf("Token type int: ")
+                printi(Int(tok.tok_type))
                 exit(1)
             }
             return -1

@@ -6,3 +6,36 @@ extern fn printf(format: *Void) Str
 fn print_separator () {
     printf("---\n")
 }
+/*
+fn print() {
+    let arg = expr.func_args.get(0)
+    let val = self.gen_expr(arg)
+    let arg_type = self.get_expr_type(arg)
+    if arg_type == "Float" {
+        return "printf(\"%f\\n\", (double)(" + val + "))"
+    }
+    if arg_type == "Char" {
+        return "printf(\"%c\\n\", (char)(" + val + "))"
+    }
+    if arg_type == "Bool" {
+        return "printf(\"%s\\n\", (" + val + ") ? \"true\" : \"false\")"
+    }
+    return "printf(\"%s\\n\", " + val + ")"
+}
+*/
+
+fn printi(i: Int) {
+    printf("%lld\n", i)
+}
+
+fn printff(f: Float) {
+    printf("%f\n", f)
+}
+
+fn prints(s: Str) {
+    printf("%s\n", s)
+}
+
+fn printc(c: Char) {
+    printf("%c\n", c)
+}
