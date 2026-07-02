@@ -384,26 +384,12 @@ fn map_type(self, ktype: Str) -> *Void {
     }
 
     // Strip generic params (ArrayList<Int> -> look up ArrayList)
-    // Special case: Result<A, B> -> treat as A!B (error union), Optional<T> -> treat as ?T
+    // Special case: Optional<T> -> treat as ?T. Note: Kai has no Rust-style
+    // Result<T, E> — error handling uses only the Zig-like `T!E` error-union syntax.
     var clean_base = ktype
     let lt_pos = self.str_find(ktype, Char(60))
     if lt_pos >= 0 {
         clean_base = substring(ktype, 0, lt_pos)
-        // Result<A, B> → A!B
-        if clean_base == "Result" {
-            let inner = substring(ktype, lt_pos + 1, length(ktype) - 1)
-            let comma_pos = self.str_find(inner, Char(44))
-            if comma_pos >= 0 {
-                let val_t = substring(inner, 0, comma_pos)
-                // skip leading space after comma
-                var err_start = comma_pos + 1
-                while err_start < length(inner) && inner[err_start] == Char(32) {
-                    err_start = err_start + 1
-                }
-                let err_t = substring(inner, err_start, length(inner))
-                return self.map_type(val_t + "!" + err_t)
-            }
-        }
         // Optional<T> → ?T
         if clean_base == "Optional" {
             let inner = substring(ktype, lt_pos + 1, length(ktype) - 1)
@@ -2807,8 +2793,8 @@ fn gen_match(self, stmt_idx: Int) {
     
     let is_enum = (length(expr_type) > 0) && (length(type_map_get(&self.enum_decls, expr_type)) > 0)
     let has_payload = is_enum && self.enum_has_payload(expr_type)
-    // Detect Result/Optional types that have a tag field (struct-based)
-    let is_result = self.str_contains(expr_type, Char(33)) || (length(expr_type) >= 6 && substring(expr_type, 0, 6) == "Result")
+    // Detect error-union (T!E) / Optional types that have a tag field (struct-based)
+    let is_result = self.str_contains(expr_type, Char(33))
     let is_optional = (length(expr_type) > 0 && expr_type[0] == Char(63)) || (length(expr_type) >= 8 && substring(expr_type, 0, 8) == "Optional")
     // Also check if the struct type is in struct_types (has tag + value layout)
     let is_struct_with_tag = (!is_enum && !is_result && !is_optional && length(type_map_get(&self.struct_types, expr_type)) > 0)
@@ -2989,51 +2975,48 @@ fn handle_import(self, stmt_idx: Int) {
         }
         let rel_path = path_str + ".kai"
         
-        let res1 = read_to_string(self.allocator, rel_path)
-        match res1 {
-            case .ok(s) => {
-                source = s
-                has_source = true
-            }
-            case .err(_) => {
-                unsafe {
-                    let buf = self.allocator.alloc(1024, 1) as *Char
-                    if get_exe_dir(buf, 1024) == 0 {
-                        let exe_dir = buf as Str
-                        let full_path = exe_dir + "/" + rel_path
-                        let parent_path = exe_dir + "/../" + rel_path
-                        let lib_path = exe_dir + "/../lib/kai/" + rel_path
-                        self.allocator.free(buf)
-                        
-                        let res2 = read_to_string(self.allocator, full_path)
-                        match res2 {
-                            case .ok(s) => { source = s; has_source = true }
-                            case .err(_) => {
-                                let res3 = read_to_string(self.allocator, parent_path)
-                                match res3 {
-                                    case .ok(s) => { source = s; has_source = true }
-                                    case .err(_) => {
-                                        let res4 = read_to_string(self.allocator, lib_path)
-                                        match res4 {
-                                            case .ok(s) => { source = s; has_source = true }
-                                            case .err(_) => {}
-                                        }
-                                    }
-                                }
+        let s1 = read_to_string(self.allocator, rel_path) catch |err| ""
+        if length(s1) > 0 {
+            source = s1
+            has_source = true
+        } else {
+            unsafe {
+                let buf = self.allocator.alloc(1024, 1) as *Char
+                if get_exe_dir(buf, 1024) == 0 {
+                    let exe_dir = buf as Str
+                    let full_path = exe_dir + "/" + rel_path
+                    let parent_path = exe_dir + "/../" + rel_path
+                    let lib_path = exe_dir + "/../lib/kai/" + rel_path
+                    self.allocator.free(buf)
+                    
+                    let s2 = read_to_string(self.allocator, full_path) catch |err| ""
+                    if length(s2) > 0 {
+                        source = s2
+                        has_source = true
+                    } else {
+                        let s3 = read_to_string(self.allocator, parent_path) catch |err| ""
+                        if length(s3) > 0 {
+                            source = s3
+                            has_source = true
+                        } else {
+                            let s4 = read_to_string(self.allocator, lib_path) catch |err| ""
+                            if length(s4) > 0 {
+                                source = s4
+                                has_source = true
                             }
                         }
-                    } else {
-                        self.allocator.free(buf)
                     }
+                } else {
+                    self.allocator.free(buf)
                 }
             }
         }
     } else if path.length() > 0 {
         let file_path = "src/" + module_key + ".kai"
-        let res = read_to_string(self.allocator, file_path)
-        match res {
-            case .ok(s) => { source = s; has_source = true }
-            case .err(_) => {}
+        let s = read_to_string(self.allocator, file_path) catch |err| ""
+        if length(s) > 0 {
+            source = s
+            has_source = true
         }
     }
 

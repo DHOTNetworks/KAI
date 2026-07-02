@@ -91,37 +91,18 @@ struct KaiAllocator {
     char* heads;
     int64_t used;
 };
-typedef struct Result_Str_Int Result_Str_Int;
 typedef enum {
-    Result_Str_Int_ok_TAG,
-    Result_Str_Int_err_TAG,
-} Result_Str_Int_tags;
-struct Result_Str_Int {
-    uint8_t tag;
-    union {
-        struct {
-            const char* value;
-        } ok;
-        struct {
-            int64_t value;
-        } err;
-    } payload;
+    IoError_open_failed = 1,
+} IoError;
+typedef struct Result_Str_IoError Result_Str_IoError;
+struct Result_Str_IoError {
+    int64_t tag;
+    const char* value;
 };
-typedef struct Result_Bool_Int Result_Bool_Int;
-typedef enum {
-    Result_Bool_Int_ok_TAG,
-    Result_Bool_Int_err_TAG,
-} Result_Bool_Int_tags;
-struct Result_Bool_Int {
-    uint8_t tag;
-    union {
-        struct {
-            bool value;
-        } ok;
-        struct {
-            int64_t value;
-        } err;
-    } payload;
+typedef struct Result_Bool_IoError Result_Bool_IoError;
+struct Result_Bool_IoError {
+    int64_t tag;
+    bool value;
 };
 typedef struct StringBuilder StringBuilder;
 struct StringBuilder {
@@ -764,14 +745,8 @@ char* KaiAllocator_alloc(KaiAllocator* self, int64_t size, int64_t align);
 char* KaiAllocator_realloc(KaiAllocator* self, char* ptr, int64_t old_size, int64_t new_size, int64_t align);
 void KaiAllocator_free(KaiAllocator* self, char* ptr);
 void KaiAllocator_deinit(KaiAllocator* self);
-bool Result_Str_Int_is_ok(Result_Str_Int* self);
-bool Result_Str_Int_is_err(Result_Str_Int* self);
-const char* Result_Str_Int_unwrap(Result_Str_Int* self);
-Result_Str_Int read_to_string(KaiAllocator* allocator, const char* path);
-bool Result_Bool_Int_is_ok(Result_Bool_Int* self);
-bool Result_Bool_Int_is_err(Result_Bool_Int* self);
-bool Result_Bool_Int_unwrap(Result_Bool_Int* self);
-Result_Bool_Int write_string(const char* path, const char* content);
+Result_Str_IoError read_to_string(KaiAllocator* allocator, const char* path);
+Result_Bool_IoError write_string(const char* path, const char* content);
 char char_at(const char* s, int64_t i);
 bool is_digit(char c);
 bool is_alpha(char c);
@@ -1543,34 +1518,11 @@ void KaiAllocator_deinit(KaiAllocator* self) {
     munmap(self->heads, page_align_up(96));
 }
 }
-bool Result_Str_Int_is_ok(Result_Str_Int* self) {
-    if (self->tag == Result_Str_Int_ok_TAG) {
-    const char* v = self->payload.ok.value;
-
-    return true;
-} else {
-    return false;
-} 
-}
-bool Result_Str_Int_is_err(Result_Str_Int* self) {
-    return (Result_Str_Int_is_ok(self) == false);
-}
-const char* Result_Str_Int_unwrap(Result_Str_Int* self) {
-    if (self->tag == Result_Str_Int_ok_TAG) {
-    const char* val = self->payload.ok.value;
-
-    return val;
-} else {
-    {
-    exit(1);
-}
-} 
-}
-Result_Str_Int read_to_string(KaiAllocator* allocator, const char* path) {
+Result_Str_IoError read_to_string(KaiAllocator* allocator, const char* path) {
     {
     void* file = fopen((char*)(path), (char*)("rb"));
     if ((char*)(file) == NULL) {
-    return (Result_Str_Int){ .tag = Result_Str_Int_err_TAG, .payload = { .err = { .value = 1 } } };
+    return (Result_Str_IoError){ .tag = IoError_open_failed };
 }
     fseek(file, 0, 2);
     int64_t size = ftell(file);
@@ -1579,42 +1531,19 @@ Result_Str_Int read_to_string(KaiAllocator* allocator, const char* path) {
     int64_t bytes_read = fread(buf, 1, size, file);
     (buf)[bytes_read] = ((char)(0));
     fclose(file);
-    return (Result_Str_Int){ .tag = Result_Str_Int_ok_TAG, .payload = { .ok = { .value = (const char*)(buf) } } };
+    return (Result_Str_IoError){ .tag = 0, .value = (const char*)(buf) };
 }
 }
-bool Result_Bool_Int_is_ok(Result_Bool_Int* self) {
-    if (self->tag == Result_Bool_Int_ok_TAG) {
-    bool v = self->payload.ok.value;
-
-    return true;
-} else {
-    return false;
-} 
-}
-bool Result_Bool_Int_is_err(Result_Bool_Int* self) {
-    return (Result_Bool_Int_is_ok(self) == false);
-}
-bool Result_Bool_Int_unwrap(Result_Bool_Int* self) {
-    if (self->tag == Result_Bool_Int_ok_TAG) {
-    bool val = self->payload.ok.value;
-
-    return val;
-} else {
-    {
-    exit(1);
-}
-} 
-}
-Result_Bool_Int write_string(const char* path, const char* content) {
+Result_Bool_IoError write_string(const char* path, const char* content) {
     {
     void* file = fopen((char*)(path), (char*)("wb"));
     if ((char*)(file) == NULL) {
-    return (Result_Bool_Int){ .tag = Result_Bool_Int_err_TAG, .payload = { .err = { .value = 1 } } };
+    return (Result_Bool_IoError){ .tag = IoError_open_failed };
 }
     int64_t len = strlen(content);
     int64_t bytes_written = fwrite((char*)(content), 1, len, file);
     fclose(file);
-    return (Result_Bool_Int){ .tag = Result_Bool_Int_ok_TAG, .payload = { .ok = { .value = true } } };
+    return (Result_Bool_IoError){ .tag = 0, .value = true };
 }
 }
 char char_at(const char* s, int64_t i) {
@@ -6376,6 +6305,9 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (expr.kind == ExprKind_ek_try) {
     TypeChecker_check_expr(self, expr.try_expr);
     const char* inner_ty = TypeChecker_get_expr_type(self, expr.try_expr);
+    if (strcmp(inner_ty, "Void") == 0) {
+    return;
+}
     int64_t excl_pos = (-1);
     int64_t i = 0;
     while (i < strlen(inner_ty)) {
@@ -6422,6 +6354,15 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (expr.kind == ExprKind_ek_catch) {
     TypeChecker_check_expr(self, expr.catch_expr);
     const char* inner_ty = TypeChecker_get_expr_type(self, expr.catch_expr);
+    if (strcmp(inner_ty, "Void") == 0) {
+    TypeChecker_enter_scope(self);
+    if (strlen(expr.catch_var) > 0) {
+    TypeChecker_define_symbol(self, expr.catch_var, "Void", false, "var");
+}
+    TypeChecker_check_stmt(self, expr.catch_fallback);
+    TypeChecker_exit_scope(self);
+    return;
+}
     if ((strlen(inner_ty) > 0) && ((inner_ty)[0] == ((char)(63)))) {
     const char* val_type = substring(inner_ty, 1, strlen(inner_ty));
     TypeChecker_enter_scope(self);
@@ -8273,16 +8214,28 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     fallback_code = "0";
 }
     const char* catch_code = "({ ";
+    bool fallback_is_stmt2 = false;
+    if ((strlen(fallback_code) > 0) && ((fallback_code)[(strlen(fallback_code) - 1)] == ((char)(59)))) {
+    fallback_is_stmt2 = true;
+}
     if (Codegen_is_pointer_type(self, val_type)) {
     catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, val_ctype), " _kai_opt = ("), inner), "); ");
     catch_code = _kai_str_concat(_kai_str_concat(catch_code, val_ctype), " _kai_cv; ");
     catch_code = _kai_str_concat(catch_code, "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } ");
+    if (fallback_is_stmt2) {
+    catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
+} else {
     catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
+}
 } else {
     catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, cond_ctype), " _kai_opt = ("), inner), "); ");
     catch_code = _kai_str_concat(_kai_str_concat(catch_code, val_ctype), " _kai_cv; ");
     catch_code = _kai_str_concat(catch_code, "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } ");
+    if (fallback_is_stmt2) {
+    catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
+} else {
     catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
+}
 }
     return catch_code;
 }
@@ -8319,7 +8272,15 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (strlen(expr.catch_var) > 0) {
     catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
 }
+    bool fallback_is_stmt = false;
+    if ((strlen(fallback_code) > 0) && ((fallback_code)[(strlen(fallback_code) - 1)] == ((char)(59)))) {
+    fallback_is_stmt = true;
+}
+    if (fallback_is_stmt) {
+    catch_code = _kai_str_concat(_kai_str_concat(catch_code, fallback_code), " __builtin_unreachable(); ");
+} else {
     catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "_kai_cv = ("), fallback_code), "); ");
+}
     catch_code = _kai_str_concat(catch_code, "} else { _kai_cv = _kai_cr.value; } _kai_cv; })");
 }
     return catch_code;
@@ -9078,13 +9039,13 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     i = (i + 1);
 }
     const char* rel_path = _kai_str_concat(path_str, ".kai");
-    Result_Str_Int res1 = read_to_string(self->allocator, rel_path);
-    if (res1.tag == Result_Str_Int_ok_TAG) {
-    const char* s = res1.payload.ok.value;
-
-    source = s;
+    const char* s1 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, rel_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (({
+    "";
+})); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
+    if (strlen(s1) > 0) {
+    source = s1;
     has_source = true;
-} else if (res1.tag == Result_Str_Int_err_TAG) {
+} else {
     {
     char* buf = (char*)(KaiAllocator_alloc(self->allocator, 1024, 1));
     if (get_exe_dir(buf, 1024) == 0) {
@@ -9093,45 +9054,43 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     const char* parent_path = _kai_str_concat(_kai_str_concat(exe_dir, "/../"), rel_path);
     const char* lib_path = _kai_str_concat(_kai_str_concat(exe_dir, "/../lib/kai/"), rel_path);
     KaiAllocator_free(self->allocator, buf);
-    Result_Str_Int res2 = read_to_string(self->allocator, full_path);
-    if (res2.tag == Result_Str_Int_ok_TAG) {
-    const char* s = res2.payload.ok.value;
-
-    source = s;
+    const char* s2 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, full_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (({
+    "";
+})); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
+    if (strlen(s2) > 0) {
+    source = s2;
     has_source = true;
-} else if (res2.tag == Result_Str_Int_err_TAG) {
-    Result_Str_Int res3 = read_to_string(self->allocator, parent_path);
-    if (res3.tag == Result_Str_Int_ok_TAG) {
-    const char* s = res3.payload.ok.value;
-
-    source = s;
+} else {
+    const char* s3 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, parent_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (({
+    "";
+})); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
+    if (strlen(s3) > 0) {
+    source = s3;
     has_source = true;
-} else if (res3.tag == Result_Str_Int_err_TAG) {
-    Result_Str_Int res4 = read_to_string(self->allocator, lib_path);
-    if (res4.tag == Result_Str_Int_ok_TAG) {
-    const char* s = res4.payload.ok.value;
-
-    source = s;
+} else {
+    const char* s4 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, lib_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (({
+    "";
+})); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
+    if (strlen(s4) > 0) {
+    source = s4;
     has_source = true;
-} else if (res4.tag == Result_Str_Int_err_TAG) {
-} 
-} 
-} 
+}
+}
+}
 } else {
     KaiAllocator_free(self->allocator, buf);
 }
 }
-} 
+}
 } else if (ArrayList_Str_length(&(path)) > 0) {
     const char* file_path = _kai_str_concat(_kai_str_concat("src/", module_key), ".kai");
-    Result_Str_Int res = read_to_string(self->allocator, file_path);
-    if (res.tag == Result_Str_Int_ok_TAG) {
-    const char* s = res.payload.ok.value;
-
+    const char* s = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, file_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (({
+    "";
+})); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
+    if (strlen(s) > 0) {
     source = s;
     has_source = true;
-} else if (res.tag == Result_Str_Int_err_TAG) {
-} 
+}
 }
     if (has_source) {
     Lexer lexer = Lexer_init(self->allocator, source);
@@ -9836,19 +9795,6 @@ void* LLVMCodegen_map_type(LLVMCodegen* self, const char* ktype) {
     int64_t lt_pos = LLVMCodegen_str_find(self, ktype, ((char)(60)));
     if (lt_pos >= 0) {
     clean_base = substring(ktype, 0, lt_pos);
-    if (strcmp(clean_base, "Result") == 0) {
-    const char* inner = substring(ktype, (lt_pos + 1), (strlen(ktype) - 1));
-    int64_t comma_pos = LLVMCodegen_str_find(self, inner, ((char)(44)));
-    if (comma_pos >= 0) {
-    const char* val_t = substring(inner, 0, comma_pos);
-    int64_t err_start = (comma_pos + 1);
-    while ((err_start < strlen(inner)) && ((inner)[err_start] == ((char)(32)))) {
-    err_start = (err_start + 1);
-}
-    const char* err_t = substring(inner, err_start, strlen(inner));
-    return LLVMCodegen_map_type(self, _kai_str_concat(_kai_str_concat(val_t, "!"), err_t));
-}
-}
     if (strcmp(clean_base, "Optional") == 0) {
     const char* inner = substring(ktype, (lt_pos + 1), (strlen(ktype) - 1));
     return LLVMCodegen_map_type(self, _kai_str_concat("?", inner));
@@ -11956,7 +11902,7 @@ void LLVMCodegen_gen_match(LLVMCodegen* self, int64_t stmt_idx) {
     void* end_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "match_end");
     bool is_enum = ((strlen(expr_type) > 0) && (strlen(type_map_get(&(self->enum_decls), expr_type)) > 0));
     bool has_payload = (is_enum && LLVMCodegen_enum_has_payload(self, expr_type));
-    bool is_result = (LLVMCodegen_str_contains(self, expr_type, ((char)(33))) || ((strlen(expr_type) >= 6) && (strcmp(substring(expr_type, 0, 6), "Result") == 0)));
+    bool is_result = LLVMCodegen_str_contains(self, expr_type, ((char)(33)));
     bool is_optional = (((strlen(expr_type) > 0) && ((expr_type)[0] == ((char)(63)))) || ((strlen(expr_type) >= 8) && (strcmp(substring(expr_type, 0, 8), "Optional") == 0)));
     bool is_struct_with_tag = ((((!is_enum) && (!is_result)) && (!is_optional)) && (strlen(type_map_get(&(self->struct_types), expr_type)) > 0));
     void* tag_val = (void*)(0);
@@ -12127,13 +12073,13 @@ void LLVMCodegen_handle_import(LLVMCodegen* self, int64_t stmt_idx) {
     i = (i + 1);
 }
     const char* rel_path = _kai_str_concat(path_str, ".kai");
-    Result_Str_Int res1 = read_to_string(self->allocator, rel_path);
-    if (res1.tag == Result_Str_Int_ok_TAG) {
-    const char* s = res1.payload.ok.value;
-
-    source = s;
+    const char* s1 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, rel_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (({
+    "";
+})); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
+    if (strlen(s1) > 0) {
+    source = s1;
     has_source = true;
-} else if (res1.tag == Result_Str_Int_err_TAG) {
+} else {
     {
     char* buf = (char*)(KaiAllocator_alloc(self->allocator, 1024, 1));
     if (get_exe_dir(buf, 1024) == 0) {
@@ -12142,45 +12088,43 @@ void LLVMCodegen_handle_import(LLVMCodegen* self, int64_t stmt_idx) {
     const char* parent_path = _kai_str_concat(_kai_str_concat(exe_dir, "/../"), rel_path);
     const char* lib_path = _kai_str_concat(_kai_str_concat(exe_dir, "/../lib/kai/"), rel_path);
     KaiAllocator_free(self->allocator, buf);
-    Result_Str_Int res2 = read_to_string(self->allocator, full_path);
-    if (res2.tag == Result_Str_Int_ok_TAG) {
-    const char* s = res2.payload.ok.value;
-
-    source = s;
+    const char* s2 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, full_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (({
+    "";
+})); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
+    if (strlen(s2) > 0) {
+    source = s2;
     has_source = true;
-} else if (res2.tag == Result_Str_Int_err_TAG) {
-    Result_Str_Int res3 = read_to_string(self->allocator, parent_path);
-    if (res3.tag == Result_Str_Int_ok_TAG) {
-    const char* s = res3.payload.ok.value;
-
-    source = s;
+} else {
+    const char* s3 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, parent_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (({
+    "";
+})); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
+    if (strlen(s3) > 0) {
+    source = s3;
     has_source = true;
-} else if (res3.tag == Result_Str_Int_err_TAG) {
-    Result_Str_Int res4 = read_to_string(self->allocator, lib_path);
-    if (res4.tag == Result_Str_Int_ok_TAG) {
-    const char* s = res4.payload.ok.value;
-
-    source = s;
+} else {
+    const char* s4 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, lib_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (({
+    "";
+})); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
+    if (strlen(s4) > 0) {
+    source = s4;
     has_source = true;
-} else if (res4.tag == Result_Str_Int_err_TAG) {
-} 
-} 
-} 
+}
+}
+}
 } else {
     KaiAllocator_free(self->allocator, buf);
 }
 }
-} 
+}
 } else if (ArrayList_Str_length(&(path)) > 0) {
     const char* file_path = _kai_str_concat(_kai_str_concat("src/", module_key), ".kai");
-    Result_Str_Int res = read_to_string(self->allocator, file_path);
-    if (res.tag == Result_Str_Int_ok_TAG) {
-    const char* s = res.payload.ok.value;
-
+    const char* s = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, file_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (({
+    "";
+})); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
+    if (strlen(s) > 0) {
     source = s;
     has_source = true;
-} else if (res.tag == Result_Str_Int_err_TAG) {
-} 
+}
 }
     if (has_source) {
     Lexer lexer = Lexer_init(self->allocator, source);
@@ -12991,10 +12935,7 @@ int main(int argc, char** argv) {
     bin_name = output_bin;
 }
     const char* c_file = _kai_str_concat(base, ".c");
-    Result_Str_Int source_res = read_to_string(&(allocator), input_file);
-    if (source_res.tag == Result_Str_Int_ok_TAG) {
-    const char* source = source_res.payload.ok.value;
-
+    const char* source = ({ Result_Str_IoError _kai_cr = (read_to_string(&(allocator), input_file)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; return 4; __builtin_unreachable(); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
     Lexer lexer = Lexer_init(&(allocator), source);
     Lexer_lex(&(lexer));
     if (lexer.has_error) {
@@ -13014,8 +12955,7 @@ int main(int argc, char** argv) {
     LLVMCodegen gen_llvm = LLVMCodegen_init(&(allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool);
     const char* output = LLVMCodegen_generate(&(gen_llvm), program_idx);
     const char* ll_file = _kai_str_concat(base, ".ll");
-    Result_Bool_Int write_res = write_string(ll_file, output);
-    if (write_res.tag == Result_Bool_Int_ok_TAG) {
+    (void)(({ Result_Bool_IoError _kai_cr = (write_string(ll_file, output)); bool _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; return 5; __builtin_unreachable(); } else { _kai_cv = _kai_cr.value; } _kai_cv; }));
     if (emit_c_only) {
     return 0;
 }
@@ -13023,14 +12963,10 @@ int main(int argc, char** argv) {
     {
     return system((char*)(cmd));
 }
-} else if (write_res.tag == Result_Bool_Int_err_TAG) {
-    return 5;
-} 
 } else {
     Codegen gen = Codegen_init(&(allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool);
     const char* output = Codegen_generate(&(gen), program_idx);
-    Result_Bool_Int write_res = write_string(c_file, output);
-    if (write_res.tag == Result_Bool_Int_ok_TAG) {
+    (void)(({ Result_Bool_IoError _kai_cr = (write_string(c_file, output)); bool _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; return 5; __builtin_unreachable(); } else { _kai_cv = _kai_cr.value; } _kai_cv; }));
     if (emit_c_only) {
     return 0;
 }
@@ -13038,14 +12974,5 @@ int main(int argc, char** argv) {
     {
     return system((char*)(cmd));
 }
-} else if (write_res.tag == Result_Bool_Int_err_TAG) {
-    return 5;
-} 
 }
-} else if (source_res.tag == Result_Str_Int_err_TAG) {
-    int64_t err_code = source_res.payload.err.value;
-
-    return 4;
-} 
-    return 0;
 }
