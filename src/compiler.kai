@@ -5,8 +5,8 @@ import Lexer from lexer
 import Parser from parser
 import TypeChecker from type_checker
 import Codegen from codegen
-import length from std.collections.string
-import substring from std.collections.string
+import length from std.core.string
+import substring from std.core.string
 import fs_exists from std.fs.fs
 import LLVMCodegen from codegen_llvm
 import std.io.print

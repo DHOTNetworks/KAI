@@ -1,9 +1,9 @@
-import ArrayList from std.collections.array
-import StringBuilder from std.collections.string
-import is_digit from std.collections.string
-import is_alpha from std.collections.string
-import is_alnum from std.collections.string
-import is_space from std.collections.string
+import ArrayList from std.core.array
+import StringBuilder from std.core.string
+import is_digit from std.core.string
+import is_alpha from std.core.string
+import is_alnum from std.core.string
+import is_space from std.core.string
 import Allocator from std.core.allocator
 
 extern fn strlen(s: Str) -> Int

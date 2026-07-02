@@ -1,6 +1,6 @@
 import Allocator from std.core.allocator
 import Option from std.core.option
-import length from std.collections.string
+import length from std.core.string
 
 extern fn exit(code: Int)
 

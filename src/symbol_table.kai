@@ -1,4 +1,4 @@
-import ArrayList from std.collections.array
+import ArrayList from std.core.array
 import Allocator from std.core.allocator
 
 struct Symbol {

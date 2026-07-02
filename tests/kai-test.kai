@@ -1,5 +1,6 @@
 import KaiAllocator from std.core.allocator
-import int_to_str from std.collections.string
+import int_to_str from std.core.string
+import std.io.print
 
 extern fn _kai_set_current_allocator(allocator: *Void)
 
@@ -52,48 +53,48 @@ fn main() -> Int {
     _kai_set_current_allocator(&allocator as *Void)
     
     defer {
-        print("Final defer run: Success\n")
+        printf("Final defer run: Success\n")
     }
 
     let a = 10
     var b = 20
     b = b + a
-    print("Arithmetic check: ")
-    print_int(b)
-    print("\n")
+    printf("Arithmetic check: ")
+    printi(b)
+    printf("\n")
 
     let p = Point(x: 3, y: 4)
-    print("Trait check: ")
-    print(p.describe())
-    print("\n")
+    printf("Trait check: ")
+    prints(p.describe())
+    printf("\n")
 
     let id_int = identity<Int>(100)
-    print("Generics check: ")
-    print_int(id_int)
-    print("\n")
+    printf("Generics check: ")
+    printi(id_int)
+    printf("\n")
 
     let res_ok = divide_or_error(true) catch |err| 99
     let res_err = divide_or_error(false) catch |err| 100
-    print("Error Union OK: ")
-    print_int(res_ok)
-    print("\n")
-    print("Error Union Catch: ")
-    print_int(res_err)
-    print("\n")
+    printf("Error Union OK: ")
+    printi(res_ok)
+    printf("\n")
+    printf("Error Union Catch: ")
+    printi(res_err)
+    printf("\n")
 
     let opt_some = get_optional_value(true)
     let opt_none = get_optional_value(false)
     
     if let val = opt_some {
-        print("Optional if-let: ")
-        print_int(val)
-        print("\n")
+        printf("Optional if-let: ")
+        printi(val)
+        printf("\n")
     }
     
     let fallback = opt_none catch 99
-    print("Optional catch: ")
-    print_int(fallback)
-    print("\n")
+    printf("Optional catch: ")
+    printi(fallback)
+    printf("\n")
 
     var sum = 0
     var i = 0
@@ -101,15 +102,15 @@ fn main() -> Int {
         sum = sum + i
         i = i + 1
     }
-    print("While loop sum: ")
-    print_int(sum)
-    print("\n")
+    printf("While loop sum: ")
+    printi(sum)
+    printf("\n")
 
     unsafe {
         let ptr: *Int = &b
-        print("Unsafe ptr read: ")
-        print_int(*ptr)
-        print("\n")
+        printf("Unsafe ptr read: ")
+        printi(*ptr)
+        printf("\n")
     }
 
     return 0
