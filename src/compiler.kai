@@ -1,6 +1,7 @@
 import KaiAllocator from std.core.allocator
 import read_to_string from std.io.file
 import write_string from std.io.file
+
 import Lexer from lexer
 import Parser from parser
 import TypeChecker from type_checker
@@ -8,13 +9,68 @@ import Codegen from codegen
 import length from std.core.string
 import substring from std.core.string
 import fs_exists from std.fs.fs
-import LLVMCodegen from codegen_llvm
+import fs_is_dir from std.fs.fs
+import fs_mkdir from std.fs.fs
+import ArrayList from std.core.array
+// LLVMCodegen temporarily disabled — needs rework
+// import LLVMCodegen from codegen_llvm
 import std.io.print
+import get_error_info from error_registry
 
 extern fn system(cmd: *Char) -> Int
 extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn _kai_set_current_allocator(allocator: *Void)
 extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
+
+fn find_last(path: Str, c: Char) -> Int {
+    var i = length(path) - 1
+    while i >= 0 {
+        if path[i] == c { return i }
+        i = i - 1
+    }
+    return -1
+}
+
+fn mkdir_p(path: Str) -> Bool {
+    if fs_exists(path) { return true }
+    let slash_pos = find_last(path, Char(47))
+    if slash_pos > 0 {
+        let parent = substring(path, 0, slash_pos)
+        if !mkdir_p(parent) { return false }
+    }
+    return fs_mkdir(path)
+}
+
+fn str_replace(s: Str, old: Str, new_val: Str) -> Str {
+    let s_len = length(s)
+    let old_len = length(old)
+    if old_len == 0 {
+        return s
+    }
+    var result = ""
+    var i = 0
+    while i < s_len {
+        var j = 0
+        var matched = true
+        while j < old_len {
+            unsafe {
+                if s[i + j] != old[j] {
+                    matched = false
+                    break
+                }
+            }
+            j = j + 1
+        }
+        if matched {
+            result = result + new_val
+            i = i + old_len
+        } else {
+            result = result + substring(s, i, i + 1)
+            i = i + 1
+        }
+    }
+    return result
+}
 
 fn get_base_name(allocator: *Allocator, path: Str) -> Str {
     var last_slash = -1
@@ -23,9 +79,9 @@ fn get_base_name(allocator: *Allocator, path: Str) -> Str {
     let l = length(path)
     while i < l {
         let c = path[i]
-        if c == Char(47) { // '/' is 47
+        if c == Char(47) {
             last_slash = i
-        } else if c == Char(46) { // '.' is 46
+        } else if c == Char(46) {
             dot_pos = i
         }
         i = i + 1
@@ -43,76 +99,961 @@ fn get_base_name(allocator: *Allocator, path: Str) -> Str {
 
 fn main(argc: Int, argv: **Char) -> Int {
     if argc < 2 {
-        printf("Usage: compiler <input.kai> [-o <output_bin>] [-c] [-O0|-O1|-O2|-O3|-Os]")
+        printf("Usage: kai <command> [options]\n")
+        printf("Commands:\n")
+        printf("  init [path]     Create a new Kai project\n")
+        printf("  check <file>    Type-check only (no code generation)\n")
+        printf("  run <file>      Compile and run a .kai file\n")
+        printf("  <file>          Compile and run (shorthand)\n")
+        printf("  patch <file>    Apply an operation-based edit\n")
+        printf("  explain <code>  Explain an error code\n")
+        printf("  skills          List available agent skills\n")
+        printf("  fix <file>      Auto-fix diagnostics (--plan|--patch|--apply)\n")
+        printf("  graph <file>    Export or query the AST graph\n")
+        printf("Flags:\n")
+        printf("  --json          Output diagnostics in JSON format\n")
+        printf("  -o <file>       Specify output binary name\n")
+        printf("  -c              Emit C code only (no linking)\n")
+        printf("  -O0|-O1|-O2|-O3|-Os  Optimization level (default: -O2)\n")
         return 1
     }
 
+    var first_arg = ""
+    unsafe {
+        first_arg = argv[1] as Str
+    }
+
+    // === 'explain' subcommand ===
+    var is_explain = false
+    unsafe {
+        if strcmp(first_arg, "explain") == 0 {
+            is_explain = true
+        }
+    }
+    if is_explain {
+        if argc < 3 {
+            printf("Usage: kai explain <error-code>\n")
+            return 1
+        }
+        var code = ""
+        unsafe {
+            code = argv[2] as Str
+        }
+        let info = get_error_info(code)
+        printf("error[%s]: %s\n", code, info.title)
+        printf("  %s\n", info.description)
+        printf("  Suggested fix: %s\n", info.fix)
+        return 0
+    }
+
+    // === 'skills' subcommand ===
+    var is_skills = false
+    unsafe {
+        if strcmp(first_arg, "skills") == 0 {
+            is_skills = true
+        }
+    }
+    if is_skills {
+        var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
+        allocator.init()
+        _kai_set_current_allocator(&allocator as *Void)
+        var exe_dir = ""
+        unsafe {
+            let buf = allocator.alloc(1024, 1) as *Char
+            if get_exe_dir(buf, 1024) == 0 {
+                exe_dir = buf as Str
+            }
+        }
+        if argc < 3 {
+            printf("Available skills:\n")
+            printf("  agent       - Agent workflow guide\n")
+            printf("  diagnostics - Diagnostic reference for AI agents\n")
+            printf("\nUse 'kai skills get <topic>' to load a skill.\n")
+            return 0
+        }
+        var sub = ""
+        unsafe {
+            sub = argv[2] as Str
+        }
+        var is_get = false
+        unsafe {
+            if strcmp(sub, "get") == 0 {
+                is_get = true
+            }
+        }
+        if is_get {
+            if argc < 4 {
+                printf("Usage: kai skills get <topic>\n")
+                return 1
+            }
+            var topic = ""
+            unsafe {
+                topic = argv[3] as Str
+            }
+            let skill_path = exe_dir + "/skill-data/" + topic + ".md"
+            let res = read_to_string(&allocator, skill_path)
+            if res.tag != 0 {
+                printf("skill not found: '%s'\n", topic)
+                printf("Available: agent, diagnostics\n")
+                return 1
+            }
+            let content = res.value as Str
+            printf("%s\n", content)
+            return 0
+        }
+        printf("Usage: kai skills get <topic>\n")
+        return 1
+    }
+
+    // === 'init' subcommand ===
+    var is_init = false
+    unsafe {
+        if strcmp(first_arg, "init") == 0 {
+            is_init = true
+        }
+    }
+    if is_init {
+        var project_path = "."
+        var template = "cli"
+        var i = 2
+        while i < argc {
+            let arg = argv[i] as Str
+            unsafe {
+                if strcmp(arg, "--template") == 0 {
+                    if i + 1 < argc {
+                        i = i + 1
+                        template = argv[i] as Str
+                    } else {
+                        printf("Error: --template requires an argument (cli|lib)\n")
+                        return 1
+                    }
+                } else {
+                    if project_path == "." {
+                        project_path = arg
+                    }
+                }
+            }
+            i = i + 1
+        }
+        let src_dir = project_path + "/src"
+        if !mkdir_p(src_dir) {
+            printf("Error: Could not create directory '%s'\n", src_dir)
+            return 1
+        }
+        if template == "lib" {
+            let main_content = "// " + project_path + "\n// Library entry point\n\n"
+            let write_res = write_string(src_dir + "/lib.kai", main_content)
+            if write_res.tag != 0 {
+                printf("Error: Could not write lib.kai\n")
+                return 1
+            }
+        } else {
+            let main_content = "// " + project_path + "\n// Entry point\n\nfn main() Int {\n    printf(\"hello from " + project_path + "\\n\")\n    return 0\n}\n"
+            let write_res = write_string(src_dir + "/main.kai", main_content)
+            if write_res.tag != 0 {
+                printf("Error: Could not write main.kai\n")
+                return 1
+            }
+        }
+        printf("Created Kai project at '%s' (template: %s)\n", project_path, template)
+        return 0
+    }
+
+    // === 'patch' subcommand ===
+    var is_patch = false
+    unsafe {
+        if strcmp(first_arg, "patch") == 0 {
+            is_patch = true
+        }
+    }
+    if is_patch {
+        if argc < 4 {
+            printf("Usage: kai patch <file> --op <operation> [args...]\n")
+            printf("Operations:\n")
+            printf("  addMain                    Append a main function\n")
+            printf("  addFn <name>               Append a function stub\n")
+            printf("  replaceText --old <t> --new <t>  Global text replacement\n")
+            printf("  setConst <name> <value>    Change a const value\n")
+            return 1
+        }
+        var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
+        allocator.init()
+        _kai_set_current_allocator(&allocator as *Void)
+
+        var patch_file = ""
+        var operation = ""
+        var op_arg1 = ""
+        var op_arg2 = ""
+        var json = false
+        var i = 2
+        while i < argc {
+            let arg = argv[i] as Str
+            unsafe {
+                if strcmp(arg, "--json") == 0 {
+                    json = true
+                } else if strcmp(arg, "--op") == 0 {
+                    if i + 1 < argc {
+                        i = i + 1
+                        operation = argv[i] as Str
+                    }
+                } else if strcmp(arg, "--old") == 0 {
+                    if i + 1 < argc {
+                        i = i + 1
+                        op_arg1 = argv[i] as Str
+                    }
+                } else if strcmp(arg, "--new") == 0 {
+                    if i + 1 < argc {
+                        i = i + 1
+                        op_arg2 = argv[i] as Str
+                    }
+                } else if patch_file == "" {
+                    patch_file = arg
+                }
+            }
+            i = i + 1
+        }
+        if length(patch_file) == 0 {
+            printf("Error: No input file specified\n")
+            return 1
+        }
+        if length(operation) == 0 {
+            printf("Error: No operation specified (use --op)\n")
+            return 1
+        }
+        let source_res = read_to_string(&allocator, patch_file)
+        if source_res.tag != 0 {
+            printf("Error: Could not read '%s'\n", patch_file)
+            return 1
+        }
+        let source = source_res.value as Str
+        var modified = ""
+        var op_name = operation
+
+        unsafe {
+            if strcmp(op_name, "addMain") == 0 {
+                modified = source + "\nfn main() Int {\n    printf(\"hello\\n\")\n    return 0\n}\n"
+            } else if strcmp(op_name, "addFn") == 0 {
+                // Find positional arg after --op addFn
+                var fn_name = op_arg1
+                if length(fn_name) == 0 {
+                    // Scan remaining argv for the function name
+                    var j = 3
+                    while j < argc {
+                        unsafe {
+                            let a = argv[j] as Str
+                            let is_flag = strcmp(a, "--op") == 0 || strcmp(a, "--json") == 0 || strcmp(a, "--old") == 0 || strcmp(a, "--new") == 0
+                            if !is_flag && strcmp(a, patch_file) != 0 && strcmp(a, "addMain") != 0 && strcmp(a, "addFn") != 0 && strcmp(a, "setConst") != 0 && strcmp(a, "replaceText") != 0 {
+                                if fn_name == "" { fn_name = a }
+                            }
+                        }
+                        j = j + 1
+                    }
+                }
+                if length(fn_name) == 0 {
+                    printf("Error: addFn requires a function name\n")
+                    printf("Usage: kai patch <file> --op addFn <name>\n")
+                    return 1
+                }
+                modified = source + "\nfn " + fn_name + "() Void {\n\n}\n"
+            } else if strcmp(op_name, "setConst") == 0 {
+                // Parse args: setConst <name> <value>
+                var const_name = op_arg1
+                var const_val = op_arg2
+                if length(const_name) == 0 || length(const_val) == 0 {
+                    // Scan remaining argv for positional args
+                    var j = 3
+                    while j < argc {
+                        unsafe {
+                            let a = argv[j] as Str
+                            let is_flag = strcmp(a, "--op") == 0 || strcmp(a, "--json") == 0 || strcmp(a, "--old") == 0 || strcmp(a, "--new") == 0
+                            if !is_flag && strcmp(a, patch_file) != 0 && strcmp(a, "setConst") != 0 && strcmp(a, "addMain") != 0 && strcmp(a, "addFn") != 0 && strcmp(a, "replaceText") != 0 {
+                                if const_name == "" { const_name = a }
+                                else if const_val == "" { const_val = a }
+                            }
+                        }
+                        j = j + 1
+                    }
+                }
+                if length(const_name) == 0 || length(const_val) == 0 {
+                    printf("Error: setConst requires <name> and <value>\n")
+                    printf("Usage: kai patch <file> --op setConst <name> <value>\n")
+                    return 1
+                }
+                let pattern = "const " + const_name + " = "
+                let pattern_len = length(pattern)
+                let src_len = length(source)
+                var found_const = false
+                var pos_c = 0
+                while pos_c <= src_len - pattern_len {
+                    var matched_c = true
+                    var j2 = 0
+                    while j2 < pattern_len {
+                        unsafe {
+                            if source[pos_c + j2] != pattern[j2] {
+                                matched_c = false
+                                break
+                            }
+                        }
+                        j2 = j2 + 1
+                    }
+                    if matched_c {
+                        var end = pos_c + pattern_len
+                        while end < src_len {
+                            unsafe {
+                                let c = source[end]
+                                if c == Char(10) || c == Char(59) { break }
+                            }
+                            end = end + 1
+                        }
+                        let before = substring(source, 0, pos_c + pattern_len)
+                        let after = substring(source, end, src_len)
+                        modified = before + const_val + after
+                        found_const = true
+                        break
+                    }
+                    pos_c = pos_c + 1
+                }
+                if !found_const {
+                    printf("Error: const '%s' not found in '%s'\n", const_name, patch_file)
+                    return 1
+                }
+            } else if strcmp(op_name, "replaceText") == 0 {
+                // op_arg1 = old, op_arg2 = new
+                if length(op_arg1) == 0 {
+                    printf("Error: replaceText requires --old <text>\n")
+                    return 1
+                }
+                if length(op_arg2) == 0 {
+                    printf("Error: replaceText requires --new <text>\n")
+                    return 1
+                }
+                modified = str_replace(source, op_arg1, op_arg2)
+            } else {
+                printf("Error: Unknown operation '%s'\n", op_name)
+                printf("Supported: addMain, addFn, setConst, replaceText\n")
+                return 1
+            }
+        }
+        let write_res = write_string(patch_file, modified)
+        if write_res.tag != 0 {
+            printf("Error: Could not write '%s'\n", patch_file)
+            return 1
+        }
+        if json {
+            printf("{\"result\":\"patched\",\"file\":\"%s\",\"operation\":\"%s\"}\n", patch_file, op_name)
+        }
+        return 0
+    }
+
+    // === 'fix' subcommand ===
+    var is_fix = false
+    unsafe {
+        if strcmp(first_arg, "fix") == 0 {
+            is_fix = true
+        }
+    }
+    if is_fix {
+        var fix_mode = "plan"
+        var fix_file = ""
+        var json = false
+        var i2 = 2
+        while i2 < argc {
+            unsafe {
+                let a = argv[i2] as Str
+                if strcmp(a, "--plan") == 0 {
+                    fix_mode = "plan"
+                } else if strcmp(a, "--patch") == 0 {
+                    fix_mode = "patch"
+                } else if strcmp(a, "--apply") == 0 {
+                    fix_mode = "apply"
+                } else if strcmp(a, "--json") == 0 {
+                    json = true
+                } else if fix_file == "" {
+                    fix_file = a
+                }
+            }
+            i2 = i2 + 1
+        }
+        if length(fix_file) == 0 {
+            printf("Usage: kai fix (--plan|--patch|--apply) [--json] <file>\n")
+            return 1
+        }
+        var fix_alloc = KaiAllocator(heads: 0 as *Char, used: 0)
+        fix_alloc.init()
+        _kai_set_current_allocator(&fix_alloc as *Void)
+
+        let src_res = read_to_string(&fix_alloc, fix_file)
+        if src_res.tag != 0 {
+            printf("Error: Could not read '%s'\n", fix_file)
+            return 1
+        }
+        let source = src_res.value as Str
+        let src_len_val = length(source)
+
+        // Collect variable declarations and assignments
+        var vars = ArrayList<Str>(&fix_alloc)
+        var var_lines = ArrayList<Int>(&fix_alloc)
+        var var_mut = ArrayList<Bool>(&fix_alloc)
+
+        // Scan source for variable declarations and assignments
+        var line_start = 0
+        var line_num = 0
+        while line_start <= src_len_val {
+            var line_end = line_start
+            while line_end < src_len_val {
+                unsafe { if source[line_end] == Char(10) { break } }
+                line_end = line_end + 1
+            }
+            if line_end > src_len_val { line_end = src_len_val }
+            let line_len = line_end - line_start
+            if line_len > 0 {
+                let line = substring(source, line_start, line_end)
+                // Check for "let " pattern
+                var li = 0
+                while li < line_len {
+                    unsafe {
+                        let c = line[li]
+                        if c != Char(32) && c != Char(9) { break }
+                    }
+                    li = li + 1
+                }
+                if li + 4 <= line_len {
+                    unsafe {
+                        if line[li] == Char(108) && line[li+1] == Char(101) && line[li+2] == Char(116) && line[li+3] == Char(32) {
+                            // Found "let " — extract variable name
+                            var vstart = li + 4
+                            var vend = vstart
+                            while vend < line_len {
+                                unsafe {
+                                    let c = line[vend]
+                                    if c == Char(32) || c == Char(61) || c == Char(58) || c == Char(9) { break }
+                                }
+                                vend = vend + 1
+                            }
+                            if vend > vstart {
+                                let vname = substring(line, vstart, vend)
+                                vars.push(vname)
+                                var_lines.push(line_num)
+                                var_mut.push(false)
+                            }
+                        }
+                    }
+                }
+                // Check for "<name> =" (assignment) pattern
+                var ai = 0
+                while ai < line_len {
+                    unsafe {
+                        let c = line[ai]
+                        if c != Char(32) && c != Char(9) { break }
+                    }
+                    ai = ai + 1
+                }
+                if ai < line_len {
+                    // Find the "=" token
+                    var eq_pos = -1
+                    var vi = ai
+                    while vi < line_len {
+                        unsafe {
+                            if line[vi] == Char(61) {
+                                eq_pos = vi
+                                break
+                            }
+                        }
+                        vi = vi + 1
+                    }
+                    if eq_pos > ai {
+                        // Check for let/var before = (skip self-assignment in declaration)
+                        var has_let_prefix = false
+                        unsafe {
+                            if ai + 4 <= eq_pos {
+                                if line[ai] == Char(108) && line[ai+1] == Char(101) && line[ai+2] == Char(116) && line[ai+3] == Char(32) {
+                                    has_let_prefix = true
+                                }
+                            }
+                        }
+                        if !has_let_prefix && eq_pos > 0 {
+                            // Find variable name before "=" by skipping spaces then identifier
+                            var before_eq = eq_pos - 1
+                            while before_eq >= ai {
+                                unsafe {
+                                    let c = line[before_eq]
+                                    if c != Char(32) && c != Char(9) { break }
+                                }
+                                before_eq = before_eq - 1
+                            }
+                            var assign_start = before_eq
+                            while assign_start >= ai {
+                                unsafe {
+                                    let c = line[assign_start]
+                                    if c == Char(32) || c == Char(9) { break }
+                                }
+                                assign_start = assign_start - 1
+                            }
+                            assign_start = assign_start + 1
+                            if assign_start <= before_eq {
+                                let assign_var = substring(line, assign_start, before_eq + 1)
+                                // Check if this variable is in our declaration list
+                                var vi2 = 0
+                                while vi2 < vars.length() {
+                                    unsafe {
+                                        if strcmp(assign_var, vars.get(vi2)) == 0 && !var_mut.get(vi2) {
+                                            var_mut.set(vi2, true)
+                                        }
+                                    }
+                                    vi2 = vi2 + 1
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            line_start = line_end + 1
+            line_num = line_num + 1
+        }
+
+        // Build fixes list
+        var fix_count = 0
+        var fix_text = ""
+        if json {
+            fix_text = "{\"file\":\"" + fix_file + "\",\"fixes\":["
+        }
+        var vi3 = 0
+        while vi3 < vars.length() {
+            if var_mut.get(vi3) {
+                fix_count = fix_count + 1
+                let vname_val = vars.get(vi3)
+                let vline = var_lines.get(vi3)
+                if json {
+                    if fix_count > 1 { fix_text = fix_text + "," }
+                    fix_text = fix_text + "{\"name\":\"" + vname_val + "\",\"line\":" + vname_val + ",\"fix\":\"let->var\",\"safety\":\"behavior-preserving\"}"
+                }
+            }
+            vi3 = vi3 + 1
+        }
+        if json {
+            fix_text = fix_text + "],\"mode\":\"" + fix_mode + "\",\"count\":" + fix_text + "}"
+            // Rebuild properly
+            fix_text = "{\"file\":\"" + fix_file + "\",\"fixes\":["
+            var count_added = 0
+            var vi4 = 0
+            while vi4 < vars.length() {
+                if var_mut.get(vi4) {
+                    if count_added > 0 { fix_text = fix_text + "," }
+                    let vname_val = vars.get(vi4)
+                    fix_text = fix_text + "{\"name\":\"" + vname_val
+                    fix_text = fix_text + "\",\"fix\":\"let->var\",\"safety\":\"behavior-preserving\"}"
+                    count_added = count_added + 1
+                }
+                vi4 = vi4 + 1
+            }
+            fix_text = fix_text + "],\"total\":" + fix_text + "}"
+            // Clear the bad partial and rebuild
+            fix_text = ""
+        }
+
+        if fix_count == 0 {
+            if json {
+                printf("{\"file\":\"%s\",\"fixes\":[],\"total\":0}\n", fix_file)
+            } else {
+                printf("No auto-fixable issues found in '%s'\n", fix_file)
+            }
+            return 0
+        }
+
+        if fix_mode == "plan" || fix_mode == "plan" {
+            if !json {
+                printf("Found %lld auto-fixable issue(s) in '%s':\n", fix_count, fix_file)
+                var vi5 = 0
+                while vi5 < vars.length() {
+                    if var_mut.get(vi5) {
+                        printf("  [behavior-preserving] variable '%s': change 'let' to 'var' (E0008)\n", vars.get(vi5))
+                    }
+                    vi5 = vi5 + 1
+                }
+                printf("\nApply with: kai fix --apply '%s'\n", fix_file)
+            } else {
+                printf("{\"file\":\"%s\",\"fixes\":[", fix_file)
+                var first_fix = true
+                var vi6 = 0
+                while vi6 < vars.length() {
+                    if var_mut.get(vi6) {
+                        if !first_fix { printf(",") }
+                        printf("{\"name\":\"%s\",\"fix\":\"let->var\",\"safety\":\"behavior-preserving\"}", vars.get(vi6))
+                        first_fix = false
+                    }
+                    vi6 = vi6 + 1
+                }
+                printf("],\"total\":%lld}\n", fix_count)
+            }
+            return 0
+        }
+
+        // --apply or --patch: apply fixes to source
+        var modified_source = ""
+        var line_start2 = 0
+        var line_num2 = 0
+        while line_start2 <= src_len_val {
+            var line_end2 = line_start2
+            while line_end2 < src_len_val {
+                unsafe { if source[line_end2] == Char(10) { break } }
+                line_end2 = line_end2 + 1
+            }
+            if line_end2 > src_len_val { line_end2 = src_len_val }
+            let current_line_num = line_num2
+            // Check if this line has a fix
+            var apply_fix_to_line = false
+            var vi8 = 0
+            while vi8 < vars.length() {
+                if var_lines.get(vi8) == current_line_num && var_mut.get(vi8) {
+                    apply_fix_to_line = true
+                }
+                vi8 = vi8 + 1
+            }
+            if apply_fix_to_line {
+                let line_text = substring(source, line_start2, line_end2)
+                let fixed_line_text = str_replace(line_text, "let ", "var ")
+                modified_source = modified_source + fixed_line_text
+                if fix_mode == "patch" && json {
+                    printf("{\"patch\":true,\"file\":\"%s\",\"line\":%lld,\"old\":\"", fix_file, current_line_num)
+                    // Print old line escaped
+                    var li2 = 0
+                    while li2 < length(line_text) {
+                        unsafe {
+                            let c = line_text[li2]
+                            if c == Char(34) { printf("\\\"") }
+                            else if c == Char(92) { printf("\\\\") }
+                            else if c == Char(10) { printf("\\n") }
+                            else { printf("%c", c) }
+                        }
+                        li2 = li2 + 1
+                    }
+                    printf("\",\"new\":\"")
+                    var li3 = 0
+                    while li3 < length(fixed_line_text) {
+                        unsafe {
+                            let c = fixed_line_text[li3]
+                            if c == Char(34) { printf("\\\"") }
+                            else if c == Char(92) { printf("\\\\") }
+                            else if c == Char(10) { printf("\\n") }
+                            else { printf("%c", c) }
+                        }
+                        li3 = li3 + 1
+                    }
+                    printf("\"}\n")
+                }
+            } else {
+                modified_source = modified_source + substring(source, line_start2, line_end2)
+            }
+            let is_last_line = (line_end2 >= src_len_val)
+            if !is_last_line {
+                modified_source = modified_source + "\n"
+            }
+            line_start2 = line_end2 + 1
+            line_num2 = line_num2 + 1
+        }
+
+        if fix_mode == "apply" {
+            let write_res = write_string(fix_file, modified_source)
+            if write_res.tag != 0 {
+                printf("Error: Could not write '%s'\n", fix_file)
+                return 1
+            }
+            if !json {
+                printf("Applied %lld fix(es) to '%s'\n", fix_count, fix_file)
+            } else {
+                printf("{\"result\":\"applied\",\"file\":\"%s\",\"fixes\":%lld}\n", fix_file, fix_count)
+            }
+        } else if fix_mode == "patch" && !json {
+            printf("Would apply %lld fix(es) to '%s'\n", fix_count, fix_file)
+            printf("Use --apply to apply, or --json for machine-readable output\n")
+        }
+        return 0
+    }
+
+    // === 'graph' subcommand ===
+    var is_graph = false
+    unsafe {
+        if strcmp(first_arg, "graph") == 0 {
+            is_graph = true
+        }
+    }
+    if is_graph {
+        if argc < 3 {
+            printf("Usage: kai graph (export|query) <file> [options]\n")
+            printf("  export <file>    Export AST as JSON\n")
+            printf("  query <file>     Query program structure\n")
+            return 1
+        }
+        var graph_sub = ""
+        unsafe { graph_sub = argv[2] as Str }
+        var graph_file = ""
+        var graph_fn = ""
+        var graph_json = false
+        var i3 = 3
+        while i3 < argc {
+            unsafe {
+                let a = argv[i3] as Str
+                if strcmp(a, "--json") == 0 {
+                    graph_json = true
+                } else if strcmp(a, "--fn") == 0 {
+                    if i3 + 1 < argc {
+                        i3 = i3 + 1
+                        graph_fn = argv[i3] as Str
+                    }
+                } else if graph_file == "" {
+                    graph_file = a
+                }
+            }
+            i3 = i3 + 1
+        }
+        if length(graph_file) == 0 {
+            printf("Error: No input file specified\n")
+            return 1
+        }
+
+        var graph_alloc = KaiAllocator(heads: 0 as *Char, used: 0)
+        graph_alloc.init()
+        _kai_set_current_allocator(&graph_alloc as *Void)
+
+        let src_res2 = read_to_string(&graph_alloc, graph_file)
+        if src_res2.tag != 0 {
+            printf("Error: Could not read '%s'\n", graph_file)
+            return 1
+        }
+        let graph_source = src_res2.value as Str
+
+        var graph_lexer = Lexer(&graph_alloc, graph_source)
+        graph_lexer.lex()
+        if graph_lexer.has_error {
+            printf("Error: Lexer error in '%s'\n", graph_file)
+            return 1
+        }
+        var graph_parser = Parser(&graph_alloc, graph_lexer.tokens)
+        let graph_program_idx = graph_parser.parse_program()
+        if graph_program_idx < 0 {
+            printf("Error: Parse error in '%s'\n", graph_file)
+            return 1
+        }
+
+        unsafe {
+            if strcmp(graph_sub, "export") == 0 {
+                // Export AST as JSON
+                printf("{\"file\":\"%s\",\"stmts\":[\n", graph_file)
+                var si = 0
+                let stmt_count = graph_parser.stmt_pool.length()
+                while si < stmt_count {
+                    let stmt = graph_parser.stmt_pool.get(si)
+                    if si > 0 { printf(",\n") }
+                    printf("{\"id\":%lld,\"kind\":", si)
+                    // Map StmtKind to string
+                    let sk = stmt.kind
+                    if sk == 0 { printf("\"none\"") }
+                    else if sk == 1 { printf("\"block\"") }
+                    else if sk == 2 { printf("\"var_decl\"") }
+                    else if sk == 3 { printf("\"assignment\"") }
+                    else if sk == 4 { printf("\"func_decl\"") }
+                    else if sk == 5 { printf("\"struct_decl\"") }
+                    else if sk == 6 { printf("\"impl_block\"") }
+                    else if sk == 7 { printf("\"trait_decl\"") }
+                    else if sk == 8 { printf("\"enum_decl\"") }
+                    else if sk == 9 { printf("\"if\"") }
+                    else if sk == 10 { printf("\"if_let\"") }
+                    else if sk == 11 { printf("\"while\"") }
+                    else if sk == 12 { printf("\"for\"") }
+                    else if sk == 13 { printf("\"return\"") }
+                    else if sk == 14 { printf("\"print\"") }
+                    else if sk == 15 { printf("\"expr\"") }
+                    else if sk == 16 { printf("\"defer\"") }
+                    else if sk == 17 { printf("\"unsafe\"") }
+                    else if sk == 18 { printf("\"extern\"") }
+                    else if sk == 19 { printf("\"import\"") }
+                    else if sk == 20 { printf("\"cimport\"") }
+                    else if sk == 21 { printf("\"match\"") }
+                    else if sk == 22 { printf("\"error_decl\"") }
+                    else if sk == 23 { printf("\"break\"") }
+                    else if sk == 24 { printf("\"continue\"") }
+                    else { printf("\"unknown\"") }
+                    // Add name if present
+                    if length(stmt.func_name) > 0 { printf(",\"name\":\"%s\"", stmt.func_name) }
+                    if length(stmt.struct_name) > 0 { printf(",\"name\":\"%s\"", stmt.struct_name) }
+                    if length(stmt.enum_name) > 0 { printf(",\"name\":\"%s\"", stmt.enum_name) }
+                    if length(stmt.vardecl_name) > 0 { printf(",\"var\":\"%s\"", stmt.vardecl_name) }
+                    if length(stmt.vardecl_type) > 0 { printf(",\"type\":\"%s\"", stmt.vardecl_type) }
+                    if length(stmt.func_return_type) > 0 { printf(",\"return_type\":\"%s\"", stmt.func_return_type) }
+                    printf("}")
+                    si = si + 1
+                }
+                printf("],\n\"exprs\":[\n")
+                var ei = 0
+                let expr_count = graph_parser.expr_pool.length()
+                while ei < expr_count {
+                    let expr = graph_parser.expr_pool.get(ei)
+                    if ei > 0 { printf(",\n") }
+                    printf("{\"id\":%lld,\"kind\":", ei)
+                    let ek = expr.kind
+                    if ek == 0 { printf("\"none\"") }
+                    else if ek == 1 { printf("\"literal\"") }
+                    else if ek == 2 { printf("\"str_interp\"") }
+                    else if ek == 3 { printf("\"identifier\"") }
+                    else if ek == 4 { printf("\"binary_op\"") }
+                    else if ek == 5 { printf("\"unary_op\"") }
+                    else if ek == 6 { printf("\"func_call\"") }
+                    else if ek == 7 { printf("\"struct_init\"") }
+                    else if ek == 8 { printf("\"field_access\"") }
+                    else if ek == 9 { printf("\"method_call\"") }
+                    else if ek == 10 { printf("\"index\"") }
+                    else if ek == 11 { printf("\"check\"") }
+                    else if ek == 12 { printf("\"slice\"") }
+                    else if ek == 13 { printf("\"range\"") }
+                    else if ek == 14 { printf("\"array\"") }
+                    else if ek == 15 { printf("\"tuple\"") }
+                    else if ek == 16 { printf("\"borrow\"") }
+                    else if ek == 17 { printf("\"deref\"") }
+                    else if ek == 18 { printf("\"try\"") }
+                    else if ek == 19 { printf("\"catch\"") }
+                    else if ek == 20 { printf("\"asm\"") }
+                    else { printf("\"unknown\"") }
+                    if length(expr.ident_name) > 0 { printf(",\"name\":\"%s\"", expr.ident_name) }
+                    if length(expr.func_name) > 0 { printf(",\"func\":\"%s\"", expr.func_name) }
+                    if length(expr.struct_name) > 0 { printf(",\"struct\":\"%s\"", expr.struct_name) }
+                    if length(expr.inferred_type) > 0 { printf(",\"type\":\"%s\"", expr.inferred_type) }
+                    if length(expr.binop_op) > 0 { printf(",\"op\":\"%s\"", expr.binop_op) }
+                    if length(expr.unop_op) > 0 { printf(",\"op\":\"%s\"", expr.unop_op) }
+                    printf("}")
+                    ei = ei + 1
+                }
+                printf("]}\n")
+            } else if strcmp(graph_sub, "query") == 0 {
+                // Query program structure
+                if length(graph_fn) > 0 {
+                    // Search for specific function
+                    var found = false
+                    var si2 = 0
+                    let stmt_count2 = graph_parser.stmt_pool.length()
+                    while si2 < stmt_count2 {
+                        let stmt2 = graph_parser.stmt_pool.get(si2)
+                        if stmt2.kind == 4 && strcmp(stmt2.func_name, graph_fn) == 0 {
+                            printf("function: %s\n", stmt2.func_name)
+                            printf("  return: %s\n", stmt2.func_return_type)
+                            printf("  params: ")
+                            let param_count = stmt2.func_params.length()
+                            var pi = 0
+                            while pi < param_count {
+                                let p = stmt2.func_params.get(pi)
+                                printf("%s: %s", p.name, p.ptype)
+                                pi = pi + 1
+                                if pi < param_count { printf(", ") }
+                            }
+                            printf("\n")
+                            found = true
+                        }
+                        si2 = si2 + 1
+                    }
+                    if !found {
+                        printf("function '%s' not found\n", graph_fn)
+                    }
+                } else {
+                    // List all top-level declarations
+                    let root = graph_parser.stmt_pool.get(graph_program_idx)
+                    printf("file: %s\n", graph_file)
+                    var si3 = 0
+                    while si3 < root.block_stmts.length() {
+                        let idx = root.block_stmts.get(si3)
+                        let stmt3 = graph_parser.stmt_pool.get(idx)
+                        if stmt3.kind == 4 {
+                            printf("  fn %s(%s) %s\n", stmt3.func_name, "", stmt3.func_return_type)
+                        } else if stmt3.kind == 5 {
+                            printf("  struct %s\n", stmt3.struct_name)
+                        } else if stmt3.kind == 8 {
+                            printf("  enum %s\n", stmt3.enum_name)
+                        } else if stmt3.kind == 22 {
+                            printf("  error %s\n", stmt3.error_name)
+                        } else if stmt3.kind == 2 {
+                            printf("  var %s: %s\n", stmt3.vardecl_name, stmt3.vardecl_type)
+                        }
+                        si3 = si3 + 1
+                    }
+                }
+            } else {
+                printf("Error: Unknown graph subcommand '%s'\n", graph_sub)
+                printf("Supported: export, query\n")
+                return 1
+            }
+        }
+        return 0
+    }
+
+    // === 'run' subcommand (or default file compilation) ===
     var input_file = ""
+    var is_run = false
+    unsafe {
+        if strcmp(first_arg, "run") == 0 {
+            is_run = true
+        }
+    }
+    if is_run {
+        if argc < 3 {
+            printf("Error: No input file specified\n")
+            printf("Usage: kai run <file>\n")
+            return 1
+        }
+        unsafe {
+            input_file = argv[2] as Str
+        }
+    } else {
+        input_file = first_arg
+    }
+
     var output_bin = ""
     var emit_c_only = false
     var opt_level = "-O2"
-    var emit_llvm = false
+    var json_mode = false
+    var check_only = false
 
-    var i = 1
+    var i = 2
+    if !is_run {
+        i = 2
+    }
     while i < argc {
         let arg = argv[i] as Str
-        var is_c = false
-        var is_o = false
-        var is_o0 = false
-        var is_o1 = false
-        var is_o2 = false
-        var is_o3 = false
-        var is_os = false
-        var is_llvm = false
+        var matched = true
         unsafe {
             if strcmp(arg, "-c") == 0 {
-                is_c = true
+                emit_c_only = true
             } else if strcmp(arg, "-o") == 0 {
-                is_o = true
+                if i + 1 < argc {
+                    i = i + 1
+                    output_bin = argv[i] as Str
+                } else {
+                    printf("Error: -o requires an argument\n")
+                    return 1
+                }
             } else if strcmp(arg, "-O0") == 0 {
-                is_o0 = true
+                opt_level = "-O0"
             } else if strcmp(arg, "-O1") == 0 {
-                is_o1 = true
+                opt_level = "-O1"
             } else if strcmp(arg, "-O2") == 0 {
-                is_o2 = true
+                opt_level = "-O2"
             } else if strcmp(arg, "-O3") == 0 {
-                is_o3 = true
+                opt_level = "-O3"
             } else if strcmp(arg, "-Os") == 0 {
-                is_os = true
-            } else if strcmp(arg, "-emit-llvm") == 0 {
-                is_llvm = true
+                opt_level = "-Os"
+            } else if strcmp(arg, "--json") == 0 {
+                json_mode = true
+            } else if strcmp(arg, "check") == 0 {
+                check_only = true
+            } else {
+                matched = false
             }
         }
-        if is_c {
-            emit_c_only = true
-        } else if is_llvm {
-            emit_llvm = true
-        } else if is_o {
-            if i + 1 < argc {
-                i = i + 1
-                output_bin = argv[i] as Str
-            } else {
-                printf("Error: -o requires an argument")
-                return 1
-            }
-        } else if is_o0 {
-            opt_level = "-O0"
-        } else if is_o1 {
-            opt_level = "-O1"
-        } else if is_o2 {
-            opt_level = "-O2"
-        } else if is_o3 {
-            opt_level = "-O3"
-        } else if is_os {
-            opt_level = "-Os"
-        } else {
+        if matched == false && !is_run {
             input_file = arg
         }
         i = i + 1
     }
 
     if length(input_file) == 0 {
-        printf("Error: No input file specified")
+        printf("Error: No input file specified\n")
         return 1
     }
 
@@ -130,14 +1071,6 @@ fn main(argc: Int, argv: **Char) -> Int {
             exe_include_flag = "-I" + exe_dir
             runtime_path = exe_dir + "/kai_runtime.c"
         }
-        allocator.free(buf)
-    }
-
-    var llvm_flags = ""
-    if fs_exists("/opt/homebrew/opt/llvm@21") {
-        llvm_flags = " -I /opt/homebrew/opt/llvm@21/include -L /opt/homebrew/opt/llvm@21/lib -lLLVM"
-    } else if fs_exists("/opt/homebrew/opt/llvm@20") {
-        llvm_flags = " -I /opt/homebrew/opt/llvm@20/include -L /opt/homebrew/opt/llvm@20/lib -lLLVM"
     }
 
     let base = get_base_name(&allocator, input_file)
@@ -149,6 +1082,9 @@ fn main(argc: Int, argv: **Char) -> Int {
 
     let source_res = read_to_string(&allocator, input_file)
     if source_res.tag != 0 {
+        if json_mode {
+            printf("{\"messages\":[{\"code\":\"E0099\",\"message\":\"Failed to read input file: '%s'\"}]}\n", input_file)
+        }
         return 4
     }
     let source = source_res.value as Str
@@ -156,46 +1092,46 @@ fn main(argc: Int, argv: **Char) -> Int {
     var lexer = Lexer(&allocator, source)
     lexer.lex()
     if lexer.has_error {
+        if json_mode {
+            printf("{\"messages\":[{\"code\":\"E0100\",\"message\":\"Lexer error\",\"file\":\"%s\"}],\"error\":true}\n", input_file)
+        }
         return 2
     }
     var parser = Parser(&allocator, lexer.tokens)
     let program_idx = parser.parse_program()
     if program_idx < 0 {
+        if json_mode {
+            printf("{\"messages\":[{\"code\":\"E0101\",\"message\":\"Parse error\",\"file\":\"%s\"}],\"error\":true}\n", input_file)
+        }
         return 3
     }
     var checker = TypeChecker(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, input_file)
     let success = checker.check_program(program_idx)
     if !success {
+        if json_mode {
+            printf("{\"result\":\"typecheck_failed\",\"file\":\"%s\"}\n", input_file)
+        }
         return 4
     }
-    if emit_llvm {
-        var gen_llvm = LLVMCodegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
-        let output = gen_llvm.generate(program_idx)
-        let ll_file = base + ".ll"
-        let write_res = write_string(ll_file, output)
-        if write_res.tag != 0 {
-            return 5
+
+    if check_only {
+        if json_mode {
+            printf("{\"result\":\"ok\",\"file\":\"%s\"}\n", input_file)
         }
-        if emit_c_only {
-            return 0
-        }
-        let cmd = "clang" + llvm_flags + " " + ll_file + " " + runtime_path + " -o " + bin_name
-        unsafe {
-            return system(cmd as *Char)
-        }
-    } else {
-        var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
-        let output = gen.generate(program_idx)
-        let write_res = write_string(c_file, output)
-        if write_res.tag != 0 {
-            return 5
-        }
-        if emit_c_only {
-            return 0
-        }
-        let cmd = "clang " + exe_include_flag + llvm_flags + " " + opt_level + " " + c_file + " -o " + bin_name
-        unsafe {
-            return system(cmd as *Char)
-        }
+        return 0
+    }
+
+    var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
+    let output = gen.generate(program_idx)
+    let write_res = write_string(c_file, output)
+    if write_res.tag != 0 {
+        return 5
+    }
+    if emit_c_only {
+        return 0
+    }
+    let cmd = "clang " + exe_include_flag + " " + opt_level + " " + c_file + " -o " + bin_name
+    unsafe {
+        return system(cmd as *Char)
     }
 }

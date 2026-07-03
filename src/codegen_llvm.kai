@@ -31,6 +31,7 @@ import type_map_find from codegen
 import read_to_string from std.io.file
 import Lexer from lexer
 import Parser from parser
+extern fn printf(fmt: *Void) -> Int
 
 // ============================================================================
 // LLVM C FFI Imports
@@ -3321,6 +3322,8 @@ fn handle_import(self, stmt_idx: Int) {
             // since they are added to the shared stmt_pool.
             self.register_all_types()
         }
+    } else if module_key != "" {
+        printf("warning: module '%s' not found at any search path\n", module_key)
     }
 }
 
