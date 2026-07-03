@@ -651,6 +651,8 @@ struct TypeChecker {
     ArrayList_StructInfo struct_info;
     bool has_error;
     const char* current_func_ret_type;
+    const char* source_file;
+    bool has_any_import;
 };
 typedef struct StrMapEntry StrMapEntry;
 struct StrMapEntry {
@@ -797,7 +799,7 @@ Lexer Lexer_init(KaiAllocator* allocator, const char* source);
 char Lexer_peek(Lexer* self, int64_t offset);
 char Lexer_advance(Lexer* self);
 void Lexer_emit(Lexer* self, TokenType ttype, TokenValue value);
-void Lexer_lex_error(Lexer* self);
+void Lexer_lex_error(Lexer* self, const char* msg);
 void Lexer_skip_line_comment(Lexer* self);
 void Lexer_skip_block_comment(Lexer* self);
 void Lexer_skip_whitespace(Lexer* self);
@@ -1032,11 +1034,12 @@ void ArrayList_StructInfo_set(ArrayList_StructInfo* self, int64_t index, StructI
 StructInfo ArrayList_StructInfo_pop(ArrayList_StructInfo* self);
 int64_t ArrayList_StructInfo_length(ArrayList_StructInfo* self);
 void ArrayList_StructInfo_deinit(ArrayList_StructInfo* self);
-TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool);
+TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, const char* source_file);
 void TypeChecker_enter_scope(TypeChecker* self);
 void TypeChecker_exit_scope(TypeChecker* self);
 void TypeChecker_define_symbol(TypeChecker* self, const char* name, const char* type_name, bool is_mutable, const char* kind);
 bool TypeChecker_check_program(TypeChecker* self, int64_t top_stmt_idx);
+void TypeChecker_detect_imports(TypeChecker* self, int64_t top_stmt_idx);
 void TypeChecker_register_struct_info(TypeChecker* self, int64_t top_stmt_idx);
 bool TypeChecker_has_drop_method(TypeChecker* self, const char* type_name);
 void TypeChecker_collect_block_drops(TypeChecker* self, int64_t stmt_idx);
@@ -1050,6 +1053,7 @@ const char* TypeChecker_get_block_yield_type(TypeChecker* self, int64_t stmt_idx
 void TypeChecker_mark_expr_moved(TypeChecker* self, int64_t expr_idx);
 const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx);
 bool TypeChecker_expr_is_mutable(TypeChecker* self, int64_t expr_idx);
+bool TypeChecker_is_enum_or_error_type(TypeChecker* self, const char* name);
 void TypeChecker_check_identifier(TypeChecker* self, int64_t expr_idx);
 void TypeChecker_check_field_access(TypeChecker* self, int64_t expr_idx);
 void TypeChecker_check_method_call(TypeChecker* self, int64_t expr_idx);
@@ -1882,7 +1886,8 @@ char Lexer_advance(Lexer* self) {
 void Lexer_emit(Lexer* self, TokenType ttype, TokenValue value) {
     ArrayList_Token_push(self->tokens, (Token){ .tok_type = ttype, .value = value, .line = self->line, .column = self->column });
 }
-void Lexer_lex_error(Lexer* self) {
+void Lexer_lex_error(Lexer* self, const char* msg) {
+    printf("error[E0100]: %s at line %lld, column %lld\n", msg, self->line, self->column);
     self->has_error = true;
 }
 void Lexer_skip_line_comment(Lexer* self) {
@@ -2265,6 +2270,10 @@ void Lexer_lex(Lexer* self) {
 } else if (c == '.') {
     (void)(Lexer_advance(self));
     Lexer_emit(self, TokenType_DOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "." } } });
+} else {
+    (void)(Lexer_advance(self));
+    printf("error[E0100]: unexpected character '%c' at line %lld, column %lld\n", c, self->line, self->column);
+    self->has_error = true;
 }
 }
 }
@@ -2952,7 +2961,7 @@ const char* tv_get_str(TokenValue val) {
     result = s;
 } else {
     {
-    printf("tv_get_str failed!\n");
+    printf("error[E0101]: internal error: unexpected token value type\n");
     exit(1);
 }
 } 
@@ -3317,188 +3326,8 @@ Token Parser_expect(Parser* self, TokenType ttype) {
     return Parser_advance(self);
 }
     {
-    printf("expect failed! found token at line:\n");
-    printi(tok.line);
-    printf("col:\n");
-    printi(tok.column);
-    printf("expected tag:\n");
-    printi(((int64_t)(ttype)));
-    printf("found tag:\n");
-    printi(((int64_t)(tok.tok_type)));
-    if (tok.tok_type == TokenType_INT_LIT) {
-    exit(0);
-} else if (tok.tok_type == TokenType_FLOAT_LIT) {
+    printf("error[E0101]: expected token type %lld but found %lld at line %lld, column %lld\n", ((int64_t)(ttype)), ((int64_t)(tok.tok_type)), tok.line, tok.column);
     exit(1);
-} else if (tok.tok_type == TokenType_BOOL_LIT) {
-    exit(2);
-} else if (tok.tok_type == TokenType_CHAR_LIT) {
-    exit(3);
-} else if (tok.tok_type == TokenType_STRING_LIT) {
-    exit(4);
-} else if (tok.tok_type == TokenType_IDENTIFIER) {
-    exit(5);
-} else if (tok.tok_type == TokenType_LET) {
-    exit(6);
-} else if (tok.tok_type == TokenType_VAR) {
-    exit(7);
-} else if (tok.tok_type == TokenType_FUNC) {
-    exit(8);
-} else if (tok.tok_type == TokenType_IF) {
-    exit(9);
-} else if (tok.tok_type == TokenType_ELSE) {
-    exit(10);
-} else if (tok.tok_type == TokenType_WHILE) {
-    exit(11);
-} else if (tok.tok_type == TokenType_FOR) {
-    exit(12);
-} else if (tok.tok_type == TokenType_IN) {
-    exit(13);
-} else if (tok.tok_type == TokenType_RETURN) {
-    exit(14);
-} else if (tok.tok_type == TokenType_STRUCT) {
-    exit(16);
-} else if (tok.tok_type == TokenType_IMPL) {
-    exit(17);
-} else if (tok.tok_type == TokenType_MUT) {
-    exit(18);
-} else if (tok.tok_type == TokenType_UNSAFE) {
-    exit(19);
-} else if (tok.tok_type == TokenType_EXTERN) {
-    exit(20);
-} else if (tok.tok_type == TokenType_ENUM) {
-    exit(21);
-} else if (tok.tok_type == TokenType_MATCH) {
-    exit(22);
-} else if (tok.tok_type == TokenType_CASE) {
-    exit(23);
-} else if (tok.tok_type == TokenType_USE) {
-    exit(24);
-} else if (tok.tok_type == TokenType_CHECK) {
-    exit(25);
-} else if (tok.tok_type == TokenType_TRAIT) {
-    exit(26);
-} else if (tok.tok_type == TokenType_PUB) {
-    exit(27);
-} else if (tok.tok_type == TokenType_IMPORT) {
-    exit(28);
-} else if (tok.tok_type == TokenType_CIMPORT) {
-    exit(99);
-} else if (tok.tok_type == TokenType_FROM) {
-    exit(29);
-} else if (tok.tok_type == TokenType_AS) {
-    exit(30);
-} else if (tok.tok_type == TokenType_SIZEOF) {
-    exit(31);
-} else if (tok.tok_type == TokenType_DEFER) {
-    exit(32);
-} else if (tok.tok_type == TokenType_NONE) {
-    exit(33);
-} else if (tok.tok_type == TokenType_FN) {
-    exit(34);
-} else if (tok.tok_type == TokenType_TRY) {
-    exit(35);
-} else if (tok.tok_type == TokenType_CATCH) {
-    exit(36);
-} else if (tok.tok_type == TokenType_OWN) {
-    exit(37);
-} else if (tok.tok_type == TokenType_ERROR) {
-    exit(38);
-} else if (tok.tok_type == TokenType_ASM) {
-    exit(39);
-} else if (tok.tok_type == TokenType_VOLATILE) {
-    exit(40);
-} else if (tok.tok_type == TokenType_PLUS) {
-    exit(41);
-} else if (tok.tok_type == TokenType_MINUS) {
-    exit(42);
-} else if (tok.tok_type == TokenType_MUL) {
-    exit(43);
-} else if (tok.tok_type == TokenType_DIV) {
-    exit(44);
-} else if (tok.tok_type == TokenType_MOD) {
-    exit(45);
-} else if (tok.tok_type == TokenType_ASSIGN) {
-    exit(46);
-} else if (tok.tok_type == TokenType_PLUS_ASSIGN) {
-    exit(47);
-} else if (tok.tok_type == TokenType_MINUS_ASSIGN) {
-    exit(48);
-} else if (tok.tok_type == TokenType_AND) {
-    exit(49);
-} else if (tok.tok_type == TokenType_OR) {
-    exit(50);
-} else if (tok.tok_type == TokenType_NOT) {
-    exit(51);
-} else if (tok.tok_type == TokenType_PIPE) {
-    exit(52);
-} else if (tok.tok_type == TokenType_BITXOR) {
-    exit(53);
-} else if (tok.tok_type == TokenType_BITNOT) {
-    exit(54);
-} else if (tok.tok_type == TokenType_LSHIFT) {
-    exit(55);
-} else if (tok.tok_type == TokenType_RSHIFT) {
-    exit(56);
-} else if (tok.tok_type == TokenType_EQ) {
-    exit(57);
-} else if (tok.tok_type == TokenType_NE) {
-    exit(58);
-} else if (tok.tok_type == TokenType_LT) {
-    exit(59);
-} else if (tok.tok_type == TokenType_LE) {
-    exit(60);
-} else if (tok.tok_type == TokenType_GT) {
-    exit(61);
-} else if (tok.tok_type == TokenType_GE) {
-    exit(62);
-} else if (tok.tok_type == TokenType_COLON) {
-    exit(63);
-} else if (tok.tok_type == TokenType_ARROW) {
-    exit(64);
-} else if (tok.tok_type == TokenType_FAT_ARROW) {
-    exit(65);
-} else if (tok.tok_type == TokenType_COMMA) {
-    exit(66);
-} else if (tok.tok_type == TokenType_LPAREN) {
-    exit(67);
-} else if (tok.tok_type == TokenType_RPAREN) {
-    exit(68);
-} else if (tok.tok_type == TokenType_LBRACKET) {
-    exit(69);
-} else if (tok.tok_type == TokenType_RBRACKET) {
-    exit(70);
-} else if (tok.tok_type == TokenType_LBRACE) {
-    exit(71);
-} else if (tok.tok_type == TokenType_RBRACE) {
-    exit(72);
-} else if (tok.tok_type == TokenType_DOTDOT) {
-    exit(73);
-} else if (tok.tok_type == TokenType_DOTDOTEQ) {
-    exit(74);
-} else if (tok.tok_type == TokenType_DOT) {
-    exit(75);
-} else if (tok.tok_type == TokenType_AMP) {
-    exit(76);
-} else if (tok.tok_type == TokenType_HASH) {
-    exit(77);
-} else if (tok.tok_type == TokenType_QUESTION) {
-    exit(78);
-} else if (tok.tok_type == TokenType_SEMICOLON) {
-    exit(85);
-} else if (tok.tok_type == TokenType_BREAK) {
-    exit(83);
-} else if (tok.tok_type == TokenType_CONTINUE) {
-    exit(84);
-} else if (tok.tok_type == TokenType_NEWLINE) {
-    exit(79);
-} else if (tok.tok_type == TokenType_INDENT) {
-    exit(80);
-} else if (tok.tok_type == TokenType_DEDENT) {
-    exit(81);
-} else if (tok.tok_type == TokenType_EOF) {
-    exit(82);
-} 
-    exit(255);
 }
     return tok;
 }
@@ -4315,7 +4144,7 @@ int64_t Parser_parse_pattern(Parser* self) {
     return Parser_add_pattern(self, node);
 } else {
     {
-    printf("parse_pattern failed!\n");
+    printf("error[E0101]: unexpected token in pattern at line %lld, column %lld\n", tok.line, tok.column);
     exit(1);
 }
     return (-1);
@@ -4423,7 +4252,7 @@ int64_t Parser_parse_for_stmt(Parser* self) {
     is_inclusive = expr_node.range_inclusive;
 } else {
     {
-    printf("parse_for_stmt failed!\n");
+    printf("error[E0101]: invalid expression in for loop at line %lld, column %lld\n", Parser_peek(self, 0).line, Parser_peek(self, 0).column);
     exit(1);
 }
 }
@@ -4489,7 +4318,7 @@ int64_t Parser_parse_block(Parser* self) {
 }
     if (Parser_peek(self, 0).tok_type == TokenType_EOF) {
     {
-    printf("parse_block LBRACE EOF failed!\n");
+    printf("error[E0101]: expected '}' but reached end of file\n");
     exit(1);
 }
 }
@@ -4953,13 +4782,7 @@ int64_t Parser_parse_primary(Parser* self) {
     return first;
 } else {
     {
-    printf("parse_primary failed!\n");
-    printf("Line: ");
-    printi(tok.line);
-    printf("Col: ");
-    printi(tok.column);
-    printf("Token type int: ");
-    printi(((int64_t)(tok.tok_type)));
+    printf("error[E0101]: unexpected token at line %lld, column %lld (token type: %lld)\n", tok.line, tok.column, ((int64_t)(tok.tok_type)));
     exit(1);
 }
     return (-1);
@@ -5213,7 +5036,7 @@ void ArrayList_StructInfo_deinit(ArrayList_StructInfo* self) {
     KaiAllocator_free(self->allocator, (char*)(self->data));
 }
 }
-TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool) {
+TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, const char* source_file) {
     TypeChecker self = (TypeChecker){0};
     self.allocator = allocator;
     self.stmt_pool = stmt_pool;
@@ -5224,6 +5047,8 @@ TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_p
     self.struct_info = ArrayList_StructInfo_init(allocator);
     self.has_error = false;
     self.current_func_ret_type = "";
+    self.source_file = source_file;
+    self.has_any_import = false;
     return self;
 }
 void TypeChecker_enter_scope(TypeChecker* self) {
@@ -5247,10 +5072,26 @@ void TypeChecker_define_symbol(TypeChecker* self, const char* name, const char* 
 }
 bool TypeChecker_check_program(TypeChecker* self, int64_t top_stmt_idx) {
     TypeChecker_register_struct_info(self, top_stmt_idx);
+    TypeChecker_detect_imports(self, top_stmt_idx);
     TypeChecker_enter_scope(self);
     TypeChecker_check_stmt(self, top_stmt_idx);
     TypeChecker_exit_scope(self);
     return (!self->has_error);
+}
+void TypeChecker_detect_imports(TypeChecker* self, int64_t top_stmt_idx) {
+    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, top_stmt_idx);
+    if (stmt.kind == StmtKind_sk_block) {
+    int64_t i = 0;
+    while (i < ArrayList_Int_length(&(stmt.block_stmts))) {
+    int64_t s_idx = ArrayList_Int_get(&(stmt.block_stmts), i);
+    StmtNode s = ArrayList_StmtNode_get(self->stmt_pool, s_idx);
+    if ((s.kind == StmtKind_sk_import) || (s.kind == StmtKind_sk_cimport)) {
+    self->has_any_import = true;
+    return;
+}
+    i = (i + 1);
+}
+}
 }
 void TypeChecker_register_struct_info(TypeChecker* self, int64_t top_stmt_idx) {
     StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, top_stmt_idx);
@@ -5444,6 +5285,9 @@ int64_t TypeChecker_find_func_decl(TypeChecker* self, const char* name) {
     while (idx < ArrayList_StmtNode_length(self->stmt_pool)) {
     StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, idx);
     if ((stmt.kind == StmtKind_sk_func_decl) && (strcmp(stmt.func_name, name) == 0)) {
+    return idx;
+}
+    if ((stmt.kind == StmtKind_sk_extern) && (strcmp(stmt.extern_name, name) == 0)) {
     return idx;
 }
     idx = (idx + 1);
@@ -5775,6 +5619,20 @@ bool TypeChecker_expr_is_mutable(TypeChecker* self, int64_t expr_idx) {
 }
     return false;
 }
+bool TypeChecker_is_enum_or_error_type(TypeChecker* self, const char* name) {
+    int64_t idx = 0;
+    while (idx < ArrayList_StmtNode_length(self->stmt_pool)) {
+    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, idx);
+    if ((stmt.kind == StmtKind_sk_enum_decl) && (strcmp(stmt.enum_name, name) == 0)) {
+    return true;
+}
+    if ((stmt.kind == StmtKind_sk_error_decl) && (strcmp(stmt.error_name, name) == 0)) {
+    return true;
+}
+    idx = (idx + 1);
+}
+    return false;
+}
 void TypeChecker_check_identifier(TypeChecker* self, int64_t expr_idx) {
     ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
     const char* name = expr.ident_name;
@@ -5782,22 +5640,19 @@ void TypeChecker_check_identifier(TypeChecker* self, int64_t expr_idx) {
     Symbol sym = SymbolTable_lookup_symbol(&(table), name, &(self->symbol_tables));
     if (strlen(sym.name) > 0) {
     if (sym.moved) {
-    printf("error[E0010]: Cannot use: ");
-    prints(name);
-    printf(" after it has been moved\n");
+    printf("error[E0009]: use of moved value: '%s'\n", name);
     self->has_error = true;
 }
+} else if ((!TypeChecker_is_enum_or_error_type(self, name)) && (!self->has_any_import)) {
+    printf("error[E0019]: undefined identifier: '%s'\n", name);
+    self->has_error = true;
 }
 }
 void TypeChecker_check_field_access(TypeChecker* self, int64_t expr_idx) {
     ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
     const char* recv_type = TypeChecker_get_expr_type(self, expr.field_expr);
     if ((strlen(recv_type) > 0) && ((recv_type)[0] == ((char)(63)))) {
-    printf("error[E0001]: Cannot access field '");
-    prints(expr.field_name);
-    printf("' on optional type '");
-    prints(recv_type);
-    printf("'. Unwrap it first.\n");
+    printf("error[E0011]: cannot access field '%s' on optional type '%s'. unwrap it first\n", expr.field_name, recv_type);
     self->has_error = true;
 }
 }
@@ -5805,11 +5660,7 @@ void TypeChecker_check_method_call(TypeChecker* self, int64_t expr_idx) {
     ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
     const char* recv_type = TypeChecker_get_expr_type(self, expr.meth_expr);
     if ((strlen(recv_type) > 0) && ((recv_type)[0] == ((char)(63)))) {
-    printf("error[E0001]: Cannot call method '");
-    prints(expr.meth_name);
-    printf(" on optional type '");
-    prints(recv_type);
-    printf(". Unwrap it first.\n");
+    printf("error[E0012]: cannot call method '%s' on optional type '%s'. unwrap it first\n", expr.meth_name, recv_type);
     self->has_error = true;
 }
 }
@@ -5825,9 +5676,7 @@ void TypeChecker_check_return_stmt(TypeChecker* self, int64_t stmt_idx) {
     SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
     Symbol sym = SymbolTable_lookup_symbol(&(table), name, &(self->symbol_tables));
     if ((strcmp(sym.kind, "var") == 0) || (strcmp(sym.kind, "param") == 0)) {
-    printf("error[E0001]: Cannot return reference to local variable '");
-    prints(name);
-    printf("'\n");
+    printf("error[E0010]: cannot return reference to local variable '%s'\n", name);
     self->has_error = true;
 }
 }
@@ -5839,11 +5688,7 @@ void TypeChecker_check_return_stmt(TypeChecker* self, int64_t stmt_idx) {
     const char* expected_ret = self->current_func_ret_type;
     if ((strlen(expected_ret) > 0) && (strcmp(expected_ret, "<infer>") != 0)) {
     if (!TypeChecker_types_compatible(self, expected_ret, val_type)) {
-    printf("error[E0001]: Return type mismatch: expected '");
-    prints(expected_ret);
-    printf("', got '");
-    prints(val_type);
-    printf("'\n");
+    printf("error[E0007]: return type mismatch: expected '%s', got '%s'\n", expected_ret, val_type);
     self->has_error = true;
 }
 }
@@ -5871,13 +5716,7 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     if (strlen(var_type) == 0) {
     var_type = val_type;
 } else if (!TypeChecker_types_compatible(self, var_type, val_type)) {
-    printf("error[E0001]: Type mismatch in declaration of '");
-    prints(stmt.vardecl_name);
-    printf("': expected '");
-    prints(var_type);
-    printf("', got '");
-    prints(val_type);
-    printf("'\n");
+    printf("error[E0001]: type mismatch in declaration of '%s': expected '%s', got '%s'\n", stmt.vardecl_name, var_type, val_type);
     self->has_error = true;
 }
     TypeChecker_define_symbol(self, stmt.vardecl_name, var_type, stmt.vardecl_mut, "var");
@@ -5895,29 +5734,21 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
     Symbol sym = SymbolTable_lookup_symbol(&(table), target_expr.ident_name, &(self->symbol_tables));
     if ((strlen(sym.name) > 0) && (!sym.is_mutable)) {
-    printf("error[E0001]: Cannot assign to immutable variable '");
-    prints(target_expr.ident_name);
-    printf("'\n");
+    printf("error[E0008]: cannot assign to immutable variable '%s'\n", target_expr.ident_name);
     self->has_error = true;
 }
 }
 }
     const char* val_type = TypeChecker_get_expr_type(self, stmt.assign_value);
     if (!TypeChecker_types_compatible(self, target_type, val_type)) {
-    printf("error[E0001]: Type mismatch in assignment: target name: '");
+    const char* target_name = "<non-ident>";
     if (stmt.assign_target >= 0) {
     ExprNode target_expr = ArrayList_ExprNode_get(self->expr_pool, stmt.assign_target);
     if (target_expr.kind == ExprKind_ek_identifier) {
-    prints(target_expr.ident_name);
-} else {
-    printf("<non-ident>");
+    target_name = target_expr.ident_name;
 }
 }
-    printf("', target is '");
-    prints(target_type);
-    printf("', value is '");
-    prints(val_type);
-    printf("'\n");
+    printf("error[E0002]: type mismatch in assignment to '%s': expected '%s', got '%s'\n", target_name, target_type, val_type);
     self->has_error = true;
 }
     TypeChecker_mark_expr_moved(self, stmt.assign_value);
@@ -6039,6 +5870,26 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
 }
     return;
 }
+    if (stmt.kind == StmtKind_sk_struct_decl) {
+    return;
+}
+    if (stmt.kind == StmtKind_sk_enum_decl) {
+    return;
+}
+    if (stmt.kind == StmtKind_sk_extern) {
+    TypeChecker_define_symbol(self, stmt.extern_name, stmt.extern_return, false, "func");
+    return;
+}
+    if (stmt.kind == StmtKind_sk_import) {
+    return;
+}
+    if (stmt.kind == StmtKind_sk_cimport) {
+    const char* alias = stmt.cimport_alias;
+    if (strlen(alias) > 0) {
+    TypeChecker_define_symbol(self, alias, "Void", false, "func");
+}
+    return;
+}
     if (stmt.kind == StmtKind_sk_error_decl) {
     return;
 }
@@ -6076,41 +5927,37 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     int64_t func_idx = TypeChecker_find_func_decl(self, name);
     if (func_idx >= 0) {
     StmtNode decl = ArrayList_StmtNode_get(self->stmt_pool, func_idx);
-    if (ArrayList_Param_length(&(decl.func_params)) != ArrayList_Int_length(&(expr.func_args))) {
-    printf("error[E0001]: Argument count mismatch for function '");
-    prints(name);
-    printf("': expected ");
-    prints(int_to_str(ArrayList_Param_length(&(decl.func_params))));
-    printf(", got ");
-    prints(int_to_str(ArrayList_Int_length(&(expr.func_args))));
-    printf("\n");
+    bool is_extern = (decl.kind == StmtKind_sk_extern);
+    ArrayList_Param params = decl.func_params;
+    ArrayList_Str type_params = decl.func_type_params;
+    if (is_extern) {
+    params = decl.extern_params;
+    type_params = empty_str_array();
+}
+    if (ArrayList_Param_length(&(params)) != ArrayList_Int_length(&(expr.func_args))) {
+    printf("error[E0005]: argument count mismatch for function '%s': expected %lld, got %lld\n", name, ArrayList_Param_length(&(params)), ArrayList_Int_length(&(expr.func_args)));
     self->has_error = true;
 } else {
-    if (ArrayList_Str_length(&(decl.func_type_params)) > 0) {
+    if (ArrayList_Str_length(&(type_params)) > 0) {
     return;
 }
     int64_t arg_i = 0;
     while (arg_i < ArrayList_Int_length(&(expr.func_args))) {
     int64_t arg = ArrayList_Int_get(&(expr.func_args), arg_i);
-    Param param = ArrayList_Param_get(&(decl.func_params), arg_i);
+    Param param = ArrayList_Param_get(&(params), arg_i);
     const char* arg_type = TypeChecker_get_expr_type(self, arg);
     const char* ptype = param.ptype;
     bool is_generic_param = (((strlen(ptype) == 1) && ((ptype)[0] >= ((char)(65)))) && ((ptype)[0] <= ((char)(90))));
     if ((!is_generic_param) && (!TypeChecker_types_compatible(self, ptype, arg_type))) {
-    printf("error[E0001]: Argument type mismatch for function '");
-    prints(name);
-    printf("', parameter '");
-    prints(param.name);
-    printf("': expected '");
-    prints(ptype);
-    printf("', got '");
-    prints(arg_type);
-    printf("'\n");
+    printf("error[E0003]: argument type mismatch for function '%s', parameter '%s': expected '%s', got '%s'\n", name, param.name, ptype, arg_type);
     self->has_error = true;
 }
     arg_i = (arg_i + 1);
 }
 }
+} else if (!self->has_any_import) {
+    printf("error[E0020]: undefined function: '%s'\n", name);
+    self->has_error = true;
 }
     return;
 }
@@ -6135,13 +5982,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (meth_idx >= 0) {
     StmtNode decl = ArrayList_StmtNode_get(self->stmt_pool, meth_idx);
     if (ArrayList_Param_length(&(decl.func_params)) != (ArrayList_Int_length(&(expr.meth_args)) + 1)) {
-    printf("error[E0001]: Argument count mismatch for method '");
-    prints(meth_name);
-    printf("': expected ");
-    prints(int_to_str((ArrayList_Param_length(&(decl.func_params)) - 1)));
-    printf(", got ");
-    prints(int_to_str(ArrayList_Int_length(&(expr.meth_args))));
-    printf("\n");
+    printf("error[E0006]: argument count mismatch for method '%s': expected %lld, got %lld\n", meth_name, (ArrayList_Param_length(&(decl.func_params)) - 1), ArrayList_Int_length(&(expr.meth_args)));
     self->has_error = true;
 } else {
     int64_t arg_i = 0;
@@ -6150,20 +5991,15 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     Param param = ArrayList_Param_get(&(decl.func_params), (arg_i + 1));
     const char* arg_type = TypeChecker_get_expr_type(self, arg);
     if (!TypeChecker_types_compatible(self, param.ptype, arg_type)) {
-    printf("error[E0001]: Argument type mismatch for method '");
-    prints(meth_name);
-    printf("', parameter '");
-    prints(param.name);
-    printf("': expected '");
-    prints(param.ptype);
-    printf("', got '");
-    prints(arg_type);
-    printf("'\n");
+    printf("error[E0003]: argument type mismatch for method '%s', parameter '%s': expected '%s', got '%s'\n", meth_name, param.name, param.ptype, arg_type);
     self->has_error = true;
 }
     arg_i = (arg_i + 1);
 }
 }
+} else if (!self->has_any_import) {
+    printf("error[E0022]: undefined method: '%s' for type '%s'\n", meth_name, recv_type);
+    self->has_error = true;
 }
     return;
 }
@@ -6189,7 +6025,13 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
 }
     const char* struct_name = expr.struct_name;
     int64_t struct_idx = TypeChecker_find_struct_decl(self, struct_name);
-    if (struct_idx >= 0) {
+    if (struct_idx < 0) {
+    if (!self->has_any_import) {
+    printf("error[E0021]: undefined struct: '%s'\n", struct_name);
+    self->has_error = true;
+}
+    return;
+}
     StmtNode decl = ArrayList_StmtNode_get(self->stmt_pool, struct_idx);
     int64_t fi = 0;
     while (fi < ArrayList_FieldInit_length(&(expr.struct_fields))) {
@@ -6202,30 +6044,17 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     found = true;
     const char* val_type = TypeChecker_get_expr_type(self, f.value);
     if (!TypeChecker_types_compatible(self, df.ftype, val_type)) {
-    printf("error[E0001]: Type mismatch in initializer for field '");
-    prints(f.name);
-    printf("' of struct '");
-    prints(struct_name);
-    printf("': expected '");
-    prints(df.ftype);
-    printf("', got '");
-    prints(val_type);
-    printf("'\n");
+    printf("error[E0004]: type mismatch in initializer for field '%s' of struct '%s': expected '%s', got '%s'\n", f.name, struct_name, df.ftype, val_type);
     self->has_error = true;
 }
 }
     dfi = (dfi + 1);
 }
     if (!found) {
-    printf("error[E0001]: Field '");
-    prints(f.name);
-    printf("' does not exist in struct '");
-    prints(struct_name);
-    printf("'\n");
+    printf("error[E0013]: field '%s' does not exist in struct '%s'\n", f.name, struct_name);
     self->has_error = true;
 }
     fi = (fi + 1);
-}
 }
     return;
 }
@@ -6244,9 +6073,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1);
 }
     if (excl_pos < 0) {
-    printf("error[E0001]: Cannot use 'try' on non-error union type '");
-    prints(inner_ty);
-    printf("'\n");
+    printf("error[E0014]: cannot use 'try' on non-error-union type '%s'\n", inner_ty);
     self->has_error = true;
 } else {
     const char* error_set = substring(inner_ty, (excl_pos + 1), strlen(inner_ty));
@@ -6260,18 +6087,12 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1);
 }
     if (func_excl < 0) {
-    printf("error[E0001]: Cannot use 'try' in a function that returns non-error union type '");
-    prints(expected_ret);
-    printf("'\n");
+    printf("error[E0015]: cannot use 'try' in a function that returns non-error-union type '%s'\n", expected_ret);
     self->has_error = true;
 } else {
     const char* func_err = substring(expected_ret, (func_excl + 1), strlen(expected_ret));
     if (!TypeChecker_types_compatible(self, func_err, error_set)) {
-    printf("error[E0001]: Error set '");
-    prints(error_set);
-    printf("' of try expression is not compatible with function error set '");
-    prints(func_err);
-    printf("'\n");
+    printf("error[E0016]: error set '%s' of try expression is not compatible with function error set '%s'\n", error_set, func_err);
     self->has_error = true;
 }
 }
@@ -6300,11 +6121,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     TypeChecker_exit_scope(self);
     const char* fallback_yields = TypeChecker_get_block_yield_type(self, expr.catch_fallback);
     if (!TypeChecker_types_compatible(self, val_type, fallback_yields)) {
-    printf("error[E0001]: Catch fallback type '");
-    prints(fallback_yields);
-    printf("' is not compatible with expected type '");
-    prints(val_type);
-    printf("'\n");
+    printf("error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", fallback_yields, val_type);
     self->has_error = true;
 }
     return;
@@ -6318,9 +6135,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1);
 }
     if (excl_pos < 0) {
-    printf("error[E0001]: Cannot use 'catch' on non-error union type '");
-    prints(inner_ty);
-    printf("'\n");
+    printf("error[E0017]: cannot use 'catch' on non-error-union type '%s'\n", inner_ty);
     self->has_error = true;
 } else {
     const char* val_type = substring(inner_ty, 0, excl_pos);
@@ -6333,11 +6148,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     TypeChecker_exit_scope(self);
     const char* fallback_yields = TypeChecker_get_block_yield_type(self, expr.catch_fallback);
     if (!TypeChecker_types_compatible(self, val_type, fallback_yields)) {
-    printf("error[E0001]: Catch fallback type '");
-    prints(fallback_yields);
-    printf("' is not compatible with expected type '");
-    prints(val_type);
-    printf("'\n");
+    printf("error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", fallback_yields, val_type);
     self->has_error = true;
 }
 }
@@ -8056,11 +7867,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
 }
     const char* func_name = _kai_str_concat(_kai_str_concat(clean_type, "_"), method_name);
     if (type_map_find(&(self->func_types), func_name) < 0) {
-    printf("error[E0002]: type ");
-    prints(rec_type);
-    printf(" has no method ");
-    prints(method_name);
-    printf("'\n");
+    printf("error[E0023]: type '%s' has no method '%s'\n", rec_type, method_name);
     {
     exit(1);
 }
@@ -13503,7 +13310,7 @@ int main(int argc, char** argv) {
     if (program_idx < 0) {
     return 3;
 }
-    TypeChecker checker = TypeChecker_init(&(allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool);
+    TypeChecker checker = TypeChecker_init(&(allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool, input_file);
     bool success = TypeChecker_check_program(&(checker), program_idx);
     if (!success) {
     return 4;

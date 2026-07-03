@@ -33,7 +33,7 @@ fn tv_get_str(val: TokenValue) -> Str {
     match val {
         case .tv_str(s) => result = s
         case else => unsafe {
-            printf("tv_get_str failed!\n")
+            printf("error[E0101]: internal error: unexpected token value type\n")
             exit(1)
         }
     }
@@ -232,103 +232,8 @@ impl Parser {
             return self.advance()
         }
         unsafe {
-            printf("expect failed! found token at line:\n")
-            printi(tok.line)
-            printf("col:\n")
-            printi(tok.column)
-            printf("expected tag:\n")
-            printi(Int(ttype))
-            printf("found tag:\n")
-            printi(Int(tok.tok_type))
-            match tok.tok_type {
-                case .INT_LIT => exit(0)
-                case .FLOAT_LIT => exit(1)
-                case .BOOL_LIT => exit(2)
-                case .CHAR_LIT => exit(3)
-                case .STRING_LIT => exit(4)
-                case .IDENTIFIER => exit(5)
-                case .LET => exit(6)
-                case .VAR => exit(7)
-                case .FUNC => exit(8)
-                case .IF => exit(9)
-                case .ELSE => exit(10)
-                case .WHILE => exit(11)
-                case .FOR => exit(12)
-                case .IN => exit(13)
-                case .RETURN => exit(14)
-                case .STRUCT => exit(16)
-                case .IMPL => exit(17)
-                case .MUT => exit(18)
-                case .UNSAFE => exit(19)
-                case .EXTERN => exit(20)
-                case .ENUM => exit(21)
-                case .MATCH => exit(22)
-                case .CASE => exit(23)
-                case .USE => exit(24)
-                case .CHECK => exit(25)
-                case .TRAIT => exit(26)
-                case .PUB => exit(27)
-                case .IMPORT => exit(28)
-                case .CIMPORT => exit(99)
-                case .FROM => exit(29)
-                case .AS => exit(30)
-                case .SIZEOF => exit(31)
-                case .DEFER => exit(32)
-                case .NONE => exit(33)
-                case .FN => exit(34)
-                case .TRY => exit(35)
-                case .CATCH => exit(36)
-                case .OWN => exit(37)
-                case .ERROR => exit(38)
-                case .ASM => exit(39)
-                case .VOLATILE => exit(40)
-                case .PLUS => exit(41)
-                case .MINUS => exit(42)
-                case .MUL => exit(43)
-                case .DIV => exit(44)
-                case .MOD => exit(45)
-                case .ASSIGN => exit(46)
-                case .PLUS_ASSIGN => exit(47)
-                case .MINUS_ASSIGN => exit(48)
-                case .AND => exit(49)
-                case .OR => exit(50)
-                case .NOT => exit(51)
-                case .PIPE => exit(52)
-                case .BITXOR => exit(53)
-                case .BITNOT => exit(54)
-                case .LSHIFT => exit(55)
-                case .RSHIFT => exit(56)
-                case .EQ => exit(57)
-                case .NE => exit(58)
-                case .LT => exit(59)
-                case .LE => exit(60)
-                case .GT => exit(61)
-                case .GE => exit(62)
-                case .COLON => exit(63)
-                case .ARROW => exit(64)
-                case .FAT_ARROW => exit(65)
-                case .COMMA => exit(66)
-                case .LPAREN => exit(67)
-                case .RPAREN => exit(68)
-                case .LBRACKET => exit(69)
-                case .RBRACKET => exit(70)
-                case .LBRACE => exit(71)
-                case .RBRACE => exit(72)
-                case .DOTDOT => exit(73)
-                case .DOTDOTEQ => exit(74)
-                case .DOT => exit(75)
-                case .AMP => exit(76)
-                case .HASH => exit(77)
-                case .QUESTION => exit(78)
-                case .SEMICOLON => exit(85)
-                case .BREAK => exit(83)
-                case .CONTINUE => exit(84)
-                case .NEWLINE => exit(79)
-                case .INDENT => exit(80)
-                case .DEDENT => exit(81)
-                case .EOF => exit(82)
-            }
-            exit(255)
+            printf("error[E0101]: expected token type %lld but found %lld at line %lld, column %lld\n", Int(ttype), Int(tok.tok_type), tok.line, tok.column)
+            exit(1)
         }
         return tok
 
@@ -1204,7 +1109,7 @@ impl Parser {
             return self.add_pattern(node)
         } else {
             unsafe {
-                printf("parse_pattern failed!\n")
+                printf("error[E0101]: unexpected token in pattern at line %lld, column %lld\n", tok.line, tok.column)
                 exit(1)
             }
             return -1
@@ -1318,7 +1223,7 @@ impl Parser {
             is_inclusive = expr_node.range_inclusive
         } else {
             unsafe {
-                printf("parse_for_stmt failed!\n")
+                printf("error[E0101]: invalid expression in for loop at line %lld, column %lld\n", self.peek(0).line, self.peek(0).column)
                 exit(1)
             }
         }
@@ -1389,7 +1294,7 @@ impl Parser {
         }
         if self.peek(0).tok_type == TokenType.EOF {
             unsafe {
-                printf("parse_block LBRACE EOF failed!\n")
+                printf("error[E0101]: expected '}' but reached end of file\n")
                 exit(1)
             }
         }
@@ -1858,13 +1763,7 @@ impl Parser {
             return first
         } else {
             unsafe {
-                printf("parse_primary failed!\n")
-                printf("Line: ")
-                printi(tok.line)
-                printf("Col: ")
-                printi(tok.column)
-                printf("Token type int: ")
-                printi(Int(tok.tok_type))
+                printf("error[E0101]: unexpected token at line %lld, column %lld (token type: %lld)\n", tok.line, tok.column, Int(tok.tok_type))
                 exit(1)
             }
             return -1

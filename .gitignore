@@ -2,6 +2,7 @@
 *.bak
 .DS_Store
 SCRATCH.md
+zero
 
 #Files
 
@@ -18,3 +19,4 @@ codegen*
 *.py
 output.kai
 tests/compiler.c
+docs

@@ -1761,11 +1761,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         
         let func_name = clean_type + "_" + method_name
         if type_map_find(&self.func_types, func_name) < 0 {
-            printf("error[E0002]: type ")
-            prints(rec_type)
-            printf(" has no method ")
-            prints(method_name)
-            printf("'\n")
+            printf("error[E0023]: type '%s' has no method '%s'\n", rec_type, method_name)
             unsafe {
                 exit(1)
             }

@@ -167,9 +167,9 @@ impl Lexer {
         self.tokens.push(Token(tok_type: ttype, value: value, line: self.line, column: self.column))
 
     }
-    fn lex_error(self) {
+    fn lex_error(self, msg: Str) {
+        printf("error[E0100]: %s at line %lld, column %lld\n", msg, self.line, self.column)
         self.has_error = true
-
     }
     fn skip_line_comment(self) {
         while self.cursor < self.source_len && self.peek(0) != '\n' {
@@ -570,6 +570,10 @@ impl Lexer {
                     let _ = self.advance()
                     self.emit(TokenType.DOT, TokenValue.tv_str(v: "."))
 
+                } else {
+                    let _ = self.advance()
+                    printf("error[E0100]: unexpected character '%c' at line %lld, column %lld\n", c, self.line, self.column)
+                    self.has_error = true
                 }
             }
         }
