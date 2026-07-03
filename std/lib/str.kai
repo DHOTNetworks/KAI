@@ -7,6 +7,17 @@ extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn atoll(s: Str) -> Int
 extern fn strlen(s: Str) -> Int
 
+fn __kai_std_str_concat_alloc(left: Str, right: Str) -> Str {
+    let left_len = strlen(left)
+    let right_len = strlen(right)
+    let total = left_len + right_len + 1
+    let buf = malloc(total)
+    if buf != (0 as *Char) {
+        let _ = __kai_std_str_concat(buf, left, right)
+    }
+    return buf as Str
+}
+
 fn __kai_std_str_is_ascii_space(byte: Char) -> Bool {
     return byte == Char(32) || byte == Char(9) || (byte == Char(10) || byte == Char(13))
 }

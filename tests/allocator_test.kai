@@ -1,0 +1,28 @@
+cimport "stdio.h"
+cimport "stdlib.h"
+import KaiAllocator from std.core.allocator
+
+extern fn printf(format: Str, value: Int) -> Int
+extern fn exit(code: Int)
+
+fn main() -> Int {
+    var allocator = KaiAllocator()
+    
+    // Allocate some memory
+    let ptr = allocator.alloc(100, 8)
+    
+    if ptr != (0 as *Char) {
+        printf("Allocation successful!\n", 0)
+        
+        // Reallocate
+        let new_ptr = allocator.realloc(ptr, 100, 200, 8)
+        if new_ptr != (0 as *Char) {
+            printf("Reallocation successful!\n", 0)
+        }
+        
+        allocator.free(new_ptr)
+    }
+    
+    allocator.deinit()
+    return 0
+}

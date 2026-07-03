@@ -1,0 +1,13 @@
+import std.lib.str
+
+cimport "stdio.h"
+cimport "stdlib.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn free(ptr: *Char)
+
+fn main() -> Int {
+    let s = "Hello " + "World via Standard Library!"
+    printf("Result: %s\n", s)
+    free(s as *Char) // Free the allocated string
+    return 0
+}

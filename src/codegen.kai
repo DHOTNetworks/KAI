@@ -30,6 +30,7 @@ import std.io.print
 extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn exit(code: Int)
 extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
+extern fn strstr(haystack: Str, needle: Str) -> *Char
 
 struct StrMapEntry {
     key: Str
@@ -102,6 +103,30 @@ fn strlist_find(arr: *ArrayList<Str>, key: Str) -> Int {
 }
 
 impl Codegen {
+
+fn add_init_return(self, body_str: Str, struct_name: Str) -> Str {
+    let self_decl = "    " + struct_name + " self = (" + struct_name + "){0};\n"
+    let body_len = length(body_str)
+    var stripped_body = substring(body_str, 2, body_len - 1)
+    
+    // Check if the stripped body already ends with return self;
+    var ends_with_return = false
+    unsafe {
+        let ret_ptr = strstr(stripped_body, "return self;")
+        if ret_ptr != (0 as *Char) {
+            let offset = (ret_ptr as Int) - (stripped_body as Int)
+            if offset >= length(stripped_body) - 20 {
+                ends_with_return = true
+            }
+        }
+    }
+    
+    if ends_with_return {
+        return "{\n" + self_decl + stripped_body + "}"
+    }
+    let self_ret = "    return self;\n}"
+    return "{\n" + self_decl + stripped_body + self_ret
+}
 
 fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>) {
     self.allocator = allocator
@@ -596,10 +621,7 @@ fn monomorphize_methods(self, base_struct_name: Str, concrete_struct_name: Str) 
                 }
                 
                 if is_init {
-                    let self_decl = "    " + concrete_struct_name + " self = (" + concrete_struct_name + "){0};\n"
-                    let self_ret = "    return self;\n}"
-                    let body_len = length(body_str)
-                    body_str = "{\n" + self_decl + substring(body_str, 2, body_len - 1) + self_ret
+                    body_str = self.add_init_return(body_str, concrete_struct_name)
                 }
                 let proto = ret_type + " " + mangled_fn_name + "(" + params_str + ");\n"
                 let impl_str = ret_type + " " + mangled_fn_name + "(" + params_str + ") " + body_str + "\n"
@@ -1208,9 +1230,12 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         let vkind = expr.lit_vkind
         if vkind == "INT" {
             match expr.lit_value {
-                case .tv_str(v) => { return v }
-                case .tv_int(v) => { return int_to_str(v) }
-                case else => { return "0" }
+                case .tv_str(v) => {
+                    let s: Str = v
+                    return s + "LL"
+                }
+                case .tv_int(v) => { return int_to_str(v) + "LL" }
+                case else => { return "0LL" }
             }
         }
         if vkind == "FLOAT" {
@@ -1298,7 +1323,12 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             if i == 0 {
                 result = part_str
             } else {
-                result = "_kai_str_concat(" + result + ", " + part_str + ")"
+                let has_str = strlist_find(&self.loaded_modules, "std.lib.str") >= 0 || strlist_find(&self.loaded_modules, "std.zero_ported.str") >= 0
+                if has_str {
+                    result = "__kai_std_str_concat_alloc(" + result + ", " + part_str + ")"
+                } else {
+                    result = "_kai_str_concat(" + result + ", " + part_str + ")"
+                }
             }
             i = i + 1
         }
@@ -1341,6 +1371,10 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         let lhs_node = self.expr_pool.get(expr.binop_left)
         if lhs_type == "Str" {
             if op == "+" {
+                let has_str = strlist_find(&self.loaded_modules, "std.lib.str") >= 0 || strlist_find(&self.loaded_modules, "std.zero_ported.str") >= 0
+                if has_str {
+                    return "__kai_std_str_concat_alloc(" + lhs + ", " + rhs + ")"
+                }
                 return "_kai_str_concat(" + lhs + ", " + rhs + ")"
             }
             if op == "==" {
@@ -1389,7 +1423,14 @@ fn gen_expr(self, expr_idx: Int) -> Str {
     if expr.kind == ExprKind.ek_func_call {
         let name = expr.func_name
         if name == "cast" || name == "as" {
-            return "(" + self.map_type(expr.func_type_args.get(0)) + ")(" + self.gen_expr(expr.func_args.get(0)) + ")"
+            let target_type = expr.func_type_args.get(0)
+            let operand_type = self.get_expr_type(expr.func_args.get(0))
+            let is_target_ptr = (length(target_type) > 0 && (target_type[0] == Char(42) || target_type[0] == Char(38))) || strcmp(target_type, "Str") == 0
+            let is_operand_int = strcmp(operand_type, "Int") == 0 || strcmp(operand_type, "Char") == 0 || strcmp(operand_type, "Bool") == 0
+            if is_target_ptr && is_operand_int {
+                return "(" + self.map_type(target_type) + ")(unsigned long long)(" + self.gen_expr(expr.func_args.get(0)) + ")"
+            }
+            return "(" + self.map_type(target_type) + ")(" + self.gen_expr(expr.func_args.get(0)) + ")"
         }
         if name == "size_of" {
             return "sizeof(" + self.map_type(expr.func_type_args.get(0)) + ")"
@@ -1977,8 +2018,6 @@ fn is_standard_c_func(self, name: Str) -> Bool {
     if name == "free" { return true }
     if name == "realloc" { return true }
     if name == "calloc" { return true }
-    if name == "mmap" { return true }
-    if name == "munmap" { return true }
     if name == "isdigit" { return true }
     if name == "isalpha" { return true }
     if name == "isalnum" { return true }
@@ -2337,10 +2376,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
             }
             
             if is_init {
-                let self_decl = "    " + mapped_struct_name + " self = (" + mapped_struct_name + "){0};\n"
-                let self_ret = "    return self;\n}"
-                let body_len = length(body_str)
-                body_str = "{\n" + self_decl + substring(body_str, 2, body_len - 1) + self_ret
+                body_str = self.add_init_return(body_str, mapped_struct_name)
             }
             
             let proto = ret_type + " " + mangled_fn_name + "(" + params_str + ");\n"
@@ -2649,6 +2685,9 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
     if stmt.kind == StmtKind.sk_extern {
         let name = stmt.extern_name
         if self.is_standard_c_func(name) {
+            return ""
+        }
+        if strcmp(name, "_kai_set_current_allocator") == 0 {
             return ""
         }
         let ret_type = self.map_type(stmt.extern_return)
@@ -3076,20 +3115,14 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     final_code = final_code + "#include <stdio.h>\n"
     final_code = final_code + "#include <stdlib.h>\n"
     final_code = final_code + "#include <string.h>\n"
-    final_code = final_code + "#if !defined(_WIN32)\n"
-    final_code = final_code + "#include <sys/mman.h>\n"
-    final_code = final_code + "#endif\n"
-    final_code = final_code + "#include <ctype.h>\n"
-
-    // Emit platform-specific get_exe_dir C implementation
-    final_code = final_code + "\n"
+    final_code = final_code + "#ifndef NO_GET_EXE_DIR\n"
     final_code = final_code + "#if defined(_WIN32)\n"
     final_code = final_code + "#include <windows.h>\n"
-    final_code = final_code + "#elif defined(__APPLE__)\n"
-    final_code = final_code + "#include <mach-o/dyld.h>\n"
-    final_code = final_code + "#include <limits.h>\n"
     final_code = final_code + "#else\n"
-    final_code = final_code + "#include <unistd.h>\n"
+    final_code = final_code + "#ifndef _GNU_SOURCE\n"
+    final_code = final_code + "#define _GNU_SOURCE\n"
+    final_code = final_code + "#endif\n"
+    final_code = final_code + "#include <dlfcn.h>\n"
     final_code = final_code + "#include <limits.h>\n"
     final_code = final_code + "#endif\n\n"
     final_code = final_code + "int64_t get_exe_dir(char* out_buf, int64_t max_len) {\n"
@@ -3103,33 +3136,29 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     final_code = final_code + "        }\n"
     final_code = final_code + "    }\n"
     final_code = final_code + "    return 0;\n"
-    final_code = final_code + "#elif defined(__APPLE__)\n"
-    final_code = final_code + "    char path[PATH_MAX];\n"
-    final_code = final_code + "    uint32_t size = sizeof(path);\n"
-    final_code = final_code + "    if (_NSGetExecutablePath(path, &size) != 0) return -1;\n"
-    final_code = final_code + "    char real_path[PATH_MAX];\n"
-    final_code = final_code + "    if (realpath(path, real_path) == NULL) return -1;\n"
-    final_code = final_code + "    char* last_slash = strrchr(real_path, '/');\n"
-    final_code = final_code + "    if (last_slash == NULL) return -1;\n"
-    final_code = final_code + "    *last_slash = '\\0';\n"
-    final_code = final_code + "    strncpy(out_buf, real_path, max_len);\n"
-    final_code = final_code + "    out_buf[max_len - 1] = '\\0';\n"
-    final_code = final_code + "    return 0;\n"
     final_code = final_code + "#else\n"
-    final_code = final_code + "    char path[PATH_MAX];\n"
-    final_code = final_code + "    ssize_t len = readlink(\"/proc/self/exe\", path, sizeof(path) - 1);\n"
-    final_code = final_code + "    if (len == -1) return -1;\n"
-    final_code = final_code + "    path[len] = '\\0';\n"
-    final_code = final_code + "    char real_path[PATH_MAX];\n"
-    final_code = final_code + "    if (realpath(path, real_path) == NULL) return -1;\n"
-    final_code = final_code + "    char* last_slash = strrchr(real_path, '/');\n"
-    final_code = final_code + "    if (last_slash == NULL) return -1;\n"
-    final_code = final_code + "    *last_slash = '\\0';\n"
-    final_code = final_code + "    strncpy(out_buf, real_path, max_len);\n"
-    final_code = final_code + "    out_buf[max_len - 1] = '\\0';\n"
-    final_code = final_code + "    return 0;\n"
+    final_code = final_code + "    Dl_info info;\n"
+    final_code = final_code + "    char dummy = 0;\n"
+    final_code = final_code + "    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {\n"
+    final_code = final_code + "        char real_path[PATH_MAX];\n"
+    final_code = final_code + "        if (realpath(info.dli_fname, real_path) != NULL) {\n"
+    final_code = final_code + "            char* last_slash = strrchr(real_path, '/');\n"
+    final_code = final_code + "            if (last_slash != NULL) {\n"
+    final_code = final_code + "                *last_slash = '\\0';\n"
+    final_code = final_code + "                int i = 0;\n"
+    final_code = final_code + "                while (i < max_len - 1 && real_path[i] != '\\0') {\n"
+    final_code = final_code + "                    out_buf[i] = real_path[i];\n"
+    final_code = final_code + "                    i++;\n"
+    final_code = final_code + "                }\n"
+    final_code = final_code + "                out_buf[i] = '\\0';\n"
+    final_code = final_code + "                return 0;\n"
+    final_code = final_code + "            }\n"
+    final_code = final_code + "        }\n"
+    final_code = final_code + "    }\n"
+    final_code = final_code + "    return -1;\n"
     final_code = final_code + "#endif\n"
-    final_code = final_code + "}\n\n"
+    final_code = final_code + "}\n"
+    final_code = final_code + "#endif\n\n"
 
     var ci = 0
     var has_cimports = false
@@ -3167,26 +3196,52 @@ fn generate(self, top_stmt_idx: Int) -> Str {
         }
         ci = ci + 1
     }
-    final_code = final_code + "\n"
-    //final_code = final_code + "static inline void print_int(int64_t i) { printf(\"%lld\\n\", (long long)i); }\n"
-    final_code = final_code + "__thread void* _kai_current_allocator = NULL;\n"
-    final_code = final_code + "void _kai_set_current_allocator(void* allocator);\n"
-    final_code = final_code + "char* _kai_str_concat(const char* l, const char* r);\n\n"
+    final_code = final_code + "static __thread void* _kai_current_allocator = NULL;\n\n"
+    
+    final_code = final_code + "static inline void _kai_set_current_allocator(void* allocator) {\n"
+    final_code = final_code + "    _kai_current_allocator = allocator;\n"
+    final_code = final_code + "}\n\n"
+    
+    final_code = final_code + "extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);\n"
+    final_code = final_code + "extern int munmap(void* addr, unsigned long long length);\n\n"
+    
+    final_code = final_code + "static inline char* _kai_mmap(char* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {\n"
+    final_code = final_code + "    return (char*)mmap(addr, (unsigned long long)length, prot, flags, fd, offset);\n"
+    final_code = final_code + "}\n\n"
+    
+    final_code = final_code + "static inline int64_t _kai_munmap(char* addr, int64_t length) {\n"
+    final_code = final_code + "    return munmap(addr, (unsigned long long)length);\n"
+    final_code = final_code + "}\n\n"
+    
+    let has_str = strlist_find(&self.loaded_modules, "std.lib.str") >= 0 || strlist_find(&self.loaded_modules, "std.zero_ported.str") >= 0
+    if !has_str {
+        final_code = final_code + "static inline char* _kai_str_concat(const char* l, const char* r) {\n"
+        final_code = final_code + "    unsigned long long l1 = 0;\n"
+        final_code = final_code + "    while (l[l1] != '\\0') { l1++; }\n"
+        final_code = final_code + "    unsigned long long l2 = 0;\n"
+        final_code = final_code + "    while (r[l2] != '\\0') { l2++; }\n"
+        final_code = final_code + "    if (l1 > 1000000ULL || l2 > 1000000ULL - l1) { return NULL; }\n"
+        final_code = final_code + "    unsigned long long total = l1 + l2 + 1ULL;\n"
+        final_code = final_code + "    char* buf = malloc(total);\n"
+        final_code = final_code + "    if (buf) {\n"
+        final_code = final_code + "        unsigned long long i = 0;\n"
+        final_code = final_code + "        while (i < l1) {\n"
+        final_code = final_code + "            buf[i] = l[i];\n"
+        final_code = final_code + "            i++;\n"
+        final_code = final_code + "        }\n"
+        final_code = final_code + "        unsigned long long j = 0;\n"
+        final_code = final_code + "        while (j < l2) {\n"
+        final_code = final_code + "            buf[l1 + j] = r[j];\n"
+        final_code = final_code + "            j++;\n"
+        final_code = final_code + "        }\n"
+        final_code = final_code + "        buf[l1 + l2] = '\\0';\n"
+        final_code = final_code + "    }\n"
+        final_code = final_code + "    return buf;\n"
+        final_code = final_code + "}\n\n"
+    }
     
     final_code = final_code + self.struct_decls.to_str() + "\n"
     final_code = final_code + self.func_decls.to_str() + "\n"
-    
-    final_code = final_code + "void _kai_set_current_allocator(void* allocator) {\n"
-    final_code = final_code + "    _kai_current_allocator = allocator;\n"
-    final_code = final_code + "}\n"
-    final_code = final_code + "char* _kai_str_concat(const char* l, const char* r) {\n"
-    final_code = final_code + "    size_t l1 = strlen(l);\n"
-    final_code = final_code + "    size_t l2 = strlen(r);\n"
-    final_code = final_code + "    size_t total = l1 + l2 + 1;\n"
-    final_code = final_code + "    char* buf = malloc(total);\n"
-    final_code = final_code + "    if (buf) { strcpy(buf, l); strcat(buf, r); }\n"
-    final_code = final_code + "    return buf;\n"
-    final_code = final_code + "}\n\n"
     
     final_code = final_code + self.output.to_str()
     

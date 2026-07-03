@@ -1,49 +1,38 @@
-extern fn isdigit(c: Char) -> Bool
-extern fn isalpha(c: Char) -> Bool
-extern fn isalnum(c: Char) -> Bool
-extern fn isspace(c: Char) -> Bool
-extern fn toupper(c: Char) -> Char
-extern fn tolower(c: Char) -> Char
 extern fn strlen(s: Str) -> Int
+extern fn malloc(size: Int) -> *Char
 
 fn char_at(s: Str, i: Int) -> Char {
     return s[i]
 }
 
 fn is_digit(c: Char) -> Bool {
-    unsafe {
-        return isdigit(c)
-    }
+    return c >= Char(48) && c <= Char(57)
 }
 
 fn is_alpha(c: Char) -> Bool {
-    unsafe {
-        return isalpha(c)
-    }
+    return (c >= Char(97) && c <= Char(122)) || (c >= Char(65) && c <= Char(90))
 }
 
 fn is_alnum(c: Char) -> Bool {
-    unsafe {
-        return isalnum(c)
-    }
+    return is_digit(c) || is_alpha(c)
 }
 
 fn is_space(c: Char) -> Bool {
-    unsafe {
-        return isspace(c)
-    }
+    return c == Char(32) || c == Char(9) || c == Char(10) || c == Char(13) || c == Char(11) || c == Char(12)
 }
 
 fn to_upper(c: Char) -> Char {
-    unsafe {
-        return toupper(c)
+    if c >= Char(97) && c <= Char(122) {
+        return c - Char(32)
     }
+    return c
 }
 
 fn to_lower(c: Char) -> Char {
-    unsafe {
-        return tolower(c)
+    if c >= Char(65) && c <= Char(90) {
+        return c + Char(32)
     }
+    return c
 }
 
 fn length(s: Str) -> Int {
@@ -153,17 +142,32 @@ fn char_to_str(c: Char) -> Str {
 
 fn substring(s: Str, start: Int, end: Int) -> Str {
     unsafe {
-        var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
-        allocator.init()
-        var sb = StringBuilder(&allocator as *Allocator)
-        var i = start
-        if i < 0 {
-            i = 0
+        let len = strlen(s)
+        var real_end = end
+        if real_end > len {
+            real_end = len
         }
-        while s[i] != Char(0) && i < end {
-            sb.append_char(s[i])
-            i = i + 1
+        var real_start = start
+        if real_start < 0 {
+            real_start = 0
         }
-        return sb.to_str()
+        if real_start >= real_end {
+            let empty = malloc(1)
+            if empty != (0 as *Char) {
+                empty[0] = Char(0)
+            }
+            return empty as Str
+        }
+        let sub_len = real_end - real_start
+        let buf = malloc(sub_len + 1)
+        if buf != (0 as *Char) {
+            var i = 0
+            while i < sub_len {
+                buf[i] = s[real_start + i]
+                i = i + 1
+            }
+            buf[sub_len] = Char(0)
+        }
+        return buf as Str
     }
 }

@@ -1,0 +1,27 @@
+import std.lib.str
+import KaiAllocator from std.core.allocator
+
+cimport "stdio.h"
+cimport "stdlib.h"
+extern fn printf(format: Str, value: Str) -> Int
+
+fn main() -> Int {
+    var allocator = KaiAllocator()
+    
+    // Allocate buffer for concatenation using KaiAllocator (128 bytes, alignment 8)
+    let buffer = allocator.alloc(128, 8)
+    
+    if buffer != (0 as *Char) {
+        // Perform string concatenation using std.lib.str
+        let result: ?Str = __kai_std_str_concat(buffer, "KaiAllocator + ", "std.lib.str works!")
+        
+        if result != none {
+            printf("Result: %s\n", (result catch ""))
+        }
+        
+        allocator.free(buffer)
+    }
+    
+    allocator.deinit()
+    return 0
+}

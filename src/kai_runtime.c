@@ -26,6 +26,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+__thread void* _kai_current_allocator = NULL;
+
+void _kai_set_current_allocator(void* allocator) {
+    _kai_current_allocator = allocator;
+}
+
+
 /* ============================================================
  * get_exe_dir
  * ============================================================ */

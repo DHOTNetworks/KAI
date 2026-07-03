@@ -6,7 +6,6 @@ __pycache__
 
 #Files
 
-.kiro
 kai
 src/runtime.c
 kai_bootstrap
@@ -25,3 +24,4 @@ compiler
 zero
 release/
 dist/
+build.sh

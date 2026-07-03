@@ -63,6 +63,25 @@ Verify that the new compiler binary is functional by compiling a target program 
 ```bash
 ./kai src/compiler.kai -o ./kai_self_compiled
 ```
+## Cross Compilation via Zig
+
+### 1. Translate C output to Zig, skipping the inline C get_exe_dir implementation
+```
+zig translate-c -DNO_GET_EXE_DIR compiler.c > compiler.zig
+```
+
+### 2. Append the Windows compatibility imports
+```
+echo 'comptime { _ = @import("windows_compat.zig"); }' >> compiler.zig
+```
+
+### 3. Cross-compile
+```
+zig build-exe compiler.zig -target aarch64-windows-gnu -lc -femit-bin=compiler
+
+zig build-exe compiler.zig -target x86_64-windows-gnu -lc -femit-bin=compiler
+
+```
 
 ---
 
@@ -70,8 +89,8 @@ Verify that the new compiler binary is functional by compiling a target program 
 
 For the next agent working on this codebase, the priorities are:
 1. **Error Unions implementation (Phase 3)**:
-   - Implement status-integer error unions (`T!E`), restoring the `try` / `catch` propagation check logic natively inside the self-hosted type checker and C code generator.
+   [DONE]- Implement status-integer error unions (`T!E`), restoring the `try` / `catch` propagation check logic natively inside the self-hosted type checker and C code generator.
 2. **Standard Library Expansion**:
-   - Add native networking, threading wrappers, and standard formatting routines directly into the `std/` directory.
+   [DONE]- Add native networking, threading wrappers, and standard formatting routines directly into the `std/` directory.
 3. **Compiler Speed Optimizations**:
    - Modifier compiler structures (e.g., AST pooling, string allocation) to increase the self-compilation throughput.

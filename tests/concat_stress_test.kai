@@ -1,0 +1,88 @@
+import std.lib.str
+import KaiAllocator from std.core.allocator
+
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "time.h"
+extern fn printf(format: Str, value: Int) -> Int
+extern fn free(ptr: *Char)
+extern fn exit(code: Int)
+
+fn assert(cond: Bool, msg: Str) {
+    if !cond {
+        printf("STRESS TEST FAILED: %d\n", 0)
+        exit(1)
+    }
+}
+
+fn main() -> Int {
+    printf("Starting String Concatenation Stress Test...\n", 0)
+
+
+
+    // Phase 1: Stress test + operator concatenation
+    // We will do 5,000 allocations and immediate frees to verify heap stability
+    printf("[1/3] Phase 1: Stress testing '+' operator allocations...\n", 0)
+    var i = 0
+    while i < 99999 {
+        let left = "String Part A "
+        let right = "String Part B"
+        let res = left + right // compiles to __kai_std_str_concat_alloc
+        
+        // Quick verification of length
+        assert(strlen(res as Str) == 27, "Concatenation length mismatch")
+        
+        free(res as *Char) // Free the allocated string
+        i = i + 1
+    }
+
+
+    printf("[1/3] Phase 1 (Extended): Stress testing '+' operator allocations...\n", 0)
+    i = 0
+    while i < 200000 {
+        let left = "String Part A "
+        let right = "String Part B"
+        let res = left + right // compiles to __kai_std_str_concat_alloc
+        
+        // Quick verification of length
+        assert(strlen(res as Str) == 27, "Concatenation length mismatch")
+        
+        free(res as *Char) // Free the allocated string
+        i = i + 1
+    }
+
+    // Phase 2: Stress test std.lib.str.concat with a single KaiAllocator slab
+    printf("[2/3] Phase 2: Stress testing 'std.lib.str.concat' with KaiAllocator...\n", 0)
+    var allocator = KaiAllocator()
+    var j = 0
+    while j < 5000 {
+        // Allocate buffer dynamically in the arena
+        let buf = allocator.alloc(128, 8)
+        assert(buf != (0 as *Char), "Allocator out of memory")
+        
+        let res: ?Str = __kai_std_str_concat(buf, "Arena Left ", "Arena Right")
+        assert(res != none, "std.lib.str.concat returned none")
+        assert(strlen((res catch "") as Str) == 22, "Arena concatenation length mismatch")
+        
+        allocator.free(buf)
+        j = j + 1
+    }
+    allocator.deinit()
+
+    // Phase 3: Larger string stress testing to hit limit boundaries
+    printf("[3/3] Phase 3: Stress testing large strings boundary limits...\n", 0)
+    var large_allocator = KaiAllocator()
+    let large_buf = large_allocator.alloc(1000000, 8)
+    assert(large_buf != (0 as *Char), "Large buffer allocation failed")
+    
+    // Concatenate a string
+    let test_res: ?Str = __kai_std_str_concat(large_buf, "Prefix", "Suffix")
+    assert(test_res != none, "Simple concat failed")
+    
+    large_allocator.free(large_buf)
+    large_allocator.deinit()
+
+    printf("STRESS TEST COMPLETED SUCCESSFULLY!\n", 0)
+    
+    return 0
+}
