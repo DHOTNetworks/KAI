@@ -8,6 +8,7 @@ __pycache__
 
 .kiro
 kai
+src/runtime.c
 kai_bootstrap
 kai_bootstrap_new
 language_roadmap.md
@@ -20,5 +21,5 @@ codegen*
 output.kai
 tests/compiler.c
 docs/
-
+compiler
 zero
