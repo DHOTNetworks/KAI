@@ -9,6 +9,7 @@ import PatternKind from ast_nodes
 import Param from ast_nodes
 import StructField from ast_nodes
 import DropVarEntry from ast_nodes
+import empty_str_array from ast_nodes
 import SymbolTable from symbol_table
 import Symbol from symbol_table
 import length from std.core.string
@@ -41,10 +42,12 @@ struct TypeChecker {
     struct_info: ArrayList<StructInfo>
     has_error: Bool
     current_func_ret_type: Str
+    source_file: Str
+    has_any_import: Bool
 }
 
 impl TypeChecker {
-    fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>) {
+    fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, source_file: Str) {
         self.allocator = allocator
         self.stmt_pool = stmt_pool
         self.expr_pool = expr_pool
@@ -54,6 +57,8 @@ impl TypeChecker {
         self.struct_info = ArrayList<StructInfo>(allocator)
         self.has_error = false
         self.current_func_ret_type = ""
+        self.source_file = source_file
+        self.has_any_import = false
     }
 
     fn enter_scope(self) {
@@ -79,8 +84,9 @@ impl TypeChecker {
     }
 
     fn check_program(self, top_stmt_idx: Int) -> Bool {
-        // Pre-pass: register struct drop info
+        // Pre-pass: register struct drop info and detect imports
         self.register_struct_info(top_stmt_idx)
+        self.detect_imports(top_stmt_idx)
         
         // Start checking
         self.enter_scope()
@@ -88,6 +94,22 @@ impl TypeChecker {
         self.exit_scope()
         
         return !self.has_error
+    }
+
+    fn detect_imports(self, top_stmt_idx: Int) {
+        let stmt = self.stmt_pool.get(top_stmt_idx)
+        if stmt.kind == StmtKind.sk_block {
+            var i = 0
+            while i < stmt.block_stmts.length() {
+                let s_idx = stmt.block_stmts.get(i)
+                let s = self.stmt_pool.get(s_idx)
+                if s.kind == StmtKind.sk_import || s.kind == StmtKind.sk_cimport {
+                    self.has_any_import = true
+                    return
+                }
+                i = i + 1
+            }
+        }
     }
 
     fn register_struct_info(self, top_stmt_idx: Int) {
@@ -274,6 +296,9 @@ impl TypeChecker {
         while idx < self.stmt_pool.length() {
             let stmt = self.stmt_pool.get(idx)
             if stmt.kind == StmtKind.sk_func_decl && stmt.func_name == name {
+                return idx
+            }
+            if stmt.kind == StmtKind.sk_extern && stmt.extern_name == name {
                 return idx
             }
             idx = idx + 1
@@ -594,6 +619,21 @@ impl TypeChecker {
         return false
     }
 
+    fn is_enum_or_error_type(self, name: Str) -> Bool {
+        var idx = 0
+        while idx < self.stmt_pool.length() {
+            let stmt = self.stmt_pool.get(idx)
+            if stmt.kind == StmtKind.sk_enum_decl && stmt.enum_name == name {
+                return true
+            }
+            if stmt.kind == StmtKind.sk_error_decl && stmt.error_name == name {
+                return true
+            }
+            idx = idx + 1
+        }
+        return false
+    }
+
     fn check_identifier(self, expr_idx: Int) {
         let expr = self.expr_pool.get(expr_idx)
         let name = expr.ident_name
@@ -601,11 +641,12 @@ impl TypeChecker {
         let sym = table.lookup_symbol(name, &self.symbol_tables)
         if length(sym.name) > 0 {
             if sym.moved {
-                printf("error[E0010]: Cannot use: ")
-                prints(name)
-                printf(" after it has been moved\n")
+                printf("error[E0009]: use of moved value: '%s'\n", name)
                 self.has_error = true
             }
+        } else if !self.is_enum_or_error_type(name) && !self.has_any_import {
+            printf("error[E0019]: undefined identifier: '%s'\n", name)
+            self.has_error = true
         }
     }
 
@@ -613,11 +654,7 @@ impl TypeChecker {
         let expr = self.expr_pool.get(expr_idx)
         let recv_type = self.get_expr_type(expr.field_expr)
         if length(recv_type) > 0 && recv_type[0] == Char(63) { // '?' is 63
-            printf("error[E0001]: Cannot access field '")
-            prints(expr.field_name)
-            printf("' on optional type '")
-            prints(recv_type)
-            printf("'. Unwrap it first.\n")
+            printf("error[E0011]: cannot access field '%s' on optional type '%s'. unwrap it first\n", expr.field_name, recv_type)
             self.has_error = true
         }
     }
@@ -626,11 +663,7 @@ impl TypeChecker {
         let expr = self.expr_pool.get(expr_idx)
         let recv_type = self.get_expr_type(expr.meth_expr)
         if length(recv_type) > 0 && recv_type[0] == Char(63) {
-            printf("error[E0001]: Cannot call method '")
-            prints(expr.meth_name)
-            printf(" on optional type '")
-            prints(recv_type)
-            printf(". Unwrap it first.\n")
+            printf("error[E0012]: cannot call method '%s' on optional type '%s'. unwrap it first\n", expr.meth_name, recv_type)
             self.has_error = true
         }
     }
@@ -647,9 +680,7 @@ impl TypeChecker {
                     let table = self.symbol_tables.get(self.current_table_idx)
                     let sym = table.lookup_symbol(name, &self.symbol_tables)
                     if sym.kind == "var" || sym.kind == "param" {
-                        printf("error[E0001]: Cannot return reference to local variable '")
-                        prints(name)
-                        printf("'\n")
+                        printf("error[E0010]: cannot return reference to local variable '%s'\n", name)
                         self.has_error = true
                     }
                 }
@@ -661,11 +692,7 @@ impl TypeChecker {
         let expected_ret = self.current_func_ret_type
         if length(expected_ret) > 0 && expected_ret != "<infer>" {
             if !self.types_compatible(expected_ret, val_type) {
-                printf("error[E0001]: Return type mismatch: expected '")
-                prints(expected_ret)
-                printf("', got '")
-                prints(val_type)
-                printf("'\n")
+                printf("error[E0007]: return type mismatch: expected '%s', got '%s'\n", expected_ret, val_type)
                 self.has_error = true
             }
         }
@@ -695,13 +722,7 @@ impl TypeChecker {
                 var_type = val_type
             } else {
                 if !self.types_compatible(var_type, val_type) {
-                    printf("error[E0001]: Type mismatch in declaration of '")
-                    prints(stmt.vardecl_name)
-                    printf("': expected '")
-                    prints(var_type)
-                    printf("', got '")
-                    prints(val_type)
-                    printf("'\n")
+                    printf("error[E0001]: type mismatch in declaration of '%s': expected '%s', got '%s'\n", stmt.vardecl_name, var_type, val_type)
                     self.has_error = true
                 }
             }
@@ -721,29 +742,21 @@ impl TypeChecker {
                     let table = self.symbol_tables.get(self.current_table_idx)
                     let sym = table.lookup_symbol(target_expr.ident_name, &self.symbol_tables)
                     if length(sym.name) > 0 && !sym.is_mutable {
-                        printf("error[E0001]: Cannot assign to immutable variable '")
-                        prints(target_expr.ident_name)
-                        printf("'\n")
+                        printf("error[E0008]: cannot assign to immutable variable '%s'\n", target_expr.ident_name)
                         self.has_error = true
                     }
                 }
             }
             let val_type = self.get_expr_type(stmt.assign_value)
             if !self.types_compatible(target_type, val_type) {
-                printf("error[E0001]: Type mismatch in assignment: target name: '")
+                var target_name = "<non-ident>"
                 if stmt.assign_target >= 0 {
                     let target_expr = self.expr_pool.get(stmt.assign_target)
                     if target_expr.kind == ExprKind.ek_identifier {
-                        prints(target_expr.ident_name)
-                    } else {
-                        printf("<non-ident>")
+                        target_name = target_expr.ident_name
                     }
                 }
-                printf("', target is '")
-                prints(target_type)
-                printf("', value is '")
-                prints(val_type)
-                printf("'\n")
+                printf("error[E0002]: type mismatch in assignment to '%s': expected '%s', got '%s'\n", target_name, target_type, val_type)
                 self.has_error = true
             }
             self.mark_expr_moved(stmt.assign_value)
@@ -878,6 +891,26 @@ impl TypeChecker {
             }
             return
         }
+        if stmt.kind == StmtKind.sk_struct_decl {
+            return
+        }
+        if stmt.kind == StmtKind.sk_enum_decl {
+            return
+        }
+        if stmt.kind == StmtKind.sk_extern {
+            self.define_symbol(stmt.extern_name, stmt.extern_return, false, "func")
+            return
+        }
+        if stmt.kind == StmtKind.sk_import {
+            return
+        }
+        if stmt.kind == StmtKind.sk_cimport {
+            var alias = stmt.cimport_alias
+            if length(alias) > 0 {
+                self.define_symbol(alias, "Void", false, "func")
+            }
+            return
+        }
         if stmt.kind == StmtKind.sk_error_decl {
             return
         }
@@ -915,41 +948,37 @@ impl TypeChecker {
             let func_idx = self.find_func_decl(name)
             if func_idx >= 0 {
                 let decl = self.stmt_pool.get(func_idx)
-                if decl.func_params.length() != expr.func_args.length() {
-                    printf("error[E0001]: Argument count mismatch for function '")
-                    prints(name)
-                    printf("': expected ")
-                    prints(int_to_str(decl.func_params.length()))
-                    printf(", got ")
-                    prints(int_to_str(expr.func_args.length()))
-                    printf("\n")
+                var is_extern = decl.kind == StmtKind.sk_extern
+                var params = decl.func_params
+                var type_params = decl.func_type_params
+                if is_extern {
+                    params = decl.extern_params
+                    type_params = empty_str_array()
+                }
+                if params.length() != expr.func_args.length() {
+                    printf("error[E0005]: argument count mismatch for function '%s': expected %lld, got %lld\n", name, params.length(), expr.func_args.length())
                     self.has_error = true
                 } else {
-                    if decl.func_type_params.length() > 0 {
+                    if type_params.length() > 0 {
                         return
                     }
                     var arg_i = 0
                     while arg_i < expr.func_args.length() {
                         let arg = expr.func_args.get(arg_i)
-                        let param = decl.func_params.get(arg_i)
+                        let param = params.get(arg_i)
                         let arg_type = self.get_expr_type(arg)
                         let ptype = param.ptype
                         let is_generic_param = length(ptype) == 1 && ptype[0] >= Char(65) && ptype[0] <= Char(90)
                         if !is_generic_param && !self.types_compatible(ptype, arg_type) {
-                            printf("error[E0001]: Argument type mismatch for function '")
-                            prints(name)
-                            printf("', parameter '")
-                            prints(param.name)
-                            printf("': expected '")
-                            prints(ptype)
-                            printf("', got '")
-                            prints(arg_type)
-                            printf("'\n")
+                            printf("error[E0003]: argument type mismatch for function '%s', parameter '%s': expected '%s', got '%s'\n", name, param.name, ptype, arg_type)
                             self.has_error = true
                         }
                         arg_i = arg_i + 1
                     }
                 }
+            } else if !self.has_any_import {
+                printf("error[E0020]: undefined function: '%s'\n", name)
+                self.has_error = true
             }
             return
         }
@@ -974,13 +1003,7 @@ impl TypeChecker {
             if meth_idx >= 0 {
                 let decl = self.stmt_pool.get(meth_idx)
                 if decl.func_params.length() != expr.meth_args.length() + 1 {
-                    printf("error[E0001]: Argument count mismatch for method '")
-                    prints(meth_name)
-                    printf("': expected ")
-                    prints(int_to_str(decl.func_params.length() - 1))
-                    printf(", got ")
-                    prints(int_to_str(expr.meth_args.length()))
-                    printf("\n")
+                    printf("error[E0006]: argument count mismatch for method '%s': expected %lld, got %lld\n", meth_name, decl.func_params.length() - 1, expr.meth_args.length())
                     self.has_error = true
                 } else {
                     var arg_i = 0
@@ -989,20 +1012,15 @@ impl TypeChecker {
                         let param = decl.func_params.get(arg_i + 1)
                         let arg_type = self.get_expr_type(arg)
                         if !self.types_compatible(param.ptype, arg_type) {
-                            printf("error[E0001]: Argument type mismatch for method '")
-                            prints(meth_name)
-                            printf("', parameter '")
-                            prints(param.name)
-                            printf("': expected '")
-                            prints(param.ptype)
-                            printf("', got '")
-                            prints(arg_type)
-                            printf("'\n")
+                            printf("error[E0003]: argument type mismatch for method '%s', parameter '%s': expected '%s', got '%s'\n", meth_name, param.name, param.ptype, arg_type)
                             self.has_error = true
                         }
                         arg_i = arg_i + 1
                     }
                 }
+            } else if !self.has_any_import {
+                printf("error[E0022]: undefined method: '%s' for type '%s'\n", meth_name, recv_type)
+                self.has_error = true
             }
             return
         }
@@ -1028,10 +1046,16 @@ impl TypeChecker {
             }
             let struct_name = expr.struct_name
             let struct_idx = self.find_struct_decl(struct_name)
-            if struct_idx >= 0 {
-                let decl = self.stmt_pool.get(struct_idx)
-                var fi = 0
-                while fi < expr.struct_fields.length() {
+            if struct_idx < 0 {
+                if !self.has_any_import {
+                    printf("error[E0021]: undefined struct: '%s'\n", struct_name)
+                    self.has_error = true
+                }
+                return
+            }
+            let decl = self.stmt_pool.get(struct_idx)
+            var fi = 0
+            while fi < expr.struct_fields.length() {
                     let f = expr.struct_fields.get(fi)
                     var found = false
                     var dfi = 0
@@ -1041,31 +1065,18 @@ impl TypeChecker {
                             found = true
                             let val_type = self.get_expr_type(f.value)
                             if !self.types_compatible(df.ftype, val_type) {
-                                printf("error[E0001]: Type mismatch in initializer for field '")
-                                prints(f.name)
-                                printf("' of struct '")
-                                prints(struct_name)
-                                printf("': expected '")
-                                prints(df.ftype)
-                                printf("', got '")
-                                prints(val_type)
-                                printf("'\n")
+                                printf("error[E0004]: type mismatch in initializer for field '%s' of struct '%s': expected '%s', got '%s'\n", f.name, struct_name, df.ftype, val_type)
                                 self.has_error = true
                             }
                         }
                         dfi = dfi + 1
                     }
                     if !found {
-                        printf("error[E0001]: Field '")
-                        prints(f.name)
-                        printf("' does not exist in struct '")
-                        prints(struct_name)
-                        printf("'\n")
+                        printf("error[E0013]: field '%s' does not exist in struct '%s'\n", f.name, struct_name)
                         self.has_error = true
                     }
                     fi = fi + 1
                 }
-            }
             return
         }
         if expr.kind == ExprKind.ek_try {
@@ -1086,9 +1097,7 @@ impl TypeChecker {
                 i = i + 1
             }
             if excl_pos < 0 {
-                printf("error[E0001]: Cannot use 'try' on non-error union type '")
-                prints(inner_ty)
-                printf("'\n")
+                printf("error[E0014]: cannot use 'try' on non-error-union type '%s'\n", inner_ty)
                 self.has_error = true
             } else {
                 let error_set = substring(inner_ty, excl_pos + 1, length(inner_ty))
@@ -1102,18 +1111,12 @@ impl TypeChecker {
                     i = i + 1
                 }
                 if func_excl < 0 {
-                    printf("error[E0001]: Cannot use 'try' in a function that returns non-error union type '")
-                    prints(expected_ret)
-                    printf("'\n")
+                    printf("error[E0015]: cannot use 'try' in a function that returns non-error-union type '%s'\n", expected_ret)
                     self.has_error = true
                 } else {
                     let func_err = substring(expected_ret, func_excl + 1, length(expected_ret))
                     if !self.types_compatible(func_err, error_set) {
-                        printf("error[E0001]: Error set '")
-                        prints(error_set)
-                        printf("' of try expression is not compatible with function error set '")
-                        prints(func_err)
-                        printf("'\n")
+                        printf("error[E0016]: error set '%s' of try expression is not compatible with function error set '%s'\n", error_set, func_err)
                         self.has_error = true
                     }
                 }
@@ -1145,11 +1148,7 @@ impl TypeChecker {
                 self.exit_scope()
                 let fallback_yields = self.get_block_yield_type(expr.catch_fallback)
                 if !self.types_compatible(val_type, fallback_yields) {
-                    printf("error[E0001]: Catch fallback type '")
-                    prints(fallback_yields)
-                    printf("' is not compatible with expected type '")
-                    prints(val_type)
-                    printf("'\n")
+                    printf("error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", fallback_yields, val_type)
                     self.has_error = true
                 }
                 return
@@ -1163,9 +1162,7 @@ impl TypeChecker {
                 i = i + 1
             }
             if excl_pos < 0 {
-                printf("error[E0001]: Cannot use 'catch' on non-error union type '")
-                prints(inner_ty)
-                printf("'\n")
+                printf("error[E0017]: cannot use 'catch' on non-error-union type '%s'\n", inner_ty)
                 self.has_error = true
             } else {
                 let val_type = substring(inner_ty, 0, excl_pos)
@@ -1180,11 +1177,7 @@ impl TypeChecker {
                 
                 let fallback_yields = self.get_block_yield_type(expr.catch_fallback)
                 if !self.types_compatible(val_type, fallback_yields) {
-                    printf("error[E0001]: Catch fallback type '")
-                    prints(fallback_yields)
-                    printf("' is not compatible with expected type '")
-                    prints(val_type)
-                    printf("'\n")
+                    printf("error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", fallback_yields, val_type)
                     self.has_error = true
                 }
             }

@@ -163,7 +163,7 @@ fn main(argc: Int, argv: **Char) -> Int {
     if program_idx < 0 {
         return 3
     }
-    var checker = TypeChecker(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
+    var checker = TypeChecker(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, input_file)
     let success = checker.check_program(program_idx)
     if !success {
         return 4
