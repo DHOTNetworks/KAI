@@ -905,10 +905,9 @@ impl TypeChecker {
             return
         }
         if stmt.kind == StmtKind.sk_cimport {
-            var alias = stmt.cimport_alias
-            if length(alias) > 0 {
-                self.define_symbol(alias, "Void", false, "func")
-            }
+            // cimport creates a module namespace from the C header.
+            // We skip symbol definition here because the imported C names
+            // are not visible to the Kai type checker — they resolve at link time.
             return
         }
         if stmt.kind == StmtKind.sk_error_decl {

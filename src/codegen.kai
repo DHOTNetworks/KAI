@@ -2774,6 +2774,8 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
                 self.build_func_types()
                 let _ = self.gen_stmt(program_idx)
             }
+        } else if module_key != "" {
+            printf("warning: module '%s' not found at any search path\n", module_key)
         }
         return ""
     }
@@ -3181,12 +3183,7 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     final_code = final_code + "    size_t l1 = strlen(l);\n"
     final_code = final_code + "    size_t l2 = strlen(r);\n"
     final_code = final_code + "    size_t total = l1 + l2 + 1;\n"
-    final_code = final_code + "    char* buf = NULL;\n"
-    final_code = final_code + "    if (_kai_current_allocator) {\n"
-    final_code = final_code + "        buf = KaiAllocator_alloc((KaiAllocator*)_kai_current_allocator, total, 1);\n"
-    final_code = final_code + "    } else {\n"
-    final_code = final_code + "        buf = malloc(total);\n"
-    final_code = final_code + "    }\n"
+    final_code = final_code + "    char* buf = malloc(total);\n"
     final_code = final_code + "    if (buf) { strcpy(buf, l); strcat(buf, r); }\n"
     final_code = final_code + "    return buf;\n"
     final_code = final_code + "}\n\n"

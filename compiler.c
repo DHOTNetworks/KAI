@@ -59,8 +59,8 @@ int64_t get_exe_dir(char* out_buf, int64_t max_len) {
 
 /* C FFI Imports */
 #include "std/fs/fs.h"
-#include "std/llvm/core.h"
 
+static inline void print_int(int64_t i) { printf("%lld\n", (long long)i); }
 __thread void* _kai_current_allocator = NULL;
 void _kai_set_current_allocator(void* allocator);
 char* _kai_str_concat(const char* l, const char* r);
@@ -699,47 +699,25 @@ typedef struct Dir Dir;
 struct Dir {
     void* handle;
 };
-typedef struct TempAlloca TempAlloca;
-struct TempAlloca {
-    void* lltype;
-    void* addr;
-    bool in_use;
+typedef struct ErrorInfo ErrorInfo;
+struct ErrorInfo {
+    const char* code;
+    const char* title;
+    const char* description;
+    const char* fix;
 };
-typedef struct ArrayList_TempAlloca ArrayList_TempAlloca;
-struct ArrayList_TempAlloca {
-    TempAlloca* data;
+typedef struct ErrorEntry ErrorEntry;
+struct ErrorEntry {
+    const char* code;
+    const char* message;
+    const char* file;
+};
+typedef struct ArrayList_Bool ArrayList_Bool;
+struct ArrayList_Bool {
+    bool* data;
     int64_t len;
     int64_t cap;
     KaiAllocator* allocator;
-};
-typedef struct LLVMCodegen LLVMCodegen;
-struct LLVMCodegen {
-    KaiAllocator* allocator;
-    ArrayList_StmtNode* stmt_pool;
-    ArrayList_ExprNode* expr_pool;
-    ArrayList_PatternNode* pattern_pool;
-    void* ctx;
-    void* module;
-    void* builder;
-    void* cur_func;
-    bool last_was_term;
-    ArrayList_StrMapEntry sym_table;
-    ArrayList_StrMapEntry type_table;
-    ArrayList_StrMapEntry func_types;
-    ArrayList_StrMapEntry func_param_types;
-    ArrayList_StrMapEntry func_is_sret;
-    ArrayList_StrMapEntry struct_types;
-    ArrayList_StrMapEntry enum_types;
-    ArrayList_StrMapEntry enum_decls;
-    ArrayList_StrMapEntry struct_field_types;
-    ArrayList_StrMapEntry struct_field_indices;
-    ArrayList_Str loaded_modules;
-    ArrayList_Str loop_cond_stack;
-    ArrayList_Str loop_step_stack;
-    ArrayList_Str loop_end_stack;
-    const char* cur_func_ret_type;
-    void* cur_func_sret_ptr;
-    ArrayList_TempAlloca temp_allocas;
 };
 
 char* CAlloc_alloc(CAlloc* self, int64_t size, int64_t alignment);
@@ -1114,85 +1092,20 @@ bool fs_remove(const char* path);
 Dir fs_opendir(const char* path);
 const char* fs_readdir(Dir dir);
 void fs_closedir(Dir dir);
-extern int64_t get_exe_dir(char* buf, int64_t max_len);
-ArrayList_TempAlloca ArrayList_TempAlloca_init(KaiAllocator* allocator);
-void ArrayList_TempAlloca_push(ArrayList_TempAlloca* self, TempAlloca item);
-TempAlloca ArrayList_TempAlloca_get(ArrayList_TempAlloca* self, int64_t index);
-void ArrayList_TempAlloca_set(ArrayList_TempAlloca* self, int64_t index, TempAlloca item);
-TempAlloca ArrayList_TempAlloca_pop(ArrayList_TempAlloca* self);
-int64_t ArrayList_TempAlloca_length(ArrayList_TempAlloca* self);
-void ArrayList_TempAlloca_deinit(ArrayList_TempAlloca* self);
-ArrayList_TempAlloca empty_tempalloca_array(void);
-LLVMCodegen LLVMCodegen_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool);
-void LLVMCodegen_sym_reset(LLVMCodegen* self);
-void LLVMCodegen_reset_temp_allocas(LLVMCodegen* self);
-void LLVMCodegen_sym_store(LLVMCodegen* self, const char* name, void* val, const char* ktype);
-void* LLVMCodegen_sym_lookup(LLVMCodegen* self, const char* name);
-const char* LLVMCodegen_sym_type(LLVMCodegen* self, const char* name);
-int64_t LLVMCodegen_str_to_int(LLVMCodegen* self, const char* s);
-int64_t LLVMCodegen_str_find(LLVMCodegen* self, const char* s, char c);
-bool LLVMCodegen_str_contains(LLVMCodegen* self, const char* s, char c);
-int64_t LLVMCodegen_str_list_find(LLVMCodegen* self, const char* val);
-const char* LLVMCodegen_strip_pointers(LLVMCodegen* self, const char* ktype);
-bool LLVMCodegen_is_pointer_type(LLVMCodegen* self, const char* t);
-const char* LLVMCodegen_clean_type_for_mangling(LLVMCodegen* self, const char* s);
-bool LLVMCodegen_is_temp_alloca_name(LLVMCodegen* self, const char* name);
-void* LLVMCodegen_build_alloca(LLVMCodegen* self, void* lltype, const char* name);
-void* LLVMCodegen_build_load_aligned(LLVMCodegen* self, void* lltype, void* val_ptr, const char* name);
-void* LLVMCodegen_build_store_aligned(LLVMCodegen* self, void* val, void* val_ptr);
-void* LLVMCodegen_promote_enum_to_struct(LLVMCodegen* self, void* val, const char* ktype);
-void* LLVMCodegen_map_type(LLVMCodegen* self, const char* ktype);
-bool LLVMCodegen_is_integer_type(LLVMCodegen* self, const char* ktype);
-bool LLVMCodegen_is_builtin_llvm_func(LLVMCodegen* self, const char* name);
-void* LLVMCodegen_get_or_declare_func(LLVMCodegen* self, const char* fname, const char* ret_ktype, const char* p1, const char* p2, const char* p3, int64_t param_count);
-void* LLVMCodegen_get_malloc(LLVMCodegen* self);
-void* LLVMCodegen_get_memset(LLVMCodegen* self);
-void* LLVMCodegen_get_memcpy(LLVMCodegen* self);
-void* LLVMCodegen_get_strlen(LLVMCodegen* self);
-void* LLVMCodegen_get_strcpy(LLVMCodegen* self);
-void* LLVMCodegen_get_strcat(LLVMCodegen* self);
-void* LLVMCodegen_get_strcmp(LLVMCodegen* self);
-void* LLVMCodegen_get_or_declare_printf(LLVMCodegen* self);
-void* LLVMCodegen_get_printf_type(LLVMCodegen* self);
-void LLVMCodegen_emit_str_concat_helper(LLVMCodegen* self);
-void LLVMCodegen_register_all_types(LLVMCodegen* self);
-void LLVMCodegen_register_all_funcs(LLVMCodegen* self);
-bool LLVMCodegen_is_struct_by_value_return(LLVMCodegen* self, const char* ret_ktype);
-void* LLVMCodegen_register_func_decl(LLVMCodegen* self, int64_t stmt_idx, const char* struct_name, bool is_init);
-void LLVMCodegen_register_extern_decl(LLVMCodegen* self, int64_t stmt_idx);
-void LLVMCodegen_gen_func_body(LLVMCodegen* self, int64_t stmt_idx, const char* struct_name);
-void LLVMCodegen_gen_stmt(LLVMCodegen* self, int64_t stmt_idx);
-void LLVMCodegen_gen_stmt_inner(LLVMCodegen* self, int64_t stmt_idx);
-void* LLVMCodegen_gen_expr(LLVMCodegen* self, int64_t expr_idx);
-void* LLVMCodegen_gen_catch_fallback_val(LLVMCodegen* self, int64_t fallback_idx);
-void* LLVMCodegen_cast_to_i64(LLVMCodegen* self, void* val, const char* ktype);
-void* LLVMCodegen_gen_cast(LLVMCodegen* self, int64_t src_idx, const char* target_type);
-void LLVMCodegen_emit_print_call(LLVMCodegen* self, const char* ktype, void* val);
-void LLVMCodegen_gen_match(LLVMCodegen* self, int64_t stmt_idx);
-void LLVMCodegen_handle_import(LLVMCodegen* self, int64_t stmt_idx);
-const char* LLVMCodegen_get_expr_type(LLVMCodegen* self, int64_t idx);
-const char* LLVMCodegen_get_field_type(LLVMCodegen* self, const char* struct_name, const char* field_name);
-int64_t LLVMCodegen_get_field_index(LLVMCodegen* self, const char* struct_name, const char* field_name);
-bool LLVMCodegen_enum_has_payload(LLVMCodegen* self, const char* enum_name);
-const char* LLVMCodegen_get_variant_param_type(LLVMCodegen* self, const char* enum_name, const char* variant_name, int64_t param_idx);
-const char* LLVMCodegen_generate(LLVMCodegen* self, int64_t top_stmt_idx);
-bool LLVMCodegen_func_has_body(LLVMCodegen* self, const char* fname);
-void* LLVMCodegen_get_or_create_func_for_body(LLVMCodegen* self, const char* fname, void* fn_ty);
-void LLVMCodegen_emit_arraylist_method_get(LLVMCodegen* self, const char* elem_ktype, void* al_lltype, const char* fname);
-void LLVMCodegen_emit_arraylist_method_length(LLVMCodegen* self, const char* fname, void* al_lltype);
-void LLVMCodegen_emit_arraylist_method_push(LLVMCodegen* self, const char* elem_ktype, const char* fname, void* al_lltype);
-void LLVMCodegen_emit_arraylist_method_pop(LLVMCodegen* self, const char* elem_ktype, const char* fname, void* al_lltype);
-void LLVMCodegen_emit_arraylist_method_init(LLVMCodegen* self, const char* elem_ktype, const char* fname, void* al_lltype);
-void LLVMCodegen_emit_arraylist_method_set(LLVMCodegen* self, const char* elem_ktype, const char* fname, void* al_lltype);
-void LLVMCodegen_emit_monomorphized_arraylists(LLVMCodegen* self);
-void LLVMCodegen_maybe_emit_arraylist_for_type(LLVMCodegen* self, const char* raw_type);
-void LLVMCodegen_emit_runtime_helpers(LLVMCodegen* self);
-bool LLVMCodegen_is_struct_type(LLVMCodegen* self, const char* ktype);
-bool LLVMCodegen_expr_returns_ptr(LLVMCodegen* self, int64_t expr_idx);
-const char* LLVMCodegen_get_mangled_type_name(LLVMCodegen* self, const char* ktype);
+ErrorInfo get_error_info(const char* code);
 extern void _kai_set_current_allocator(void* allocator);
 extern int64_t get_exe_dir(char* buf, int64_t max_len);
+int64_t find_last(const char* path, char c);
+bool mkdir_p(const char* path);
+const char* str_replace(const char* s, const char* old, const char* new_val);
 const char* get_base_name(KaiAllocator* allocator, const char* path);
+ArrayList_Bool ArrayList_Bool_init(KaiAllocator* allocator);
+void ArrayList_Bool_push(ArrayList_Bool* self, bool item);
+bool ArrayList_Bool_get(ArrayList_Bool* self, int64_t index);
+void ArrayList_Bool_set(ArrayList_Bool* self, int64_t index, bool item);
+bool ArrayList_Bool_pop(ArrayList_Bool* self);
+int64_t ArrayList_Bool_length(ArrayList_Bool* self);
+void ArrayList_Bool_deinit(ArrayList_Bool* self);
 
 void _kai_set_current_allocator(void* allocator) {
     _kai_current_allocator = allocator;
@@ -5884,10 +5797,6 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     return;
 }
     if (stmt.kind == StmtKind_sk_cimport) {
-    const char* alias = stmt.cimport_alias;
-    if (strlen(alias) > 0) {
-    TypeChecker_define_symbol(self, alias, "Void", false, "func");
-}
     return;
 }
     if (stmt.kind == StmtKind_sk_error_decl) {
@@ -8856,6 +8765,8 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     Codegen_build_func_types(self);
     (void)(Codegen_gen_stmt(self, program_idx));
 }
+} else if (strcmp(module_key, "") != 0) {
+    printf("warning: module '%s' not found at any search path\n", module_key);
 }
     return "";
 }
@@ -9266,12 +9177,7 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
     final_code = _kai_str_concat(final_code, "    size_t l1 = strlen(l);\n");
     final_code = _kai_str_concat(final_code, "    size_t l2 = strlen(r);\n");
     final_code = _kai_str_concat(final_code, "    size_t total = l1 + l2 + 1;\n");
-    final_code = _kai_str_concat(final_code, "    char* buf = NULL;\n");
-    final_code = _kai_str_concat(final_code, "    if (_kai_current_allocator) {\n");
-    final_code = _kai_str_concat(final_code, "        buf = KaiAllocator_alloc((KaiAllocator*)_kai_current_allocator, total, 1);\n");
-    final_code = _kai_str_concat(final_code, "    } else {\n");
-    final_code = _kai_str_concat(final_code, "        buf = malloc(total);\n");
-    final_code = _kai_str_concat(final_code, "    }\n");
+    final_code = _kai_str_concat(final_code, "    char* buf = malloc(total);\n");
     final_code = _kai_str_concat(final_code, "    if (buf) { strcpy(buf, l); strcat(buf, r); }\n");
     final_code = _kai_str_concat(final_code, "    return buf;\n");
     final_code = _kai_str_concat(final_code, "}\n\n");
@@ -9317,3861 +9223,133 @@ void fs_closedir(Dir dir) {
     kai_fs_closedir(dir.handle);
 }
 }
-ArrayList_TempAlloca ArrayList_TempAlloca_init(KaiAllocator* allocator) {
-    ArrayList_TempAlloca self = (ArrayList_TempAlloca){0};
-    self.len = 0;
-    self.cap = 4;
-    self.allocator = allocator;
-    {
-    self.data = (TempAlloca*)(KaiAllocator_alloc(allocator, (self.cap * sizeof(TempAlloca)), 1));
+ErrorInfo get_error_info(const char* code) {
+    if (strcmp(code, "E0001") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Type mismatch in declaration", .description = "The declared type of a variable does not match the type of the initializer expression.", .fix = "Change the declared type to match the initializer, or change the initializer expression to produce the declared type." };
 }
-    return self;
+    if (strcmp(code, "E0002") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Type mismatch in assignment", .description = "The type of the value being assigned does not match the type of the target variable.", .fix = "Assign a value of the correct type, or change the variable's type." };
 }
-void ArrayList_TempAlloca_push(ArrayList_TempAlloca* self, TempAlloca item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2);
-    {
-    TempAlloca* new_data = (TempAlloca*)(KaiAllocator_alloc(self->allocator, (new_cap * sizeof(TempAlloca)), 1));
-    int64_t i = 0;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1);
+    if (strcmp(code, "E0003") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Argument type mismatch", .description = "A function or method call argument type does not match the parameter type.", .fix = "Pass an argument of the expected type, or cast it using the 'as' operator if appropriate." };
 }
-    KaiAllocator_free(self->allocator, (char*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
+    if (strcmp(code, "E0004") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Field type mismatch in struct initializer", .description = "A struct field initializer value type does not match the field's declared type.", .fix = "Provide a value of the correct type for the field, or change the field's type in the struct definition." };
 }
+    if (strcmp(code, "E0005") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Argument count mismatch in function call", .description = "The number of arguments provided in a function call does not match the function's parameter count.", .fix = "Add or remove arguments to match the function signature." };
 }
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1);
+    if (strcmp(code, "E0006") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Argument count mismatch in method call", .description = "The number of arguments provided in a method call does not match the method's parameter count.", .fix = "Add or remove arguments to match the method signature." };
 }
-TempAlloca ArrayList_TempAlloca_get(ArrayList_TempAlloca* self, int64_t index) {
-    if ((index < 0) || (index >= self->len)) {
-    {
-    exit(1);
+    if (strcmp(code, "E0007") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Return type mismatch", .description = "The type of the returned value does not match the function's declared return type.", .fix = "Return a value of the correct type, or change the function's return type declaration." };
 }
+    if (strcmp(code, "E0008") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Cannot assign to immutable variable", .description = "An immutable variable (declared with 'let') cannot be reassigned.", .fix = "Declare the variable with 'var' instead of 'let', or use a different variable." };
 }
-    return (self->data)[index];
+    if (strcmp(code, "E0009") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Use of moved value", .description = "A value has been moved and cannot be used again. In Kai, non-copy types are moved on assignment or function call.", .fix = "Clone the value before moving it, or restructure the code to avoid using the value after the move." };
 }
-void ArrayList_TempAlloca_set(ArrayList_TempAlloca* self, int64_t index, TempAlloca item) {
-    if ((index < 0) || (index >= self->len)) {
-    {
-    exit(1);
+    if (strcmp(code, "E0010") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Cannot return reference to local variable", .description = "Returning a reference to a local variable would create a dangling pointer, since the local is destroyed when the function returns.", .fix = "Return the value by value instead of by reference, or ensure the referenced data outlives the function." };
 }
+    if (strcmp(code, "E0011") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Field access on optional type", .description = "Cannot directly access a field on an optional type. The optional must be unwrapped first.", .fix = "Use 'catch' with a fallback to unwrap the optional, then access the field." };
 }
-    (self->data)[index] = item;
+    if (strcmp(code, "E0012") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Method call on optional type", .description = "Cannot call a method directly on an optional type. The optional must be unwrapped first.", .fix = "Use 'catch' with a fallback to unwrap the optional, then call the method." };
 }
-TempAlloca ArrayList_TempAlloca_pop(ArrayList_TempAlloca* self) {
-    if (self->len == 0) {
-    {
-    exit(1);
+    if (strcmp(code, "E0013") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Field does not exist in struct", .description = "The specified field name does not exist in the struct definition.", .fix = "Check the spelling of the field name, or add the field to the struct definition." };
 }
+    if (strcmp(code, "E0014") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Cannot use 'try' on non-error-union type", .description = "The 'try' operator can only be used on error union types (T!E), not on regular types.", .fix = "Ensure the expression has an error union type, or handle errors differently." };
 }
-    self->len = (self->len - 1);
-    return (self->data)[self->len];
+    if (strcmp(code, "E0015") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Cannot use 'try' in non-error-returning function", .description = "The 'try' operator can only be used inside functions that return an error union type.", .fix = "Change the function's return type to an error union, or use 'catch' instead of 'try'." };
 }
-int64_t ArrayList_TempAlloca_length(ArrayList_TempAlloca* self) {
-    return self->len;
+    if (strcmp(code, "E0016") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Error set mismatch in 'try'", .description = "The error set of the 'try' expression is not compatible with the function's error return type.", .fix = "Ensure the error types are compatible, or convert between error sets." };
 }
-void ArrayList_TempAlloca_deinit(ArrayList_TempAlloca* self) {
-    {
-    KaiAllocator_free(self->allocator, (char*)(self->data));
+    if (strcmp(code, "E0017") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Cannot use 'catch' on non-optional, non-error-union type", .description = "The 'catch' operator requires an optional or error union type.", .fix = "Ensure the expression is an optional or error union type before using 'catch'." };
 }
+    if (strcmp(code, "E0018") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Catch fallback type mismatch", .description = "The type of the 'catch' fallback expression does not match the expected unwrapped type.", .fix = "Change the fallback expression to produce the correct type." };
 }
-ArrayList_TempAlloca empty_tempalloca_array(void) {
-    return (ArrayList_TempAlloca){ .data = (TempAlloca*)(0), .len = 0, .cap = 0, .allocator = (KaiAllocator*)(0) };
+    if (strcmp(code, "E0019") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Undefined identifier", .description = "An identifier was used but not declared in the current scope or any parent scope.", .fix = "Declare the identifier before use, check the spelling, or import it from the appropriate module." };
 }
-LLVMCodegen LLVMCodegen_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool) {
-    LLVMCodegen self = (LLVMCodegen){0};
-    self.allocator = allocator;
-    self.stmt_pool = stmt_pool;
-    self.expr_pool = expr_pool;
-    self.pattern_pool = pattern_pool;
-    self.ctx = LLVMContextCreate();
-    self.module = (void*)(0);
-    self.builder = (void*)(0);
-    self.cur_func = (void*)(0);
-    self.last_was_term = false;
-    self.sym_table = ArrayList_StrMapEntry_init(allocator);
-    self.type_table = ArrayList_StrMapEntry_init(allocator);
-    self.func_types = ArrayList_StrMapEntry_init(allocator);
-    self.func_param_types = ArrayList_StrMapEntry_init(allocator);
-    self.func_is_sret = ArrayList_StrMapEntry_init(allocator);
-    self.struct_types = ArrayList_StrMapEntry_init(allocator);
-    self.enum_types = ArrayList_StrMapEntry_init(allocator);
-    self.enum_decls = ArrayList_StrMapEntry_init(allocator);
-    self.struct_field_types = ArrayList_StrMapEntry_init(allocator);
-    self.struct_field_indices = ArrayList_StrMapEntry_init(allocator);
-    self.loaded_modules = ArrayList_Str_init(allocator);
-    self.loop_cond_stack = ArrayList_Str_init(allocator);
-    self.loop_step_stack = ArrayList_Str_init(allocator);
-    self.loop_end_stack = ArrayList_Str_init(allocator);
-    self.cur_func_ret_type = "";
-    self.cur_func_sret_ptr = (void*)(0);
-    self.temp_allocas = ArrayList_TempAlloca_init(allocator);
-    return self;
+    if (strcmp(code, "E0020") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Undefined function", .description = "A function was called but not declared or imported in the current scope.", .fix = "Declare the function with 'fn', declare it as 'extern fn', or import it from the appropriate module. Check the spelling." };
 }
-void LLVMCodegen_sym_reset(LLVMCodegen* self) {
-    self->sym_table.len = 0;
-    self->type_table.len = 0;
-    self->temp_allocas.len = 0;
+    if (strcmp(code, "E0021") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Undefined struct", .description = "A struct type was used but not declared in the current compilation unit.", .fix = "Define the struct with 'struct', import it, or check the spelling of the struct name." };
 }
-void LLVMCodegen_reset_temp_allocas(LLVMCodegen* self) {
-    int64_t i = 0;
-    while (i < ArrayList_TempAlloca_length(&(self->temp_allocas))) {
-    TempAlloca entry = ArrayList_TempAlloca_get(&(self->temp_allocas), i);
-    entry.in_use = false;
-    ArrayList_TempAlloca_set(&(self->temp_allocas), i, entry);
-    i = (i + 1);
+    if (strcmp(code, "E0022") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Undefined method", .description = "A method was called on a type that does not have that method in any 'impl' block.", .fix = "Add an 'impl' block with the method, check the spelling of the method name, or check the receiver type." };
 }
+    if (strcmp(code, "E0100") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Lexer error", .description = "The lexer encountered an unexpected character or syntax that could not be tokenized.", .fix = "Check for unexpected characters, unclosed strings, or invalid syntax near the reported position." };
 }
-void LLVMCodegen_sym_store(LLVMCodegen* self, const char* name, void* val, const char* ktype) {
-    const char* val_str = int_to_str((int64_t)(val));
-    type_map_put(&(self->sym_table), name, val_str);
-    type_map_put(&(self->type_table), name, ktype);
+    if (strcmp(code, "E0101") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Parser error", .description = "The parser encountered a token that does not match the expected grammar rule.", .fix = "Check the syntax near the reported position. Common causes: missing semicolons, unmatched brackets, or incorrect keyword usage." };
 }
-void* LLVMCodegen_sym_lookup(LLVMCodegen* self, const char* name) {
-    const char* val_str = type_map_get(&(self->sym_table), name);
-    if (strlen(val_str) == 0) {
-    return (void*)(0);
+    return (ErrorInfo){ .code = code, .title = "Unknown error code", .description = "No additional information is available for this error code.", .fix = "Refer to the Kai language documentation for more information." };
 }
-    return (void*)(LLVMCodegen_str_to_int(self, val_str));
-}
-const char* LLVMCodegen_sym_type(LLVMCodegen* self, const char* name) {
-    return type_map_get(&(self->type_table), name);
-}
-int64_t LLVMCodegen_str_to_int(LLVMCodegen* self, const char* s) {
-    int64_t res = 0;
-    int64_t sign = 1;
-    int64_t i = 0;
-    if ((strlen(s) > 0) && ((s)[0] == ((char)(45)))) {
-    sign = (-1);
-    i = 1;
-}
-    while (i < strlen(s)) {
-    int64_t c = (int64_t)((s)[i]);
-    if ((c >= 48) && (c <= 57)) {
-    res = ((res * 10) + (c - 48));
-}
-    i = (i + 1);
-}
-    return (res * sign);
-}
-int64_t LLVMCodegen_str_find(LLVMCodegen* self, const char* s, char c) {
-    int64_t i = 0;
-    while (i < strlen(s)) {
-    if ((s)[i] == c) {
+int64_t find_last(const char* path, char c) {
+    int64_t i = (strlen(path) - 1);
+    while (i >= 0) {
+    if ((path)[i] == c) {
     return i;
 }
-    i = (i + 1);
+    i = (i - 1);
 }
     return (-1);
 }
-bool LLVMCodegen_str_contains(LLVMCodegen* self, const char* s, char c) {
-    return (LLVMCodegen_str_find(self, s, c) >= 0);
+bool mkdir_p(const char* path) {
+    if (fs_exists(path)) {
+    return true;
 }
-int64_t LLVMCodegen_str_list_find(LLVMCodegen* self, const char* val) {
+    int64_t slash_pos = find_last(path, ((char)(47)));
+    if (slash_pos > 0) {
+    const char* parent = substring(path, 0, slash_pos);
+    if (!mkdir_p(parent)) {
+    return false;
+}
+}
+    return fs_mkdir(path);
+}
+const char* str_replace(const char* s, const char* old, const char* new_val) {
+    int64_t s_len = strlen(s);
+    int64_t old_len = strlen(old);
+    if (old_len == 0) {
+    return s;
+}
+    const char* result = "";
     int64_t i = 0;
-    while (i < ArrayList_Str_length(&(self->loaded_modules))) {
-    if (strcmp(ArrayList_Str_get(&(self->loaded_modules), i), val) == 0) {
-    return i;
-}
-    i = (i + 1);
-}
-    return (-1);
-}
-const char* LLVMCodegen_strip_pointers(LLVMCodegen* self, const char* ktype) {
-    const char* res = ktype;
-    while ((strlen(res) > 0) && (((res)[0] == ((char)(42))) || ((res)[0] == ((char)(38))))) {
-    res = substring(res, 1, strlen(res));
-}
-    return res;
-}
-bool LLVMCodegen_is_pointer_type(LLVMCodegen* self, const char* t) {
-    if (strlen(t) == 0) {
-    return false;
-}
-    if (((t)[0] == ((char)(42))) || ((t)[0] == ((char)(38)))) {
-    return true;
-}
-    if (strcmp(t, "Str") == 0) {
-    return true;
-}
-    if ((strlen(t) >= 2) && (strcmp(substring(t, 0, 2), "[]") == 0)) {
-    return true;
-}
-    return false;
-}
-const char* LLVMCodegen_clean_type_for_mangling(LLVMCodegen* self, const char* s) {
-    const char* res = "";
-    int64_t i = 0;
-    while (i < strlen(s)) {
-    char c = (s)[i];
-    if (c == ((char)(42))) {
-    res = _kai_str_concat(res, "ptr");
-} else if (c == ((char)(38))) {
-    res = _kai_str_concat(res, "ref");
-} else if (c == ((char)(32))) {
-    res = _kai_str_concat(res, "_");
-} else if (c == ((char)(63))) {
-    res = _kai_str_concat(res, "opt_");
-} else if ((((c == ((char)(60))) || (c == ((char)(62)))) || (c == ((char)(44)))) || (c == ((char)(33)))) {
-    res = _kai_str_concat(res, "_");
-} else {
-    res = _kai_str_concat(res, char_to_str(c));
-}
-    i = (i + 1);
-}
-    return res;
-}
-bool LLVMCodegen_is_temp_alloca_name(LLVMCodegen* self, const char* name) {
-    if (strcmp(name, "sret_slot") == 0) {
-    return true;
-}
-    if (strcmp(name, "field_tmp") == 0) {
-    return true;
-}
-    if (strcmp(name, "rec_temp") == 0) {
-    return true;
-}
-    if (strcmp(name, "res_tmp") == 0) {
-    return true;
-}
-    if (strcmp(name, "opt_tmp") == 0) {
-    return true;
-}
-    if (strcmp(name, "opt_tmp2") == 0) {
-    return true;
-}
-    if (strcmp(name, "struct_val") == 0) {
-    return true;
-}
-    if (strcmp(name, "borrow_tmp") == 0) {
-    return true;
-}
-    if (strcmp(name, "catch_result") == 0) {
-    return true;
-}
-    if (strcmp(name, "try_tmp") == 0) {
-    return true;
-}
-    if (strcmp(name, "match_tmp") == 0) {
-    return true;
-}
-    if (strcmp(name, "match_res_tmp") == 0) {
-    return true;
-}
-    if (strcmp(name, "match_opt_tmp") == 0) {
-    return true;
-}
-    if (strcmp(name, "match_enum_tmp") == 0) {
-    return true;
-}
-    if (strcmp(name, "match_gep_tmp") == 0) {
-    return true;
-}
-    if (strcmp(name, "ret_result") == 0) {
-    return true;
-}
-    if (strcmp(name, "ret_opt") == 0) {
-    return true;
-}
-    if (strcmp(name, "none_opt") == 0) {
-    return true;
-}
-    if (strcmp(name, "struct_init") == 0) {
-    return true;
-}
-    if (strcmp(name, "enum_init") == 0) {
-    return true;
-}
-    if (strcmp(name, "enum_meth_init") == 0) {
-    return true;
-}
-    if (strcmp(name, "arr_lit") == 0) {
-    return true;
-}
-    if (strcmp(name, "its_sret") == 0) {
-    return true;
-}
-    if (strcmp(name, "opt_iflet_tmp") == 0) {
-    return true;
-}
-    if (strcmp(name, "opt_iflet_tmp2") == 0) {
-    return true;
-}
-    return false;
-}
-void* LLVMCodegen_build_alloca(LLVMCodegen* self, void* lltype, const char* name) {
-    bool is_temp = LLVMCodegen_is_temp_alloca_name(self, name);
-    if (is_temp) {
-    int64_t i = 0;
-    while (i < ArrayList_TempAlloca_length(&(self->temp_allocas))) {
-    TempAlloca entry = ArrayList_TempAlloca_get(&(self->temp_allocas), i);
-    if ((!entry.in_use) && (entry.lltype == lltype)) {
-    entry.in_use = true;
-    ArrayList_TempAlloca_set(&(self->temp_allocas), i, entry);
-    return entry.addr;
-}
-    i = (i + 1);
-}
-}
-    void* cur_bb = LLVMGetInsertBlock(self->builder);
-    void* entry_bb = LLVMGetFirstBasicBlock(self->cur_func);
-    void* first_instr = LLVMGetFirstInstruction(entry_bb);
-    if (first_instr == (void*)(0)) {
-    LLVMPositionBuilderAtEnd(self->builder, entry_bb);
-} else {
-    LLVMPositionBuilderBefore(self->builder, first_instr);
-}
-    void* alloca_val = LLVMBuildAlloca(self->builder, lltype, name);
-    LLVMPositionBuilderAtEnd(self->builder, cur_bb);
-    if (is_temp) {
-    ArrayList_TempAlloca_push(&(self->temp_allocas), (TempAlloca){ .lltype = lltype, .addr = alloca_val, .in_use = true });
-}
-    return alloca_val;
-}
-void* LLVMCodegen_build_load_aligned(LLVMCodegen* self, void* lltype, void* val_ptr, const char* name) {
-    void* instr = LLVMBuildLoad2(self->builder, lltype, val_ptr, name);
-    LLVMSetAlignment(instr, 8);
-    return instr;
-}
-void* LLVMCodegen_build_store_aligned(LLVMCodegen* self, void* val, void* val_ptr) {
-    void* instr = LLVMBuildStore(self->builder, val, val_ptr);
-    LLVMSetAlignment(instr, 8);
-    return instr;
-}
-void* LLVMCodegen_promote_enum_to_struct(LLVMCodegen* self, void* val, const char* ktype) {
-    bool is_enum_type = (strlen(type_map_get(&(self->enum_types), ktype)) > 0);
-    if (!is_enum_type) {
-    return val;
-}
-    if (!LLVMCodegen_enum_has_payload(self, ktype)) {
-    return val;
-}
-    if (val == (void*)(0)) {
-    return val;
-}
-    void* val_ll_type = LLVMTypeOf(val);
-    if (val_ll_type != LLVMInt32TypeInContext(self->ctx)) {
-    return val;
-}
-    void* struct_lltype = LLVMCodegen_map_type(self, ktype);
-    void* enum_tmp = LLVMCodegen_build_alloca(self, struct_lltype, "enum_field_tmp");
-    void* tag_gep = LLVMBuildStructGEP2(self->builder, struct_lltype, enum_tmp, 0, "tag_gep");
-    void* tag_i8 = LLVMBuildTrunc(self->builder, val, LLVMInt8TypeInContext(self->ctx), "tag_i8");
-    LLVMBuildStore(self->builder, tag_i8, tag_gep);
-    void* payload_gep = LLVMBuildStructGEP2(self->builder, struct_lltype, enum_tmp, 1, "payload_gep");
-    LLVMBuildStore(self->builder, LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false), payload_gep);
-    return LLVMCodegen_build_load_aligned(self, struct_lltype, enum_tmp, "enum_promoted");
-}
-void* LLVMCodegen_map_type(LLVMCodegen* self, const char* ktype) {
-    if (strlen(ktype) == 0) {
-    return LLVMInt64TypeInContext(self->ctx);
-}
-    if ((ktype)[0] == ((char)(63))) {
-    const char* val_type = substring(ktype, 1, strlen(ktype));
-    if (LLVMCodegen_is_pointer_type(self, val_type)) {
-    return LLVMCodegen_map_type(self, val_type);
-}
-    const char* clean_val = LLVMCodegen_clean_type_for_mangling(self, val_type);
-    const char* concrete_name = _kai_str_concat("Optional_", clean_val);
-    const char* existing = type_map_get(&(self->struct_types), concrete_name);
-    if (strlen(existing) > 0) {
-    return (void*)(LLVMCodegen_str_to_int(self, existing));
-}
-    void* opt_ty = LLVMStructCreateNamed(self->ctx, concrete_name);
-    type_map_put(&(self->struct_types), concrete_name, int_to_str((int64_t)(opt_ty)));
-    type_map_put(&(self->struct_field_indices), _kai_str_concat(concrete_name, ".has_value"), "0");
-    type_map_put(&(self->struct_field_indices), _kai_str_concat(concrete_name, ".value"), "1");
-    type_map_put(&(self->struct_field_types), _kai_str_concat(concrete_name, ".has_value"), "Bool");
-    type_map_put(&(self->struct_field_types), _kai_str_concat(concrete_name, ".value"), val_type);
-    void** types = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (types)[0] = LLVMInt8TypeInContext(self->ctx);
-    (types)[1] = LLVMCodegen_map_type(self, val_type);
-    LLVMStructSetBody(opt_ty, (void*)(types), 2, false);
-    KaiAllocator_free(self->allocator, (void*)(types));
-    return opt_ty;
-}
-    if (LLVMCodegen_str_contains(self, ktype, ((char)(33)))) {
-    int64_t excl_pos = LLVMCodegen_str_find(self, ktype, ((char)(33)));
-    const char* val_type = substring(ktype, 0, excl_pos);
-    const char* err_type = substring(ktype, (excl_pos + 1), strlen(ktype));
-    const char* clean_val = LLVMCodegen_clean_type_for_mangling(self, val_type);
-    const char* clean_err = LLVMCodegen_clean_type_for_mangling(self, err_type);
-    const char* concrete_name = _kai_str_concat(_kai_str_concat(_kai_str_concat("Result_", clean_val), "_"), clean_err);
-    const char* existing = type_map_get(&(self->struct_types), concrete_name);
-    if (strlen(existing) > 0) {
-    return (void*)(LLVMCodegen_str_to_int(self, existing));
-}
-    void* res_ty = LLVMStructCreateNamed(self->ctx, concrete_name);
-    type_map_put(&(self->struct_types), concrete_name, int_to_str((int64_t)(res_ty)));
-    type_map_put(&(self->struct_field_indices), _kai_str_concat(concrete_name, ".tag"), "0");
-    type_map_put(&(self->struct_field_types), _kai_str_concat(concrete_name, ".tag"), "Int");
-    if (strcmp(val_type, "Void") != 0) {
-    type_map_put(&(self->struct_field_indices), _kai_str_concat(concrete_name, ".value"), "1");
-    type_map_put(&(self->struct_field_types), _kai_str_concat(concrete_name, ".value"), val_type);
-}
-    void** types = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (types)[0] = LLVMInt64TypeInContext(self->ctx);
-    if (strcmp(val_type, "Void") == 0) {
-    LLVMStructSetBody(res_ty, (void*)(types), 1, false);
-} else {
-    (types)[1] = LLVMCodegen_map_type(self, val_type);
-    LLVMStructSetBody(res_ty, (void*)(types), 2, false);
-}
-    KaiAllocator_free(self->allocator, (void*)(types));
-    return res_ty;
-}
-    if ((strcmp(ktype, "Int") == 0) || (strcmp(ktype, "Int64") == 0)) {
-    return LLVMInt64TypeInContext(self->ctx);
-}
-    if (strcmp(ktype, "Float") == 0) {
-    return LLVMDoubleTypeInContext(self->ctx);
-}
-    if (strcmp(ktype, "Bool") == 0) {
-    return LLVMInt64TypeInContext(self->ctx);
-}
-    if ((strcmp(ktype, "Char") == 0) || (strcmp(ktype, "Int8") == 0)) {
-    return LLVMInt8TypeInContext(self->ctx);
-}
-    if (strcmp(ktype, "Int32") == 0) {
-    return LLVMInt32TypeInContext(self->ctx);
-}
-    if (strcmp(ktype, "Str") == 0) {
-    return LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-}
-    if (strcmp(ktype, "Void") == 0) {
-    return LLVMVoidTypeInContext(self->ctx);
-}
-    if ((ktype)[0] == ((char)(42))) {
-    const char* inner = substring(ktype, 1, strlen(ktype));
-    if ((strlen(inner) == 0) || (strcmp(inner, "Void") == 0)) {
-    return LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-}
-    if ((strcmp(inner, "Char") == 0) || (strcmp(inner, "Int8") == 0)) {
-    return LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-}
-    return LLVMPointerType(LLVMCodegen_map_type(self, inner), 0);
-}
-    if ((ktype)[0] == ((char)(38))) {
-    const char* inner = substring(ktype, 1, strlen(ktype));
-    if ((strlen(inner) == 0) || (strcmp(inner, "Void") == 0)) {
-    return LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-}
-    return LLVMPointerType(LLVMCodegen_map_type(self, inner), 0);
-}
-    if ((strlen(ktype) >= 2) && (strcmp(substring(ktype, 0, 2), "[]") == 0)) {
-    const char* inner = substring(ktype, 2, strlen(ktype));
-    if (strlen(inner) == 0) {
-    return LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-}
-    return LLVMPointerType(LLVMCodegen_map_type(self, inner), 0);
-}
-    const char* clean_base = ktype;
-    int64_t lt_pos = LLVMCodegen_str_find(self, ktype, ((char)(60)));
-    if (lt_pos >= 0) {
-    clean_base = substring(ktype, 0, lt_pos);
-    if (strcmp(clean_base, "Optional") == 0) {
-    const char* inner = substring(ktype, (lt_pos + 1), (strlen(ktype) - 1));
-    return LLVMCodegen_map_type(self, _kai_str_concat("?", inner));
-}
-    if (strcmp(clean_base, "ArrayList") == 0) {
-    const char* existing = type_map_get(&(self->struct_types), ktype);
-    if (strlen(existing) > 0) {
-    return (void*)(LLVMCodegen_str_to_int(self, existing));
-}
-}
-}
-    const char* s_ty_str = type_map_get(&(self->struct_types), clean_base);
-    if (strlen(s_ty_str) > 0) {
-    return (void*)(LLVMCodegen_str_to_int(self, s_ty_str));
-}
-    const char* e_ty_str = type_map_get(&(self->enum_types), clean_base);
-    if (strlen(e_ty_str) > 0) {
-    void* e_ty = (void*)(LLVMCodegen_str_to_int(self, e_ty_str));
-    return e_ty;
-}
-    return LLVMInt64TypeInContext(self->ctx);
-}
-bool LLVMCodegen_is_integer_type(LLVMCodegen* self, const char* ktype) {
-    if (strcmp(ktype, "Int") == 0) {
-    return true;
-}
-    if (strcmp(ktype, "Char") == 0) {
-    return true;
-}
-    if (strcmp(ktype, "Bool") == 0) {
-    return true;
-}
-    if (strcmp(ktype, "Int8") == 0) {
-    return true;
-}
-    if (strcmp(ktype, "Int32") == 0) {
-    return true;
-}
-    const char* clean_t = LLVMCodegen_strip_pointers(self, ktype);
-    const char* enum_val = type_map_get(&(self->enum_decls), clean_t);
-    if (strlen(enum_val) > 0) {
-    if (!LLVMCodegen_enum_has_payload(self, clean_t)) {
-    return true;
-}
-}
-    return false;
-}
-bool LLVMCodegen_is_builtin_llvm_func(LLVMCodegen* self, const char* name) {
-    if (strcmp(name, "printf") == 0) {
-    return true;
-}
-    if (strcmp(name, "sprintf") == 0) {
-    return true;
-}
-    if (strcmp(name, "snprintf") == 0) {
-    return true;
-}
-    if (strcmp(name, "exit") == 0) {
-    return true;
-}
-    if (strcmp(name, "malloc") == 0) {
-    return true;
-}
-    if (strcmp(name, "free") == 0) {
-    return true;
-}
-    if (strcmp(name, "realloc") == 0) {
-    return true;
-}
-    if (strcmp(name, "memset") == 0) {
-    return true;
-}
-    if (strcmp(name, "memcpy") == 0) {
-    return true;
-}
-    if (strcmp(name, "strlen") == 0) {
-    return true;
-}
-    if (strcmp(name, "strcmp") == 0) {
-    return true;
-}
-    if (strcmp(name, "strcpy") == 0) {
-    return true;
-}
-    if (strcmp(name, "strcat") == 0) {
-    return true;
-}
-    return false;
-}
-void* LLVMCodegen_get_or_declare_func(LLVMCodegen* self, const char* fname, const char* ret_ktype, const char* p1, const char* p2, const char* p3, int64_t param_count) {
-    void* existing = LLVMGetNamedFunction(self->module, fname);
-    if (existing != (void*)(0)) {
-    return existing;
-}
-    void** param_types = (void**)(KaiAllocator_alloc(self->allocator, (param_count * 8), 8));
-    if (param_count > 0) {
-    (param_types)[0] = LLVMCodegen_map_type(self, p1);
-}
-    if (param_count > 1) {
-    (param_types)[1] = LLVMCodegen_map_type(self, p2);
-}
-    if (param_count > 2) {
-    (param_types)[2] = LLVMCodegen_map_type(self, p3);
-}
-    void* ret_ll = LLVMCodegen_map_type(self, ret_ktype);
-    void* fn_ty = LLVMFunctionType(ret_ll, (void*)(param_types), param_count, false);
-    void* func = LLVMAddFunction(self->module, fname, fn_ty);
-    type_map_put(&(self->func_types), fname, ret_ktype);
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-    return func;
-}
-void* LLVMCodegen_get_malloc(LLVMCodegen* self) {
-    return LLVMCodegen_get_or_declare_func(self, "malloc", "*Void", "Int", "", "", 1);
-}
-void* LLVMCodegen_get_memset(LLVMCodegen* self) {
-    return LLVMCodegen_get_or_declare_func(self, "memset", "*Void", "*Void", "Int", "Int", 3);
-}
-void* LLVMCodegen_get_memcpy(LLVMCodegen* self) {
-    return LLVMCodegen_get_or_declare_func(self, "memcpy", "*Void", "*Void", "*Void", "Int", 3);
-}
-void* LLVMCodegen_get_strlen(LLVMCodegen* self) {
-    return LLVMCodegen_get_or_declare_func(self, "strlen", "Int", "Str", "", "", 1);
-}
-void* LLVMCodegen_get_strcpy(LLVMCodegen* self) {
-    return LLVMCodegen_get_or_declare_func(self, "strcpy", "Str", "Str", "Str", "", 2);
-}
-void* LLVMCodegen_get_strcat(LLVMCodegen* self) {
-    return LLVMCodegen_get_or_declare_func(self, "strcat", "Str", "Str", "Str", "", 2);
-}
-void* LLVMCodegen_get_strcmp(LLVMCodegen* self) {
-    return LLVMCodegen_get_or_declare_func(self, "strcmp", "Int32", "Str", "Str", "", 2);
-}
-void* LLVMCodegen_get_or_declare_printf(LLVMCodegen* self) {
-    const char* fname = "printf";
-    void* printf_func = LLVMGetNamedFunction(self->module, fname);
-    if (printf_func != (void*)(0)) {
-    return printf_func;
-}
-    void* ret_type = LLVMInt32TypeInContext(self->ctx);
-    void** params = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (params)[0] = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-    void* fn_ty = LLVMFunctionType(ret_type, (void*)(params), 1, true);
-    void* func = LLVMAddFunction(self->module, fname, fn_ty);
-    KaiAllocator_free(self->allocator, (void*)(params));
-    return func;
-}
-void* LLVMCodegen_get_printf_type(LLVMCodegen* self) {
-    void* ret_type = LLVMInt32TypeInContext(self->ctx);
-    void** params = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (params)[0] = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-    void* fn_ty = LLVMFunctionType(ret_type, (void*)(params), 1, true);
-    KaiAllocator_free(self->allocator, (void*)(params));
-    return fn_ty;
-}
-void LLVMCodegen_emit_str_concat_helper(LLVMCodegen* self) {
-    const char* fname = "_kai_str_concat";
-    void* ret_type = LLVMCodegen_map_type(self, "Str");
-    void** params = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (params)[0] = ret_type;
-    (params)[1] = ret_type;
-    void* fn_ty = LLVMFunctionType(ret_type, (void*)(params), 2, false);
-    void* func = LLVMAddFunction(self->module, fname, fn_ty);
-    void* entry_bb = LLVMAppendBasicBlockInContext(self->ctx, func, "entry");
-    void* helper_builder = LLVMCreateBuilderInContext(self->ctx);
-    LLVMPositionBuilderAtEnd(helper_builder, entry_bb);
-    void* a = LLVMGetParam(func, 0);
-    void* b = LLVMGetParam(func, 1);
-    void* strlen_func = LLVMCodegen_get_strlen(self);
-    void** strlen_param_types = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (strlen_param_types)[0] = ret_type;
-    void* strlen_ty = LLVMFunctionType(LLVMInt64TypeInContext(self->ctx), (void*)(strlen_param_types), 1, false);
-    void** la_params = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (la_params)[0] = a;
-    void* la = LLVMBuildCall2(helper_builder, strlen_ty, strlen_func, (void*)(la_params), 1, "la");
-    KaiAllocator_free(self->allocator, (void*)(la_params));
-    void** lb_params = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (lb_params)[0] = b;
-    void* lb = LLVMBuildCall2(helper_builder, strlen_ty, strlen_func, (void*)(lb_params), 1, "lb");
-    KaiAllocator_free(self->allocator, (void*)(lb_params));
-    KaiAllocator_free(self->allocator, (void*)(strlen_param_types));
-    void* total = LLVMBuildAdd(helper_builder, la, lb, "total");
-    void* sz = LLVMBuildAdd(helper_builder, total, LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 1, false), "sz");
-    void* malloc_func = LLVMCodegen_get_malloc(self);
-    void** malloc_param_types = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (malloc_param_types)[0] = LLVMInt64TypeInContext(self->ctx);
-    void** malloc_args = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (malloc_args)[0] = sz;
-    void* buf = LLVMBuildCall2(helper_builder, LLVMFunctionType(ret_type, (void*)(malloc_param_types), 1, false), malloc_func, (void*)(malloc_args), 1, "buf");
-    KaiAllocator_free(self->allocator, (void*)(malloc_param_types));
-    KaiAllocator_free(self->allocator, (void*)(malloc_args));
-    void* strcpy_func = LLVMCodegen_get_strcpy(self);
-    void** cpy_params = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (cpy_params)[0] = buf;
-    (cpy_params)[1] = a;
-    void* strcpy_ty = LLVMFunctionType(ret_type, (void*)(params), 2, false);
-    (void)(LLVMBuildCall2(helper_builder, strcpy_ty, strcpy_func, (void*)(cpy_params), 2, ""));
-    void* strcat_func = LLVMCodegen_get_strcat(self);
-    (cpy_params)[1] = b;
-    (void)(LLVMBuildCall2(helper_builder, strcpy_ty, strcat_func, (void*)(cpy_params), 2, ""));
-    (void)(LLVMBuildRet(helper_builder, buf));
-    LLVMDisposeBuilder(helper_builder);
-    KaiAllocator_free(self->allocator, (void*)(cpy_params));
-    KaiAllocator_free(self->allocator, (void*)(params));
-    type_map_put(&(self->func_types), fname, "Str");
-}
-void LLVMCodegen_register_all_types(LLVMCodegen* self) {
-    int64_t idx = 0;
-    while (idx < ArrayList_StmtNode_length(self->stmt_pool)) {
-    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, idx);
-    if (stmt.kind == StmtKind_sk_struct_decl) {
-    const char* existing = type_map_get(&(self->struct_types), stmt.struct_name);
-    if (strlen(existing) == 0) {
-    void* s_ty = LLVMStructCreateNamed(self->ctx, stmt.struct_name);
-    type_map_put(&(self->struct_types), stmt.struct_name, int_to_str((int64_t)(s_ty)));
-    int64_t f_idx = 0;
-    while (f_idx < ArrayList_StructField_length(&(stmt.struct_fields))) {
-    StructField f = ArrayList_StructField_get(&(stmt.struct_fields), f_idx);
-    const char* key = _kai_str_concat(_kai_str_concat(stmt.struct_name, "."), f.name);
-    type_map_put(&(self->struct_field_types), key, f.ftype);
-    type_map_put(&(self->struct_field_indices), key, int_to_str(f_idx));
-    f_idx = (f_idx + 1);
-}
-}
-}
-    if (stmt.kind == StmtKind_sk_enum_decl) {
-    const char* existing = type_map_get(&(self->enum_types), stmt.enum_name);
-    if (strlen(existing) == 0) {
-    bool has_payload = false;
-    int64_t v_idx = 0;
-    while (v_idx < ArrayList_Variant_length(&(stmt.enum_variants))) {
-    Variant v = ArrayList_Variant_get(&(stmt.enum_variants), v_idx);
-    if (ArrayList_Param_length(&(v.params)) > 0) {
-    has_payload = true;
-}
-    v_idx = (v_idx + 1);
-}
-    void* e_ty = (void*)(0);
-    if (has_payload) {
-    e_ty = LLVMStructCreateNamed(self->ctx, stmt.enum_name);
-} else {
-    e_ty = LLVMInt32TypeInContext(self->ctx);
-}
-    type_map_put(&(self->enum_types), stmt.enum_name, int_to_str((int64_t)(e_ty)));
-    type_map_put(&(self->enum_decls), stmt.enum_name, int_to_str(idx));
-    v_idx = 0;
-    while (v_idx < ArrayList_Variant_length(&(stmt.enum_variants))) {
-    Variant v = ArrayList_Variant_get(&(stmt.enum_variants), v_idx);
-    const char* tag_key = _kai_str_concat(_kai_str_concat(_kai_str_concat(stmt.enum_name, "_"), v.vname), "_TAG");
-    const char* tag_key2 = _kai_str_concat(_kai_str_concat(stmt.enum_name, "."), v.vname);
-    type_map_put(&(self->enum_decls), tag_key, int_to_str(v_idx));
-    type_map_put(&(self->enum_decls), tag_key2, int_to_str(v_idx));
-    v_idx = (v_idx + 1);
-}
-}
-}
-    if (stmt.kind == StmtKind_sk_error_decl) {
-    const char* existing = type_map_get(&(self->enum_types), stmt.error_name);
-    if (strlen(existing) == 0) {
-    void* e_ty = LLVMInt32TypeInContext(self->ctx);
-    type_map_put(&(self->enum_types), stmt.error_name, int_to_str((int64_t)(e_ty)));
-    type_map_put(&(self->enum_decls), stmt.error_name, int_to_str(idx));
-    int64_t v_idx = 0;
-    while (v_idx < ArrayList_Str_length(&(stmt.error_variants))) {
-    const char* v_name = ArrayList_Str_get(&(stmt.error_variants), v_idx);
-    const char* tag_key = _kai_str_concat(_kai_str_concat(_kai_str_concat(stmt.error_name, "_"), v_name), "_TAG");
-    const char* tag_key2 = _kai_str_concat(_kai_str_concat(stmt.error_name, "."), v_name);
-    type_map_put(&(self->enum_decls), tag_key, int_to_str(v_idx));
-    type_map_put(&(self->enum_decls), tag_key2, int_to_str(v_idx));
-    v_idx = (v_idx + 1);
-}
-}
-}
-    idx = (idx + 1);
-}
-    idx = 0;
-    while (idx < ArrayList_StmtNode_length(self->stmt_pool)) {
-    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, idx);
-    if (stmt.kind == StmtKind_sk_struct_decl) {
-    const char* s_ty_str = type_map_get(&(self->struct_types), stmt.struct_name);
-    void* s_ty = (void*)(LLVMCodegen_str_to_int(self, s_ty_str));
-    int64_t count = ArrayList_StructField_length(&(stmt.struct_fields));
-    void** types = (void**)(KaiAllocator_alloc(self->allocator, (count * 8), 8));
-    int64_t f_idx = 0;
-    while (f_idx < count) {
-    StructField f = ArrayList_StructField_get(&(stmt.struct_fields), f_idx);
-    (types)[f_idx] = LLVMCodegen_map_type(self, f.ftype);
-    f_idx = (f_idx + 1);
-}
-    LLVMStructSetBody(s_ty, (void*)(types), count, false);
-    KaiAllocator_free(self->allocator, (void*)(types));
-}
-    if (stmt.kind == StmtKind_sk_enum_decl) {
-    bool has_payload = false;
-    int64_t v_idx = 0;
-    while (v_idx < ArrayList_Variant_length(&(stmt.enum_variants))) {
-    Variant v = ArrayList_Variant_get(&(stmt.enum_variants), v_idx);
-    if (ArrayList_Param_length(&(v.params)) > 0) {
-    has_payload = true;
-}
-    v_idx = (v_idx + 1);
-}
-    if (has_payload) {
-    const char* e_ty_str = type_map_get(&(self->enum_types), stmt.enum_name);
-    void* e_ty = (void*)(LLVMCodegen_str_to_int(self, e_ty_str));
-    void** types = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (types)[0] = LLVMInt8TypeInContext(self->ctx);
-    (types)[1] = LLVMInt64TypeInContext(self->ctx);
-    LLVMStructSetBody(e_ty, (void*)(types), 2, false);
-    KaiAllocator_free(self->allocator, (void*)(types));
-}
-}
-    idx = (idx + 1);
-}
-}
-void LLVMCodegen_register_all_funcs(LLVMCodegen* self) {
-    int64_t idx = 0;
-    while (idx < ArrayList_StmtNode_length(self->stmt_pool)) {
-    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, idx);
-    if (stmt.kind == StmtKind_sk_func_decl) {
-    bool is_method_stub = false;
-    int64_t ti = 0;
-    while (ti < ArrayList_StmtNode_length(self->stmt_pool)) {
-    StmtNode ts = ArrayList_StmtNode_get(self->stmt_pool, ti);
-    if (ts.kind == StmtKind_sk_trait_decl) {
-    int64_t mi = 0;
-    while (mi < ArrayList_Int_length(&(ts.trait_methods))) {
-    if (ArrayList_Int_get(&(ts.trait_methods), mi) == idx) {
-    is_method_stub = true;
-}
-    mi = (mi + 1);
-}
-}
-    if (ts.kind == StmtKind_sk_impl_block) {
-    int64_t mi = 0;
-    while (mi < ArrayList_Int_length(&(ts.impl_methods))) {
-    if (ArrayList_Int_get(&(ts.impl_methods), mi) == idx) {
-    is_method_stub = true;
-}
-    mi = (mi + 1);
-}
-}
-    ti = (ti + 1);
-}
-    (void)(LLVMCodegen_register_func_decl(self, idx, "", false));
-    if ((!is_method_stub) && (stmt.func_body >= 0)) {
-}
-}
-    if (stmt.kind == StmtKind_sk_impl_block) {
-    const char* struct_name = stmt.impl_struct_name;
+    while (i < s_len) {
     int64_t j = 0;
-    while (j < ArrayList_Int_length(&(stmt.impl_methods))) {
-    int64_t m_idx = ArrayList_Int_get(&(stmt.impl_methods), j);
-    (void)(LLVMCodegen_register_func_decl(self, m_idx, struct_name, false));
+    bool matched = true;
+    while (j < old_len) {
+    {
+    if ((s)[(i + j)] != (old)[j]) {
+    matched = false;
+    break;
+}
+}
     j = (j + 1);
 }
-}
-    if (stmt.kind == StmtKind_sk_trait_decl) {
-    const char* struct_name = stmt.trait_name;
-    int64_t j = 0;
-    while (j < ArrayList_Int_length(&(stmt.trait_methods))) {
-    int64_t m_idx = ArrayList_Int_get(&(stmt.trait_methods), j);
-    (void)(LLVMCodegen_register_func_decl(self, m_idx, struct_name, false));
-    j = (j + 1);
-}
-}
-    if (stmt.kind == StmtKind_sk_extern) {
-    LLVMCodegen_register_extern_decl(self, idx);
-}
-    idx = (idx + 1);
-}
-}
-bool LLVMCodegen_is_struct_by_value_return(LLVMCodegen* self, const char* ret_ktype) {
-    if (strlen(ret_ktype) == 0) {
-    return false;
-}
-    if (strcmp(ret_ktype, "Void") == 0) {
-    return false;
-}
-    if (((ret_ktype)[0] == ((char)(42))) || ((ret_ktype)[0] == ((char)(38)))) {
-    return false;
-}
-    if ((strcmp(ret_ktype, "Int") == 0) || (strcmp(ret_ktype, "Int64") == 0)) {
-    return false;
-}
-    if (strcmp(ret_ktype, "Float") == 0) {
-    return false;
-}
-    if (strcmp(ret_ktype, "Bool") == 0) {
-    return false;
-}
-    if ((strcmp(ret_ktype, "Char") == 0) || (strcmp(ret_ktype, "Int8") == 0)) {
-    return false;
-}
-    if (strcmp(ret_ktype, "Int32") == 0) {
-    return false;
-}
-    if (strcmp(ret_ktype, "Str") == 0) {
-    return false;
-}
-    const char* clean_base = ret_ktype;
-    int64_t lt_pos = LLVMCodegen_str_find(self, ret_ktype, ((char)(60)));
-    if (lt_pos >= 0) {
-    clean_base = substring(ret_ktype, 0, lt_pos);
-}
-    if (((((strcmp(clean_base, "TokenType") == 0) || (strcmp(clean_base, "TokenValue") == 0)) || (strcmp(clean_base, "StmtKind") == 0)) || (strcmp(clean_base, "ExprKind") == 0)) || (strcmp(clean_base, "PatternKind") == 0)) {
-    return false;
-}
-    return true;
-}
-void* LLVMCodegen_register_func_decl(LLVMCodegen* self, int64_t stmt_idx, const char* struct_name, bool is_init) {
-    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt_idx);
-    const char* method_name = stmt.func_name;
-    const char* fname = method_name;
-    const char* ret_ktype = stmt.func_return_type;
-    bool has_self = false;
-    if (strlen(struct_name) > 0) {
-    fname = _kai_str_concat(_kai_str_concat(struct_name, "_"), method_name);
-    has_self = (strcmp(method_name, "init") != 0);
-    if (((strcmp(method_name, "init") == 0) || (strcmp(ret_ktype, struct_name) == 0)) || (strcmp(ret_ktype, _kai_str_concat("*", struct_name)) == 0)) {
-    ret_ktype = _kai_str_concat("*", struct_name);
-}
-}
-    void* existing = LLVMGetNamedFunction(self->module, fname);
-    if (existing != (void*)(0)) {
-    const char* prev_recorded_ret = type_map_get(&(self->func_types), fname);
-    void* now_ll = LLVMCodegen_map_type(self, ret_ktype);
-    void* i64_ll = LLVMInt64TypeInContext(self->ctx);
-    if ((strcmp(prev_recorded_ret, ret_ktype) == 0) && (now_ll != i64_ll)) {
-    bool is_ptr = ((strlen(ret_ktype) > 0) && (((ret_ktype)[0] == ((char)(42))) || ((ret_ktype)[0] == ((char)(38)))));
-    bool is_prim = (((((((((strcmp(ret_ktype, "Int") == 0) || (strcmp(ret_ktype, "Int64") == 0)) || (strcmp(ret_ktype, "Float") == 0)) || (strcmp(ret_ktype, "Bool") == 0)) || (strcmp(ret_ktype, "Char") == 0)) || (strcmp(ret_ktype, "Int8") == 0)) || (strcmp(ret_ktype, "Int32") == 0)) || (strcmp(ret_ktype, "Str") == 0)) || (strcmp(ret_ktype, "Void") == 0));
-    if ((!is_ptr) && (!is_prim)) {
-    LLVMDeleteFunction(existing);
+    if (matched) {
+    result = _kai_str_concat(result, new_val);
+    i = (i + old_len);
 } else {
-    return existing;
-}
-} else {
-    return existing;
-}
-}
-    int64_t param_count = ArrayList_Param_length(&(stmt.func_params));
-    void** param_types = (void**)(KaiAllocator_alloc(self->allocator, (param_count * 8), 8));
-    int64_t p_idx = 0;
-    int64_t i = 0;
-    while (i < ArrayList_Param_length(&(stmt.func_params))) {
-    Param p = ArrayList_Param_get(&(stmt.func_params), i);
-    if (strcmp(p.name, "self") == 0) {
-    (param_types)[p_idx] = LLVMPointerType(LLVMCodegen_map_type(self, struct_name), 0);
-    const char* p_key = _kai_str_concat(_kai_str_concat(fname, "_param_"), int_to_str(i));
-    type_map_put(&(self->func_param_types), p_key, _kai_str_concat("*", struct_name));
-} else {
-    (param_types)[p_idx] = LLVMCodegen_map_type(self, p.ptype);
-    const char* p_key = _kai_str_concat(_kai_str_concat(fname, "_param_"), int_to_str(i));
-    type_map_put(&(self->func_param_types), p_key, p.ptype);
-}
-    p_idx = (p_idx + 1);
+    result = _kai_str_concat(result, substring(s, i, (i + 1)));
     i = (i + 1);
 }
-    void* ret_ll = (void*)(0);
-    if ((strcmp(ret_ktype, "Void") == 0) || (strlen(ret_ktype) == 0)) {
-    ret_ll = LLVMVoidTypeInContext(self->ctx);
-} else {
-    ret_ll = LLVMCodegen_map_type(self, ret_ktype);
-}
-    if (LLVMCodegen_is_struct_by_value_return(self, ret_ktype)) {
-    void** sret_params = (void**)(KaiAllocator_alloc(self->allocator, ((param_count + 1) * 8), 8));
-    int64_t j = 0;
-    while (j < param_count) {
-    (sret_params)[(j + 1)] = (param_types)[j];
-    j = (j + 1);
-}
-    void* sret_ll = LLVMCodegen_map_type(self, ret_ktype);
-    (sret_params)[0] = LLVMPointerType(sret_ll, 0);
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-    void* sret_ret_ll = LLVMVoidTypeInContext(self->ctx);
-    void* fn_ty = LLVMFunctionType(sret_ret_ll, (void*)(sret_params), (param_count + 1), false);
-    void* func = LLVMAddFunction(self->module, fname, fn_ty);
-    type_map_put(&(self->func_types), fname, ret_ktype);
-    type_map_put(&(self->func_is_sret), fname, "1");
-    KaiAllocator_free(self->allocator, (void*)(sret_params));
-    return func;
-}
-    void* fn_ty = LLVMFunctionType(ret_ll, (void*)(param_types), param_count, false);
-    void* func = LLVMAddFunction(self->module, fname, fn_ty);
-    type_map_put(&(self->func_types), fname, ret_ktype);
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-    return func;
-}
-void LLVMCodegen_register_extern_decl(LLVMCodegen* self, int64_t stmt_idx) {
-    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt_idx);
-    const char* name = stmt.extern_name;
-    if (LLVMCodegen_is_builtin_llvm_func(self, name)) {
-    type_map_put(&(self->func_types), name, stmt.extern_return);
-    return;
-}
-    void* existing = LLVMGetNamedFunction(self->module, name);
-    if (existing != (void*)(0)) {
-    return;
-}
-    int64_t param_count = ArrayList_Param_length(&(stmt.extern_params));
-    void** param_types = (void**)(KaiAllocator_alloc(self->allocator, (param_count * 8), 8));
-    int64_t i = 0;
-    while (i < param_count) {
-    Param p = ArrayList_Param_get(&(stmt.extern_params), i);
-    (param_types)[i] = LLVMCodegen_map_type(self, p.ptype);
-    const char* p_key = _kai_str_concat(_kai_str_concat(name, "_param_"), int_to_str(i));
-    type_map_put(&(self->func_param_types), p_key, p.ptype);
-    i = (i + 1);
-}
-    void* ret_ll = (void*)(0);
-    if ((strcmp(stmt.extern_return, "Void") == 0) || (strlen(stmt.extern_return) == 0)) {
-    ret_ll = LLVMVoidTypeInContext(self->ctx);
-} else {
-    ret_ll = LLVMCodegen_map_type(self, stmt.extern_return);
-}
-    void* fn_ty = LLVMFunctionType(ret_ll, (void*)(param_types), param_count, false);
-    (void)(LLVMAddFunction(self->module, name, fn_ty));
-    type_map_put(&(self->func_types), name, stmt.extern_return);
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-}
-void LLVMCodegen_gen_func_body(LLVMCodegen* self, int64_t stmt_idx, const char* struct_name) {
-    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt_idx);
-    const char* method_name = stmt.func_name;
-    const char* fname = method_name;
-    if (strlen(struct_name) > 0) {
-    fname = _kai_str_concat(_kai_str_concat(struct_name, "_"), method_name);
-}
-    void* func_val = LLVMGetNamedFunction(self->module, fname);
-    self->cur_func = func_val;
-    self->last_was_term = false;
-    LLVMCodegen_sym_reset(self);
-    self->cur_func_ret_type = type_map_get(&(self->func_types), fname);
-    self->cur_func_sret_ptr = (void*)(0);
-    void* entry_bb = LLVMAppendBasicBlockInContext(self->ctx, func_val, "entry");
-    LLVMPositionBuilderAtEnd(self->builder, entry_bb);
-    bool is_sret = (strcmp(type_map_get(&(self->func_is_sret), fname), "1") == 0);
-    if (is_sret) {
-    void* sret_ptr = LLVMGetParam(func_val, 0);
-    self->cur_func_sret_ptr = sret_ptr;
-}
-    int64_t p_idx = 0;
-    int64_t i = 0;
-    while (i < ArrayList_Param_length(&(stmt.func_params))) {
-    Param p = ArrayList_Param_get(&(stmt.func_params), i);
-    void* param_val = (void*)(0);
-    if (is_sret) {
-    param_val = LLVMGetParam(func_val, (p_idx + 1));
-} else {
-    param_val = LLVMGetParam(func_val, p_idx);
-}
-    if (strcmp(p.name, "self") == 0) {
-    void* self_ll = LLVMPointerType(LLVMCodegen_map_type(self, struct_name), 0);
-    void* addr = LLVMCodegen_build_alloca(self, self_ll, "self.addr");
-    LLVMBuildStore(self->builder, param_val, addr);
-    LLVMCodegen_sym_store(self, "self", addr, _kai_str_concat("*", struct_name));
-} else {
-    void* param_lltype = LLVMCodegen_map_type(self, p.ptype);
-    if (param_lltype == LLVMVoidTypeInContext(self->ctx)) {
-    param_lltype = LLVMInt64TypeInContext(self->ctx);
-}
-    void* addr = LLVMCodegen_build_alloca(self, param_lltype, _kai_str_concat(p.name, ".addr"));
-    LLVMBuildStore(self->builder, param_val, addr);
-    LLVMCodegen_sym_store(self, p.name, addr, p.ptype);
-}
-    p_idx = (p_idx + 1);
-    i = (i + 1);
-}
-    if (stmt.func_body >= 0) {
-    LLVMCodegen_gen_stmt(self, stmt.func_body);
-}
-    if (!self->last_was_term) {
-    const char* ret_ktype = type_map_get(&(self->func_types), fname);
-    if (is_sret) {
-    LLVMBuildRetVoid(self->builder);
-} else if ((strcmp(ret_ktype, "Void") == 0) || (strlen(ret_ktype) == 0)) {
-    LLVMBuildRetVoid(self->builder);
-} else if (strcmp(ret_ktype, "Str") == 0) {
-    void* empty = LLVMBuildGlobalStringPtr(self->builder, "", "default_str");
-    LLVMBuildRet(self->builder, empty);
-} else {
-    void* ret_ll = LLVMCodegen_map_type(self, ret_ktype);
-    if ((strlen(ret_ktype) > 0) && (((ret_ktype)[0] == ((char)(42))) || ((ret_ktype)[0] == ((char)(38))))) {
-    void* null_val = LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-    void* null_ptr = LLVMBuildIntToPtr(self->builder, null_val, ret_ll, "null_ptr");
-    LLVMBuildRet(self->builder, null_ptr);
-} else if (ret_ll == LLVMVoidTypeInContext(self->ctx)) {
-    LLVMBuildRetVoid(self->builder);
-} else {
-    LLVMBuildRet(self->builder, LLVMConstInt(ret_ll, 0, false));
-}
-}
-    self->last_was_term = true;
-}
-    self->cur_func_sret_ptr = (void*)(0);
-}
-void LLVMCodegen_gen_stmt(LLVMCodegen* self, int64_t stmt_idx) {
-    if (stmt_idx < 0) {
-    return;
-}
-    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt_idx);
-    LLVMCodegen_gen_stmt_inner(self, stmt_idx);
-    if (stmt.kind != StmtKind_sk_block) {
-    LLVMCodegen_reset_temp_allocas(self);
-}
-}
-void LLVMCodegen_gen_stmt_inner(LLVMCodegen* self, int64_t stmt_idx) {
-    if (stmt_idx < 0) {
-    return;
-}
-    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt_idx);
-    if (self->last_was_term) {
-    return;
-}
-    if (stmt.kind == StmtKind_sk_block) {
-    int64_t i = 0;
-    while (i < ArrayList_Int_length(&(stmt.block_stmts))) {
-    LLVMCodegen_gen_stmt(self, ArrayList_Int_get(&(stmt.block_stmts), i));
-    i = (i + 1);
-}
-    return;
-}
-    if (stmt.kind == StmtKind_sk_var_decl) {
-    const char* name = stmt.vardecl_name;
-    const char* vtype = stmt.vardecl_type;
-    if (strlen(vtype) == 0) {
-    vtype = LLVMCodegen_get_expr_type(self, stmt.vardecl_value);
-}
-    void* lltype = LLVMCodegen_map_type(self, vtype);
-    if (lltype == LLVMVoidTypeInContext(self->ctx)) {
-    lltype = LLVMInt64TypeInContext(self->ctx);
-    vtype = "Int";
-}
-    void* addr = (void*)(0);
-    if (self->cur_func == (void*)(0)) {
-    addr = LLVMAddGlobal(self->module, lltype, name);
-    if (stmt.vardecl_value >= 0) {
-    void* init_val = LLVMCodegen_gen_expr(self, stmt.vardecl_value);
-    LLVMSetInitializer(addr, init_val);
-} else {
-    LLVMSetInitializer(addr, LLVMConstNull(lltype));
-}
-} else if (stmt.vardecl_value >= 0) {
-    ExprNode val_node = ArrayList_ExprNode_get(self->expr_pool, stmt.vardecl_value);
-    if (val_node.kind == ExprKind_ek_struct_init) {
-    addr = LLVMCodegen_gen_expr(self, stmt.vardecl_value);
-} else if ((val_node.kind == ExprKind_ek_func_call) || (val_node.kind == ExprKind_ek_method_call)) {
-    bool callee_is_sret = false;
-    if (val_node.kind == ExprKind_ek_func_call) {
-    const char* cfname = val_node.func_name;
-    const char* sret_flag = type_map_get(&(self->func_is_sret), cfname);
-    if (strcmp(sret_flag, "1") == 0) {
-    callee_is_sret = true;
-}
-    if ((!callee_is_sret) && (strlen(cfname) > 0)) {
-    char fc = (cfname)[0];
-    if ((fc >= ((char)(65))) && (fc <= ((char)(90)))) {
-    const char* init_name = _kai_str_concat(cfname, "_init");
-    const char* sret_flag2 = type_map_get(&(self->func_is_sret), init_name);
-    if (strcmp(sret_flag2, "1") == 0) {
-    callee_is_sret = true;
-}
-}
-}
-} else {
-    const char* mrec_type = LLVMCodegen_get_expr_type(self, val_node.meth_expr);
-    const char* mbase = LLVMCodegen_strip_pointers(self, mrec_type);
-    const char* mfname = _kai_str_concat(_kai_str_concat(mbase, "_"), val_node.meth_name);
-    const char* sret_flag = type_map_get(&(self->func_is_sret), mfname);
-    if (strcmp(sret_flag, "1") == 0) {
-    callee_is_sret = true;
-}
-}
-    if (callee_is_sret) {
-    addr = LLVMCodegen_gen_expr(self, stmt.vardecl_value);
-} else {
-    addr = LLVMCodegen_build_alloca(self, lltype, _kai_str_concat(name, ".addr"));
-    void* val = LLVMCodegen_gen_expr(self, stmt.vardecl_value);
-    const char* val_type = LLVMCodegen_get_expr_type(self, stmt.vardecl_value);
-    if ((lltype == LLVMInt64TypeInContext(self->ctx)) && LLVMCodegen_is_integer_type(self, val_type)) {
-    val = LLVMCodegen_cast_to_i64(self, val, val_type);
-}
-    if (LLVMCodegen_is_struct_type(self, val_type) && LLVMCodegen_expr_returns_ptr(self, stmt.vardecl_value)) {
-    val = LLVMBuildLoad2(self->builder, lltype, val, "struct_val");
-}
-    val = LLVMCodegen_promote_enum_to_struct(self, val, vtype);
-    LLVMBuildStore(self->builder, val, addr);
-}
-} else {
-    addr = LLVMCodegen_build_alloca(self, lltype, _kai_str_concat(name, ".addr"));
-    void* val = LLVMCodegen_gen_expr(self, stmt.vardecl_value);
-    const char* val_type = LLVMCodegen_get_expr_type(self, stmt.vardecl_value);
-    if ((lltype == LLVMInt64TypeInContext(self->ctx)) && LLVMCodegen_is_integer_type(self, val_type)) {
-    val = LLVMCodegen_cast_to_i64(self, val, val_type);
-}
-    if (LLVMCodegen_is_struct_type(self, val_type) && LLVMCodegen_expr_returns_ptr(self, stmt.vardecl_value)) {
-    val = LLVMBuildLoad2(self->builder, lltype, val, "struct_val");
-}
-    val = LLVMCodegen_promote_enum_to_struct(self, val, vtype);
-    LLVMBuildStore(self->builder, val, addr);
-}
-} else {
-    addr = LLVMCodegen_build_alloca(self, lltype, _kai_str_concat(name, ".addr"));
-}
-    LLVMCodegen_sym_store(self, name, addr, vtype);
-    return;
-}
-    if (stmt.kind == StmtKind_sk_expr) {
-    (void)(LLVMCodegen_gen_expr(self, stmt.expr_stmt));
-    return;
-}
-    if (stmt.kind == StmtKind_sk_assignment) {
-    ExprNode lhs_node = ArrayList_ExprNode_get(self->expr_pool, stmt.assign_target);
-    void* rhs_val = LLVMCodegen_gen_expr(self, stmt.assign_value);
-    const char* op = stmt.assign_op;
-    if (lhs_node.kind == ExprKind_ek_identifier) {
-    void* addr = LLVMCodegen_sym_lookup(self, lhs_node.ident_name);
-    if (addr != (void*)(0)) {
-    if ((strlen(op) > 0) && (strcmp(op, "=") != 0)) {
-    const char* ktype = LLVMCodegen_sym_type(self, lhs_node.ident_name);
-    void* lltype = LLVMCodegen_map_type(self, ktype);
-    void* cur_val = LLVMBuildLoad2(self->builder, lltype, addr, "cur_val");
-    void* new_val = (void*)(0);
-    if (strcmp(op, "+=") == 0) {
-    new_val = LLVMBuildAdd(self->builder, cur_val, rhs_val, "add_assign");
-} else if (strcmp(op, "-=") == 0) {
-    new_val = LLVMBuildSub(self->builder, cur_val, rhs_val, "sub_assign");
-} else if (strcmp(op, "*=") == 0) {
-    new_val = LLVMBuildMul(self->builder, cur_val, rhs_val, "mul_assign");
-} else if (strcmp(op, "/=") == 0) {
-    new_val = LLVMBuildSDiv(self->builder, cur_val, rhs_val, "div_assign");
-} else if (strcmp(op, "%=") == 0) {
-    new_val = LLVMBuildSRem(self->builder, cur_val, rhs_val, "rem_assign");
-} else if (strcmp(op, "&=") == 0) {
-    new_val = LLVMBuildAnd(self->builder, cur_val, rhs_val, "and_assign");
-} else if (strcmp(op, "|=") == 0) {
-    new_val = LLVMBuildOr(self->builder, cur_val, rhs_val, "or_assign");
-} else if (strcmp(op, "^=") == 0) {
-    new_val = LLVMBuildXor(self->builder, cur_val, rhs_val, "xor_assign");
-} else if (strcmp(op, "<<=") == 0) {
-    new_val = LLVMBuildShl(self->builder, cur_val, rhs_val, "shl_assign");
-} else if (strcmp(op, ">>=") == 0) {
-    new_val = LLVMBuildAShr(self->builder, cur_val, rhs_val, "shr_assign");
-} else {
-    new_val = rhs_val;
-}
-    LLVMBuildStore(self->builder, new_val, addr);
-} else {
-    const char* ktype = LLVMCodegen_sym_type(self, lhs_node.ident_name);
-    void* lltype = LLVMCodegen_map_type(self, ktype);
-    void* val = rhs_val;
-    if (LLVMCodegen_is_struct_type(self, ktype) && LLVMCodegen_expr_returns_ptr(self, stmt.assign_value)) {
-    val = LLVMBuildLoad2(self->builder, lltype, val, "struct_val");
-}
-    val = LLVMCodegen_promote_enum_to_struct(self, val, ktype);
-    LLVMBuildStore(self->builder, val, addr);
-}
-    return;
-}
-}
-    if (lhs_node.kind == ExprKind_ek_deref) {
-    void* addr = LLVMCodegen_gen_expr(self, lhs_node.deref_expr);
-    const char* val_type = LLVMCodegen_get_expr_type(self, stmt.assign_value);
-    void* val = rhs_val;
-    const char* clean_val_type = LLVMCodegen_strip_pointers(self, val_type);
-    void* dest_ll = LLVMCodegen_map_type(self, clean_val_type);
-    if (LLVMCodegen_is_struct_type(self, clean_val_type) && LLVMCodegen_expr_returns_ptr(self, stmt.assign_value)) {
-    val = LLVMBuildLoad2(self->builder, dest_ll, val, "struct_val");
-}
-    LLVMBuildStore(self->builder, val, addr);
-    return;
-}
-    if (lhs_node.kind == ExprKind_ek_field_access) {
-    ExprNode struct_node = ArrayList_ExprNode_get(self->expr_pool, lhs_node.field_expr);
-    const char* rec_type = LLVMCodegen_get_expr_type(self, lhs_node.field_expr);
-    const char* base_type = LLVMCodegen_strip_pointers(self, rec_type);
-    const char* key = _kai_str_concat(_kai_str_concat(LLVMCodegen_get_mangled_type_name(self, base_type), "."), lhs_node.field_name);
-    const char* idx_str = type_map_get(&(self->struct_field_indices), key);
-    int64_t idx = LLVMCodegen_str_to_int(self, idx_str);
-    void* rec_ptr = (void*)(0);
-    if ((struct_node.kind == ExprKind_ek_identifier) && (!LLVMCodegen_is_pointer_type(self, rec_type))) {
-    void* addr = LLVMCodegen_sym_lookup(self, struct_node.ident_name);
-    if (addr != (void*)(0)) {
-    rec_ptr = addr;
-} else {
-    rec_ptr = LLVMCodegen_gen_expr(self, lhs_node.field_expr);
-}
-} else {
-    rec_ptr = LLVMCodegen_gen_expr(self, lhs_node.field_expr);
-}
-    void* struct_lltype = LLVMCodegen_map_type(self, base_type);
-    if ((!LLVMCodegen_is_pointer_type(self, rec_type)) && (struct_node.kind != ExprKind_ek_identifier)) {
-    void* tmp_addr = LLVMCodegen_build_alloca(self, struct_lltype, "field_tmp");
-    LLVMBuildStore(self->builder, rec_ptr, tmp_addr);
-    rec_ptr = tmp_addr;
-}
-    void* gep = LLVMBuildStructGEP2(self->builder, struct_lltype, rec_ptr, idx, "field_gep");
-    const char* field_ktype = type_map_get(&(self->struct_field_types), key);
-    void* field_ll = LLVMCodegen_map_type(self, field_ktype);
-    void* val = rhs_val;
-    if (LLVMCodegen_is_struct_type(self, field_ktype) && LLVMCodegen_expr_returns_ptr(self, stmt.assign_value)) {
-    val = LLVMBuildLoad2(self->builder, field_ll, val, "struct_val");
-}
-    LLVMBuildStore(self->builder, val, gep);
-    return;
-}
-    if (lhs_node.kind == ExprKind_ek_index) {
-    void* arr_ptr = LLVMCodegen_gen_expr(self, lhs_node.idx_expr);
-    void* idx_val = LLVMCodegen_gen_expr(self, lhs_node.idx_index);
-    const char* elem_ktype = LLVMCodegen_get_expr_type(self, stmt.assign_target);
-    void* elem_lltype = LLVMCodegen_map_type(self, elem_ktype);
-    if ((strlen(elem_ktype) > 0) && ((elem_ktype)[0] == ((char)(42)))) {
-    elem_lltype = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-}
-    if (elem_lltype == LLVMVoidTypeInContext(self->ctx)) {
-    elem_lltype = LLVMInt64TypeInContext(self->ctx);
-}
-    void* gep = LLVMBuildGEP2(self->builder, elem_lltype, arr_ptr, (void*)(&(idx_val)), 1, "idx_gep");
-    void* val = rhs_val;
-    if (LLVMCodegen_is_struct_type(self, elem_ktype) && LLVMCodegen_expr_returns_ptr(self, stmt.assign_value)) {
-    val = LLVMBuildLoad2(self->builder, elem_lltype, val, "struct_val");
-}
-    LLVMBuildStore(self->builder, val, gep);
-    return;
-}
-    return;
-}
-    if (stmt.kind == StmtKind_sk_return) {
-    if (stmt.return_value >= 0) {
-    void* val = LLVMCodegen_gen_expr(self, stmt.return_value);
-    const char* ret_type = self->cur_func_ret_type;
-    const char* val_type = LLVMCodegen_get_expr_type(self, stmt.return_value);
-    if (self->cur_func_sret_ptr != (void*)(0)) {
-    void* sret_ll = LLVMCodegen_map_type(self, ret_type);
-    if (LLVMCodegen_str_contains(self, ret_type, ((char)(33))) && (!LLVMCodegen_str_contains(self, val_type, ((char)(33))))) {
-    int64_t excl_pos = LLVMCodegen_str_find(self, ret_type, ((char)(33)));
-    const char* result_val_type = substring(ret_type, 0, excl_pos);
-    bool is_error_val = (strlen(type_map_get(&(self->enum_types), val_type)) > 0);
-    void* tag_gep = LLVMBuildStructGEP2(self->builder, sret_ll, self->cur_func_sret_ptr, 0, "tag_gep");
-    if (is_error_val) {
-    LLVMBuildStore(self->builder, LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 1, false), tag_gep);
-} else {
-    LLVMBuildStore(self->builder, LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false), tag_gep);
-    if (strcmp(result_val_type, "Void") != 0) {
-    void* val_gep = LLVMBuildStructGEP2(self->builder, sret_ll, self->cur_func_sret_ptr, 1, "val_gep");
-    void* store_val = val;
-    if (LLVMCodegen_is_struct_type(self, val_type) && LLVMCodegen_expr_returns_ptr(self, stmt.return_value)) {
-    store_val = LLVMBuildLoad2(self->builder, LLVMCodegen_map_type(self, val_type), val, "struct_val");
-}
-    LLVMBuildStore(self->builder, store_val, val_gep);
-}
-}
-} else if (((strlen(ret_type) > 0) && ((ret_type)[0] == ((char)(63)))) && (!((strlen(val_type) > 0) && ((val_type)[0] == ((char)(63)))))) {
-    ExprNode ret_expr_node = ArrayList_ExprNode_get(self->expr_pool, stmt.return_value);
-    bool is_none = false;
-    if ((ret_expr_node.kind == ExprKind_ek_literal) && (strcmp(ret_expr_node.lit_vkind, "NONE") == 0)) {
-    is_none = true;
-}
-    if ((ret_expr_node.kind == ExprKind_ek_identifier) && (strcmp(ret_expr_node.ident_name, "none") == 0)) {
-    is_none = true;
-}
-    void* has_gep = LLVMBuildStructGEP2(self->builder, sret_ll, self->cur_func_sret_ptr, 0, "has_gep");
-    if (is_none) {
-    LLVMBuildStore(self->builder, LLVMConstInt(LLVMInt8TypeInContext(self->ctx), 0, false), has_gep);
-} else {
-    LLVMBuildStore(self->builder, LLVMConstInt(LLVMInt8TypeInContext(self->ctx), 1, false), has_gep);
-    void* val_gep = LLVMBuildStructGEP2(self->builder, sret_ll, self->cur_func_sret_ptr, 1, "val_gep");
-    void* store_val = val;
-    if (LLVMCodegen_is_struct_type(self, val_type) && LLVMCodegen_expr_returns_ptr(self, stmt.return_value)) {
-    store_val = LLVMBuildLoad2(self->builder, LLVMCodegen_map_type(self, val_type), val, "struct_val");
-}
-    LLVMBuildStore(self->builder, store_val, val_gep);
-}
-} else {
-    ExprNode ret_expr_node = ArrayList_ExprNode_get(self->expr_pool, stmt.return_value);
-    if (LLVMCodegen_is_struct_type(self, val_type) && LLVMCodegen_expr_returns_ptr(self, stmt.return_value)) {
-    void* loaded = LLVMBuildLoad2(self->builder, sret_ll, val, "sret_val");
-    LLVMBuildStore(self->builder, loaded, self->cur_func_sret_ptr);
-} else {
-    LLVMBuildStore(self->builder, val, self->cur_func_sret_ptr);
-}
-}
-    LLVMBuildRetVoid(self->builder);
-    self->last_was_term = true;
-    return;
-}
-    if (LLVMCodegen_str_contains(self, ret_type, ((char)(33))) && (!LLVMCodegen_str_contains(self, val_type, ((char)(33))))) {
-    void* res_lltype = LLVMCodegen_map_type(self, ret_type);
-    void* ret_addr = LLVMCodegen_build_alloca(self, res_lltype, "ret_result");
-    int64_t excl_pos = LLVMCodegen_str_find(self, ret_type, ((char)(33)));
-    const char* result_val_type = substring(ret_type, 0, excl_pos);
-    const char* result_err_type = substring(ret_type, (excl_pos + 1), strlen(ret_type));
-    bool is_error_val = (strlen(type_map_get(&(self->enum_types), val_type)) > 0);
-    void* tag_gep = LLVMBuildStructGEP2(self->builder, res_lltype, ret_addr, 0, "tag_gep");
-    if (is_error_val) {
-    LLVMBuildStore(self->builder, LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 1, false), tag_gep);
-} else {
-    LLVMBuildStore(self->builder, LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false), tag_gep);
-    void* val_gep = LLVMBuildStructGEP2(self->builder, res_lltype, ret_addr, 1, "val_gep");
-    LLVMBuildStore(self->builder, val, val_gep);
-}
-    void* wrapped = LLVMBuildLoad2(self->builder, res_lltype, ret_addr, "wrapped_result");
-    LLVMBuildRet(self->builder, wrapped);
-} else if (((strlen(ret_type) > 0) && ((ret_type)[0] == ((char)(63)))) && (!((strlen(val_type) > 0) && ((val_type)[0] == ((char)(63)))))) {
-    void* opt_lltype = LLVMCodegen_map_type(self, ret_type);
-    void* ret_addr = LLVMCodegen_build_alloca(self, opt_lltype, "ret_opt");
-    ExprNode ret_expr_node = ArrayList_ExprNode_get(self->expr_pool, stmt.return_value);
-    bool is_none = false;
-    if ((ret_expr_node.kind == ExprKind_ek_literal) && (strcmp(ret_expr_node.lit_vkind, "NONE") == 0)) {
-    is_none = true;
-}
-    if ((ret_expr_node.kind == ExprKind_ek_identifier) && (strcmp(ret_expr_node.ident_name, "none") == 0)) {
-    is_none = true;
-}
-    void* has_gep = LLVMBuildStructGEP2(self->builder, opt_lltype, ret_addr, 0, "has_gep");
-    if (is_none) {
-    LLVMBuildStore(self->builder, LLVMConstInt(LLVMInt8TypeInContext(self->ctx), 0, false), has_gep);
-} else {
-    LLVMBuildStore(self->builder, LLVMConstInt(LLVMInt8TypeInContext(self->ctx), 1, false), has_gep);
-    void* val_gep = LLVMBuildStructGEP2(self->builder, opt_lltype, ret_addr, 1, "val_gep");
-    LLVMBuildStore(self->builder, val, val_gep);
-}
-    void* wrapped = LLVMBuildLoad2(self->builder, opt_lltype, ret_addr, "wrapped_opt");
-    LLVMBuildRet(self->builder, wrapped);
-} else {
-    void* ret_ll = LLVMCodegen_map_type(self, ret_type);
-    bool ret_is_ptr = ((strlen(ret_type) > 0) && ((ret_type)[0] == ((char)(42))));
-    bool ret_is_str = (strcmp(ret_type, "Str") == 0);
-    bool val_is_int = (((((strcmp(val_type, "Int") == 0) || (strcmp(val_type, "Bool") == 0)) || (strcmp(val_type, "Char") == 0)) || (strcmp(val_type, "Int8") == 0)) || (strcmp(val_type, "Int32") == 0));
-    bool val_is_ptr = ((strlen(val_type) > 0) && ((val_type)[0] == ((char)(42))));
-    if ((ret_is_ptr || ret_is_str) && val_is_int) {
-    void* cast_val = LLVMBuildIntToPtr(self->builder, val, ret_ll, "cast_ret");
-    LLVMBuildRet(self->builder, cast_val);
-} else if (((!ret_is_ptr) && (!ret_is_str)) && val_is_ptr) {
-    void* cast_val = LLVMBuildPtrToInt(self->builder, val, ret_ll, "cast_ret");
-    LLVMBuildRet(self->builder, cast_val);
-} else {
-    LLVMBuildRet(self->builder, val);
-}
-}
-} else {
-    const char* ret_type = self->cur_func_ret_type;
-    if (self->cur_func_sret_ptr != (void*)(0)) {
-    LLVMBuildRetVoid(self->builder);
-    self->last_was_term = true;
-    return;
-}
-    if ((strlen(ret_type) > 0) && ((ret_type)[0] == ((char)(63)))) {
-    void* opt_lltype = LLVMCodegen_map_type(self, ret_type);
-    void* ret_addr = LLVMCodegen_build_alloca(self, opt_lltype, "none_opt");
-    void* has_gep = LLVMBuildStructGEP2(self->builder, opt_lltype, ret_addr, 0, "has_gep");
-    LLVMBuildStore(self->builder, LLVMConstInt(LLVMInt8TypeInContext(self->ctx), 0, false), has_gep);
-    void* wrapped = LLVMBuildLoad2(self->builder, opt_lltype, ret_addr, "none_result");
-    LLVMBuildRet(self->builder, wrapped);
-} else {
-    LLVMBuildRetVoid(self->builder);
-}
-}
-    self->last_was_term = true;
-    return;
-}
-    if (stmt.kind == StmtKind_sk_if) {
-    void* cond_val = LLVMCodegen_gen_expr(self, stmt.if_cond);
-    void* cond_i1 = LLVMBuildICmp(self->builder, 33, cond_val, LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false), "cond_i1");
-    void* then_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "then");
-    void* else_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "else");
-    void* merge_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "merge");
-    LLVMBuildCondBr(self->builder, cond_i1, then_bb, else_bb);
-    LLVMPositionBuilderAtEnd(self->builder, then_bb);
-    self->last_was_term = false;
-    LLVMCodegen_gen_stmt(self, stmt.if_then);
-    if (!self->last_was_term) {
-    LLVMBuildBr(self->builder, merge_bb);
-}
-    LLVMPositionBuilderAtEnd(self->builder, else_bb);
-    self->last_was_term = false;
-    if (stmt.if_else >= 0) {
-    LLVMCodegen_gen_stmt(self, stmt.if_else);
-}
-    if (!self->last_was_term) {
-    LLVMBuildBr(self->builder, merge_bb);
-}
-    LLVMPositionBuilderAtEnd(self->builder, merge_bb);
-    self->last_was_term = false;
-    return;
-}
-    if (stmt.kind == StmtKind_sk_while) {
-    void* cond_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "loop_cond");
-    void* body_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "loop_body");
-    void* end_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "loop_end");
-    LLVMBuildBr(self->builder, cond_bb);
-    LLVMPositionBuilderAtEnd(self->builder, cond_bb);
-    self->last_was_term = false;
-    void* cond_val = LLVMCodegen_gen_expr(self, stmt.while_cond);
-    void* cond_i1 = LLVMBuildICmp(self->builder, 33, cond_val, LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false), "cond_i1");
-    LLVMBuildCondBr(self->builder, cond_i1, body_bb, end_bb);
-    ArrayList_Str_push(&(self->loop_cond_stack), int_to_str((int64_t)(cond_bb)));
-    ArrayList_Str_push(&(self->loop_step_stack), int_to_str((int64_t)(cond_bb)));
-    ArrayList_Str_push(&(self->loop_end_stack), int_to_str((int64_t)(end_bb)));
-    LLVMPositionBuilderAtEnd(self->builder, body_bb);
-    self->last_was_term = false;
-    LLVMCodegen_gen_stmt(self, stmt.while_body);
-    if (!self->last_was_term) {
-    LLVMBuildBr(self->builder, cond_bb);
-}
-    (void)(ArrayList_Str_pop(&(self->loop_cond_stack)));
-    (void)(ArrayList_Str_pop(&(self->loop_step_stack)));
-    (void)(ArrayList_Str_pop(&(self->loop_end_stack)));
-    LLVMPositionBuilderAtEnd(self->builder, end_bb);
-    self->last_was_term = false;
-    return;
-}
-    if (stmt.kind == StmtKind_sk_for) {
-    const char* loop_var = stmt.for_var;
-    void* start_val = LLVMCodegen_gen_expr(self, stmt.for_start);
-    void* end_val = LLVMCodegen_gen_expr(self, stmt.for_end);
-    void* i_ll = LLVMInt64TypeInContext(self->ctx);
-    void* var_addr = LLVMCodegen_build_alloca(self, i_ll, loop_var);
-    LLVMBuildStore(self->builder, start_val, var_addr);
-    LLVMCodegen_sym_store(self, loop_var, var_addr, "Int");
-    void* cond_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "for_cond");
-    void* body_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "for_body");
-    void* step_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "for_step");
-    void* end_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "for_end");
-    LLVMBuildBr(self->builder, cond_bb);
-    LLVMPositionBuilderAtEnd(self->builder, cond_bb);
-    self->last_was_term = false;
-    void* current_i = LLVMBuildLoad2(self->builder, i_ll, var_addr, "curr_i");
-    void* cmp = LLVMBuildICmp(self->builder, 40, current_i, end_val, "cmp");
-    LLVMBuildCondBr(self->builder, cmp, body_bb, end_bb);
-    ArrayList_Str_push(&(self->loop_cond_stack), int_to_str((int64_t)(cond_bb)));
-    ArrayList_Str_push(&(self->loop_step_stack), int_to_str((int64_t)(step_bb)));
-    ArrayList_Str_push(&(self->loop_end_stack), int_to_str((int64_t)(end_bb)));
-    LLVMPositionBuilderAtEnd(self->builder, body_bb);
-    self->last_was_term = false;
-    LLVMCodegen_gen_stmt(self, stmt.for_body);
-    if (!self->last_was_term) {
-    LLVMBuildBr(self->builder, step_bb);
-}
-    LLVMPositionBuilderAtEnd(self->builder, step_bb);
-    self->last_was_term = false;
-    void* val_step = LLVMBuildLoad2(self->builder, i_ll, var_addr, "val_step");
-    void* next_val = LLVMBuildAdd(self->builder, val_step, LLVMConstInt(i_ll, 1, false), "next_val");
-    LLVMBuildStore(self->builder, next_val, var_addr);
-    LLVMBuildBr(self->builder, cond_bb);
-    (void)(ArrayList_Str_pop(&(self->loop_cond_stack)));
-    (void)(ArrayList_Str_pop(&(self->loop_step_stack)));
-    (void)(ArrayList_Str_pop(&(self->loop_end_stack)));
-    LLVMPositionBuilderAtEnd(self->builder, end_bb);
-    self->last_was_term = false;
-    return;
-}
-    if (stmt.kind == StmtKind_sk_break) {
-    const char* end_bb_str = ArrayList_Str_get(&(self->loop_end_stack), (ArrayList_Str_length(&(self->loop_end_stack)) - 1));
-    void* end_bb = (void*)(LLVMCodegen_str_to_int(self, end_bb_str));
-    LLVMBuildBr(self->builder, end_bb);
-    self->last_was_term = true;
-    return;
-}
-    if (stmt.kind == StmtKind_sk_continue) {
-    const char* step_bb_str = ArrayList_Str_get(&(self->loop_step_stack), (ArrayList_Str_length(&(self->loop_step_stack)) - 1));
-    void* step_bb = (void*)(LLVMCodegen_str_to_int(self, step_bb_str));
-    LLVMBuildBr(self->builder, step_bb);
-    self->last_was_term = true;
-    return;
-}
-    if (stmt.kind == StmtKind_sk_match) {
-    LLVMCodegen_gen_match(self, stmt_idx);
-    return;
-}
-    if (stmt.kind == StmtKind_sk_import) {
-    LLVMCodegen_handle_import(self, stmt_idx);
-    return;
-}
-    if (stmt.kind == StmtKind_sk_unsafe) {
-    if (stmt.unsafe_body >= 0) {
-    LLVMCodegen_gen_stmt(self, stmt.unsafe_body);
-}
-    return;
-}
-    if (stmt.kind == StmtKind_sk_defer) {
-    return;
-}
-    if (stmt.kind == StmtKind_sk_print) {
-    if (stmt.print_value >= 0) {
-    const char* ptype = LLVMCodegen_get_expr_type(self, stmt.print_value);
-    void* pval = LLVMCodegen_gen_expr(self, stmt.print_value);
-    LLVMCodegen_emit_print_call(self, ptype, pval);
-}
-    return;
-}
-    if (stmt.kind == StmtKind_sk_if_let) {
-    void* opt_val = LLVMCodegen_gen_expr(self, stmt.iflet_expr);
-    const char* opt_type = LLVMCodegen_get_expr_type(self, stmt.iflet_expr);
-    const char* inner_type = opt_type;
-    if ((strlen(opt_type) > 0) && ((opt_type)[0] == ((char)(63)))) {
-    inner_type = substring(opt_type, 1, strlen(opt_type));
-}
-    void* then_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "iflet_then");
-    void* else_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "iflet_else");
-    void* merge_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "iflet_merge");
-    void* cond_i1 = (void*)(0);
-    if (LLVMCodegen_is_pointer_type(self, inner_type)) {
-    void* null_ptr = LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-    cond_i1 = LLVMBuildICmp(self->builder, 33, opt_val, null_ptr, "iflet_cond");
-} else {
-    void* opt_lltype = LLVMCodegen_map_type(self, opt_type);
-    void* opt_tmp = LLVMCodegen_build_alloca(self, opt_lltype, "opt_iflet_tmp");
-    LLVMBuildStore(self->builder, opt_val, opt_tmp);
-    void* tag_gep = LLVMBuildStructGEP2(self->builder, opt_lltype, opt_tmp, 0, "has_val_gep");
-    void* has_val = LLVMBuildLoad2(self->builder, LLVMInt8TypeInContext(self->ctx), tag_gep, "has_val");
-    cond_i1 = LLVMBuildICmp(self->builder, 33, has_val, LLVMConstInt(LLVMInt8TypeInContext(self->ctx), 0, false), "iflet_cond");
-}
-    LLVMBuildCondBr(self->builder, cond_i1, then_bb, else_bb);
-    LLVMPositionBuilderAtEnd(self->builder, then_bb);
-    self->last_was_term = false;
-    void* inner_lltype = LLVMCodegen_map_type(self, inner_type);
-    if (inner_lltype == LLVMVoidTypeInContext(self->ctx)) {
-    inner_lltype = LLVMInt64TypeInContext(self->ctx);
-}
-    void* bind_addr = LLVMCodegen_build_alloca(self, inner_lltype, _kai_str_concat(stmt.iflet_var, ".addr"));
-    if (LLVMCodegen_is_pointer_type(self, inner_type)) {
-    LLVMBuildStore(self->builder, opt_val, bind_addr);
-} else {
-    void* opt_lltype2 = LLVMCodegen_map_type(self, opt_type);
-    void* opt_tmp2 = LLVMCodegen_build_alloca(self, opt_lltype2, "opt_iflet_tmp2");
-    LLVMBuildStore(self->builder, opt_val, opt_tmp2);
-    void* val_gep = LLVMBuildStructGEP2(self->builder, opt_lltype2, opt_tmp2, 1, "val_gep");
-    void* unwrapped = LLVMBuildLoad2(self->builder, inner_lltype, val_gep, "unwrapped");
-    LLVMBuildStore(self->builder, unwrapped, bind_addr);
-}
-    LLVMCodegen_sym_store(self, stmt.iflet_var, bind_addr, inner_type);
-    LLVMCodegen_gen_stmt(self, stmt.iflet_then);
-    if (!self->last_was_term) {
-    LLVMBuildBr(self->builder, merge_bb);
-}
-    LLVMPositionBuilderAtEnd(self->builder, else_bb);
-    self->last_was_term = false;
-    if (stmt.iflet_else >= 0) {
-    LLVMCodegen_gen_stmt(self, stmt.iflet_else);
-}
-    if (!self->last_was_term) {
-    LLVMBuildBr(self->builder, merge_bb);
-}
-    LLVMPositionBuilderAtEnd(self->builder, merge_bb);
-    self->last_was_term = false;
-    return;
-}
-}
-void* LLVMCodegen_gen_expr(LLVMCodegen* self, int64_t expr_idx) {
-    if (expr_idx < 0) {
-    return (void*)(0);
-}
-    ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
-    if (expr.kind == ExprKind_ek_literal) {
-    const char* vk = expr.lit_vkind;
-    if (strcmp(vk, "INT") == 0) {
-    int64_t val_int = 0;
-    if (expr.lit_value.tag == TokenValue_tv_int_TAG) {
-    int64_t v = expr.lit_value.payload.tv_int.v;
-
-    val_int = v;
-} else if (expr.lit_value.tag == TokenValue_tv_str_TAG) {
-    const char* v = expr.lit_value.payload.tv_str.v;
-
-    val_int = LLVMCodegen_str_to_int(self, v);
-} else {
-} 
-    return LLVMConstInt(LLVMInt64TypeInContext(self->ctx), val_int, true);
-}
-    if (strcmp(vk, "FLOAT") == 0) {
-    return LLVMConstReal(LLVMDoubleTypeInContext(self->ctx), 0.0);
-}
-    if (strcmp(vk, "STRING") == 0) {
-    const char* s_val = "";
-    if (expr.lit_value.tag == TokenValue_tv_str_TAG) {
-    const char* v = expr.lit_value.payload.tv_str.v;
-
-    s_val = v;
-} else {
-} 
-    return LLVMBuildGlobalStringPtr(self->builder, s_val, "str_lit");
-}
-    if (strcmp(vk, "BOOL") == 0) {
-    int64_t b_val = 0;
-    if (expr.lit_value.tag == TokenValue_tv_bool_TAG) {
-    bool v = expr.lit_value.payload.tv_bool.v;
-
-    if (v) {
-    b_val = 1;
-}
-} else if (expr.lit_value.tag == TokenValue_tv_str_TAG) {
-    const char* v = expr.lit_value.payload.tv_str.v;
-
-    int64_t is_true = strcmp(v, "true");
-    if (is_true == 0) {
-    b_val = 1;
-}
-} else if (expr.lit_value.tag == TokenValue_tv_int_TAG) {
-    int64_t v = expr.lit_value.payload.tv_int.v;
-
-    b_val = v;
-} else {
-} 
-    return LLVMConstInt(LLVMInt64TypeInContext(self->ctx), b_val, false);
-}
-    if (strcmp(vk, "CHAR") == 0) {
-    int64_t c_val = 0;
-    if (expr.lit_value.tag == TokenValue_tv_int_TAG) {
-    int64_t v = expr.lit_value.payload.tv_int.v;
-
-    c_val = v;
-} else if (expr.lit_value.tag == TokenValue_tv_char_TAG) {
-    char v = expr.lit_value.payload.tv_char.v;
-
-    c_val = (int64_t)(v);
-} else if (expr.lit_value.tag == TokenValue_tv_str_TAG) {
-    const char* v = expr.lit_value.payload.tv_str.v;
-
-    if (strlen(v) > 0) {
-    c_val = (int64_t)((v)[0]);
-}
-} else {
-} 
-    return LLVMConstInt(LLVMInt8TypeInContext(self->ctx), c_val, false);
-}
-    return LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-}
-    if (expr.kind == ExprKind_ek_identifier) {
-    const char* name = expr.ident_name;
-    if (strcmp(name, "none") == 0) {
-    return LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-}
-    void* addr = LLVMCodegen_sym_lookup(self, name);
-    if (addr != (void*)(0)) {
-    const char* ktype = LLVMCodegen_sym_type(self, name);
-    void* lltype = LLVMCodegen_map_type(self, ktype);
-    if (lltype == LLVMVoidTypeInContext(self->ctx)) {
-    lltype = LLVMInt64TypeInContext(self->ctx);
-}
-    return LLVMBuildLoad2(self->builder, lltype, addr, name);
-}
-    void* func = LLVMGetNamedFunction(self->module, name);
-    if (func != (void*)(0)) {
-    return func;
-}
-    return LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-}
-    if (expr.kind == ExprKind_ek_binary_op) {
-    const char* ltype = LLVMCodegen_get_expr_type(self, expr.binop_left);
-    const char* op = expr.binop_op;
-    if ((strcmp(ltype, "Str") == 0) && (strcmp(op, "+") == 0)) {
-    void* lv = LLVMCodegen_gen_expr(self, expr.binop_left);
-    void* rv = LLVMCodegen_gen_expr(self, expr.binop_right);
-    void* concat_func = LLVMGetNamedFunction(self->module, "_kai_str_concat");
-    void** params = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (params)[0] = lv;
-    (params)[1] = rv;
-    void* str_ptr = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-    void* fn_ty = LLVMFunctionType(str_ptr, (void*)(params), 2, false);
-    void* res = LLVMBuildCall2(self->builder, fn_ty, concat_func, (void*)(params), 2, "concat_res");
-    KaiAllocator_free(self->allocator, (void*)(params));
-    return res;
-}
-    if ((strcmp(ltype, "Str") == 0) && ((strcmp(op, "==") == 0) || (strcmp(op, "!=") == 0))) {
-    void* lv = LLVMCodegen_gen_expr(self, expr.binop_left);
-    void* rv = LLVMCodegen_gen_expr(self, expr.binop_right);
-    void* strcmp_func = LLVMCodegen_get_strcmp(self);
-    void** params = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (params)[0] = lv;
-    (params)[1] = rv;
-    void* str_ptr = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-    void* fn_ty = LLVMFunctionType(LLVMInt32TypeInContext(self->ctx), (void*)(params), 2, false);
-    void* cmp = LLVMBuildCall2(self->builder, fn_ty, strcmp_func, (void*)(params), 2, "cmp_res");
-    void* res = (void*)(0);
-    if (strcmp(op, "==") == 0) {
-    res = LLVMBuildICmp(self->builder, 32, cmp, LLVMConstInt(LLVMInt32TypeInContext(self->ctx), 0, false), "eq_res");
-} else {
-    res = LLVMBuildICmp(self->builder, 33, cmp, LLVMConstInt(LLVMInt32TypeInContext(self->ctx), 0, false), "ne_res");
-}
-    void* res_i64 = LLVMBuildZExt(self->builder, res, LLVMInt64TypeInContext(self->ctx), "zext");
-    KaiAllocator_free(self->allocator, (void*)(params));
-    return res_i64;
-}
-    void* lv = LLVMCodegen_gen_expr(self, expr.binop_left);
-    void* rv = LLVMCodegen_gen_expr(self, expr.binop_right);
-    const char* rtype = LLVMCodegen_get_expr_type(self, expr.binop_right);
-    if (strcmp(ltype, "Float") == 0) {
-    if (strcmp(op, "+") == 0) {
-    return LLVMBuildFAdd(self->builder, lv, rv, "fadd");
-}
-    if (strcmp(op, "-") == 0) {
-    return LLVMBuildFSub(self->builder, lv, rv, "fsub");
-}
-    if (strcmp(op, "*") == 0) {
-    return LLVMBuildFMul(self->builder, lv, rv, "fmul");
-}
-    if (strcmp(op, "/") == 0) {
-    return LLVMBuildFDiv(self->builder, lv, rv, "fdiv");
-}
-    return LLVMConstReal(LLVMDoubleTypeInContext(self->ctx), 0.0);
-}
-    if (LLVMCodegen_is_integer_type(self, ltype)) {
-    lv = LLVMCodegen_cast_to_i64(self, lv, ltype);
-}
-    if (LLVMCodegen_is_integer_type(self, rtype)) {
-    rv = LLVMCodegen_cast_to_i64(self, rv, rtype);
-}
-    if (strcmp(op, "+") == 0) {
-    return LLVMBuildAdd(self->builder, lv, rv, "add");
-}
-    if (strcmp(op, "-") == 0) {
-    return LLVMBuildSub(self->builder, lv, rv, "sub");
-}
-    if (strcmp(op, "*") == 0) {
-    return LLVMBuildMul(self->builder, lv, rv, "mul");
-}
-    if (strcmp(op, "/") == 0) {
-    return LLVMBuildSDiv(self->builder, lv, rv, "div");
-}
-    if (strcmp(op, "%") == 0) {
-    return LLVMBuildSRem(self->builder, lv, rv, "rem");
-}
-    if (strcmp(op, "&") == 0) {
-    return LLVMBuildAnd(self->builder, lv, rv, "and");
-}
-    if (strcmp(op, "|") == 0) {
-    return LLVMBuildOr(self->builder, lv, rv, "or");
-}
-    if (strcmp(op, "^") == 0) {
-    return LLVMBuildXor(self->builder, lv, rv, "xor");
-}
-    if (strcmp(op, "<<") == 0) {
-    return LLVMBuildShl(self->builder, lv, rv, "shl");
-}
-    if (strcmp(op, ">>") == 0) {
-    return LLVMBuildAShr(self->builder, lv, rv, "ashr");
-}
-    void* cmp_val = (void*)(0);
-    if ((((((strcmp(op, "==") == 0) || (strcmp(op, "!=") == 0)) || (strcmp(op, "<") == 0)) || (strcmp(op, "<=") == 0)) || (strcmp(op, ">") == 0)) || (strcmp(op, ">=") == 0)) {
-    bool ltype_is_ptr = LLVMCodegen_is_pointer_type(self, ltype);
-    bool rtype_is_ptr = LLVMCodegen_is_pointer_type(self, rtype);
-    if (ltype_is_ptr && (!rtype_is_ptr)) {
-    void* ptr_ll = LLVMCodegen_map_type(self, ltype);
-    rv = LLVMBuildIntToPtr(self->builder, rv, ptr_ll, "null_ptr");
-} else if ((!ltype_is_ptr) && rtype_is_ptr) {
-    void* ptr_ll = LLVMCodegen_map_type(self, rtype);
-    lv = LLVMBuildIntToPtr(self->builder, lv, ptr_ll, "null_ptr");
-}
-}
-    if (strcmp(op, "==") == 0) {
-    cmp_val = LLVMBuildICmp(self->builder, 32, lv, rv, "eq");
-} else if (strcmp(op, "!=") == 0) {
-    cmp_val = LLVMBuildICmp(self->builder, 33, lv, rv, "ne");
-} else if (strcmp(op, "<") == 0) {
-    cmp_val = LLVMBuildICmp(self->builder, 40, lv, rv, "lt");
-} else if (strcmp(op, "<=") == 0) {
-    cmp_val = LLVMBuildICmp(self->builder, 41, lv, rv, "le");
-} else if (strcmp(op, ">") == 0) {
-    cmp_val = LLVMBuildICmp(self->builder, 38, lv, rv, "gt");
-} else if (strcmp(op, ">=") == 0) {
-    cmp_val = LLVMBuildICmp(self->builder, 39, lv, rv, "ge");
-} else if (strcmp(op, "&&") == 0) {
-    cmp_val = LLVMBuildAnd(self->builder, lv, rv, "logical_and");
-} else if (strcmp(op, "||") == 0) {
-    cmp_val = LLVMBuildOr(self->builder, lv, rv, "logical_or");
-}
-    if (cmp_val != (void*)(0)) {
-    return LLVMBuildZExt(self->builder, cmp_val, LLVMInt64TypeInContext(self->ctx), "zext");
-}
-    return lv;
-}
-    if (expr.kind == ExprKind_ek_unary_op) {
-    void* val = LLVMCodegen_gen_expr(self, expr.unop_operand);
-    const char* op = expr.unop_op;
-    if (strcmp(op, "-") == 0) {
-    void* zero = LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-    return LLVMBuildSub(self->builder, zero, val, "neg");
-}
-    if (strcmp(op, "!") == 0) {
-    void* one = LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 1, false);
-    void* val_i64 = LLVMCodegen_cast_to_i64(self, val, LLVMCodegen_get_expr_type(self, expr.unop_operand));
-    void* xor_res = LLVMBuildXor(self->builder, val_i64, one, "negate");
-    return xor_res;
-}
-    return val;
-}
-    if (expr.kind == ExprKind_ek_func_call) {
-    const char* fname = expr.func_name;
-    if (strcmp(fname, "print") == 0) {
-    if (ArrayList_Int_length(&(expr.func_args)) > 0) {
-    int64_t arg_idx = ArrayList_Int_get(&(expr.func_args), 0);
-    const char* ktype = LLVMCodegen_get_expr_type(self, arg_idx);
-    void* val = LLVMCodegen_gen_expr(self, arg_idx);
-    LLVMCodegen_emit_print_call(self, ktype, val);
-}
-    return LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-}
-    if ((strcmp(fname, "cast") == 0) || (strcmp(fname, "as") == 0)) {
-    if ((ArrayList_Str_length(&(expr.func_type_args)) > 0) && (ArrayList_Int_length(&(expr.func_args)) > 0)) {
-    return LLVMCodegen_gen_cast(self, ArrayList_Int_get(&(expr.func_args), 0), ArrayList_Str_get(&(expr.func_type_args), 0));
-}
-    return LLVMCodegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0));
-}
-    if ((strcmp(fname, "Char") == 0) || (strcmp(fname, "Int8") == 0)) {
-    void* av = LLVMCodegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0));
-    const char* src_type = LLVMCodegen_get_expr_type(self, ArrayList_Int_get(&(expr.func_args), 0));
-    if (strcmp(src_type, "Int") == 0) {
-    return LLVMBuildTrunc(self->builder, av, LLVMInt8TypeInContext(self->ctx), "trunc");
-}
-    return av;
-}
-    if (strcmp(fname, "Int") == 0) {
-    void* av = LLVMCodegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0));
-    const char* src_type = LLVMCodegen_get_expr_type(self, ArrayList_Int_get(&(expr.func_args), 0));
-    if (strcmp(src_type, "Float") == 0) {
-    return LLVMBuildFPToSI(self->builder, av, LLVMInt64TypeInContext(self->ctx), "fptosi");
-}
-    if ((strcmp(src_type, "Char") == 0) || (strcmp(src_type, "Int8") == 0)) {
-    return LLVMBuildSExt(self->builder, av, LLVMInt64TypeInContext(self->ctx), "sext");
-}
-    return av;
-}
-    if (strcmp(fname, "Float") == 0) {
-    void* av = LLVMCodegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0));
-    const char* src_type = LLVMCodegen_get_expr_type(self, ArrayList_Int_get(&(expr.func_args), 0));
-    void* double_type = LLVMDoubleTypeInContext(self->ctx);
-    if (strcmp(src_type, "Int") == 0) {
-    return LLVMBuildSIToFP(self->builder, av, double_type, "sitofp");
-}
-    if (strcmp(src_type, "Char") == 0) {
-    void* ext = LLVMBuildSExt(self->builder, av, LLVMInt64TypeInContext(self->ctx), "sext");
-    return LLVMBuildSIToFP(self->builder, ext, double_type, "sitofp");
-}
-    return av;
-}
-    if (strcmp(fname, "size_of") == 0) {
-    const char* ktype = "Int";
-    if (ArrayList_Str_length(&(expr.func_type_args)) > 0) {
-    ktype = ArrayList_Str_get(&(expr.func_type_args), 0);
-}
-    void* lltype = LLVMCodegen_map_type(self, ktype);
-    if (lltype == LLVMVoidTypeInContext(self->ctx)) {
-    lltype = LLVMInt8TypeInContext(self->ctx);
-}
-    void* null_ptr = LLVMConstNull(LLVMPointerType(lltype, 0));
-    void* one = LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 1, false);
-    void* gep = LLVMBuildGEP2(self->builder, lltype, null_ptr, (void*)(&(one)), 1, "sizeof_gep");
-    return LLVMBuildPtrToInt(self->builder, gep, LLVMInt64TypeInContext(self->ctx), "sizeof_val");
-}
-    char first_char = (fname)[0];
-    bool is_upper = ((first_char >= ((char)(65))) && (first_char <= ((char)(90))));
-    bool potential_struct = (strlen(type_map_get(&(self->struct_types), fname)) > 0);
-    if (is_upper && potential_struct) {
-    const char* init_name = _kai_str_concat(fname, "_init");
-    void* func = LLVMGetNamedFunction(self->module, init_name);
-    int64_t arg_count = ArrayList_Int_length(&(expr.func_args));
-    void* struct_ll = LLVMCodegen_map_type(self, fname);
-    void* self_slot = LLVMCodegen_build_alloca(self, struct_ll, _kai_str_concat(fname, ".new"));
-    int64_t total_args = (arg_count + 1);
-    void** args = (void**)(KaiAllocator_alloc(self->allocator, (total_args * 8), 8));
-    (args)[0] = self_slot;
-    int64_t i = 0;
-    while (i < arg_count) {
-    (args)[(i + 1)] = LLVMCodegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), i));
-    i = (i + 1);
-}
-    void** param_types = (void**)(KaiAllocator_alloc(self->allocator, (total_args * 8), 8));
-    i = 0;
-    while (i < total_args) {
-    const char* p_key = _kai_str_concat(_kai_str_concat(init_name, "_param_"), int_to_str(i));
-    const char* p_ktype = type_map_get(&(self->func_param_types), p_key);
-    void* pt = LLVMCodegen_map_type(self, p_ktype);
-    if (pt == LLVMVoidTypeInContext(self->ctx)) {
-    pt = LLVMInt64TypeInContext(self->ctx);
-}
-    (param_types)[i] = pt;
-    i = (i + 1);
-}
-    const char* ret_ktype = _kai_str_concat("*", fname);
-    void* ret_ll = LLVMCodegen_map_type(self, ret_ktype);
-    if (strcmp(type_map_get(&(self->func_is_sret), init_name), "1") == 0) {
-    void* sret_ll = LLVMCodegen_map_type(self, fname);
-    void* sret_slot = LLVMCodegen_build_alloca(self, sret_ll, "sret_slot");
-    void** sret_args = (void**)(KaiAllocator_alloc(self->allocator, ((total_args + 1) * 8), 8));
-    (sret_args)[0] = sret_slot;
-    int64_t j = 0;
-    while (j < total_args) {
-    (sret_args)[(j + 1)] = (args)[j];
-    j = (j + 1);
-}
-    void** sret_param_types = (void**)(KaiAllocator_alloc(self->allocator, ((total_args + 1) * 8), 8));
-    (sret_param_types)[0] = LLVMPointerType(sret_ll, 0);
-    j = 0;
-    while (j < total_args) {
-    (sret_param_types)[(j + 1)] = (param_types)[j];
-    j = (j + 1);
-}
-    void* sret_fn_ty = LLVMFunctionType(LLVMVoidTypeInContext(self->ctx), (void*)(sret_param_types), (total_args + 1), false);
-    (void)(LLVMBuildCall2(self->builder, sret_fn_ty, func, (void*)(sret_args), (total_args + 1), ""));
-    KaiAllocator_free(self->allocator, (void*)(args));
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-    KaiAllocator_free(self->allocator, (void*)(sret_args));
-    KaiAllocator_free(self->allocator, (void*)(sret_param_types));
-    return sret_slot;
-}
-    void* fn_ty = LLVMFunctionType(ret_ll, (void*)(param_types), total_args, false);
-    (void)(LLVMBuildCall2(self->builder, fn_ty, func, (void*)(args), total_args, "init_call"));
-    KaiAllocator_free(self->allocator, (void*)(args));
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-    return self_slot;
-}
-    if (strcmp(fname, "print_int") == 0) {
-    if (ArrayList_Int_length(&(expr.func_args)) > 0) {
-    void* av = LLVMCodegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0));
-    const char* src_type = LLVMCodegen_get_expr_type(self, ArrayList_Int_get(&(expr.func_args), 0));
-    LLVMCodegen_emit_print_call(self, src_type, av);
-}
-    return LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-}
-    if (strcmp(fname, "print_float") == 0) {
-    if (ArrayList_Int_length(&(expr.func_args)) > 0) {
-    void* av = LLVMCodegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0));
-    LLVMCodegen_emit_print_call(self, "Float", av);
-}
-    return LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-}
-    if (strcmp(fname, "print_bool") == 0) {
-    if (ArrayList_Int_length(&(expr.func_args)) > 0) {
-    void* av = LLVMCodegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0));
-    LLVMCodegen_emit_print_call(self, "Bool", av);
-}
-    return LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-}
-    void* func = LLVMGetNamedFunction(self->module, fname);
-    int64_t arg_count = ArrayList_Int_length(&(expr.func_args));
-    void** args = (void**)(KaiAllocator_alloc(self->allocator, ((arg_count + 1) * 8), 8));
-    int64_t i = 0;
-    while (i < arg_count) {
-    (args)[i] = LLVMCodegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), i));
-    i = (i + 1);
-}
-    const char* ret_ktype = type_map_get(&(self->func_types), fname);
-    void* ret_ll = LLVMCodegen_map_type(self, ret_ktype);
-    if (ret_ll == LLVMVoidTypeInContext(self->ctx)) {
-    ret_ll = LLVMInt64TypeInContext(self->ctx);
-}
-    void** param_types = (void**)(KaiAllocator_alloc(self->allocator, ((arg_count + 1) * 8), 8));
-    i = 0;
-    while (i < arg_count) {
-    const char* p_key = _kai_str_concat(_kai_str_concat(fname, "_param_"), int_to_str(i));
-    const char* p_ktype = type_map_get(&(self->func_param_types), p_key);
-    void* pt = LLVMCodegen_map_type(self, p_ktype);
-    if (pt == LLVMVoidTypeInContext(self->ctx)) {
-    pt = LLVMInt64TypeInContext(self->ctx);
-}
-    (param_types)[i] = pt;
-    if (LLVMCodegen_is_struct_type(self, p_ktype) && LLVMCodegen_expr_returns_ptr(self, ArrayList_Int_get(&(expr.func_args), i))) {
-    (args)[i] = LLVMBuildLoad2(self->builder, pt, (args)[i], "struct_arg");
-}
-    i = (i + 1);
-}
-    void* fn_ty = LLVMFunctionType(ret_ll, (void*)(param_types), arg_count, false);
-    if (func == (void*)(0)) {
-    func = LLVMAddFunction(self->module, fname, fn_ty);
-}
-    const char* call_name = "call";
-    if (ret_ll == LLVMVoidTypeInContext(self->ctx)) {
-    call_name = "";
-}
-    if (strcmp(type_map_get(&(self->func_is_sret), fname), "1") == 0) {
-    void* sret_ll = LLVMCodegen_map_type(self, ret_ktype);
-    void* sret_slot = LLVMCodegen_build_alloca(self, sret_ll, "sret_slot");
-    void** sret_args = (void**)(KaiAllocator_alloc(self->allocator, ((arg_count + 1) * 8), 8));
-    (sret_args)[0] = sret_slot;
-    int64_t j = 0;
-    while (j < arg_count) {
-    (sret_args)[(j + 1)] = (args)[j];
-    j = (j + 1);
-}
-    void** sret_ptypes = (void**)(KaiAllocator_alloc(self->allocator, ((arg_count + 1) * 8), 8));
-    (sret_ptypes)[0] = LLVMPointerType(sret_ll, 0);
-    j = 0;
-    while (j < arg_count) {
-    (sret_ptypes)[(j + 1)] = (param_types)[j];
-    j = (j + 1);
-}
-    void* sret_fn_ty = LLVMFunctionType(LLVMVoidTypeInContext(self->ctx), (void*)(sret_ptypes), (arg_count + 1), false);
-    (void)(LLVMBuildCall2(self->builder, sret_fn_ty, func, (void*)(sret_args), (arg_count + 1), ""));
-    KaiAllocator_free(self->allocator, (void*)(args));
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-    KaiAllocator_free(self->allocator, (void*)(sret_args));
-    KaiAllocator_free(self->allocator, (void*)(sret_ptypes));
-    return sret_slot;
-}
-    void* res = LLVMBuildCall2(self->builder, fn_ty, func, (void*)(args), arg_count, call_name);
-    KaiAllocator_free(self->allocator, (void*)(args));
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-    return res;
-}
-    if (expr.kind == ExprKind_ek_method_call) {
-    const char* rec_type = LLVMCodegen_get_expr_type(self, expr.meth_expr);
-    const char* base_type = LLVMCodegen_strip_pointers(self, rec_type);
-    const char* mname = expr.meth_name;
-    bool is_enum_type = ((strlen(base_type) > 0) && (strlen(type_map_get(&(self->enum_types), base_type)) > 0));
-    const char* tag_key_check = _kai_str_concat(_kai_str_concat(_kai_str_concat(base_type, "_"), mname), "_TAG");
-    bool is_enum_variant_call = (is_enum_type && (strlen(type_map_get(&(self->enum_decls), tag_key_check)) > 0));
-    bool is_enum = is_enum_variant_call;
-    if (is_enum) {
-    const char* enum_decl_idx_str = type_map_get(&(self->enum_decls), base_type);
-    bool enum_has_payload = false;
-    if (strlen(enum_decl_idx_str) > 0) {
-    int64_t enum_decl_idx = LLVMCodegen_str_to_int(self, enum_decl_idx_str);
-    StmtNode enum_stmt = ArrayList_StmtNode_get(self->stmt_pool, enum_decl_idx);
-    int64_t v_idx = 0;
-    while (v_idx < ArrayList_Variant_length(&(enum_stmt.enum_variants))) {
-    Variant v = ArrayList_Variant_get(&(enum_stmt.enum_variants), v_idx);
-    if (ArrayList_Param_length(&(v.params)) > 0) {
-    enum_has_payload = true;
-}
-    v_idx = (v_idx + 1);
-}
-}
-    const char* tag_key = _kai_str_concat(_kai_str_concat(_kai_str_concat(base_type, "_"), mname), "_TAG");
-    const char* tag_val_str = type_map_get(&(self->enum_decls), tag_key);
-    int64_t tag_num = 0;
-    if (strlen(tag_val_str) > 0) {
-    tag_num = LLVMCodegen_str_to_int(self, tag_val_str);
-}
-    if (!enum_has_payload) {
-    return LLVMConstInt(LLVMInt32TypeInContext(self->ctx), tag_num, false);
-}
-    void* struct_lltype = LLVMCodegen_map_type(self, base_type);
-    void* alloca_val = LLVMCodegen_build_alloca(self, struct_lltype, "enum_meth_init");
-    void* tag_gep = LLVMBuildStructGEP2(self->builder, struct_lltype, alloca_val, 0, "tag_gep");
-    LLVMBuildStore(self->builder, LLVMConstInt(LLVMInt8TypeInContext(self->ctx), tag_num, false), tag_gep);
-    if (ArrayList_Int_length(&(expr.meth_args)) > 0) {
-    int64_t arg_idx = ArrayList_Int_get(&(expr.meth_args), 0);
-    void* val = LLVMCodegen_gen_expr(self, arg_idx);
-    void* gep = LLVMBuildStructGEP2(self->builder, struct_lltype, alloca_val, 1, "payload_gep");
-    const char* f_type = LLVMCodegen_get_expr_type(self, arg_idx);
-    void* val_cast = LLVMCodegen_cast_to_i64(self, val, f_type);
-    LLVMBuildStore(self->builder, val_cast, gep);
-}
-    return LLVMBuildLoad2(self->builder, struct_lltype, alloca_val, "enum_val");
-}
-    const char* func_name = _kai_str_concat(_kai_str_concat(base_type, "_"), mname);
-    void* func = LLVMGetNamedFunction(self->module, func_name);
-    ExprNode rec_node_check = ArrayList_ExprNode_get(self->expr_pool, expr.meth_expr);
-    bool is_static_call = ((rec_node_check.kind == ExprKind_ek_identifier) && (LLVMCodegen_sym_lookup(self, rec_node_check.ident_name) == (void*)(0)));
-    int64_t arg_count = (ArrayList_Int_length(&(expr.meth_args)) + 1);
-    void** args = (void**)(KaiAllocator_alloc(self->allocator, (arg_count * 8), 8));
-    void* rec_val = LLVMCodegen_gen_expr(self, expr.meth_expr);
-    if (is_static_call) {
-    int64_t i2 = 0;
-    while (i2 < ArrayList_Int_length(&(expr.meth_args))) {
-    (args)[i2] = LLVMCodegen_gen_expr(self, ArrayList_Int_get(&(expr.meth_args), i2));
-    i2 = (i2 + 1);
-}
-} else if (((rec_type)[0] == ((char)(42))) || ((rec_type)[0] == ((char)(38)))) {
-    (args)[0] = rec_val;
-} else {
-    ExprNode rec_node = ArrayList_ExprNode_get(self->expr_pool, expr.meth_expr);
-    if (rec_node.kind == ExprKind_ek_identifier) {
-    (args)[0] = LLVMCodegen_sym_lookup(self, rec_node.ident_name);
-} else {
-    void* lltype = LLVMCodegen_map_type(self, rec_type);
-    void* addr = LLVMCodegen_build_alloca(self, lltype, "rec_temp");
-    LLVMBuildStore(self->builder, rec_val, addr);
-    (args)[0] = addr;
-}
-}
-    int64_t i = 0;
-    if (!is_static_call) {
-    while (i < ArrayList_Int_length(&(expr.meth_args))) {
-    (args)[(i + 1)] = LLVMCodegen_gen_expr(self, ArrayList_Int_get(&(expr.meth_args), i));
-    i = (i + 1);
-}
-}
-    int64_t effective_arg_count = arg_count;
-    if (is_static_call) {
-    effective_arg_count = ArrayList_Int_length(&(expr.meth_args));
-}
-    const char* ret_ktype_raw = type_map_get(&(self->func_types), func_name);
-    const char* ret_ktype = ret_ktype_raw;
-    if (((strcmp(ret_ktype, "") == 0) || (strcmp(ret_ktype, "T") == 0)) && (strcmp(mname, "get") == 0)) {
-    int64_t lt_pos2 = LLVMCodegen_str_find(self, base_type, ((char)(60)));
-    if (lt_pos2 >= 0) {
-    const char* elem_t = substring(base_type, (lt_pos2 + 1), (strlen(base_type) - 1));
-    if (strlen(elem_t) > 0) {
-    ret_ktype = elem_t;
-}
-}
-}
-    void* ret_ll = LLVMCodegen_map_type(self, ret_ktype);
-    if (ret_ll == LLVMVoidTypeInContext(self->ctx)) {
-    ret_ll = LLVMInt64TypeInContext(self->ctx);
-}
-    void** param_types = (void**)(KaiAllocator_alloc(self->allocator, (effective_arg_count * 8), 8));
-    if (is_static_call) {
-    i = 0;
-    while (i < ArrayList_Int_length(&(expr.meth_args))) {
-    const char* p_key = _kai_str_concat(_kai_str_concat(func_name, "_param_"), int_to_str(i));
-    const char* p_ktype = type_map_get(&(self->func_param_types), p_key);
-    void* pt = LLVMCodegen_map_type(self, p_ktype);
-    if (pt == LLVMVoidTypeInContext(self->ctx)) {
-    pt = LLVMInt64TypeInContext(self->ctx);
-}
-    (param_types)[i] = pt;
-    if (LLVMCodegen_is_struct_type(self, p_ktype) && LLVMCodegen_expr_returns_ptr(self, ArrayList_Int_get(&(expr.meth_args), i))) {
-    (args)[i] = LLVMBuildLoad2(self->builder, pt, (args)[i], "struct_arg");
-}
-    i = (i + 1);
-}
-} else {
-    (param_types)[0] = LLVMPointerType(LLVMCodegen_map_type(self, base_type), 0);
-    i = 0;
-    while (i < ArrayList_Int_length(&(expr.meth_args))) {
-    const char* p_key = _kai_str_concat(_kai_str_concat(func_name, "_param_"), int_to_str((i + 1)));
-    const char* p_ktype = type_map_get(&(self->func_param_types), p_key);
-    void* pt = LLVMCodegen_map_type(self, p_ktype);
-    if (pt == LLVMVoidTypeInContext(self->ctx)) {
-    pt = LLVMInt64TypeInContext(self->ctx);
-}
-    (param_types)[(i + 1)] = pt;
-    if (LLVMCodegen_is_struct_type(self, p_ktype) && LLVMCodegen_expr_returns_ptr(self, ArrayList_Int_get(&(expr.meth_args), i))) {
-    (args)[(i + 1)] = LLVMBuildLoad2(self->builder, pt, (args)[(i + 1)], "struct_arg");
-}
-    i = (i + 1);
-}
-}
-    void* fn_ty = LLVMFunctionType(ret_ll, (void*)(param_types), effective_arg_count, false);
-    if (func == (void*)(0)) {
-    func = LLVMAddFunction(self->module, func_name, fn_ty);
-}
-    const char* meth_call_name = "meth_call";
-    if (ret_ll == LLVMVoidTypeInContext(self->ctx)) {
-    meth_call_name = "";
-}
-    if (strcmp(type_map_get(&(self->func_is_sret), func_name), "1") == 0) {
-    void* sret_ll = LLVMCodegen_map_type(self, ret_ktype);
-    void* sret_slot = LLVMCodegen_build_alloca(self, sret_ll, "sret_slot");
-    int64_t tot = (effective_arg_count + 1);
-    void** sret_args = (void**)(KaiAllocator_alloc(self->allocator, (tot * 8), 8));
-    (sret_args)[0] = sret_slot;
-    int64_t j = 0;
-    while (j < effective_arg_count) {
-    (sret_args)[(j + 1)] = (args)[j];
-    j = (j + 1);
-}
-    void** sret_ptypes = (void**)(KaiAllocator_alloc(self->allocator, (tot * 8), 8));
-    (sret_ptypes)[0] = LLVMPointerType(sret_ll, 0);
-    j = 0;
-    while (j < effective_arg_count) {
-    (sret_ptypes)[(j + 1)] = (param_types)[j];
-    j = (j + 1);
-}
-    void* sret_fn_ty = LLVMFunctionType(LLVMVoidTypeInContext(self->ctx), (void*)(sret_ptypes), tot, false);
-    (void)(LLVMBuildCall2(self->builder, sret_fn_ty, func, (void*)(sret_args), tot, ""));
-    KaiAllocator_free(self->allocator, (void*)(args));
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-    KaiAllocator_free(self->allocator, (void*)(sret_args));
-    KaiAllocator_free(self->allocator, (void*)(sret_ptypes));
-    return sret_slot;
-}
-    void* res = LLVMBuildCall2(self->builder, fn_ty, func, (void*)(args), effective_arg_count, meth_call_name);
-    KaiAllocator_free(self->allocator, (void*)(args));
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-    return res;
-}
-    if (expr.kind == ExprKind_ek_struct_init) {
-    const char* sname = expr.struct_name;
-    bool is_enum = ((strlen(sname) > 0) && LLVMCodegen_str_contains(self, sname, ((char)(46))));
-    if (is_enum) {
-    int64_t dot_pos = LLVMCodegen_str_find(self, sname, ((char)(46)));
-    const char* enum_part = substring(sname, 0, dot_pos);
-    const char* variant_name = substring(sname, (dot_pos + 1), strlen(sname));
-    const char* enum_decl_idx_str = type_map_get(&(self->enum_decls), enum_part);
-    bool enum_has_payload = false;
-    if (strlen(enum_decl_idx_str) > 0) {
-    int64_t enum_decl_idx = LLVMCodegen_str_to_int(self, enum_decl_idx_str);
-    StmtNode enum_stmt = ArrayList_StmtNode_get(self->stmt_pool, enum_decl_idx);
-    int64_t v_idx = 0;
-    while (v_idx < ArrayList_Variant_length(&(enum_stmt.enum_variants))) {
-    Variant v = ArrayList_Variant_get(&(enum_stmt.enum_variants), v_idx);
-    if (ArrayList_Param_length(&(v.params)) > 0) {
-    enum_has_payload = true;
-}
-    v_idx = (v_idx + 1);
-}
-}
-    const char* tag_key = _kai_str_concat(_kai_str_concat(_kai_str_concat(enum_part, "_"), variant_name), "_TAG");
-    const char* tag_val_str = type_map_get(&(self->enum_decls), tag_key);
-    int64_t tag_num = 0;
-    if (strlen(tag_val_str) > 0) {
-    tag_num = LLVMCodegen_str_to_int(self, tag_val_str);
-}
-    if (!enum_has_payload) {
-    return LLVMConstInt(LLVMInt32TypeInContext(self->ctx), tag_num, false);
-}
-    void* struct_lltype = LLVMCodegen_map_type(self, enum_part);
-    void* alloca_val = LLVMCodegen_build_alloca(self, struct_lltype, "enum_init");
-    void* tag_gep = LLVMBuildStructGEP2(self->builder, struct_lltype, alloca_val, 0, "tag_gep");
-    LLVMBuildStore(self->builder, LLVMConstInt(LLVMInt8TypeInContext(self->ctx), tag_num, false), tag_gep);
-    if (ArrayList_FieldInit_length(&(expr.struct_fields)) > 0) {
-    FieldInit f = ArrayList_FieldInit_get(&(expr.struct_fields), 0);
-    void* val = LLVMCodegen_gen_expr(self, f.value);
-    void* gep = LLVMBuildStructGEP2(self->builder, struct_lltype, alloca_val, 1, "payload_gep");
-    const char* f_type = LLVMCodegen_get_expr_type(self, f.value);
-    void* val_cast = LLVMCodegen_cast_to_i64(self, val, f_type);
-    LLVMBuildStore(self->builder, val_cast, gep);
-}
-    return LLVMBuildLoad2(self->builder, struct_lltype, alloca_val, "enum_val");
-}
-    void* struct_lltype = LLVMCodegen_map_type(self, sname);
-    void* alloca_val = LLVMCodegen_build_alloca(self, struct_lltype, "struct_init");
-    int64_t i = 0;
-    while (i < ArrayList_FieldInit_length(&(expr.struct_fields))) {
-    FieldInit f = ArrayList_FieldInit_get(&(expr.struct_fields), i);
-    const char* field_ktype = LLVMCodegen_get_field_type(self, sname, f.name);
-    void* field_lltype = LLVMCodegen_map_type(self, field_ktype);
-    int64_t field_idx = LLVMCodegen_get_field_index(self, sname, f.name);
-    void* val = LLVMCodegen_gen_expr(self, f.value);
-    if (LLVMCodegen_is_struct_type(self, field_ktype) && LLVMCodegen_expr_returns_ptr(self, f.value)) {
-    val = LLVMBuildLoad2(self->builder, field_lltype, val, "struct_val");
-}
-    void* gep = LLVMBuildStructGEP2(self->builder, struct_lltype, alloca_val, field_idx, "field_gep");
-    val = LLVMCodegen_promote_enum_to_struct(self, val, field_ktype);
-    LLVMBuildStore(self->builder, val, gep);
-    i = (i + 1);
-}
-    return alloca_val;
-}
-    if (expr.kind == ExprKind_ek_borrow) {
-    ExprNode inner = ArrayList_ExprNode_get(self->expr_pool, expr.borrow_expr);
-    if (inner.kind == ExprKind_ek_identifier) {
-    return LLVMCodegen_sym_lookup(self, inner.ident_name);
-}
-    if (inner.kind == ExprKind_ek_field_access) {
-    const char* rec_type = LLVMCodegen_get_expr_type(self, inner.field_expr);
-    const char* base_type = LLVMCodegen_strip_pointers(self, rec_type);
-    const char* key = _kai_str_concat(_kai_str_concat(LLVMCodegen_get_mangled_type_name(self, base_type), "."), inner.field_name);
-    const char* idx_str = type_map_get(&(self->struct_field_indices), key);
-    int64_t idx = LLVMCodegen_str_to_int(self, idx_str);
-    ExprNode inner_base_node = ArrayList_ExprNode_get(self->expr_pool, inner.field_expr);
-    void* rec_ptr = (void*)(0);
-    if ((inner_base_node.kind == ExprKind_ek_identifier) && (!LLVMCodegen_is_pointer_type(self, rec_type))) {
-    void* addr = LLVMCodegen_sym_lookup(self, inner_base_node.ident_name);
-    if (addr != (void*)(0)) {
-    rec_ptr = addr;
-} else {
-    rec_ptr = LLVMCodegen_gen_expr(self, inner.field_expr);
-}
-} else {
-    rec_ptr = LLVMCodegen_gen_expr(self, inner.field_expr);
-}
-    void* struct_lltype = LLVMCodegen_map_type(self, base_type);
-    if ((!LLVMCodegen_is_pointer_type(self, rec_type)) && (inner_base_node.kind != ExprKind_ek_identifier)) {
-    void* tmp_addr = LLVMCodegen_build_alloca(self, struct_lltype, "borrow_tmp");
-    LLVMBuildStore(self->builder, rec_ptr, tmp_addr);
-    rec_ptr = tmp_addr;
-}
-    return LLVMBuildStructGEP2(self->builder, struct_lltype, rec_ptr, idx, "field_gep");
-}
-    if (inner.kind == ExprKind_ek_index) {
-    void* arr_ptr = LLVMCodegen_gen_expr(self, inner.idx_expr);
-    void* idx_val = LLVMCodegen_gen_expr(self, inner.idx_index);
-    const char* elem_ktype = LLVMCodegen_get_expr_type(self, expr.borrow_expr);
-    void* elem_lltype = LLVMCodegen_map_type(self, elem_ktype);
-    if ((strlen(elem_ktype) > 0) && ((elem_ktype)[0] == ((char)(42)))) {
-    elem_lltype = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-}
-    if (elem_lltype == LLVMVoidTypeInContext(self->ctx)) {
-    elem_lltype = LLVMInt64TypeInContext(self->ctx);
-}
-    return LLVMBuildGEP2(self->builder, elem_lltype, arr_ptr, (void*)(&(idx_val)), 1, "idx_gep");
-}
-    return LLVMCodegen_gen_expr(self, expr.borrow_expr);
-}
-    if (expr.kind == ExprKind_ek_deref) {
-    void* ptr_val = LLVMCodegen_gen_expr(self, expr.deref_expr);
-    const char* ptr_ktype = LLVMCodegen_get_expr_type(self, expr.deref_expr);
-    const char* elem_ktype = LLVMCodegen_strip_pointers(self, ptr_ktype);
-    void* elem_lltype = LLVMCodegen_map_type(self, elem_ktype);
-    return LLVMBuildLoad2(self->builder, elem_lltype, ptr_val, "derefed");
-}
-    if (expr.kind == ExprKind_ek_array) {
-    int64_t count = ArrayList_Int_length(&(expr.arr_elements));
-    const char* elem_ktype = "Int";
-    if (count > 0) {
-    elem_ktype = LLVMCodegen_get_expr_type(self, ArrayList_Int_get(&(expr.arr_elements), 0));
-}
-    void* elem_lltype = LLVMCodegen_map_type(self, elem_ktype);
-    void* arr_lltype = LLVMArrayType(elem_lltype, count);
-    void* addr = LLVMCodegen_build_alloca(self, arr_lltype, "arr_lit");
-    int64_t i = 0;
-    while (i < count) {
-    void* val = LLVMCodegen_gen_expr(self, ArrayList_Int_get(&(expr.arr_elements), i));
-    void* idx_const = LLVMConstInt(LLVMInt64TypeInContext(self->ctx), i, false);
-    void** indices = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (indices)[0] = LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-    (indices)[1] = idx_const;
-    void* gep = LLVMBuildGEP2(self->builder, arr_lltype, addr, (void*)(indices), 2, "arr_elem_gep");
-    LLVMBuildStore(self->builder, val, gep);
-    KaiAllocator_free(self->allocator, (void*)(indices));
-    i = (i + 1);
-}
-    void** indices2 = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (indices2)[0] = LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-    (indices2)[1] = LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-    void* start_gep = LLVMBuildGEP2(self->builder, arr_lltype, addr, (void*)(indices2), 2, "arr_start");
-    KaiAllocator_free(self->allocator, (void*)(indices2));
-    return start_gep;
-}
-    if (expr.kind == ExprKind_ek_field_access) {
-    ExprNode base_node = ArrayList_ExprNode_get(self->expr_pool, expr.field_expr);
-    if (base_node.kind == ExprKind_ek_identifier) {
-    bool is_enum_val = (strlen(type_map_get(&(self->enum_decls), base_node.ident_name)) > 0);
-    if (is_enum_val) {
-    const char* tag_key = _kai_str_concat(_kai_str_concat(_kai_str_concat(base_node.ident_name, "_"), expr.field_name), "_TAG");
-    const char* tag_val_str = type_map_get(&(self->enum_decls), tag_key);
-    int64_t tag_num = 0;
-    if (strlen(tag_val_str) > 0) {
-    tag_num = LLVMCodegen_str_to_int(self, tag_val_str);
-}
-    return LLVMConstInt(LLVMInt32TypeInContext(self->ctx), tag_num, false);
-}
-}
-    const char* rec_type = LLVMCodegen_get_expr_type(self, expr.field_expr);
-    const char* base_type = LLVMCodegen_strip_pointers(self, rec_type);
-    const char* key = _kai_str_concat(_kai_str_concat(LLVMCodegen_get_mangled_type_name(self, base_type), "."), expr.field_name);
-    const char* idx_str = type_map_get(&(self->struct_field_indices), key);
-    int64_t idx = LLVMCodegen_str_to_int(self, idx_str);
-    void* rec_ptr = (void*)(0);
-    if ((base_node.kind == ExprKind_ek_identifier) && (!LLVMCodegen_is_pointer_type(self, rec_type))) {
-    void* addr = LLVMCodegen_sym_lookup(self, base_node.ident_name);
-    if (addr != (void*)(0)) {
-    rec_ptr = addr;
-} else {
-    rec_ptr = LLVMCodegen_gen_expr(self, expr.field_expr);
-}
-} else {
-    rec_ptr = LLVMCodegen_gen_expr(self, expr.field_expr);
-}
-    void* struct_lltype = LLVMCodegen_map_type(self, base_type);
-    if (((!LLVMCodegen_is_pointer_type(self, rec_type)) && (base_node.kind != ExprKind_ek_identifier)) && (!LLVMCodegen_expr_returns_ptr(self, expr.field_expr))) {
-    void* tmp_addr = LLVMCodegen_build_alloca(self, struct_lltype, "field_tmp");
-    LLVMBuildStore(self->builder, rec_ptr, tmp_addr);
-    rec_ptr = tmp_addr;
-}
-    void* gep = LLVMBuildStructGEP2(self->builder, struct_lltype, rec_ptr, idx, "field_gep");
-    const char* ftype = LLVMCodegen_get_field_type(self, base_type, expr.field_name);
-    void* f_lltype = LLVMCodegen_map_type(self, ftype);
-    return LLVMBuildLoad2(self->builder, f_lltype, gep, expr.field_name);
-}
-    if (expr.kind == ExprKind_ek_index) {
-    void* arr_ptr = LLVMCodegen_gen_expr(self, expr.idx_expr);
-    void* idx_val = LLVMCodegen_gen_expr(self, expr.idx_index);
-    const char* elem_ktype = LLVMCodegen_get_expr_type(self, expr_idx);
-    void* elem_lltype = LLVMCodegen_map_type(self, elem_ktype);
-    if ((strlen(elem_ktype) > 0) && ((elem_ktype)[0] == ((char)(42)))) {
-    elem_lltype = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-}
-    if (elem_lltype == LLVMVoidTypeInContext(self->ctx)) {
-    elem_lltype = LLVMInt64TypeInContext(self->ctx);
-}
-    void* gep = LLVMBuildGEP2(self->builder, elem_lltype, arr_ptr, (void*)(&(idx_val)), 1, "idx_gep");
-    return LLVMBuildLoad2(self->builder, elem_lltype, gep, "idx_val");
-}
-    if (expr.kind == ExprKind_ek_str_interp) {
-    if (ArrayList_StrInterpPart_length(&(expr.interp_parts)) == 0) {
-    return LLVMBuildGlobalStringPtr(self->builder, "", "empty_str");
-}
-    void* result = (void*)(0);
-    int64_t i = 0;
-    while (i < ArrayList_StrInterpPart_length(&(expr.interp_parts))) {
-    StrInterpPart part = ArrayList_StrInterpPart_get(&(expr.interp_parts), i);
-    void* part_val = (void*)(0);
-    if (part.kind == 0) {
-    part_val = LLVMBuildGlobalStringPtr(self->builder, part.str_val, "str_part");
-} else {
-    void* pval = LLVMCodegen_gen_expr(self, part.expr_idx);
-    const char* ptype = LLVMCodegen_get_expr_type(self, part.expr_idx);
-    if (strcmp(ptype, "Str") == 0) {
-    part_val = pval;
-} else {
-    void* int_to_str_func = LLVMGetNamedFunction(self->module, "int_to_str");
-    if ((int_to_str_func != (void*)(0)) && ((strcmp(ptype, "Int") == 0) || (strcmp(ptype, "Bool") == 0))) {
-    void* i64t = LLVMInt64TypeInContext(self->ctx);
-    void* str_ptr_t = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-    bool its_sret = (strcmp(type_map_get(&(self->func_is_sret), "int_to_str"), "1") == 0);
-    if (its_sret) {
-    void* sret_its = LLVMCodegen_build_alloca(self, str_ptr_t, "its_sret");
-    void** its_params = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (its_params)[0] = LLVMPointerType(str_ptr_t, 0);
-    (its_params)[1] = i64t;
-    void* fn_ty = LLVMFunctionType(LLVMVoidTypeInContext(self->ctx), (void*)(its_params), 2, false);
-    void** its_args = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (its_args)[0] = sret_its;
-    (its_args)[1] = pval;
-    (void)(LLVMBuildCall2(self->builder, fn_ty, int_to_str_func, (void*)(its_args), 2, ""));
-    KaiAllocator_free(self->allocator, (void*)(its_params));
-    KaiAllocator_free(self->allocator, (void*)(its_args));
-    part_val = LLVMBuildLoad2(self->builder, str_ptr_t, sret_its, "its_val");
-} else {
-    void** i2s_params = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (i2s_params)[0] = i64t;
-    void* fn_ty = LLVMFunctionType(str_ptr_t, (void*)(i2s_params), 1, false);
-    void** i2s_args = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (i2s_args)[0] = pval;
-    part_val = LLVMBuildCall2(self->builder, fn_ty, int_to_str_func, (void*)(i2s_args), 1, "to_str");
-    KaiAllocator_free(self->allocator, (void*)(i2s_params));
-    KaiAllocator_free(self->allocator, (void*)(i2s_args));
-}
-} else {
-    part_val = LLVMBuildGlobalStringPtr(self->builder, "", "empty_part");
-}
-}
-}
-    if (i == 0) {
-    result = part_val;
-} else {
-    void* concat_func = LLVMGetNamedFunction(self->module, "_kai_str_concat");
-    void* str_ptr_t = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-    void** cat_params = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (cat_params)[0] = result;
-    (cat_params)[1] = part_val;
-    void* fn_ty = LLVMFunctionType(str_ptr_t, (void*)(cat_params), 2, false);
-    result = LLVMBuildCall2(self->builder, fn_ty, concat_func, (void*)(cat_params), 2, "concat_res");
-    KaiAllocator_free(self->allocator, (void*)(cat_params));
-}
-    i = (i + 1);
-}
-    if (result == (void*)(0)) {
-    return LLVMBuildGlobalStringPtr(self->builder, "", "empty_str");
 }
     return result;
-}
-    if (expr.kind == ExprKind_ek_catch) {
-    void* inner_val = LLVMCodegen_gen_expr(self, expr.catch_expr);
-    const char* inner_type = LLVMCodegen_get_expr_type(self, expr.catch_expr);
-    if ((strlen(inner_type) > 0) && ((inner_type)[0] == ((char)(63)))) {
-    const char* val_type = substring(inner_type, 1, strlen(inner_type));
-    void* inner_lltype = LLVMCodegen_map_type(self, val_type);
-    if (inner_lltype == LLVMVoidTypeInContext(self->ctx)) {
-    inner_lltype = LLVMInt64TypeInContext(self->ctx);
-}
-    void* result_addr = LLVMCodegen_build_alloca(self, inner_lltype, "catch_result");
-    void* has_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "catch_has");
-    void* miss_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "catch_miss");
-    void* end_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "catch_end");
-    void* cond_i1 = (void*)(0);
-    if (LLVMCodegen_is_pointer_type(self, val_type)) {
-    void* zero = LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-    cond_i1 = LLVMBuildICmp(self->builder, 33, inner_val, zero, "opt_cond");
-} else {
-    void* opt_lltype = LLVMCodegen_map_type(self, inner_type);
-    void* inner_addr = LLVMCodegen_build_alloca(self, opt_lltype, "opt_tmp");
-    LLVMBuildStore(self->builder, inner_val, inner_addr);
-    void* tag_gep = LLVMBuildStructGEP2(self->builder, opt_lltype, inner_addr, 0, "has_gep");
-    void* has_val = LLVMBuildLoad2(self->builder, LLVMInt8TypeInContext(self->ctx), tag_gep, "has_val");
-    cond_i1 = LLVMBuildICmp(self->builder, 33, has_val, LLVMConstInt(LLVMInt8TypeInContext(self->ctx), 0, false), "opt_cond");
-}
-    LLVMBuildCondBr(self->builder, cond_i1, has_bb, miss_bb);
-    LLVMPositionBuilderAtEnd(self->builder, has_bb);
-    self->last_was_term = false;
-    void* unwrapped_val = (void*)(0);
-    if (LLVMCodegen_is_pointer_type(self, val_type)) {
-    unwrapped_val = inner_val;
-} else {
-    void* opt_lltype2 = LLVMCodegen_map_type(self, inner_type);
-    void* inner_addr2 = LLVMCodegen_build_alloca(self, opt_lltype2, "opt_tmp2");
-    LLVMBuildStore(self->builder, inner_val, inner_addr2);
-    void* val_gep = LLVMBuildStructGEP2(self->builder, opt_lltype2, inner_addr2, 1, "val_gep");
-    unwrapped_val = LLVMBuildLoad2(self->builder, inner_lltype, val_gep, "unwrapped");
-}
-    LLVMBuildStore(self->builder, unwrapped_val, result_addr);
-    LLVMBuildBr(self->builder, end_bb);
-    LLVMPositionBuilderAtEnd(self->builder, miss_bb);
-    self->last_was_term = false;
-    void* fallback_val = LLVMCodegen_gen_catch_fallback_val(self, expr.catch_fallback);
-    LLVMBuildStore(self->builder, fallback_val, result_addr);
-    LLVMBuildBr(self->builder, end_bb);
-    LLVMPositionBuilderAtEnd(self->builder, end_bb);
-    self->last_was_term = false;
-    return LLVMBuildLoad2(self->builder, inner_lltype, result_addr, "catch_val");
-}
-    if (LLVMCodegen_str_contains(self, inner_type, ((char)(33)))) {
-    int64_t excl_pos = LLVMCodegen_str_find(self, inner_type, ((char)(33)));
-    const char* val_type = substring(inner_type, 0, excl_pos);
-    void* inner_lltype = LLVMCodegen_map_type(self, val_type);
-    if (inner_lltype == LLVMVoidTypeInContext(self->ctx)) {
-    inner_lltype = LLVMInt64TypeInContext(self->ctx);
-}
-    void* result_addr = LLVMCodegen_build_alloca(self, inner_lltype, "catch_result");
-    void* ok_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "catch_ok");
-    void* err_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "catch_err");
-    void* end_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "catch_end");
-    void* res_lltype = LLVMCodegen_map_type(self, inner_type);
-    void* res_addr = LLVMCodegen_build_alloca(self, res_lltype, "res_tmp");
-    LLVMBuildStore(self->builder, inner_val, res_addr);
-    void* tag_gep = LLVMBuildStructGEP2(self->builder, res_lltype, res_addr, 0, "tag_gep");
-    void* tag_load = LLVMBuildLoad2(self->builder, LLVMInt64TypeInContext(self->ctx), tag_gep, "tag");
-    void* cond_i1 = LLVMBuildICmp(self->builder, 32, tag_load, LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false), "is_ok");
-    LLVMBuildCondBr(self->builder, cond_i1, ok_bb, err_bb);
-    LLVMPositionBuilderAtEnd(self->builder, ok_bb);
-    self->last_was_term = false;
-    void* val_gep = LLVMBuildStructGEP2(self->builder, res_lltype, res_addr, 1, "val_gep");
-    void* ok_val = LLVMBuildLoad2(self->builder, inner_lltype, val_gep, "ok_val");
-    LLVMBuildStore(self->builder, ok_val, result_addr);
-    LLVMBuildBr(self->builder, end_bb);
-    LLVMPositionBuilderAtEnd(self->builder, err_bb);
-    self->last_was_term = false;
-    void* fallback_val = LLVMCodegen_gen_catch_fallback_val(self, expr.catch_fallback);
-    LLVMBuildStore(self->builder, fallback_val, result_addr);
-    LLVMBuildBr(self->builder, end_bb);
-    LLVMPositionBuilderAtEnd(self->builder, end_bb);
-    self->last_was_term = false;
-    return LLVMBuildLoad2(self->builder, inner_lltype, result_addr, "catch_val");
-}
-    return inner_val;
-}
-    if (expr.kind == ExprKind_ek_try) {
-    void* inner_val = LLVMCodegen_gen_expr(self, expr.try_expr);
-    const char* inner_type = LLVMCodegen_get_expr_type(self, expr.try_expr);
-    if (LLVMCodegen_str_contains(self, inner_type, ((char)(33)))) {
-    int64_t excl_pos = LLVMCodegen_str_find(self, inner_type, ((char)(33)));
-    const char* val_type = substring(inner_type, 0, excl_pos);
-    void* res_lltype = LLVMCodegen_map_type(self, inner_type);
-    void* inner_lltype = LLVMCodegen_map_type(self, val_type);
-    if (inner_lltype == LLVMVoidTypeInContext(self->ctx)) {
-    inner_lltype = LLVMInt64TypeInContext(self->ctx);
-}
-    void* res_addr = LLVMCodegen_build_alloca(self, res_lltype, "try_tmp");
-    LLVMBuildStore(self->builder, inner_val, res_addr);
-    void* val_gep = LLVMBuildStructGEP2(self->builder, res_lltype, res_addr, 1, "val_gep");
-    return LLVMBuildLoad2(self->builder, inner_lltype, val_gep, "try_val");
-}
-    return inner_val;
-}
-    if (expr.kind == ExprKind_ek_check) {
-    return LLVMCodegen_gen_expr(self, expr.check_expr);
-}
-    return (void*)(0);
-}
-void* LLVMCodegen_gen_catch_fallback_val(LLVMCodegen* self, int64_t fallback_idx) {
-    if (fallback_idx < 0) {
-    return LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-}
-    StmtNode fb_stmt = ArrayList_StmtNode_get(self->stmt_pool, fallback_idx);
-    if (fb_stmt.kind == StmtKind_sk_block) {
-    if (ArrayList_Int_length(&(fb_stmt.block_stmts)) > 0) {
-    int64_t inner_idx = ArrayList_Int_get(&(fb_stmt.block_stmts), 0);
-    StmtNode inner_stmt = ArrayList_StmtNode_get(self->stmt_pool, inner_idx);
-    if (inner_stmt.kind == StmtKind_sk_expr) {
-    return LLVMCodegen_gen_expr(self, inner_stmt.expr_stmt);
-}
-    if (inner_stmt.kind == StmtKind_sk_return) {
-    LLVMCodegen_gen_stmt(self, inner_idx);
-    return LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-}
-}
-}
-    if (fb_stmt.kind == StmtKind_sk_expr) {
-    return LLVMCodegen_gen_expr(self, fb_stmt.expr_stmt);
-}
-    LLVMCodegen_gen_stmt(self, fallback_idx);
-    return LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false);
-}
-void* LLVMCodegen_cast_to_i64(LLVMCodegen* self, void* val, const char* ktype) {
-    void* dest_ll = LLVMInt64TypeInContext(self->ctx);
-    if ((strcmp(ktype, "Char") == 0) || (strcmp(ktype, "Int8") == 0)) {
-    return LLVMBuildSExt(self->builder, val, dest_ll, "sext");
-}
-    if ((strcmp(ktype, "Bool") == 0) || (strcmp(ktype, "Int1") == 0)) {
-    return LLVMBuildZExt(self->builder, val, dest_ll, "zext");
-}
-    if (strcmp(ktype, "Int32") == 0) {
-    return LLVMBuildSExt(self->builder, val, dest_ll, "sext");
-}
-    return val;
-}
-void* LLVMCodegen_gen_cast(LLVMCodegen* self, int64_t src_idx, const char* target_type) {
-    void* val = LLVMCodegen_gen_expr(self, src_idx);
-    const char* src_ktype = LLVMCodegen_get_expr_type(self, src_idx);
-    void* dest_ll = LLVMCodegen_map_type(self, target_type);
-    bool src_is_ptr = (((strlen(src_ktype) > 0) && ((src_ktype)[0] == ((char)(42)))) || (strcmp(src_ktype, "Str") == 0));
-    bool dst_is_ptr = (((strlen(target_type) > 0) && ((target_type)[0] == ((char)(42)))) || (strcmp(target_type, "Str") == 0));
-    bool dst_is_int = (((((strcmp(target_type, "Int") == 0) || (strcmp(target_type, "Int8") == 0)) || (strcmp(target_type, "Char") == 0)) || (strcmp(target_type, "Int32") == 0)) || (strcmp(target_type, "Bool") == 0));
-    if (src_is_ptr && dst_is_ptr) {
-    return LLVMBuildBitCast(self->builder, val, dest_ll, "ptr_cast");
-}
-    if (src_is_ptr && dst_is_int) {
-    return LLVMBuildPtrToInt(self->builder, val, dest_ll, "ptrtoint");
-}
-    if ((!src_is_ptr) && dst_is_ptr) {
-    return LLVMBuildIntToPtr(self->builder, val, dest_ll, "inttoptr");
-}
-    if ((strcmp(src_ktype, "Float") == 0) && dst_is_int) {
-    return LLVMBuildFPToSI(self->builder, val, dest_ll, "fptosi");
-}
-    if (dst_is_int && (strcmp(src_ktype, target_type) == 0)) {
-    return val;
-}
-    bool src_is_int = LLVMCodegen_is_integer_type(self, src_ktype);
-    if (src_is_int && dst_is_int) {
-    return LLVMCodegen_cast_to_i64(self, val, src_ktype);
-}
-    return LLVMBuildBitCast(self->builder, val, dest_ll, "cast");
-}
-void LLVMCodegen_emit_print_call(LLVMCodegen* self, const char* ktype, void* val) {
-    void* printf_func = LLVMCodegen_get_or_declare_printf(self);
-    const char* fmt = "";
-    void** args = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    if (strcmp(ktype, "Float") == 0) {
-    fmt = "%f\n";
-    (args)[0] = LLVMBuildGlobalStringPtr(self->builder, fmt, "fmt_float");
-    (args)[1] = val;
-} else if (strcmp(ktype, "Char") == 0) {
-    fmt = "%c\n";
-    void* int_val = LLVMBuildZExt(self->builder, val, LLVMInt32TypeInContext(self->ctx), "char_to_int");
-    (args)[0] = LLVMBuildGlobalStringPtr(self->builder, fmt, "fmt_char");
-    (args)[1] = int_val;
-} else if (strcmp(ktype, "Str") == 0) {
-    fmt = "%s\n";
-    (args)[0] = LLVMBuildGlobalStringPtr(self->builder, fmt, "fmt_str");
-    (args)[1] = val;
-} else if (strcmp(ktype, "Bool") == 0) {
-    fmt = "%s\n";
-    void* cond = LLVMBuildICmp(self->builder, 33, val, LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false), "bool_cond");
-    void* true_str = LLVMBuildGlobalStringPtr(self->builder, "true", "true_str");
-    void* false_str = LLVMBuildGlobalStringPtr(self->builder, "false", "false_str");
-    void* select_str = LLVMBuildSelect(self->builder, cond, true_str, false_str, "select_str");
-    (args)[0] = LLVMBuildGlobalStringPtr(self->builder, fmt, "fmt_bool");
-    (args)[1] = select_str;
-} else {
-    fmt = "%lld\n";
-    (args)[0] = LLVMBuildGlobalStringPtr(self->builder, fmt, "fmt_int");
-    (args)[1] = val;
-}
-    void* printf_ty = LLVMCodegen_get_printf_type(self);
-    (void)(LLVMBuildCall2(self->builder, printf_ty, printf_func, (void*)(args), 2, "print_call"));
-    KaiAllocator_free(self->allocator, (void*)(args));
-}
-void LLVMCodegen_gen_match(LLVMCodegen* self, int64_t stmt_idx) {
-    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt_idx);
-    const char* expr_type_raw = LLVMCodegen_get_expr_type(self, stmt.match_expr);
-    void* expr_val = LLVMCodegen_gen_expr(self, stmt.match_expr);
-    const char* expr_type = expr_type_raw;
-    if ((strlen(expr_type_raw) > 0) && (((expr_type_raw)[0] == ((char)(42))) || ((expr_type_raw)[0] == ((char)(38))))) {
-    const char* inner_type = substring(expr_type_raw, 1, strlen(expr_type_raw));
-    void* inner_ll = LLVMCodegen_map_type(self, inner_type);
-    if ((inner_ll != LLVMVoidTypeInContext(self->ctx)) && (inner_ll != LLVMInt64TypeInContext(self->ctx))) {
-    expr_val = LLVMBuildLoad2(self->builder, inner_ll, expr_val, "match_deref");
-    expr_type = inner_type;
-}
-}
-    void* end_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "match_end");
-    bool is_enum = ((strlen(expr_type) > 0) && (strlen(type_map_get(&(self->enum_decls), expr_type)) > 0));
-    bool has_payload = (is_enum && LLVMCodegen_enum_has_payload(self, expr_type));
-    bool is_result = LLVMCodegen_str_contains(self, expr_type, ((char)(33)));
-    bool is_optional = (((strlen(expr_type) > 0) && ((expr_type)[0] == ((char)(63)))) || ((strlen(expr_type) >= 8) && (strcmp(substring(expr_type, 0, 8), "Optional") == 0)));
-    bool is_struct_with_tag = ((((!is_enum) && (!is_result)) && (!is_optional)) && (strlen(type_map_get(&(self->struct_types), expr_type)) > 0));
-    void* tag_val = (void*)(0);
-    void* match_ptr = (void*)(0);
-    if (has_payload) {
-    void* struct_lltype = LLVMCodegen_map_type(self, expr_type);
-    void* match_tmp = LLVMCodegen_build_alloca(self, struct_lltype, "match_tmp");
-    LLVMBuildStore(self->builder, expr_val, match_tmp);
-    match_ptr = match_tmp;
-    void* tag_gep = LLVMBuildStructGEP2(self->builder, struct_lltype, match_tmp, 0, "tag_gep");
-    void* loaded_tag = LLVMBuildLoad2(self->builder, LLVMInt8TypeInContext(self->ctx), tag_gep, "tag_val");
-    tag_val = LLVMBuildZExt(self->builder, loaded_tag, LLVMInt64TypeInContext(self->ctx), "tag_val_i64");
-} else if (is_result) {
-    void* res_lltype = LLVMCodegen_map_type(self, expr_type);
-    void* match_tmp = LLVMCodegen_build_alloca(self, res_lltype, "match_res_tmp");
-    LLVMBuildStore(self->builder, expr_val, match_tmp);
-    match_ptr = match_tmp;
-    void* tag_gep = LLVMBuildStructGEP2(self->builder, res_lltype, match_tmp, 0, "tag_gep");
-    tag_val = LLVMBuildLoad2(self->builder, LLVMInt64TypeInContext(self->ctx), tag_gep, "tag_val");
-} else if (is_optional) {
-    void* opt_lltype = LLVMCodegen_map_type(self, expr_type);
-    void* match_tmp = LLVMCodegen_build_alloca(self, opt_lltype, "match_opt_tmp");
-    LLVMBuildStore(self->builder, expr_val, match_tmp);
-    match_ptr = match_tmp;
-    void* tag_gep = LLVMBuildStructGEP2(self->builder, opt_lltype, match_tmp, 0, "tag_gep");
-    void* loaded_tag = LLVMBuildLoad2(self->builder, LLVMInt8TypeInContext(self->ctx), tag_gep, "tag_val");
-    tag_val = LLVMBuildZExt(self->builder, loaded_tag, LLVMInt64TypeInContext(self->ctx), "tag_val_i64");
-} else if (is_enum) {
-    if (has_payload) {
-    void* enum_lltype = LLVMCodegen_map_type(self, expr_type);
-    void* match_tmp = LLVMCodegen_build_alloca(self, enum_lltype, "match_enum_tmp");
-    LLVMBuildStore(self->builder, expr_val, match_tmp);
-    match_ptr = match_tmp;
-}
-    if (has_payload) {
-    tag_val = expr_val;
-} else {
-    tag_val = LLVMBuildZExt(self->builder, expr_val, LLVMInt64TypeInContext(self->ctx), "tag_val_i64");
-}
-} else {
-    tag_val = expr_val;
-}
-    int64_t i = 0;
-    while (i < ArrayList_MatchCase_length(&(stmt.match_cases))) {
-    MatchCase case_node = ArrayList_MatchCase_get(&(stmt.match_cases), i);
-    PatternNode pat_node = ArrayList_PatternNode_get(self->pattern_pool, case_node.pattern);
-    void* case_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "case_body");
-    void* next_bb = LLVMAppendBasicBlockInContext(self->ctx, self->cur_func, "case_next");
-    void* is_match = (void*)(0);
-    if (pat_node.kind == PatternKind_pk_else) {
-    is_match = LLVMConstInt(LLVMInt1TypeInContext(self->ctx), 1, false);
-} else if (pat_node.kind == PatternKind_pk_literal) {
-    int64_t pat_tag = 0;
-    if (pat_node.lit_value.tag == TokenValue_tv_int_TAG) {
-    int64_t v = pat_node.lit_value.payload.tv_int.v;
-
-    pat_tag = v;
-} else if (pat_node.lit_value.tag == TokenValue_tv_bool_TAG) {
-    bool v = pat_node.lit_value.payload.tv_bool.v;
-
-    if (v) {
-    pat_tag = 1;
-} else {
-    pat_tag = 0;
-}
-} else if (pat_node.lit_value.tag == TokenValue_tv_char_TAG) {
-    char v = pat_node.lit_value.payload.tv_char.v;
-
-    pat_tag = (int64_t)(v);
-} else {
-    pat_tag = 0;
-} 
-    void* cmp_lhs = tag_val;
-    if (LLVMCodegen_is_pointer_type(self, expr_type)) {
-    cmp_lhs = LLVMBuildPtrToInt(self->builder, tag_val, LLVMInt64TypeInContext(self->ctx), "ptr_as_int");
-}
-    void* pat_const = LLVMConstInt(LLVMInt64TypeInContext(self->ctx), pat_tag, false);
-    void* cmp = LLVMBuildICmp(self->builder, 32, cmp_lhs, pat_const, "is_match");
-    is_match = LLVMBuildZExt(self->builder, cmp, LLVMInt64TypeInContext(self->ctx), "is_match_i64");
-} else if (pat_node.kind == PatternKind_pk_variant) {
-    const char* var_name = pat_node.variant_name;
-    const char* tag_key = _kai_str_concat(_kai_str_concat(_kai_str_concat(expr_type, "_"), var_name), "_TAG");
-    const char* tag_val_str = type_map_get(&(self->enum_decls), tag_key);
-    int64_t pat_tag = 0;
-    if (strlen(tag_val_str) > 0) {
-    pat_tag = LLVMCodegen_str_to_int(self, tag_val_str);
-}
-    void* cmp_lhs2 = tag_val;
-    if (LLVMCodegen_is_pointer_type(self, expr_type)) {
-    cmp_lhs2 = LLVMBuildPtrToInt(self->builder, tag_val, LLVMInt64TypeInContext(self->ctx), "ptr_as_int");
-}
-    void* pat_const = LLVMConstInt(LLVMInt64TypeInContext(self->ctx), pat_tag, false);
-    void* cmp = LLVMBuildICmp(self->builder, 32, cmp_lhs2, pat_const, "is_match");
-    is_match = LLVMBuildZExt(self->builder, cmp, LLVMInt64TypeInContext(self->ctx), "is_match_i64");
-}
-    void* cond_i1 = LLVMBuildICmp(self->builder, 33, is_match, LLVMConstInt(LLVMInt64TypeInContext(self->ctx), 0, false), "cond_i1");
-    LLVMBuildCondBr(self->builder, cond_i1, case_bb, next_bb);
-    LLVMPositionBuilderAtEnd(self->builder, case_bb);
-    self->last_was_term = false;
-    if ((pat_node.kind == PatternKind_pk_variant) && (ArrayList_Str_length(&(pat_node.bindings)) > 0)) {
-    const char* bind_var = ArrayList_Str_get(&(pat_node.bindings), 0);
-    const char* bind_ktype = LLVMCodegen_get_variant_param_type(self, expr_type, pat_node.variant_name, 0);
-    void* bind_ll = LLVMCodegen_map_type(self, bind_ktype);
-    void* struct_lltype = LLVMCodegen_map_type(self, expr_type);
-    void* gep_base = match_ptr;
-    if (gep_base == (void*)(0)) {
-    void* tmp = LLVMCodegen_build_alloca(self, struct_lltype, "match_gep_tmp");
-    LLVMBuildStore(self->builder, expr_val, tmp);
-    gep_base = tmp;
-}
-    void* payload_gep = LLVMBuildStructGEP2(self->builder, struct_lltype, gep_base, 1, "payload_gep");
-    void* raw_payload = LLVMBuildLoad2(self->builder, LLVMInt64TypeInContext(self->ctx), payload_gep, "raw_payload");
-    void* cast_payload = raw_payload;
-    if ((strcmp(bind_ktype, "Int") != 0) && (strcmp(bind_ktype, "Bool") != 0)) {
-    if (LLVMCodegen_is_pointer_type(self, bind_ktype)) {
-    cast_payload = LLVMBuildIntToPtr(self->builder, raw_payload, bind_ll, "cast_payload");
-} else if (strcmp(bind_ktype, "Float") == 0) {
-    cast_payload = LLVMBuildBitCast(self->builder, raw_payload, LLVMDoubleTypeInContext(self->ctx), "cast_payload");
-} else {
-    void* ptr_ll = LLVMPointerType(bind_ll, 0);
-    void* ptr_payload = LLVMBuildIntToPtr(self->builder, raw_payload, ptr_ll, "ptr_payload");
-    cast_payload = LLVMBuildLoad2(self->builder, bind_ll, ptr_payload, "cast_payload");
-}
-}
-    void* addr = LLVMCodegen_build_alloca(self, bind_ll, _kai_str_concat(bind_var, ".addr"));
-    LLVMBuildStore(self->builder, cast_payload, addr);
-    LLVMCodegen_sym_store(self, bind_var, addr, bind_ktype);
-}
-    LLVMCodegen_gen_stmt(self, case_node.body);
-    if (!self->last_was_term) {
-    LLVMBuildBr(self->builder, end_bb);
-}
-    LLVMPositionBuilderAtEnd(self->builder, next_bb);
-    self->last_was_term = false;
-    i = (i + 1);
-}
-    if (!self->last_was_term) {
-    LLVMBuildBr(self->builder, end_bb);
-}
-    LLVMPositionBuilderAtEnd(self->builder, end_bb);
-    self->last_was_term = false;
-}
-void LLVMCodegen_handle_import(LLVMCodegen* self, int64_t stmt_idx) {
-    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt_idx);
-    ArrayList_Str path = stmt.import_path;
-    const char* module_key = "";
-    int64_t pi = 0;
-    while (pi < ArrayList_Str_length(&(path))) {
-    if (pi > 0) {
-    module_key = _kai_str_concat(module_key, ".");
-}
-    module_key = _kai_str_concat(module_key, ArrayList_Str_get(&(path), pi));
-    pi = (pi + 1);
-}
-    if (strcmp(module_key, "") == 0) {
-    return;
-}
-    if (LLVMCodegen_str_list_find(self, module_key) >= 0) {
-    return;
-}
-    ArrayList_Str_push(&(self->loaded_modules), module_key);
-    bool has_source = false;
-    const char* source = "";
-    if ((ArrayList_Str_length(&(path)) > 0) && (strcmp(ArrayList_Str_get(&(path), 0), "std") == 0)) {
-    const char* path_str = "";
-    int64_t i = 0;
-    while (i < ArrayList_Str_length(&(path))) {
-    if (i > 0) {
-    path_str = _kai_str_concat(path_str, "/");
-}
-    path_str = _kai_str_concat(path_str, ArrayList_Str_get(&(path), i));
-    i = (i + 1);
-}
-    const char* rel_path = _kai_str_concat(path_str, ".kai");
-    const char* s1 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, rel_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (""); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
-    if (strlen(s1) > 0) {
-    source = s1;
-    has_source = true;
-} else {
-    {
-    char* buf = (char*)(KaiAllocator_alloc(self->allocator, 1024, 1));
-    if (get_exe_dir(buf, 1024) == 0) {
-    const char* exe_dir = (const char*)(buf);
-    const char* full_path = _kai_str_concat(_kai_str_concat(exe_dir, "/"), rel_path);
-    const char* parent_path = _kai_str_concat(_kai_str_concat(exe_dir, "/../"), rel_path);
-    const char* lib_path = _kai_str_concat(_kai_str_concat(exe_dir, "/../lib/kai/"), rel_path);
-    KaiAllocator_free(self->allocator, buf);
-    const char* s2 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, full_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (""); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
-    if (strlen(s2) > 0) {
-    source = s2;
-    has_source = true;
-} else {
-    const char* s3 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, parent_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (""); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
-    if (strlen(s3) > 0) {
-    source = s3;
-    has_source = true;
-} else {
-    const char* s4 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, lib_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (""); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
-    if (strlen(s4) > 0) {
-    source = s4;
-    has_source = true;
-}
-}
-}
-} else {
-    KaiAllocator_free(self->allocator, buf);
-}
-}
-}
-} else if (ArrayList_Str_length(&(path)) > 0) {
-    const char* file_path = _kai_str_concat(_kai_str_concat("src/", module_key), ".kai");
-    const char* s = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, file_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (""); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
-    if (strlen(s) > 0) {
-    source = s;
-    has_source = true;
-}
-}
-    if (has_source) {
-    Lexer lexer = Lexer_init(self->allocator, source);
-    Lexer_lex(&(lexer));
-    if (lexer.has_error) {
-    return;
-}
-    Parser parser = Parser_init_with_pools(self->allocator, lexer.tokens, self->expr_pool, self->stmt_pool, self->pattern_pool);
-    int64_t program_idx = Parser_parse_program(&(parser));
-    if (program_idx >= 0) {
-    LLVMCodegen_register_all_types(self);
-}
-}
-}
-const char* LLVMCodegen_get_expr_type(LLVMCodegen* self, int64_t idx) {
-    if (idx < 0) {
-    return "Void";
-}
-    ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, idx);
-    if (strlen(expr.inferred_type) > 0) {
-    return expr.inferred_type;
-}
-    if (expr.kind == ExprKind_ek_literal) {
-    const char* vk = expr.lit_vkind;
-    if (strcmp(vk, "INT") == 0) {
-    return "Int";
-}
-    if (strcmp(vk, "FLOAT") == 0) {
-    return "Float";
-}
-    if (strcmp(vk, "BOOL") == 0) {
-    return "Bool";
-}
-    if (strcmp(vk, "CHAR") == 0) {
-    return "Char";
-}
-    if (strcmp(vk, "STRING") == 0) {
-    return "Str";
-}
-    return "Void";
-}
-    if (expr.kind == ExprKind_ek_identifier) {
-    const char* name = expr.ident_name;
-    const char* t = LLVMCodegen_sym_type(self, name);
-    if (strlen(t) > 0) {
-    return t;
-}
-    return name;
-}
-    if (expr.kind == ExprKind_ek_binary_op) {
-    const char* op = expr.binop_op;
-    if ((((((((strcmp(op, "==") == 0) || (strcmp(op, "!=") == 0)) || (strcmp(op, "<") == 0)) || (strcmp(op, "<=") == 0)) || (strcmp(op, ">") == 0)) || (strcmp(op, ">=") == 0)) || (strcmp(op, "&&") == 0)) || (strcmp(op, "||") == 0)) {
-    return "Bool";
-}
-    return LLVMCodegen_get_expr_type(self, expr.binop_left);
-}
-    if (expr.kind == ExprKind_ek_unary_op) {
-    if (strcmp(expr.unop_op, "!") == 0) {
-    return "Bool";
-}
-    return LLVMCodegen_get_expr_type(self, expr.unop_operand);
-}
-    if (expr.kind == ExprKind_ek_func_call) {
-    const char* fname = expr.func_name;
-    if ((strcmp(fname, "cast") == 0) || (strcmp(fname, "as") == 0)) {
-    if (ArrayList_Str_length(&(expr.func_type_args)) > 0) {
-    return ArrayList_Str_get(&(expr.func_type_args), 0);
-}
-}
-    if (strcmp(fname, "Char") == 0) {
-    return "Char";
-}
-    if (strcmp(fname, "Int") == 0) {
-    return "Int";
-}
-    if (strcmp(fname, "Float") == 0) {
-    return "Float";
-}
-    if (strcmp(fname, "Int8") == 0) {
-    return "Int8";
-}
-    if (strcmp(fname, "Int32") == 0) {
-    return "Int32";
-}
-    const char* t = type_map_get(&(self->func_types), fname);
-    if (strlen(t) > 0) {
-    return t;
-}
-    if (strlen(fname) > 0) {
-    char first_char = (fname)[0];
-    if ((first_char >= ((char)(65))) && (first_char <= ((char)(90)))) {
-    if (ArrayList_Str_length(&(expr.func_type_args)) > 0) {
-    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("*", fname), "<"), str_array_join(expr.func_type_args, ", ")), ">");
-}
-    return _kai_str_concat("*", fname);
-}
-}
-    return "Int";
-}
-    if (expr.kind == ExprKind_ek_method_call) {
-    const char* rec_type = LLVMCodegen_get_expr_type(self, expr.meth_expr);
-    const char* base = LLVMCodegen_strip_pointers(self, rec_type);
-    bool is_enum = ((strlen(base) > 0) && (strlen(type_map_get(&(self->enum_types), base)) > 0));
-    if (is_enum) {
-    return base;
-}
-    const char* key = _kai_str_concat(_kai_str_concat(base, "_"), expr.meth_name);
-    const char* t = type_map_get(&(self->func_types), key);
-    if ((strlen(t) > 0) && (strcmp(t, "T") != 0)) {
-    return t;
-}
-    if (strcmp(expr.meth_name, "get") == 0) {
-    int64_t lt_pos3 = LLVMCodegen_str_find(self, base, ((char)(60)));
-    if (lt_pos3 >= 0) {
-    const char* elem_t2 = substring(base, (lt_pos3 + 1), (strlen(base) - 1));
-    if (strlen(elem_t2) > 0) {
-    return elem_t2;
-}
-}
-}
-    return "Int";
-}
-    if (expr.kind == ExprKind_ek_field_access) {
-    ExprNode base_node = ArrayList_ExprNode_get(self->expr_pool, expr.field_expr);
-    if (base_node.kind == ExprKind_ek_identifier) {
-    bool is_enum_val = (strlen(type_map_get(&(self->enum_types), base_node.ident_name)) > 0);
-    if (is_enum_val) {
-    return base_node.ident_name;
-}
-}
-    const char* rec_type = LLVMCodegen_get_expr_type(self, expr.field_expr);
-    const char* base = LLVMCodegen_strip_pointers(self, rec_type);
-    return LLVMCodegen_get_field_type(self, base, expr.field_name);
-}
-    if (expr.kind == ExprKind_ek_index) {
-    const char* base_type = LLVMCodegen_get_expr_type(self, expr.idx_expr);
-    if (strcmp(base_type, "Str") == 0) {
-    return "Char";
-}
-    if ((strlen(base_type) > 0) && ((base_type)[0] == ((char)(42)))) {
-    return substring(base_type, 1, strlen(base_type));
-}
-    if ((strlen(base_type) > 2) && (strcmp(substring(base_type, 0, 2), "[]") == 0)) {
-    return substring(base_type, 2, strlen(base_type));
-}
-    return "Int";
-}
-    if (expr.kind == ExprKind_ek_array) {
-    if (strlen(expr.inferred_type) > 0) {
-    return expr.inferred_type;
-}
-    if (ArrayList_Int_length(&(expr.arr_elements)) > 0) {
-    const char* elem_type = LLVMCodegen_get_expr_type(self, ArrayList_Int_get(&(expr.arr_elements), 0));
-    return _kai_str_concat("[]", elem_type);
-}
-    return "[]Int";
-}
-    if (expr.kind == ExprKind_ek_struct_init) {
-    return expr.struct_name;
-}
-    if (expr.kind == ExprKind_ek_borrow) {
-    return _kai_str_concat("&", LLVMCodegen_get_expr_type(self, expr.borrow_expr));
-}
-    if (expr.kind == ExprKind_ek_deref) {
-    const char* base_type = LLVMCodegen_get_expr_type(self, expr.deref_expr);
-    return LLVMCodegen_strip_pointers(self, base_type);
-}
-    if (expr.kind == ExprKind_ek_str_interp) {
-    return "Str";
-}
-    if (expr.kind == ExprKind_ek_catch) {
-    const char* inner_type = LLVMCodegen_get_expr_type(self, expr.catch_expr);
-    if ((strlen(inner_type) > 0) && ((inner_type)[0] == ((char)(63)))) {
-    return substring(inner_type, 1, strlen(inner_type));
-}
-    if (LLVMCodegen_str_contains(self, inner_type, ((char)(33)))) {
-    int64_t excl_pos = LLVMCodegen_str_find(self, inner_type, ((char)(33)));
-    return substring(inner_type, 0, excl_pos);
-}
-    return inner_type;
-}
-    if (expr.kind == ExprKind_ek_try) {
-    const char* inner_type = LLVMCodegen_get_expr_type(self, expr.try_expr);
-    if (LLVMCodegen_str_contains(self, inner_type, ((char)(33)))) {
-    int64_t excl_pos = LLVMCodegen_str_find(self, inner_type, ((char)(33)));
-    return substring(inner_type, 0, excl_pos);
-}
-    return inner_type;
-}
-    if (expr.kind == ExprKind_ek_check) {
-    return LLVMCodegen_get_expr_type(self, expr.check_expr);
-}
-    return "Int";
-}
-const char* LLVMCodegen_get_field_type(LLVMCodegen* self, const char* struct_name, const char* field_name) {
-    const char* clean_base = struct_name;
-    int64_t lt_pos = LLVMCodegen_str_find(self, struct_name, ((char)(60)));
-    if (lt_pos >= 0) {
-    clean_base = substring(struct_name, 0, lt_pos);
-}
-    const char* mangled = LLVMCodegen_get_mangled_type_name(self, clean_base);
-    const char* key = _kai_str_concat(_kai_str_concat(mangled, "."), field_name);
-    const char* t = type_map_get(&(self->struct_field_types), key);
-    if (strlen(t) > 0) {
-    return t;
-}
-    return "Int";
-}
-int64_t LLVMCodegen_get_field_index(LLVMCodegen* self, const char* struct_name, const char* field_name) {
-    const char* clean_base = struct_name;
-    int64_t lt_pos = LLVMCodegen_str_find(self, struct_name, ((char)(60)));
-    if (lt_pos >= 0) {
-    clean_base = substring(struct_name, 0, lt_pos);
-}
-    const char* mangled = LLVMCodegen_get_mangled_type_name(self, clean_base);
-    const char* key = _kai_str_concat(_kai_str_concat(mangled, "."), field_name);
-    const char* idx_str = type_map_get(&(self->struct_field_indices), key);
-    if (strlen(idx_str) > 0) {
-    return LLVMCodegen_str_to_int(self, idx_str);
-}
-    return 0;
-}
-bool LLVMCodegen_enum_has_payload(LLVMCodegen* self, const char* enum_name) {
-    const char* idx_str = type_map_get(&(self->enum_decls), enum_name);
-    if (strlen(idx_str) == 0) {
-    return false;
-}
-    StmtNode enum_stmt = ArrayList_StmtNode_get(self->stmt_pool, LLVMCodegen_str_to_int(self, idx_str));
-    if (enum_stmt.kind != StmtKind_sk_enum_decl) {
-    return false;
-}
-    int64_t i = 0;
-    while (i < ArrayList_Variant_length(&(enum_stmt.enum_variants))) {
-    Variant v = ArrayList_Variant_get(&(enum_stmt.enum_variants), i);
-    if (ArrayList_Param_length(&(v.params)) > 0) {
-    return true;
-}
-    i = (i + 1);
-}
-    return false;
-}
-const char* LLVMCodegen_get_variant_param_type(LLVMCodegen* self, const char* enum_name, const char* variant_name, int64_t param_idx) {
-    const char* idx_str = type_map_get(&(self->enum_decls), enum_name);
-    if (strlen(idx_str) == 0) {
-    return "Int";
-}
-    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, LLVMCodegen_str_to_int(self, idx_str));
-    if (stmt.kind == StmtKind_sk_enum_decl) {
-    int64_t i = 0;
-    while (i < ArrayList_Variant_length(&(stmt.enum_variants))) {
-    Variant v = ArrayList_Variant_get(&(stmt.enum_variants), i);
-    if (strcmp(v.vname, variant_name) == 0) {
-    if (param_idx < ArrayList_Param_length(&(v.params))) {
-    Param p = ArrayList_Param_get(&(v.params), param_idx);
-    return p.ptype;
-}
-}
-    i = (i + 1);
-}
-}
-    return "Int";
-}
-const char* LLVMCodegen_generate(LLVMCodegen* self, int64_t top_stmt_idx) {
-    self->module = LLVMModuleCreateWithNameInContext("kai_module", self->ctx);
-    self->builder = LLVMCreateBuilderInContext(self->ctx);
-    LLVMCodegen_register_all_types(self);
-    LLVMCodegen_emit_str_concat_helper(self);
-    int64_t imp_idx = 0;
-    while (imp_idx < ArrayList_StmtNode_length(self->stmt_pool)) {
-    StmtNode imp_stmt = ArrayList_StmtNode_get(self->stmt_pool, imp_idx);
-    if (imp_stmt.kind == StmtKind_sk_import) {
-    LLVMCodegen_handle_import(self, imp_idx);
-}
-    imp_idx = (imp_idx + 1);
-}
-    LLVMCodegen_register_all_types(self);
-    LLVMCodegen_register_all_funcs(self);
-    LLVMCodegen_emit_monomorphized_arraylists(self);
-    int64_t idx = 0;
-    while (idx < ArrayList_StmtNode_length(self->stmt_pool)) {
-    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, idx);
-    if (stmt.kind == StmtKind_sk_func_decl) {
-    bool is_method_stub = false;
-    int64_t ti = 0;
-    while (ti < ArrayList_StmtNode_length(self->stmt_pool)) {
-    StmtNode ts = ArrayList_StmtNode_get(self->stmt_pool, ti);
-    if (ts.kind == StmtKind_sk_trait_decl) {
-    int64_t mi = 0;
-    while (mi < ArrayList_Int_length(&(ts.trait_methods))) {
-    if (ArrayList_Int_get(&(ts.trait_methods), mi) == idx) {
-    is_method_stub = true;
-}
-    mi = (mi + 1);
-}
-}
-    if (ts.kind == StmtKind_sk_impl_block) {
-    int64_t mi = 0;
-    while (mi < ArrayList_Int_length(&(ts.impl_methods))) {
-    if (ArrayList_Int_get(&(ts.impl_methods), mi) == idx) {
-    is_method_stub = true;
-}
-    mi = (mi + 1);
-}
-}
-    ti = (ti + 1);
-}
-    if ((!is_method_stub) && (stmt.func_body >= 0)) {
-    LLVMCodegen_gen_func_body(self, idx, "");
-}
-}
-    if (stmt.kind == StmtKind_sk_impl_block) {
-    const char* struct_name = stmt.impl_struct_name;
-    int64_t j = 0;
-    while (j < ArrayList_Int_length(&(stmt.impl_methods))) {
-    int64_t m_idx = ArrayList_Int_get(&(stmt.impl_methods), j);
-    LLVMCodegen_gen_func_body(self, m_idx, struct_name);
-    j = (j + 1);
-}
-}
-    idx = (idx + 1);
-}
-    LLVMCodegen_emit_runtime_helpers(self);
-    LLVMCodegen_emit_runtime_helpers(self);
-    char* out_ptr = LLVMPrintModuleToString(self->module);
-    const char* output = (const char*)(out_ptr);
-    LLVMDisposeBuilder(self->builder);
-    LLVMDisposeModule(self->module);
-    LLVMContextDispose(self->ctx);
-    return output;
-}
-bool LLVMCodegen_func_has_body(LLVMCodegen* self, const char* fname) {
-    void* f = LLVMGetNamedFunction(self->module, fname);
-    if (f == (void*)(0)) {
-    return false;
-}
-    void* first_bb = LLVMGetFirstBasicBlock(f);
-    if (first_bb == (void*)(0)) {
-    return false;
-}
-    return true;
-}
-void* LLVMCodegen_get_or_create_func_for_body(LLVMCodegen* self, const char* fname, void* fn_ty) {
-    void* existing = LLVMGetNamedFunction(self->module, fname);
-    if (existing != (void*)(0)) {
-    return existing;
-}
-    return LLVMAddFunction(self->module, fname, fn_ty);
-}
-void LLVMCodegen_emit_arraylist_method_get(LLVMCodegen* self, const char* elem_ktype, void* al_lltype, const char* fname) {
-    if (LLVMCodegen_func_has_body(self, fname)) {
-    return;
-}
-    void* i64t = LLVMInt64TypeInContext(self->ctx);
-    void* ptrt = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-    void* elem_ll = LLVMCodegen_map_type(self, elem_ktype);
-    void* void_t = LLVMVoidTypeInContext(self->ctx);
-    bool is_sret = LLVMCodegen_is_struct_by_value_return(self, elem_ktype);
-    void* fn_ty = (void*)(0);
-    if (is_sret) {
-    void** param_types = (void**)(KaiAllocator_alloc(self->allocator, 24, 8));
-    (param_types)[0] = ptrt;
-    (param_types)[1] = ptrt;
-    (param_types)[2] = i64t;
-    fn_ty = LLVMFunctionType(void_t, (void*)(param_types), 3, false);
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-} else {
-    void* ret_ll = elem_ll;
-    if (ret_ll == void_t) {
-    ret_ll = i64t;
-}
-    void** param_types = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (param_types)[0] = ptrt;
-    (param_types)[1] = i64t;
-    fn_ty = LLVMFunctionType(ret_ll, (void*)(param_types), 2, false);
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-}
-    void* func = LLVMCodegen_get_or_create_func_for_body(self, fname, fn_ty);
-    type_map_put(&(self->func_types), fname, elem_ktype);
-    if (is_sret) {
-    type_map_put(&(self->func_is_sret), fname, "1");
-}
-    void* bb = LLVMAppendBasicBlockInContext(self->ctx, func, "entry");
-    void* b = LLVMCreateBuilderInContext(self->ctx);
-    LLVMPositionBuilderAtEnd(b, bb);
-    void* sret_ptr = (void*)(0);
-    void* self_ptr = (void*)(0);
-    void* idx = (void*)(0);
-    if (is_sret) {
-    sret_ptr = LLVMGetParam(func, 0);
-    self_ptr = LLVMGetParam(func, 1);
-    idx = LLVMGetParam(func, 2);
-} else {
-    self_ptr = LLVMGetParam(func, 0);
-    idx = LLVMGetParam(func, 1);
-}
-    void* data_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 0, "data_gep");
-    void* data_ptr = LLVMBuildLoad2(b, ptrt, data_gep, "data");
-    void* use_elem_ll = elem_ll;
-    if (use_elem_ll == void_t) {
-    use_elem_ll = i64t;
-}
-    void** idx_arr = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (idx_arr)[0] = idx;
-    void* elem_gep = LLVMBuildGEP2(b, use_elem_ll, data_ptr, (void*)(idx_arr), 1, "elem_gep");
-    void* loaded = LLVMBuildLoad2(b, use_elem_ll, elem_gep, "elem");
-    KaiAllocator_free(self->allocator, (void*)(idx_arr));
-    if (is_sret) {
-    LLVMBuildStore(b, loaded, sret_ptr);
-    LLVMBuildRetVoid(b);
-} else {
-    LLVMBuildRet(b, loaded);
-}
-    LLVMDisposeBuilder(b);
-}
-void LLVMCodegen_emit_arraylist_method_length(LLVMCodegen* self, const char* fname, void* al_lltype) {
-    if (LLVMCodegen_func_has_body(self, fname)) {
-    return;
-}
-    void* i64t = LLVMInt64TypeInContext(self->ctx);
-    void* ptrt = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-    void** param_types = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (param_types)[0] = ptrt;
-    void* fn_ty = LLVMFunctionType(i64t, (void*)(param_types), 1, false);
-    void* func = LLVMCodegen_get_or_create_func_for_body(self, fname, fn_ty);
-    type_map_put(&(self->func_types), fname, "Int");
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-    void* bb = LLVMAppendBasicBlockInContext(self->ctx, func, "entry");
-    void* b = LLVMCreateBuilderInContext(self->ctx);
-    LLVMPositionBuilderAtEnd(b, bb);
-    void* self_ptr = LLVMGetParam(func, 0);
-    void* len_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 1, "len_gep");
-    void* len_val = LLVMBuildLoad2(b, i64t, len_gep, "len");
-    LLVMBuildRet(b, len_val);
-    LLVMDisposeBuilder(b);
-}
-void LLVMCodegen_emit_arraylist_method_push(LLVMCodegen* self, const char* elem_ktype, const char* fname, void* al_lltype) {
-    if (LLVMCodegen_func_has_body(self, fname)) {
-    return;
-}
-    void* i64t = LLVMInt64TypeInContext(self->ctx);
-    void* ptrt = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-    void* void_t = LLVMVoidTypeInContext(self->ctx);
-    void* elem_ll = LLVMCodegen_map_type(self, elem_ktype);
-    void* real_elem_ll = elem_ll;
-    if (real_elem_ll == void_t) {
-    real_elem_ll = i64t;
-}
-    void** param_types = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (param_types)[0] = ptrt;
-    (param_types)[1] = real_elem_ll;
-    void* fn_ty = LLVMFunctionType(i64t, (void*)(param_types), 2, false);
-    void* func = LLVMCodegen_get_or_create_func_for_body(self, fname, fn_ty);
-    type_map_put(&(self->func_types), fname, "Int");
-    type_map_put(&(self->func_param_types), _kai_str_concat(fname, "_param_0"), "*ArrayList");
-    type_map_put(&(self->func_param_types), _kai_str_concat(fname, "_param_1"), elem_ktype);
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-    void* bb = LLVMAppendBasicBlockInContext(self->ctx, func, "entry");
-    void* b = LLVMCreateBuilderInContext(self->ctx);
-    LLVMPositionBuilderAtEnd(b, bb);
-    void* self_ptr = LLVMGetParam(func, 0);
-    void* item = LLVMGetParam(func, 1);
-    void* len_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 1, "len_gep");
-    void* len_val = LLVMBuildLoad2(b, i64t, len_gep, "len");
-    void* cap_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 2, "cap_gep");
-    void* cap_val = LLVMBuildLoad2(b, i64t, cap_gep, "cap");
-    void* data_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 0, "data_gep");
-    void* data_ptr = LLVMBuildLoad2(b, ptrt, data_gep, "data");
-    void* cmp = LLVMBuildICmp(b, 32, len_val, cap_val, "cmp");
-    void* grow_bb = LLVMAppendBasicBlockInContext(self->ctx, func, "grow");
-    void* store_bb = LLVMAppendBasicBlockInContext(self->ctx, func, "store");
-    LLVMBuildCondBr(b, cmp, grow_bb, store_bb);
-    LLVMPositionBuilderAtEnd(b, grow_bb);
-    void* new_cap = LLVMBuildMul(b, cap_val, LLVMConstInt(i64t, 2, false), "new_cap");
-    void* null_ptr = LLVMConstNull(LLVMPointerType(real_elem_ll, 0));
-    void** gep_idx = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (gep_idx)[0] = LLVMConstInt(i64t, 1, false);
-    void* gep_size = LLVMBuildGEP2(b, real_elem_ll, null_ptr, (void*)(gep_idx), 1, "gep_size");
-    void* size_val = LLVMBuildPtrToInt(b, gep_size, i64t, "sizeof_T");
-    KaiAllocator_free(self->allocator, (void*)(gep_idx));
-    void* alloc_size = LLVMBuildMul(b, new_cap, size_val, "alloc_size");
-    void* alloc_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 3, "alloc_gep");
-    void* alloc_val = LLVMBuildLoad2(b, ptrt, alloc_gep, "allocator");
-    void* alloc_fn = LLVMGetNamedFunction(self->module, "Allocator_alloc");
-    void** alloc_args = (void**)(KaiAllocator_alloc(self->allocator, 24, 8));
-    (alloc_args)[0] = alloc_val;
-    (alloc_args)[1] = alloc_size;
-    (alloc_args)[2] = LLVMConstInt(i64t, 1, false);
-    void** alloc_params_types = (void**)(KaiAllocator_alloc(self->allocator, 24, 8));
-    (alloc_params_types)[0] = ptrt;
-    (alloc_params_types)[1] = i64t;
-    (alloc_params_types)[2] = i64t;
-    void* alloc_ty = LLVMFunctionType(ptrt, (void*)(alloc_params_types), 3, false);
-    void* new_data = LLVMBuildCall2(b, alloc_ty, alloc_fn, (void*)(alloc_args), 3, "new_data");
-    KaiAllocator_free(self->allocator, (void*)(alloc_args));
-    KaiAllocator_free(self->allocator, (void*)(alloc_params_types));
-    void* copy_cond = LLVMAppendBasicBlockInContext(self->ctx, func, "copy_cond");
-    void* copy_body = LLVMAppendBasicBlockInContext(self->ctx, func, "copy_body");
-    void* copy_end = LLVMAppendBasicBlockInContext(self->ctx, func, "copy_end");
-    void* cur_bb = LLVMGetInsertBlock(b);
-    void* first_instr = LLVMGetFirstInstruction(bb);
-    if (first_instr == (void*)(0)) {
-    LLVMPositionBuilderAtEnd(b, bb);
-} else {
-    LLVMPositionBuilderBefore(b, first_instr);
-}
-    void* idx_addr = LLVMBuildAlloca(b, i64t, "copy_idx");
-    LLVMPositionBuilderAtEnd(b, cur_bb);
-    LLVMBuildStore(b, LLVMConstInt(i64t, 0, false), idx_addr);
-    LLVMBuildBr(b, copy_cond);
-    LLVMPositionBuilderAtEnd(b, copy_cond);
-    void* idx_val = LLVMBuildLoad2(b, i64t, idx_addr, "idx");
-    void* cmp_copy = LLVMBuildICmp(b, 40, idx_val, len_val, "cmp_copy");
-    LLVMBuildCondBr(b, cmp_copy, copy_body, copy_end);
-    LLVMPositionBuilderAtEnd(b, copy_body);
-    void* idx_val2 = LLVMBuildLoad2(b, i64t, idx_addr, "idx");
-    void** src_idx_arr = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (src_idx_arr)[0] = idx_val2;
-    void* src_slot = LLVMBuildGEP2(b, real_elem_ll, data_ptr, (void*)(src_idx_arr), 1, "src_slot");
-    void* loaded_val = LLVMBuildLoad2(b, real_elem_ll, src_slot, "val");
-    void* dst_slot = LLVMBuildGEP2(b, real_elem_ll, new_data, (void*)(src_idx_arr), 1, "dst_slot");
-    LLVMBuildStore(b, loaded_val, dst_slot);
-    KaiAllocator_free(self->allocator, (void*)(src_idx_arr));
-    void* next_idx = LLVMBuildAdd(b, idx_val2, LLVMConstInt(i64t, 1, false), "next_idx");
-    LLVMBuildStore(b, next_idx, idx_addr);
-    LLVMBuildBr(b, copy_cond);
-    LLVMPositionBuilderAtEnd(b, copy_end);
-    void* free_fn = LLVMGetNamedFunction(self->module, "Allocator_free");
-    void** free_args = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (free_args)[0] = alloc_val;
-    (free_args)[1] = data_ptr;
-    void** free_params_types = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (free_params_types)[0] = ptrt;
-    (free_params_types)[1] = ptrt;
-    void* free_ty = LLVMFunctionType(void_t, (void*)(free_params_types), 2, false);
-    LLVMBuildCall2(b, free_ty, free_fn, (void*)(free_args), 2, "");
-    KaiAllocator_free(self->allocator, (void*)(free_args));
-    KaiAllocator_free(self->allocator, (void*)(free_params_types));
-    LLVMBuildStore(b, new_data, data_gep);
-    LLVMBuildStore(b, new_cap, cap_gep);
-    LLVMBuildBr(b, store_bb);
-    LLVMPositionBuilderAtEnd(b, store_bb);
-    void* current_data_ptr = LLVMBuildLoad2(b, ptrt, data_gep, "current_data");
-    void** len_arr2 = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (len_arr2)[0] = len_val;
-    void* elem_slot2 = LLVMBuildGEP2(b, real_elem_ll, current_data_ptr, (void*)(len_arr2), 1, "elem_slot");
-    LLVMBuildStore(b, item, elem_slot2);
-    KaiAllocator_free(self->allocator, (void*)(len_arr2));
-    void* new_len = LLVMBuildAdd(b, len_val, LLVMConstInt(i64t, 1, false), "new_len");
-    LLVMBuildStore(b, new_len, len_gep);
-    LLVMBuildRet(b, LLVMConstInt(i64t, 0, false));
-    LLVMDisposeBuilder(b);
-}
-void LLVMCodegen_emit_arraylist_method_pop(LLVMCodegen* self, const char* elem_ktype, const char* fname, void* al_lltype) {
-    if (LLVMCodegen_func_has_body(self, fname)) {
-    return;
-}
-    void* i64t = LLVMInt64TypeInContext(self->ctx);
-    void* ptrt = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-    void* elem_ll = LLVMCodegen_map_type(self, elem_ktype);
-    void* void_t = LLVMVoidTypeInContext(self->ctx);
-    bool is_sret = LLVMCodegen_is_struct_by_value_return(self, elem_ktype);
-    void* fn_ty = (void*)(0);
-    if (is_sret) {
-    void** param_types = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (param_types)[0] = ptrt;
-    (param_types)[1] = ptrt;
-    fn_ty = LLVMFunctionType(void_t, (void*)(param_types), 2, false);
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-} else {
-    void* ret_ll = elem_ll;
-    if (ret_ll == void_t) {
-    ret_ll = i64t;
-}
-    void** param_types = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (param_types)[0] = ptrt;
-    fn_ty = LLVMFunctionType(ret_ll, (void*)(param_types), 1, false);
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-}
-    void* func = LLVMCodegen_get_or_create_func_for_body(self, fname, fn_ty);
-    type_map_put(&(self->func_types), fname, elem_ktype);
-    if (is_sret) {
-    type_map_put(&(self->func_is_sret), fname, "1");
-}
-    void* bb = LLVMAppendBasicBlockInContext(self->ctx, func, "entry");
-    void* b = LLVMCreateBuilderInContext(self->ctx);
-    LLVMPositionBuilderAtEnd(b, bb);
-    void* sret_ptr = (void*)(0);
-    void* self_ptr = (void*)(0);
-    if (is_sret) {
-    sret_ptr = LLVMGetParam(func, 0);
-    self_ptr = LLVMGetParam(func, 1);
-} else {
-    self_ptr = LLVMGetParam(func, 0);
-}
-    void* len_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 1, "len_gep");
-    void* len_val = LLVMBuildLoad2(b, i64t, len_gep, "len");
-    void* new_len = LLVMBuildSub(b, len_val, LLVMConstInt(i64t, 1, false), "new_len");
-    LLVMBuildStore(b, new_len, len_gep);
-    void* data_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 0, "data_gep");
-    void* data_ptr = LLVMBuildLoad2(b, ptrt, data_gep, "data");
-    void* use_elem_ll = elem_ll;
-    if (use_elem_ll == void_t) {
-    use_elem_ll = i64t;
-}
-    void** new_len_arr = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (new_len_arr)[0] = new_len;
-    void* elem_slot = LLVMBuildGEP2(b, use_elem_ll, data_ptr, (void*)(new_len_arr), 1, "elem_slot");
-    void* loaded = LLVMBuildLoad2(b, use_elem_ll, elem_slot, "elem");
-    KaiAllocator_free(self->allocator, (void*)(new_len_arr));
-    if (is_sret) {
-    LLVMBuildStore(b, loaded, sret_ptr);
-    LLVMBuildRetVoid(b);
-} else {
-    LLVMBuildRet(b, loaded);
-}
-    LLVMDisposeBuilder(b);
-}
-void LLVMCodegen_emit_arraylist_method_init(LLVMCodegen* self, const char* elem_ktype, const char* fname, void* al_lltype) {
-    if (LLVMCodegen_func_has_body(self, fname)) {
-    return;
-}
-    void* i64t = LLVMInt64TypeInContext(self->ctx);
-    void* ptrt = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-    void* void_t = LLVMVoidTypeInContext(self->ctx);
-    void** param_types = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (param_types)[0] = ptrt;
-    (param_types)[1] = ptrt;
-    void* fn_ty = LLVMFunctionType(ptrt, (void*)(param_types), 2, false);
-    void* func = LLVMCodegen_get_or_create_func_for_body(self, fname, fn_ty);
-    type_map_put(&(self->func_types), fname, _kai_str_concat("*", "ArrayList"));
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-    void* bb = LLVMAppendBasicBlockInContext(self->ctx, func, "entry");
-    void* b = LLVMCreateBuilderInContext(self->ctx);
-    LLVMPositionBuilderAtEnd(b, bb);
-    void* self_ptr = LLVMGetParam(func, 0);
-    void* allocator = LLVMGetParam(func, 1);
-    void* len_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 1, "len_gep");
-    LLVMBuildStore(b, LLVMConstInt(i64t, 0, false), len_gep);
-    void* cap_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 2, "cap_gep");
-    LLVMBuildStore(b, LLVMConstInt(i64t, 4, false), cap_gep);
-    void* alloc_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 3, "alloc_gep");
-    LLVMBuildStore(b, allocator, alloc_gep);
-    void* alloc_fn = LLVMGetNamedFunction(self->module, "Allocator_alloc");
-    if (alloc_fn != (void*)(0)) {
-    void* elem_ll = LLVMCodegen_map_type(self, elem_ktype);
-    void* real_elem_ll = elem_ll;
-    if (real_elem_ll == void_t) {
-    real_elem_ll = i64t;
-}
-    void* null_ptr = LLVMConstNull(LLVMPointerType(real_elem_ll, 0));
-    void** gep_idx = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (gep_idx)[0] = LLVMConstInt(i64t, 1, false);
-    void* gep_size = LLVMBuildGEP2(b, real_elem_ll, null_ptr, (void*)(gep_idx), 1, "gep_size");
-    void* size_val = LLVMBuildPtrToInt(b, gep_size, i64t, "sizeof_T");
-    KaiAllocator_free(self->allocator, (void*)(gep_idx));
-    void* alloc_size = LLVMBuildMul(b, LLVMConstInt(i64t, 4, false), size_val, "alloc_size");
-    void* alloc_align = LLVMConstInt(i64t, 1, false);
-    void** call_args = (void**)(KaiAllocator_alloc(self->allocator, 24, 8));
-    (call_args)[0] = allocator;
-    (call_args)[1] = alloc_size;
-    (call_args)[2] = alloc_align;
-    void** alloc_param_types = (void**)(KaiAllocator_alloc(self->allocator, 24, 8));
-    (alloc_param_types)[0] = ptrt;
-    (alloc_param_types)[1] = i64t;
-    (alloc_param_types)[2] = i64t;
-    void* alloc_ty = LLVMFunctionType(ptrt, (void*)(alloc_param_types), 3, false);
-    void* data_val = LLVMBuildCall2(b, alloc_ty, alloc_fn, (void*)(call_args), 3, "init_data");
-    void* data_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 0, "data_gep");
-    LLVMBuildStore(b, data_val, data_gep);
-    KaiAllocator_free(self->allocator, (void*)(call_args));
-    KaiAllocator_free(self->allocator, (void*)(alloc_param_types));
-} else {
-    void* data_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 0, "data_gep");
-    LLVMBuildStore(b, LLVMConstNull(ptrt), data_gep);
-}
-    LLVMBuildRet(b, self_ptr);
-    LLVMDisposeBuilder(b);
-}
-void LLVMCodegen_emit_arraylist_method_set(LLVMCodegen* self, const char* elem_ktype, const char* fname, void* al_lltype) {
-    if (LLVMCodegen_func_has_body(self, fname)) {
-    return;
-}
-    void* i64t = LLVMInt64TypeInContext(self->ctx);
-    void* ptrt = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-    void* void_t = LLVMVoidTypeInContext(self->ctx);
-    void* elem_ll = LLVMCodegen_map_type(self, elem_ktype);
-    void* real_elem_ll = elem_ll;
-    if (real_elem_ll == void_t) {
-    real_elem_ll = i64t;
-}
-    void** param_types = (void**)(KaiAllocator_alloc(self->allocator, 24, 8));
-    (param_types)[0] = ptrt;
-    (param_types)[1] = i64t;
-    (param_types)[2] = real_elem_ll;
-    void* fn_ty = LLVMFunctionType(i64t, (void*)(param_types), 3, false);
-    void* func = LLVMCodegen_get_or_create_func_for_body(self, fname, fn_ty);
-    type_map_put(&(self->func_types), fname, "Int");
-    type_map_put(&(self->func_param_types), _kai_str_concat(fname, "_param_0"), "*ArrayList");
-    type_map_put(&(self->func_param_types), _kai_str_concat(fname, "_param_1"), "Int");
-    type_map_put(&(self->func_param_types), _kai_str_concat(fname, "_param_2"), elem_ktype);
-    KaiAllocator_free(self->allocator, (void*)(param_types));
-    void* bb = LLVMAppendBasicBlockInContext(self->ctx, func, "entry");
-    void* b = LLVMCreateBuilderInContext(self->ctx);
-    LLVMPositionBuilderAtEnd(b, bb);
-    void* self_ptr = LLVMGetParam(func, 0);
-    void* idx = LLVMGetParam(func, 1);
-    void* item = LLVMGetParam(func, 2);
-    void* data_gep = LLVMBuildStructGEP2(b, al_lltype, self_ptr, 0, "data_gep");
-    void* data_ptr = LLVMBuildLoad2(b, ptrt, data_gep, "data");
-    void** idx_arr = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (idx_arr)[0] = idx;
-    void* elem_slot = LLVMBuildGEP2(b, real_elem_ll, data_ptr, (void*)(idx_arr), 1, "elem_slot");
-    LLVMBuildStore(b, item, elem_slot);
-    KaiAllocator_free(self->allocator, (void*)(idx_arr));
-    LLVMBuildRet(b, LLVMConstInt(i64t, 0, false));
-    LLVMDisposeBuilder(b);
-}
-void LLVMCodegen_emit_monomorphized_arraylists(LLVMCodegen* self) {
-    int64_t i = 0;
-    while (i < ArrayList_StrMapEntry_length(&(self->struct_field_types))) {
-    StrMapEntry entry = ArrayList_StrMapEntry_get(&(self->struct_field_types), i);
-    LLVMCodegen_maybe_emit_arraylist_for_type(self, entry.value);
-    i = (i + 1);
-}
-    int64_t j = 0;
-    while (j < ArrayList_StrMapEntry_length(&(self->func_param_types))) {
-    StrMapEntry entry2 = ArrayList_StrMapEntry_get(&(self->func_param_types), j);
-    LLVMCodegen_maybe_emit_arraylist_for_type(self, entry2.value);
-    j = (j + 1);
-}
-}
-void LLVMCodegen_maybe_emit_arraylist_for_type(LLVMCodegen* self, const char* raw_type) {
-    const char* ftype = raw_type;
-    while ((strlen(ftype) > 0) && (((ftype)[0] == ((char)(42))) || ((ftype)[0] == ((char)(38))))) {
-    ftype = substring(ftype, 1, strlen(ftype));
-}
-    if (strlen(ftype) <= 11) {
-    return;
-}
-    if ((ftype)[0] != ((char)(65))) {
-    return;
-}
-    if ((ftype)[1] != ((char)(114))) {
-    return;
-}
-    if ((ftype)[2] != ((char)(114))) {
-    return;
-}
-    if ((ftype)[3] != ((char)(97))) {
-    return;
-}
-    if ((ftype)[4] != ((char)(121))) {
-    return;
-}
-    if ((ftype)[5] != ((char)(76))) {
-    return;
-}
-    if ((ftype)[6] != ((char)(105))) {
-    return;
-}
-    if ((ftype)[7] != ((char)(115))) {
-    return;
-}
-    if ((ftype)[8] != ((char)(116))) {
-    return;
-}
-    if ((ftype)[9] != ((char)(60))) {
-    return;
-}
-    if ((ftype)[(strlen(ftype) - 1)] != ((char)(62))) {
-    return;
-}
-    void* al_lltype = LLVMCodegen_map_type(self, ftype);
-    const char* elem_ktype = substring(ftype, 10, (strlen(ftype) - 1));
-    const char* get_name = _kai_str_concat(ftype, "_get");
-    const char* len_name = _kai_str_concat(ftype, "_length");
-    const char* push_name = _kai_str_concat(ftype, "_push");
-    const char* pop_name = _kai_str_concat(ftype, "_pop");
-    const char* al_init_name = _kai_str_concat(ftype, "_init");
-    const char* set_name = _kai_str_concat(ftype, "_set");
-    LLVMCodegen_emit_arraylist_method_length(self, len_name, al_lltype);
-    LLVMCodegen_emit_arraylist_method_push(self, elem_ktype, push_name, al_lltype);
-    LLVMCodegen_emit_arraylist_method_pop(self, elem_ktype, pop_name, al_lltype);
-    LLVMCodegen_emit_arraylist_method_init(self, elem_ktype, al_init_name, al_lltype);
-    LLVMCodegen_emit_arraylist_method_get(self, elem_ktype, al_lltype, get_name);
-    LLVMCodegen_emit_arraylist_method_set(self, elem_ktype, set_name, al_lltype);
-    type_map_put(&(self->func_param_types), _kai_str_concat(push_name, "_param_1"), elem_ktype);
-    type_map_put(&(self->func_param_types), _kai_str_concat(set_name, "_param_1"), "Int");
-    type_map_put(&(self->func_param_types), _kai_str_concat(set_name, "_param_2"), elem_ktype);
-    type_map_put(&(self->func_param_types), _kai_str_concat(get_name, "_param_1"), "Int");
-    type_map_put(&(self->func_param_types), _kai_str_concat(al_init_name, "_param_1"), "*Allocator");
-}
-void LLVMCodegen_emit_runtime_helpers(LLVMCodegen* self) {
-    void* void_ptr_t = LLVMPointerType(LLVMInt8TypeInContext(self->ctx), 0);
-    void* void_t = LLVMVoidTypeInContext(self->ctx);
-    void* i64_t = LLVMInt64TypeInContext(self->ctx);
-    void* global_alloc = LLVMAddGlobal(self->module, void_ptr_t, "_kai_current_allocator");
-    LLVMSetInitializer(global_alloc, LLVMConstNull(void_ptr_t));
-    void** set_alloc_params = (void**)(KaiAllocator_alloc(self->allocator, 8, 8));
-    (set_alloc_params)[0] = void_ptr_t;
-    void* set_alloc_ty = LLVMFunctionType(void_t, (void*)(set_alloc_params), 1, false);
-    void* set_alloc_fn = LLVMGetNamedFunction(self->module, "_kai_set_current_allocator");
-    if (set_alloc_fn == (void*)(0)) {
-    set_alloc_fn = LLVMAddFunction(self->module, "_kai_set_current_allocator", set_alloc_ty);
-}
-    void* set_alloc_bb = LLVMAppendBasicBlockInContext(self->ctx, set_alloc_fn, "entry");
-    LLVMPositionBuilderAtEnd(self->builder, set_alloc_bb);
-    LLVMBuildStore(self->builder, LLVMGetParam(set_alloc_fn, 0), global_alloc);
-    LLVMBuildRetVoid(self->builder);
-    void** alloc_params = (void**)(KaiAllocator_alloc(self->allocator, 24, 8));
-    (alloc_params)[0] = void_ptr_t;
-    (alloc_params)[1] = i64_t;
-    (alloc_params)[2] = i64_t;
-    void* alloc_ty = LLVMFunctionType(void_ptr_t, (void*)(alloc_params), 3, false);
-    void* alloc_fn = LLVMGetNamedFunction(self->module, "Allocator_alloc");
-    if (alloc_fn == (void*)(0)) {
-    alloc_fn = LLVMAddFunction(self->module, "Allocator_alloc", alloc_ty);
-}
-    void* alloc_bb = LLVMAppendBasicBlockInContext(self->ctx, alloc_fn, "entry");
-    LLVMPositionBuilderAtEnd(self->builder, alloc_bb);
-    void* kai_alloc_fn = LLVMGetNamedFunction(self->module, "KaiAllocator_alloc");
-    if (kai_alloc_fn != (void*)(0)) {
-    void** call_args = (void**)(KaiAllocator_alloc(self->allocator, 24, 8));
-    (call_args)[0] = LLVMGetParam(alloc_fn, 0);
-    (call_args)[1] = LLVMGetParam(alloc_fn, 1);
-    (call_args)[2] = LLVMGetParam(alloc_fn, 2);
-    void* kai_alloc_ty = LLVMFunctionType(void_ptr_t, (void*)(alloc_params), 3, false);
-    void* res = LLVMBuildCall2(self->builder, kai_alloc_ty, kai_alloc_fn, (void*)(call_args), 3, "res");
-    LLVMBuildRet(self->builder, res);
-    KaiAllocator_free(self->allocator, (void*)(call_args));
-} else {
-    LLVMBuildRet(self->builder, LLVMConstNull(void_ptr_t));
-}
-    void** free_params = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (free_params)[0] = void_ptr_t;
-    (free_params)[1] = void_ptr_t;
-    void* free_ty = LLVMFunctionType(void_t, (void*)(free_params), 2, false);
-    void* free_fn = LLVMGetNamedFunction(self->module, "Allocator_free");
-    if (free_fn == (void*)(0)) {
-    free_fn = LLVMAddFunction(self->module, "Allocator_free", free_ty);
-}
-    void* free_bb = LLVMAppendBasicBlockInContext(self->ctx, free_fn, "entry");
-    LLVMPositionBuilderAtEnd(self->builder, free_bb);
-    void* kai_free_fn = LLVMGetNamedFunction(self->module, "KaiAllocator_free");
-    if (kai_free_fn != (void*)(0)) {
-    void** call_args = (void**)(KaiAllocator_alloc(self->allocator, 16, 8));
-    (call_args)[0] = LLVMGetParam(free_fn, 0);
-    (call_args)[1] = LLVMGetParam(free_fn, 1);
-    void* kai_free_ty = LLVMFunctionType(void_t, (void*)(free_params), 2, false);
-    (void)(LLVMBuildCall2(self->builder, kai_free_ty, kai_free_fn, (void*)(call_args), 2, ""));
-    LLVMBuildRetVoid(self->builder);
-    KaiAllocator_free(self->allocator, (void*)(call_args));
-} else {
-    LLVMBuildRetVoid(self->builder);
-}
-    KaiAllocator_free(self->allocator, (void*)(set_alloc_params));
-    KaiAllocator_free(self->allocator, (void*)(alloc_params));
-    KaiAllocator_free(self->allocator, (void*)(free_params));
-}
-bool LLVMCodegen_is_struct_type(LLVMCodegen* self, const char* ktype) {
-    if (strlen(ktype) == 0) {
-    return false;
-}
-    if ((((ktype)[0] == ((char)(42))) || ((ktype)[0] == ((char)(38)))) || ((ktype)[0] == ((char)(91)))) {
-    return false;
-}
-    const char* clean = ktype;
-    int64_t lt_pos = LLVMCodegen_str_find(self, ktype, ((char)(60)));
-    if (lt_pos >= 0) {
-    clean = substring(ktype, 0, lt_pos);
-}
-    if (strlen(type_map_get(&(self->struct_types), clean)) > 0) {
-    return true;
-}
-    return false;
-}
-bool LLVMCodegen_expr_returns_ptr(LLVMCodegen* self, int64_t expr_idx) {
-    if (expr_idx < 0) {
-    return false;
-}
-    ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
-    const char* etype = LLVMCodegen_get_expr_type(self, expr_idx);
-    if (LLVMCodegen_is_pointer_type(self, etype)) {
-    return true;
-}
-    if (expr.kind == ExprKind_ek_struct_init) {
-    return true;
-}
-    if (expr.kind == ExprKind_ek_func_call) {
-    const char* fname = expr.func_name;
-    if ((strcmp(fname, "cast") == 0) || (strcmp(fname, "as") == 0)) {
-    return false;
-}
-    if (strcmp(type_map_get(&(self->func_is_sret), fname), "1") == 0) {
-    return true;
-}
-}
-    if (expr.kind == ExprKind_ek_method_call) {
-    const char* rec_type = LLVMCodegen_get_expr_type(self, expr.meth_expr);
-    const char* base = LLVMCodegen_strip_pointers(self, rec_type);
-    const char* mfname = _kai_str_concat(_kai_str_concat(base, "_"), expr.meth_name);
-    if (strcmp(type_map_get(&(self->func_is_sret), mfname), "1") == 0) {
-    return true;
-}
-}
-    return false;
-}
-const char* LLVMCodegen_get_mangled_type_name(LLVMCodegen* self, const char* ktype) {
-    if (strlen(ktype) == 0) {
-    return "";
-}
-    if ((ktype)[0] == ((char)(63))) {
-    const char* val_type = substring(ktype, 1, strlen(ktype));
-    if (LLVMCodegen_is_pointer_type(self, val_type)) {
-    return LLVMCodegen_get_mangled_type_name(self, val_type);
-}
-    return _kai_str_concat("Optional_", LLVMCodegen_clean_type_for_mangling(self, val_type));
-}
-    if (LLVMCodegen_str_contains(self, ktype, ((char)(33)))) {
-    int64_t excl_pos = LLVMCodegen_str_find(self, ktype, ((char)(33)));
-    const char* val_type = substring(ktype, 0, excl_pos);
-    const char* err_type = substring(ktype, (excl_pos + 1), strlen(ktype));
-    return _kai_str_concat(_kai_str_concat(_kai_str_concat("Result_", LLVMCodegen_clean_type_for_mangling(self, val_type)), "_"), LLVMCodegen_clean_type_for_mangling(self, err_type));
-}
-    return ktype;
 }
 const char* get_base_name(KaiAllocator* allocator, const char* path) {
     int64_t last_slash = (-1);
@@ -13197,75 +9375,1091 @@ const char* get_base_name(KaiAllocator* allocator, const char* path) {
 }
     return substring(path, start, end);
 }
+ArrayList_Bool ArrayList_Bool_init(KaiAllocator* allocator) {
+    ArrayList_Bool self = (ArrayList_Bool){0};
+    self.len = 0;
+    self.cap = 4;
+    self.allocator = allocator;
+    {
+    self.data = (bool*)(KaiAllocator_alloc(allocator, (self.cap * sizeof(bool)), 1));
+}
+    return self;
+}
+void ArrayList_Bool_push(ArrayList_Bool* self, bool item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2);
+    {
+    bool* new_data = (bool*)(KaiAllocator_alloc(self->allocator, (new_cap * sizeof(bool)), 1));
+    int64_t i = 0;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1);
+}
+    KaiAllocator_free(self->allocator, (char*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1);
+}
+bool ArrayList_Bool_get(ArrayList_Bool* self, int64_t index) {
+    if ((index < 0) || (index >= self->len)) {
+    {
+    exit(1);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_Bool_set(ArrayList_Bool* self, int64_t index, bool item) {
+    if ((index < 0) || (index >= self->len)) {
+    {
+    exit(1);
+}
+}
+    (self->data)[index] = item;
+}
+bool ArrayList_Bool_pop(ArrayList_Bool* self) {
+    if (self->len == 0) {
+    {
+    exit(1);
+}
+}
+    self->len = (self->len - 1);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_Bool_length(ArrayList_Bool* self) {
+    return self->len;
+}
+void ArrayList_Bool_deinit(ArrayList_Bool* self) {
+    {
+    KaiAllocator_free(self->allocator, (char*)(self->data));
+}
+}
 int main(int argc, char** argv) {
     if (argc < 2) {
-    printf("Usage: compiler <input.kai> [-o <output_bin>] [-c] [-O0|-O1|-O2|-O3|-Os]");
+    printf("Usage: kai <command> [options]\n");
+    printf("Commands:\n");
+    printf("  init [path]     Create a new Kai project\n");
+    printf("  check <file>    Type-check only (no code generation)\n");
+    printf("  run <file>      Compile and run a .kai file\n");
+    printf("  <file>          Compile and run (shorthand)\n");
+    printf("  patch <file>    Apply an operation-based edit\n");
+    printf("  explain <code>  Explain an error code\n");
+    printf("  skills          List available agent skills\n");
+    printf("  fix <file>      Auto-fix diagnostics (--plan|--patch|--apply)\n");
+    printf("  graph <file>    Export or query the AST graph\n");
+    printf("Flags:\n");
+    printf("  --json          Output diagnostics in JSON format\n");
+    printf("  -o <file>       Specify output binary name\n");
+    printf("  -c              Emit C code only (no linking)\n");
+    printf("  -O0|-O1|-O2|-O3|-Os  Optimization level (default: -O2)\n");
     return 1;
 }
+    const char* first_arg = "";
+    {
+    first_arg = (const char*)((argv)[1]);
+}
+    bool is_explain = false;
+    {
+    if (strcmp(first_arg, "explain") == 0) {
+    is_explain = true;
+}
+}
+    if (is_explain) {
+    if (argc < 3) {
+    printf("Usage: kai explain <error-code>\n");
+    return 1;
+}
+    const char* code = "";
+    {
+    code = (const char*)((argv)[2]);
+}
+    ErrorInfo info = get_error_info(code);
+    printf("error[%s]: %s\n", code, info.title);
+    printf("  %s\n", info.description);
+    printf("  Suggested fix: %s\n", info.fix);
+    return 0;
+}
+    bool is_skills = false;
+    {
+    if (strcmp(first_arg, "skills") == 0) {
+    is_skills = true;
+}
+}
+    if (is_skills) {
+    KaiAllocator allocator = (KaiAllocator){ .heads = (char*)(0), .used = 0 };
+    allocator = KaiAllocator_init();
+    _kai_set_current_allocator((void*)(&(allocator)));
+    const char* exe_dir = "";
+    {
+    char* buf = (char*)(KaiAllocator_alloc(&(allocator), 1024, 1));
+    if (get_exe_dir(buf, 1024) == 0) {
+    exe_dir = (const char*)(buf);
+}
+}
+    if (argc < 3) {
+    printf("Available skills:\n");
+    printf("  agent       - Agent workflow guide\n");
+    printf("  diagnostics - Diagnostic reference for AI agents\n");
+    printf("\nUse 'kai skills get <topic>' to load a skill.\n");
+    return 0;
+}
+    const char* sub = "";
+    {
+    sub = (const char*)((argv)[2]);
+}
+    bool is_get = false;
+    {
+    if (strcmp(sub, "get") == 0) {
+    is_get = true;
+}
+}
+    if (is_get) {
+    if (argc < 4) {
+    printf("Usage: kai skills get <topic>\n");
+    return 1;
+}
+    const char* topic = "";
+    {
+    topic = (const char*)((argv)[3]);
+}
+    const char* skill_path = _kai_str_concat(_kai_str_concat(_kai_str_concat(exe_dir, "/skill-data/"), topic), ".md");
+    Result_Str_IoError res = read_to_string(&(allocator), skill_path);
+    if (res.tag != 0) {
+    printf("skill not found: '%s'\n", topic);
+    printf("Available: agent, diagnostics\n");
+    return 1;
+}
+    const char* content = (const char*)(res.value);
+    printf("%s\n", content);
+    return 0;
+}
+    printf("Usage: kai skills get <topic>\n");
+    return 1;
+}
+    bool is_init = false;
+    {
+    if (strcmp(first_arg, "init") == 0) {
+    is_init = true;
+}
+}
+    if (is_init) {
+    const char* project_path = ".";
+    const char* template = "cli";
+    int64_t i = 2;
+    while (i < argc) {
+    const char* arg = (const char*)((argv)[i]);
+    {
+    if (strcmp(arg, "--template") == 0) {
+    if ((i + 1) < argc) {
+    i = (i + 1);
+    template = (const char*)((argv)[i]);
+} else {
+    printf("Error: --template requires an argument (cli|lib)\n");
+    return 1;
+}
+} else if (strcmp(project_path, ".") == 0) {
+    project_path = arg;
+}
+}
+    i = (i + 1);
+}
+    const char* src_dir = _kai_str_concat(project_path, "/src");
+    if (!mkdir_p(src_dir)) {
+    printf("Error: Could not create directory '%s'\n", src_dir);
+    return 1;
+}
+    if (strcmp(template, "lib") == 0) {
+    const char* main_content = _kai_str_concat(_kai_str_concat("// ", project_path), "\n// Library entry point\n\n");
+    Result_Bool_IoError write_res = write_string(_kai_str_concat(src_dir, "/lib.kai"), main_content);
+    if (write_res.tag != 0) {
+    printf("Error: Could not write lib.kai\n");
+    return 1;
+}
+} else {
+    const char* main_content = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("// ", project_path), "\n// Entry point\n\nfn main() Int {\n    printf(\"hello from "), project_path), "\\n\")\n    return 0\n}\n");
+    Result_Bool_IoError write_res = write_string(_kai_str_concat(src_dir, "/main.kai"), main_content);
+    if (write_res.tag != 0) {
+    printf("Error: Could not write main.kai\n");
+    return 1;
+}
+}
+    printf("Created Kai project at '%s' (template: %s)\n", project_path, template);
+    return 0;
+}
+    bool is_patch = false;
+    {
+    if (strcmp(first_arg, "patch") == 0) {
+    is_patch = true;
+}
+}
+    if (is_patch) {
+    if (argc < 4) {
+    printf("Usage: kai patch <file> --op <operation> [args...]\n");
+    printf("Operations:\n");
+    printf("  addMain                    Append a main function\n");
+    printf("  addFn <name>               Append a function stub\n");
+    printf("  replaceText --old <t> --new <t>  Global text replacement\n");
+    printf("  setConst <name> <value>    Change a const value\n");
+    return 1;
+}
+    KaiAllocator allocator = (KaiAllocator){ .heads = (char*)(0), .used = 0 };
+    allocator = KaiAllocator_init();
+    _kai_set_current_allocator((void*)(&(allocator)));
+    const char* patch_file = "";
+    const char* operation = "";
+    const char* op_arg1 = "";
+    const char* op_arg2 = "";
+    bool json = false;
+    int64_t i = 2;
+    while (i < argc) {
+    const char* arg = (const char*)((argv)[i]);
+    {
+    if (strcmp(arg, "--json") == 0) {
+    json = true;
+} else if (strcmp(arg, "--op") == 0) {
+    if ((i + 1) < argc) {
+    i = (i + 1);
+    operation = (const char*)((argv)[i]);
+}
+} else if (strcmp(arg, "--old") == 0) {
+    if ((i + 1) < argc) {
+    i = (i + 1);
+    op_arg1 = (const char*)((argv)[i]);
+}
+} else if (strcmp(arg, "--new") == 0) {
+    if ((i + 1) < argc) {
+    i = (i + 1);
+    op_arg2 = (const char*)((argv)[i]);
+}
+} else if (strcmp(patch_file, "") == 0) {
+    patch_file = arg;
+}
+}
+    i = (i + 1);
+}
+    if (strlen(patch_file) == 0) {
+    printf("Error: No input file specified\n");
+    return 1;
+}
+    if (strlen(operation) == 0) {
+    printf("Error: No operation specified (use --op)\n");
+    return 1;
+}
+    Result_Str_IoError source_res = read_to_string(&(allocator), patch_file);
+    if (source_res.tag != 0) {
+    printf("Error: Could not read '%s'\n", patch_file);
+    return 1;
+}
+    const char* source = (const char*)(source_res.value);
+    const char* modified = "";
+    const char* op_name = operation;
+    {
+    if (strcmp(op_name, "addMain") == 0) {
+    modified = _kai_str_concat(source, "\nfn main() Int {\n    printf(\"hello\\n\")\n    return 0\n}\n");
+} else if (strcmp(op_name, "addFn") == 0) {
+    const char* fn_name = op_arg1;
+    if (strlen(fn_name) == 0) {
+    int64_t j = 3;
+    while (j < argc) {
+    {
+    const char* a = (const char*)((argv)[j]);
+    bool is_flag = ((((strcmp(a, "--op") == 0) || (strcmp(a, "--json") == 0)) || (strcmp(a, "--old") == 0)) || (strcmp(a, "--new") == 0));
+    if ((((((!is_flag) && (strcmp(a, patch_file) != 0)) && (strcmp(a, "addMain") != 0)) && (strcmp(a, "addFn") != 0)) && (strcmp(a, "setConst") != 0)) && (strcmp(a, "replaceText") != 0)) {
+    if (strcmp(fn_name, "") == 0) {
+    fn_name = a;
+}
+}
+}
+    j = (j + 1);
+}
+}
+    if (strlen(fn_name) == 0) {
+    printf("Error: addFn requires a function name\n");
+    printf("Usage: kai patch <file> --op addFn <name>\n");
+    return 1;
+}
+    modified = _kai_str_concat(_kai_str_concat(_kai_str_concat(source, "\nfn "), fn_name), "() Void {\n\n}\n");
+} else if (strcmp(op_name, "setConst") == 0) {
+    const char* const_name = op_arg1;
+    const char* const_val = op_arg2;
+    if ((strlen(const_name) == 0) || (strlen(const_val) == 0)) {
+    int64_t j = 3;
+    while (j < argc) {
+    {
+    const char* a = (const char*)((argv)[j]);
+    bool is_flag = ((((strcmp(a, "--op") == 0) || (strcmp(a, "--json") == 0)) || (strcmp(a, "--old") == 0)) || (strcmp(a, "--new") == 0));
+    if ((((((!is_flag) && (strcmp(a, patch_file) != 0)) && (strcmp(a, "setConst") != 0)) && (strcmp(a, "addMain") != 0)) && (strcmp(a, "addFn") != 0)) && (strcmp(a, "replaceText") != 0)) {
+    if (strcmp(const_name, "") == 0) {
+    const_name = a;
+} else if (strcmp(const_val, "") == 0) {
+    const_val = a;
+}
+}
+}
+    j = (j + 1);
+}
+}
+    if ((strlen(const_name) == 0) || (strlen(const_val) == 0)) {
+    printf("Error: setConst requires <name> and <value>\n");
+    printf("Usage: kai patch <file> --op setConst <name> <value>\n");
+    return 1;
+}
+    const char* pattern = _kai_str_concat(_kai_str_concat("const ", const_name), " = ");
+    int64_t pattern_len = strlen(pattern);
+    int64_t src_len = strlen(source);
+    bool found_const = false;
+    int64_t pos_c = 0;
+    while (pos_c <= (src_len - pattern_len)) {
+    bool matched_c = true;
+    int64_t j2 = 0;
+    while (j2 < pattern_len) {
+    {
+    if ((source)[(pos_c + j2)] != (pattern)[j2]) {
+    matched_c = false;
+    break;
+}
+}
+    j2 = (j2 + 1);
+}
+    if (matched_c) {
+    int64_t end = (pos_c + pattern_len);
+    while (end < src_len) {
+    {
+    char c = (source)[end];
+    if ((c == ((char)(10))) || (c == ((char)(59)))) {
+    break;
+}
+}
+    end = (end + 1);
+}
+    const char* before = substring(source, 0, (pos_c + pattern_len));
+    const char* after = substring(source, end, src_len);
+    modified = _kai_str_concat(_kai_str_concat(before, const_val), after);
+    found_const = true;
+    break;
+}
+    pos_c = (pos_c + 1);
+}
+    if (!found_const) {
+    printf("Error: const '%s' not found in '%s'\n", const_name, patch_file);
+    return 1;
+}
+} else if (strcmp(op_name, "replaceText") == 0) {
+    if (strlen(op_arg1) == 0) {
+    printf("Error: replaceText requires --old <text>\n");
+    return 1;
+}
+    if (strlen(op_arg2) == 0) {
+    printf("Error: replaceText requires --new <text>\n");
+    return 1;
+}
+    modified = str_replace(source, op_arg1, op_arg2);
+} else {
+    printf("Error: Unknown operation '%s'\n", op_name);
+    printf("Supported: addMain, addFn, setConst, replaceText\n");
+    return 1;
+}
+}
+    Result_Bool_IoError write_res = write_string(patch_file, modified);
+    if (write_res.tag != 0) {
+    printf("Error: Could not write '%s'\n", patch_file);
+    return 1;
+}
+    if (json) {
+    printf("{\"result\":\"patched\",\"file\":\"%s\",\"operation\":\"%s\"}\n", patch_file, op_name);
+}
+    return 0;
+}
+    bool is_fix = false;
+    {
+    if (strcmp(first_arg, "fix") == 0) {
+    is_fix = true;
+}
+}
+    if (is_fix) {
+    const char* fix_mode = "plan";
+    const char* fix_file = "";
+    bool json = false;
+    int64_t i2 = 2;
+    while (i2 < argc) {
+    {
+    const char* a = (const char*)((argv)[i2]);
+    if (strcmp(a, "--plan") == 0) {
+    fix_mode = "plan";
+} else if (strcmp(a, "--patch") == 0) {
+    fix_mode = "patch";
+} else if (strcmp(a, "--apply") == 0) {
+    fix_mode = "apply";
+} else if (strcmp(a, "--json") == 0) {
+    json = true;
+} else if (strcmp(fix_file, "") == 0) {
+    fix_file = a;
+}
+}
+    i2 = (i2 + 1);
+}
+    if (strlen(fix_file) == 0) {
+    printf("Usage: kai fix (--plan|--patch|--apply) [--json] <file>\n");
+    return 1;
+}
+    KaiAllocator fix_alloc = (KaiAllocator){ .heads = (char*)(0), .used = 0 };
+    fix_alloc = KaiAllocator_init();
+    _kai_set_current_allocator((void*)(&(fix_alloc)));
+    Result_Str_IoError src_res = read_to_string(&(fix_alloc), fix_file);
+    if (src_res.tag != 0) {
+    printf("Error: Could not read '%s'\n", fix_file);
+    return 1;
+}
+    const char* source = (const char*)(src_res.value);
+    int64_t src_len_val = strlen(source);
+    ArrayList_Str vars = ArrayList_Str_init(&(fix_alloc));
+    ArrayList_Int var_lines = ArrayList_Int_init(&(fix_alloc));
+    ArrayList_Bool var_mut = ArrayList_Bool_init(&(fix_alloc));
+    int64_t line_start = 0;
+    int64_t line_num = 0;
+    while (line_start <= src_len_val) {
+    int64_t line_end = line_start;
+    while (line_end < src_len_val) {
+    {
+    if ((source)[line_end] == ((char)(10))) {
+    break;
+}
+}
+    line_end = (line_end + 1);
+}
+    if (line_end > src_len_val) {
+    line_end = src_len_val;
+}
+    int64_t line_len = (line_end - line_start);
+    if (line_len > 0) {
+    const char* line = substring(source, line_start, line_end);
+    int64_t li = 0;
+    while (li < line_len) {
+    {
+    char c = (line)[li];
+    if ((c != ((char)(32))) && (c != ((char)(9)))) {
+    break;
+}
+}
+    li = (li + 1);
+}
+    if ((li + 4) <= line_len) {
+    {
+    if (((((line)[li] == ((char)(108))) && ((line)[(li + 1)] == ((char)(101)))) && ((line)[(li + 2)] == ((char)(116)))) && ((line)[(li + 3)] == ((char)(32)))) {
+    int64_t vstart = (li + 4);
+    int64_t vend = vstart;
+    while (vend < line_len) {
+    {
+    char c = (line)[vend];
+    if ((((c == ((char)(32))) || (c == ((char)(61)))) || (c == ((char)(58)))) || (c == ((char)(9)))) {
+    break;
+}
+}
+    vend = (vend + 1);
+}
+    if (vend > vstart) {
+    const char* vname = substring(line, vstart, vend);
+    ArrayList_Str_push(&(vars), vname);
+    ArrayList_Int_push(&(var_lines), line_num);
+    ArrayList_Bool_push(&(var_mut), false);
+}
+}
+}
+}
+    int64_t ai = 0;
+    while (ai < line_len) {
+    {
+    char c = (line)[ai];
+    if ((c != ((char)(32))) && (c != ((char)(9)))) {
+    break;
+}
+}
+    ai = (ai + 1);
+}
+    if (ai < line_len) {
+    int64_t eq_pos = (-1);
+    int64_t vi = ai;
+    while (vi < line_len) {
+    {
+    if ((line)[vi] == ((char)(61))) {
+    eq_pos = vi;
+    break;
+}
+}
+    vi = (vi + 1);
+}
+    if (eq_pos > ai) {
+    bool has_let_prefix = false;
+    {
+    if ((ai + 4) <= eq_pos) {
+    if (((((line)[ai] == ((char)(108))) && ((line)[(ai + 1)] == ((char)(101)))) && ((line)[(ai + 2)] == ((char)(116)))) && ((line)[(ai + 3)] == ((char)(32)))) {
+    has_let_prefix = true;
+}
+}
+}
+    if ((!has_let_prefix) && (eq_pos > 0)) {
+    int64_t before_eq = (eq_pos - 1);
+    while (before_eq >= ai) {
+    {
+    char c = (line)[before_eq];
+    if ((c != ((char)(32))) && (c != ((char)(9)))) {
+    break;
+}
+}
+    before_eq = (before_eq - 1);
+}
+    int64_t assign_start = before_eq;
+    while (assign_start >= ai) {
+    {
+    char c = (line)[assign_start];
+    if ((c == ((char)(32))) || (c == ((char)(9)))) {
+    break;
+}
+}
+    assign_start = (assign_start - 1);
+}
+    assign_start = (assign_start + 1);
+    if (assign_start <= before_eq) {
+    const char* assign_var = substring(line, assign_start, (before_eq + 1));
+    int64_t vi2 = 0;
+    while (vi2 < ArrayList_Str_length(&(vars))) {
+    {
+    if ((strcmp(assign_var, ArrayList_Str_get(&(vars), vi2)) == 0) && (!ArrayList_Bool_get(&(var_mut), vi2))) {
+    ArrayList_Bool_set(&(var_mut), vi2, true);
+}
+}
+    vi2 = (vi2 + 1);
+}
+}
+}
+}
+}
+}
+    line_start = (line_end + 1);
+    line_num = (line_num + 1);
+}
+    int64_t fix_count = 0;
+    const char* fix_text = "";
+    if (json) {
+    fix_text = _kai_str_concat(_kai_str_concat("{\"file\":\"", fix_file), "\",\"fixes\":[");
+}
+    int64_t vi3 = 0;
+    while (vi3 < ArrayList_Str_length(&(vars))) {
+    if (ArrayList_Bool_get(&(var_mut), vi3)) {
+    fix_count = (fix_count + 1);
+    const char* vname_val = ArrayList_Str_get(&(vars), vi3);
+    int64_t vline = ArrayList_Int_get(&(var_lines), vi3);
+    if (json) {
+    if (fix_count > 1) {
+    fix_text = _kai_str_concat(fix_text, ",");
+}
+    fix_text = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(fix_text, "{\"name\":\""), vname_val), "\",\"line\":"), vname_val), ",\"fix\":\"let->var\",\"safety\":\"behavior-preserving\"}");
+}
+}
+    vi3 = (vi3 + 1);
+}
+    if (json) {
+    fix_text = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(fix_text, "],\"mode\":\""), fix_mode), "\",\"count\":"), fix_text), "}");
+    fix_text = _kai_str_concat(_kai_str_concat("{\"file\":\"", fix_file), "\",\"fixes\":[");
+    int64_t count_added = 0;
+    int64_t vi4 = 0;
+    while (vi4 < ArrayList_Str_length(&(vars))) {
+    if (ArrayList_Bool_get(&(var_mut), vi4)) {
+    if (count_added > 0) {
+    fix_text = _kai_str_concat(fix_text, ",");
+}
+    const char* vname_val = ArrayList_Str_get(&(vars), vi4);
+    fix_text = _kai_str_concat(_kai_str_concat(fix_text, "{\"name\":\""), vname_val);
+    fix_text = _kai_str_concat(fix_text, "\",\"fix\":\"let->var\",\"safety\":\"behavior-preserving\"}");
+    count_added = (count_added + 1);
+}
+    vi4 = (vi4 + 1);
+}
+    fix_text = _kai_str_concat(_kai_str_concat(_kai_str_concat(fix_text, "],\"total\":"), fix_text), "}");
+    fix_text = "";
+}
+    if (fix_count == 0) {
+    if (json) {
+    printf("{\"file\":\"%s\",\"fixes\":[],\"total\":0}\n", fix_file);
+} else {
+    printf("No auto-fixable issues found in '%s'\n", fix_file);
+}
+    return 0;
+}
+    if ((strcmp(fix_mode, "plan") == 0) || (strcmp(fix_mode, "plan") == 0)) {
+    if (!json) {
+    printf("Found %lld auto-fixable issue(s) in '%s':\n", fix_count, fix_file);
+    int64_t vi5 = 0;
+    while (vi5 < ArrayList_Str_length(&(vars))) {
+    if (ArrayList_Bool_get(&(var_mut), vi5)) {
+    printf("  [behavior-preserving] variable '%s': change 'let' to 'var' (E0008)\n", ArrayList_Str_get(&(vars), vi5));
+}
+    vi5 = (vi5 + 1);
+}
+    printf("\nApply with: kai fix --apply '%s'\n", fix_file);
+} else {
+    printf("{\"file\":\"%s\",\"fixes\":[", fix_file);
+    bool first_fix = true;
+    int64_t vi6 = 0;
+    while (vi6 < ArrayList_Str_length(&(vars))) {
+    if (ArrayList_Bool_get(&(var_mut), vi6)) {
+    if (!first_fix) {
+    printf(",");
+}
+    printf("{\"name\":\"%s\",\"fix\":\"let->var\",\"safety\":\"behavior-preserving\"}", ArrayList_Str_get(&(vars), vi6));
+    first_fix = false;
+}
+    vi6 = (vi6 + 1);
+}
+    printf("],\"total\":%lld}\n", fix_count);
+}
+    return 0;
+}
+    const char* modified_source = "";
+    int64_t line_start2 = 0;
+    int64_t line_num2 = 0;
+    while (line_start2 <= src_len_val) {
+    int64_t line_end2 = line_start2;
+    while (line_end2 < src_len_val) {
+    {
+    if ((source)[line_end2] == ((char)(10))) {
+    break;
+}
+}
+    line_end2 = (line_end2 + 1);
+}
+    if (line_end2 > src_len_val) {
+    line_end2 = src_len_val;
+}
+    int64_t current_line_num = line_num2;
+    bool apply_fix_to_line = false;
+    int64_t vi8 = 0;
+    while (vi8 < ArrayList_Str_length(&(vars))) {
+    if ((ArrayList_Int_get(&(var_lines), vi8) == current_line_num) && ArrayList_Bool_get(&(var_mut), vi8)) {
+    apply_fix_to_line = true;
+}
+    vi8 = (vi8 + 1);
+}
+    if (apply_fix_to_line) {
+    const char* line_text = substring(source, line_start2, line_end2);
+    const char* fixed_line_text = str_replace(line_text, "let ", "var ");
+    modified_source = _kai_str_concat(modified_source, fixed_line_text);
+    if ((strcmp(fix_mode, "patch") == 0) && json) {
+    printf("{\"patch\":true,\"file\":\"%s\",\"line\":%lld,\"old\":\"", fix_file, current_line_num);
+    int64_t li2 = 0;
+    while (li2 < strlen(line_text)) {
+    {
+    char c = (line_text)[li2];
+    if (c == ((char)(34))) {
+    printf("\\\"");
+} else if (c == ((char)(92))) {
+    printf("\\\\");
+} else if (c == ((char)(10))) {
+    printf("\\n");
+} else {
+    printf("%c", c);
+}
+}
+    li2 = (li2 + 1);
+}
+    printf("\",\"new\":\"");
+    int64_t li3 = 0;
+    while (li3 < strlen(fixed_line_text)) {
+    {
+    char c = (fixed_line_text)[li3];
+    if (c == ((char)(34))) {
+    printf("\\\"");
+} else if (c == ((char)(92))) {
+    printf("\\\\");
+} else if (c == ((char)(10))) {
+    printf("\\n");
+} else {
+    printf("%c", c);
+}
+}
+    li3 = (li3 + 1);
+}
+    printf("\"}\n");
+}
+} else {
+    modified_source = _kai_str_concat(modified_source, substring(source, line_start2, line_end2));
+}
+    bool is_last_line = (line_end2 >= src_len_val);
+    if (!is_last_line) {
+    modified_source = _kai_str_concat(modified_source, "\n");
+}
+    line_start2 = (line_end2 + 1);
+    line_num2 = (line_num2 + 1);
+}
+    if (strcmp(fix_mode, "apply") == 0) {
+    Result_Bool_IoError write_res = write_string(fix_file, modified_source);
+    if (write_res.tag != 0) {
+    printf("Error: Could not write '%s'\n", fix_file);
+    return 1;
+}
+    if (!json) {
+    printf("Applied %lld fix(es) to '%s'\n", fix_count, fix_file);
+} else {
+    printf("{\"result\":\"applied\",\"file\":\"%s\",\"fixes\":%lld}\n", fix_file, fix_count);
+}
+} else if ((strcmp(fix_mode, "patch") == 0) && (!json)) {
+    printf("Would apply %lld fix(es) to '%s'\n", fix_count, fix_file);
+    printf("Use --apply to apply, or --json for machine-readable output\n");
+}
+    return 0;
+}
+    bool is_graph = false;
+    {
+    if (strcmp(first_arg, "graph") == 0) {
+    is_graph = true;
+}
+}
+    if (is_graph) {
+    if (argc < 3) {
+    printf("Usage: kai graph (export|query) <file> [options]\n");
+    printf("  export <file>    Export AST as JSON\n");
+    printf("  query <file>     Query program structure\n");
+    return 1;
+}
+    const char* graph_sub = "";
+    {
+    graph_sub = (const char*)((argv)[2]);
+}
+    const char* graph_file = "";
+    const char* graph_fn = "";
+    bool graph_json = false;
+    int64_t i3 = 3;
+    while (i3 < argc) {
+    {
+    const char* a = (const char*)((argv)[i3]);
+    if (strcmp(a, "--json") == 0) {
+    graph_json = true;
+} else if (strcmp(a, "--fn") == 0) {
+    if ((i3 + 1) < argc) {
+    i3 = (i3 + 1);
+    graph_fn = (const char*)((argv)[i3]);
+}
+} else if (strcmp(graph_file, "") == 0) {
+    graph_file = a;
+}
+}
+    i3 = (i3 + 1);
+}
+    if (strlen(graph_file) == 0) {
+    printf("Error: No input file specified\n");
+    return 1;
+}
+    KaiAllocator graph_alloc = (KaiAllocator){ .heads = (char*)(0), .used = 0 };
+    graph_alloc = KaiAllocator_init();
+    _kai_set_current_allocator((void*)(&(graph_alloc)));
+    Result_Str_IoError src_res2 = read_to_string(&(graph_alloc), graph_file);
+    if (src_res2.tag != 0) {
+    printf("Error: Could not read '%s'\n", graph_file);
+    return 1;
+}
+    const char* graph_source = (const char*)(src_res2.value);
+    Lexer graph_lexer = Lexer_init(&(graph_alloc), graph_source);
+    Lexer_lex(&(graph_lexer));
+    if (graph_lexer.has_error) {
+    printf("Error: Lexer error in '%s'\n", graph_file);
+    return 1;
+}
+    Parser graph_parser = Parser_init(&(graph_alloc), graph_lexer.tokens);
+    int64_t graph_program_idx = Parser_parse_program(&(graph_parser));
+    if (graph_program_idx < 0) {
+    printf("Error: Parse error in '%s'\n", graph_file);
+    return 1;
+}
+    {
+    if (strcmp(graph_sub, "export") == 0) {
+    printf("{\"file\":\"%s\",\"stmts\":[\n", graph_file);
+    int64_t si = 0;
+    int64_t stmt_count = ArrayList_StmtNode_length(graph_parser.stmt_pool);
+    while (si < stmt_count) {
+    StmtNode stmt = ArrayList_StmtNode_get(graph_parser.stmt_pool, si);
+    if (si > 0) {
+    printf(",\n");
+}
+    printf("{\"id\":%lld,\"kind\":", si);
+    StmtKind sk = stmt.kind;
+    if (sk == 0) {
+    printf("\"none\"");
+} else if (sk == 1) {
+    printf("\"block\"");
+} else if (sk == 2) {
+    printf("\"var_decl\"");
+} else if (sk == 3) {
+    printf("\"assignment\"");
+} else if (sk == 4) {
+    printf("\"func_decl\"");
+} else if (sk == 5) {
+    printf("\"struct_decl\"");
+} else if (sk == 6) {
+    printf("\"impl_block\"");
+} else if (sk == 7) {
+    printf("\"trait_decl\"");
+} else if (sk == 8) {
+    printf("\"enum_decl\"");
+} else if (sk == 9) {
+    printf("\"if\"");
+} else if (sk == 10) {
+    printf("\"if_let\"");
+} else if (sk == 11) {
+    printf("\"while\"");
+} else if (sk == 12) {
+    printf("\"for\"");
+} else if (sk == 13) {
+    printf("\"return\"");
+} else if (sk == 14) {
+    printf("\"print\"");
+} else if (sk == 15) {
+    printf("\"expr\"");
+} else if (sk == 16) {
+    printf("\"defer\"");
+} else if (sk == 17) {
+    printf("\"unsafe\"");
+} else if (sk == 18) {
+    printf("\"extern\"");
+} else if (sk == 19) {
+    printf("\"import\"");
+} else if (sk == 20) {
+    printf("\"cimport\"");
+} else if (sk == 21) {
+    printf("\"match\"");
+} else if (sk == 22) {
+    printf("\"error_decl\"");
+} else if (sk == 23) {
+    printf("\"break\"");
+} else if (sk == 24) {
+    printf("\"continue\"");
+} else {
+    printf("\"unknown\"");
+}
+    if (strlen(stmt.func_name) > 0) {
+    printf(",\"name\":\"%s\"", stmt.func_name);
+}
+    if (strlen(stmt.struct_name) > 0) {
+    printf(",\"name\":\"%s\"", stmt.struct_name);
+}
+    if (strlen(stmt.enum_name) > 0) {
+    printf(",\"name\":\"%s\"", stmt.enum_name);
+}
+    if (strlen(stmt.vardecl_name) > 0) {
+    printf(",\"var\":\"%s\"", stmt.vardecl_name);
+}
+    if (strlen(stmt.vardecl_type) > 0) {
+    printf(",\"type\":\"%s\"", stmt.vardecl_type);
+}
+    if (strlen(stmt.func_return_type) > 0) {
+    printf(",\"return_type\":\"%s\"", stmt.func_return_type);
+}
+    printf("}");
+    si = (si + 1);
+}
+    printf("],\n\"exprs\":[\n");
+    int64_t ei = 0;
+    int64_t expr_count = ArrayList_ExprNode_length(graph_parser.expr_pool);
+    while (ei < expr_count) {
+    ExprNode expr = ArrayList_ExprNode_get(graph_parser.expr_pool, ei);
+    if (ei > 0) {
+    printf(",\n");
+}
+    printf("{\"id\":%lld,\"kind\":", ei);
+    ExprKind ek = expr.kind;
+    if (ek == 0) {
+    printf("\"none\"");
+} else if (ek == 1) {
+    printf("\"literal\"");
+} else if (ek == 2) {
+    printf("\"str_interp\"");
+} else if (ek == 3) {
+    printf("\"identifier\"");
+} else if (ek == 4) {
+    printf("\"binary_op\"");
+} else if (ek == 5) {
+    printf("\"unary_op\"");
+} else if (ek == 6) {
+    printf("\"func_call\"");
+} else if (ek == 7) {
+    printf("\"struct_init\"");
+} else if (ek == 8) {
+    printf("\"field_access\"");
+} else if (ek == 9) {
+    printf("\"method_call\"");
+} else if (ek == 10) {
+    printf("\"index\"");
+} else if (ek == 11) {
+    printf("\"check\"");
+} else if (ek == 12) {
+    printf("\"slice\"");
+} else if (ek == 13) {
+    printf("\"range\"");
+} else if (ek == 14) {
+    printf("\"array\"");
+} else if (ek == 15) {
+    printf("\"tuple\"");
+} else if (ek == 16) {
+    printf("\"borrow\"");
+} else if (ek == 17) {
+    printf("\"deref\"");
+} else if (ek == 18) {
+    printf("\"try\"");
+} else if (ek == 19) {
+    printf("\"catch\"");
+} else if (ek == 20) {
+    printf("\"asm\"");
+} else {
+    printf("\"unknown\"");
+}
+    if (strlen(expr.ident_name) > 0) {
+    printf(",\"name\":\"%s\"", expr.ident_name);
+}
+    if (strlen(expr.func_name) > 0) {
+    printf(",\"func\":\"%s\"", expr.func_name);
+}
+    if (strlen(expr.struct_name) > 0) {
+    printf(",\"struct\":\"%s\"", expr.struct_name);
+}
+    if (strlen(expr.inferred_type) > 0) {
+    printf(",\"type\":\"%s\"", expr.inferred_type);
+}
+    if (strlen(expr.binop_op) > 0) {
+    printf(",\"op\":\"%s\"", expr.binop_op);
+}
+    if (strlen(expr.unop_op) > 0) {
+    printf(",\"op\":\"%s\"", expr.unop_op);
+}
+    printf("}");
+    ei = (ei + 1);
+}
+    printf("]}\n");
+} else if (strcmp(graph_sub, "query") == 0) {
+    if (strlen(graph_fn) > 0) {
+    bool found = false;
+    int64_t si2 = 0;
+    int64_t stmt_count2 = ArrayList_StmtNode_length(graph_parser.stmt_pool);
+    while (si2 < stmt_count2) {
+    StmtNode stmt2 = ArrayList_StmtNode_get(graph_parser.stmt_pool, si2);
+    if ((stmt2.kind == 4) && (strcmp(stmt2.func_name, graph_fn) == 0)) {
+    printf("function: %s\n", stmt2.func_name);
+    printf("  return: %s\n", stmt2.func_return_type);
+    printf("  params: ");
+    int64_t param_count = ArrayList_Param_length(&(stmt2.func_params));
+    int64_t pi = 0;
+    while (pi < param_count) {
+    Param p = ArrayList_Param_get(&(stmt2.func_params), pi);
+    printf("%s: %s", p.name, p.ptype);
+    pi = (pi + 1);
+    if (pi < param_count) {
+    printf(", ");
+}
+}
+    printf("\n");
+    found = true;
+}
+    si2 = (si2 + 1);
+}
+    if (!found) {
+    printf("function '%s' not found\n", graph_fn);
+}
+} else {
+    StmtNode root = ArrayList_StmtNode_get(graph_parser.stmt_pool, graph_program_idx);
+    printf("file: %s\n", graph_file);
+    int64_t si3 = 0;
+    while (si3 < ArrayList_Int_length(&(root.block_stmts))) {
+    int64_t idx = ArrayList_Int_get(&(root.block_stmts), si3);
+    StmtNode stmt3 = ArrayList_StmtNode_get(graph_parser.stmt_pool, idx);
+    if (stmt3.kind == 4) {
+    printf("  fn %s(%s) %s\n", stmt3.func_name, "", stmt3.func_return_type);
+} else if (stmt3.kind == 5) {
+    printf("  struct %s\n", stmt3.struct_name);
+} else if (stmt3.kind == 8) {
+    printf("  enum %s\n", stmt3.enum_name);
+} else if (stmt3.kind == 22) {
+    printf("  error %s\n", stmt3.error_name);
+} else if (stmt3.kind == 2) {
+    printf("  var %s: %s\n", stmt3.vardecl_name, stmt3.vardecl_type);
+}
+    si3 = (si3 + 1);
+}
+}
+} else {
+    printf("Error: Unknown graph subcommand '%s'\n", graph_sub);
+    printf("Supported: export, query\n");
+    return 1;
+}
+}
+    return 0;
+}
     const char* input_file = "";
+    bool is_run = false;
+    {
+    if (strcmp(first_arg, "run") == 0) {
+    is_run = true;
+}
+}
+    if (is_run) {
+    if (argc < 3) {
+    printf("Error: No input file specified\n");
+    printf("Usage: kai run <file>\n");
+    return 1;
+}
+    {
+    input_file = (const char*)((argv)[2]);
+}
+} else {
+    input_file = first_arg;
+}
     const char* output_bin = "";
     bool emit_c_only = false;
     const char* opt_level = "-O2";
-    bool emit_llvm = false;
-    int64_t i = 1;
+    bool json_mode = false;
+    bool check_only = false;
+    int64_t i = 2;
+    if (!is_run) {
+    i = 2;
+}
     while (i < argc) {
     const char* arg = (const char*)((argv)[i]);
-    bool is_c = false;
-    bool is_o = false;
-    bool is_o0 = false;
-    bool is_o1 = false;
-    bool is_o2 = false;
-    bool is_o3 = false;
-    bool is_os = false;
-    bool is_llvm = false;
+    bool matched = true;
     {
     if (strcmp(arg, "-c") == 0) {
-    is_c = true;
-} else if (strcmp(arg, "-o") == 0) {
-    is_o = true;
-} else if (strcmp(arg, "-O0") == 0) {
-    is_o0 = true;
-} else if (strcmp(arg, "-O1") == 0) {
-    is_o1 = true;
-} else if (strcmp(arg, "-O2") == 0) {
-    is_o2 = true;
-} else if (strcmp(arg, "-O3") == 0) {
-    is_o3 = true;
-} else if (strcmp(arg, "-Os") == 0) {
-    is_os = true;
-} else if (strcmp(arg, "-emit-llvm") == 0) {
-    is_llvm = true;
-}
-}
-    if (is_c) {
     emit_c_only = true;
-} else if (is_llvm) {
-    emit_llvm = true;
-} else if (is_o) {
+} else if (strcmp(arg, "-o") == 0) {
     if ((i + 1) < argc) {
     i = (i + 1);
     output_bin = (const char*)((argv)[i]);
 } else {
-    printf("Error: -o requires an argument");
+    printf("Error: -o requires an argument\n");
     return 1;
 }
-} else if (is_o0) {
+} else if (strcmp(arg, "-O0") == 0) {
     opt_level = "-O0";
-} else if (is_o1) {
+} else if (strcmp(arg, "-O1") == 0) {
     opt_level = "-O1";
-} else if (is_o2) {
+} else if (strcmp(arg, "-O2") == 0) {
     opt_level = "-O2";
-} else if (is_o3) {
+} else if (strcmp(arg, "-O3") == 0) {
     opt_level = "-O3";
-} else if (is_os) {
+} else if (strcmp(arg, "-Os") == 0) {
     opt_level = "-Os";
+} else if (strcmp(arg, "--json") == 0) {
+    json_mode = true;
+} else if (strcmp(arg, "check") == 0) {
+    check_only = true;
 } else {
+    matched = false;
+}
+}
+    if ((matched == false) && (!is_run)) {
     input_file = arg;
 }
     i = (i + 1);
 }
     if (strlen(input_file) == 0) {
-    printf("Error: No input file specified");
+    printf("Error: No input file specified\n");
     return 1;
 }
     KaiAllocator allocator = (KaiAllocator){ .heads = (char*)(0), .used = 0 };
@@ -13281,13 +10475,6 @@ int main(int argc, char** argv) {
     exe_include_flag = _kai_str_concat("-I", exe_dir);
     runtime_path = _kai_str_concat(exe_dir, "/kai_runtime.c");
 }
-    KaiAllocator_free(&(allocator), buf);
-}
-    const char* llvm_flags = "";
-    if (fs_exists("/opt/homebrew/opt/llvm@21")) {
-    llvm_flags = " -I /opt/homebrew/opt/llvm@21/include -L /opt/homebrew/opt/llvm@21/lib -lLLVM";
-} else if (fs_exists("/opt/homebrew/opt/llvm@20")) {
-    llvm_flags = " -I /opt/homebrew/opt/llvm@20/include -L /opt/homebrew/opt/llvm@20/lib -lLLVM";
 }
     const char* base = get_base_name(&(allocator), input_file);
     const char* bin_name = base;
@@ -13297,40 +10484,42 @@ int main(int argc, char** argv) {
     const char* c_file = _kai_str_concat(base, ".c");
     Result_Str_IoError source_res = read_to_string(&(allocator), input_file);
     if (source_res.tag != 0) {
+    if (json_mode) {
+    printf("{\"messages\":[{\"code\":\"E0099\",\"message\":\"Failed to read input file: '%s'\"}]}\n", input_file);
+}
     return 4;
 }
     const char* source = (const char*)(source_res.value);
     Lexer lexer = Lexer_init(&(allocator), source);
     Lexer_lex(&(lexer));
     if (lexer.has_error) {
+    if (json_mode) {
+    printf("{\"messages\":[{\"code\":\"E0100\",\"message\":\"Lexer error\",\"file\":\"%s\"}],\"error\":true}\n", input_file);
+}
     return 2;
 }
     Parser parser = Parser_init(&(allocator), lexer.tokens);
     int64_t program_idx = Parser_parse_program(&(parser));
     if (program_idx < 0) {
+    if (json_mode) {
+    printf("{\"messages\":[{\"code\":\"E0101\",\"message\":\"Parse error\",\"file\":\"%s\"}],\"error\":true}\n", input_file);
+}
     return 3;
 }
     TypeChecker checker = TypeChecker_init(&(allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool, input_file);
     bool success = TypeChecker_check_program(&(checker), program_idx);
     if (!success) {
+    if (json_mode) {
+    printf("{\"result\":\"typecheck_failed\",\"file\":\"%s\"}\n", input_file);
+}
     return 4;
 }
-    if (emit_llvm) {
-    LLVMCodegen gen_llvm = LLVMCodegen_init(&(allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool);
-    const char* output = LLVMCodegen_generate(&(gen_llvm), program_idx);
-    const char* ll_file = _kai_str_concat(base, ".ll");
-    Result_Bool_IoError write_res = write_string(ll_file, output);
-    if (write_res.tag != 0) {
-    return 5;
+    if (check_only) {
+    if (json_mode) {
+    printf("{\"result\":\"ok\",\"file\":\"%s\"}\n", input_file);
 }
-    if (emit_c_only) {
     return 0;
 }
-    const char* cmd = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("clang", llvm_flags), " "), ll_file), " "), runtime_path), " -o "), bin_name);
-    {
-    return system((char*)(cmd));
-}
-} else {
     Codegen gen = Codegen_init(&(allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool);
     const char* output = Codegen_generate(&(gen), program_idx);
     Result_Bool_IoError write_res = write_string(c_file, output);
@@ -13340,9 +10529,8 @@ int main(int argc, char** argv) {
     if (emit_c_only) {
     return 0;
 }
-    const char* cmd = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("clang ", exe_include_flag), llvm_flags), " "), opt_level), " "), c_file), " -o "), bin_name);
+    const char* cmd = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("clang ", exe_include_flag), " "), opt_level), " "), c_file), " -o "), bin_name);
     {
     return system((char*)(cmd));
-}
 }
 }
