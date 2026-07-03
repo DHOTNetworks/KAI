@@ -4,13 +4,6 @@ on:
   push:
     tags:
       - '*' # Triggers on any tag push (e.g., v0.3.8, 0.3.8)
-  workflow_dispatch:
-    inputs:
-      tag_name:
-        description: 'Tag name for the release (e.g., 0.3.8)'
-        required: true
-        default: '0.3.8'
-
 permissions:
   contents: write
 
@@ -30,7 +23,8 @@ jobs:
         run: |
           # Use llvm-config to dynamically get correct header paths, library paths, and LLVM/system libraries
           clang -O3 \
-            compiler_bootstrap.c \
+            compiler.c \
+            src/runtime.c \
             $(llvm-config --cflags --ldflags --libs --system-libs) \
             -o kai
 
@@ -41,7 +35,7 @@ jobs:
           
           # Copy the compiled compiler binary and runtime helper
           cp kai build_linux/kai-compiler/bin/
-          cp kai_runtime.c build_linux/kai-compiler/bin/
+          cp src/kai_runtime.c build_linux/kai-compiler/bin/
           
           # Copy the custom language standard library
           cp -R std build_linux/kai-compiler/lib/kai/
