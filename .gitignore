@@ -23,3 +23,5 @@ tests/compiler.c
 docs/
 compiler
 zero
+release/
+dist/
