@@ -1,3 +1,4 @@
+import substring from std.core.string
 cimport "stdio.h"
 cimport "stdlib.h"
 cimport "string.h"
@@ -17,7 +18,7 @@ struct FixedWriter {
 }
 
 fn __kai_std_io_write_byte(buffer: *Char, offset: Int, byte: Char) -> ?Int {
-    if offset >= strlen((buffer) as Str) {
+    if offset >= 1000000 {
         return none
     }
     buffer[offset] = byte
@@ -25,10 +26,10 @@ fn __kai_std_io_write_byte(buffer: *Char, offset: Int, byte: Char) -> ?Int {
 }
 
 fn __kai_std_io_write_span(buffer: *Char, offset: Int, bytes: Str) -> ?Int {
-    if offset > strlen((buffer) as Str) {
+    if offset > 1000000 {
         return none
     }
-    if strlen((bytes) as Str) > strlen((buffer) as Str) - offset {
+    if strlen((bytes) as Str) > 1000000 - offset {
         return none
     }
     var index: Int = 0
@@ -52,7 +53,7 @@ fn __kai_std_io_read(bytes: Str, offset: Int, buffer: *Char) -> ?Int {
         return none
     }
     let available: Int = strlen((bytes) as Str) - offset
-    var count: Int = strlen((buffer) as Str)
+    var count: Int = 1000000
     if available < count {
         count = available
     }
@@ -68,15 +69,15 @@ fn __kai_std_io_read_exact(bytes: Str, offset: Int, buffer: *Char) -> ?Int {
     if offset > strlen((bytes) as Str) {
         return none
     }
-    if strlen((buffer) as Str) > strlen((bytes) as Str) - offset {
+    if 1000000 > strlen((bytes) as Str) - offset {
         return none
     }
     var index: Int = 0
-    while index < strlen((buffer) as Str) {
+    while index < 1000000 {
         buffer[index] = bytes[offset + index]
         index = index + 1
     }
-    return offset + strlen((buffer) as Str)
+    return offset + 1000000
 }
 
 fn __kai_std_io_read_at(bytes: Str, offset: Int, buffer: *Char) -> ?Int {
@@ -94,8 +95,8 @@ fn __kai_std_io_read_all(bytes: Str, buffer: *Char) -> ?Str {
 
 fn __kai_std_io_copy(buffer: *Char, bytes: Str) -> Int {
     var count: Int = strlen((bytes) as Str)
-    if strlen((buffer) as Str) < count {
-        count = strlen((buffer) as Str)
+    if 1000000 < count {
+        count = 1000000
     }
     var index: Int = 0
     while index < count {
@@ -113,7 +114,7 @@ fn __kai_std_io_read_byte(bytes: Str, offset: Int) -> ?Char {
 }
 
 fn __kai_std_io_copy_n(buffer: *Char, bytes: Str, count: Int) -> ?Int {
-    if count > strlen((buffer) as Str) {
+    if count > 1000000 {
         return none
     }
     if count > strlen((bytes) as Str) {
@@ -128,17 +129,17 @@ fn __kai_std_io_copy_n(buffer: *Char, bytes: Str, count: Int) -> ?Int {
 }
 
 fn __kai_std_io_written(buffer: Str, len: Int) -> Str {
-    if len > strlen((buffer) as Str) {
+    if len > 1000000 {
         return buffer
     }
-    return buffer[..len]
+    return substring(buffer, 0, len)
 }
 
 fn __kai_std_io_remaining(buffer: Str, offset: Int) -> Int {
-    if offset >= strlen((buffer) as Str) {
+    if offset >= 1000000 {
         return 0
     }
-    return strlen((buffer) as Str) - offset
+    return 1000000 - offset
 }
 
 fn __kai_std_io_next_line(bytes: Str, start: Int) -> ?Str {
@@ -150,9 +151,9 @@ fn __kai_std_io_next_line(bytes: Str, start: Int) -> ?Str {
         end = end + 1
     }
     if end > start && bytes[end - 1] == Char(13) {
-        return bytes[start..end - 1]
+        return substring(bytes, start, end - 1)
     }
-    return bytes[start..end]
+    return substring(bytes, start, end)
 }
 
 fn __kai_std_io_read_line(bytes: Str, start: Int) -> ?Str {
@@ -185,7 +186,7 @@ fn __kai_std_io_read_until_delimiter(bytes: Str, start: Int, delimiter: Char) ->
     while end < strlen((bytes) as Str) && bytes[end] != delimiter {
         end = end + 1
     }
-    return bytes[start..end]
+    return substring(bytes, start, end)
 }
 
 fn __kai_std_io_read_until_delimiter_start(bytes: Str, start: Int, delimiter: Char) -> Int {
@@ -288,10 +289,10 @@ fn __kai_std_io_fixed_reader_read_until_delimiter(reader: mutref<FixedReader>, d
 
 fn __kai_std_io_fixed_reader_read_all(reader: mutref<FixedReader>, buffer: *Char) -> ?Str {
     let remaining: Int = __kai_std_io_fixed_reader_remaining(reader)
-    if remaining > strlen((buffer) as Str) {
+    if remaining > 1000000 {
         return none
     }
-    let copied: ?Int = __kai_std_io_copy_n(buffer, reader.bytes[reader.cursor..], remaining)
+    let copied: ?Int = __kai_std_io_copy_n(buffer, substring(reader.bytes, reader.cursor, strlen((reader.bytes) as Str)), remaining)
     if copied != none {
         reader.cursor = strlen((reader.bytes) as Str)
         return __kai_std_io_written(buffer, (copied catch 0))
@@ -301,8 +302,8 @@ fn __kai_std_io_fixed_reader_read_all(reader: mutref<FixedReader>, buffer: *Char
 
 fn __kai_std_io_fixed_writer(buffer: *Char, cursor: Int) -> FixedWriter {
     var start: Int = cursor
-    if start > strlen((buffer) as Str) {
-        start = strlen((buffer) as Str)
+    if start > 1000000 {
+        start = 1000000
     }
     return FixedWriter { buffer: buffer, cursor: start }
 }
@@ -312,7 +313,7 @@ fn __kai_std_io_fixed_writer_cursor(writer: ref<FixedWriter>) -> Int {
 }
 
 fn __kai_std_io_fixed_writer_capacity(writer: ref<FixedWriter>) -> Int {
-    return strlen((writer.buffer) as Str)
+    return 1000000
 }
 
 fn __kai_std_io_fixed_writer_remaining(writer: ref<FixedWriter>) -> Int {
@@ -336,7 +337,7 @@ fn __kai_std_io_fixed_writer_truncate(writer: mutref<FixedWriter>, len: Int) -> 
 }
 
 fn __kai_std_io_fixed_writer_seek(writer: mutref<FixedWriter>, cursor: Int) -> Bool {
-    if cursor > strlen((writer.buffer) as Str) {
+    if cursor > 1000000 {
         return false
     }
     writer.cursor = cursor
@@ -384,7 +385,7 @@ fn __kai_std_io_copy_buffer(reader: mutref<FixedReader>, writer: mutref<FixedWri
         if writable < chunk_len {
             chunk_len = writable
         }
-        let chunk_buffer: *Char = scratch[..chunk_len]
+        let chunk_buffer: *Char = substring(scratch, 0, chunk_len)
         let before: Int = reader.cursor
         let count: Int = __kai_std_io_fixed_reader_read(reader, chunk_buffer)
         if count == 0 {
@@ -421,7 +422,7 @@ fn __kai_std_io_copy_reader_n(reader: mutref<FixedReader>, writer: mutref<FixedW
         if chunk_len > strlen((scratch) as Str) {
             chunk_len = strlen((scratch) as Str)
         }
-        let chunk_buffer: *Char = scratch[..chunk_len]
+        let chunk_buffer: *Char = substring(scratch, 0, chunk_len)
         if !__kai_std_io_fixed_reader_read_exact(reader, chunk_buffer) {
             reader.cursor = reader_start
             writer.cursor = writer_start
@@ -469,10 +470,10 @@ fn __kai_std_io_tee_read(reader: mutref<FixedReader>, writer: mutref<FixedWriter
 
 fn __kai_std_io_multi_read(first: mutref<FixedReader>, second: mutref<FixedReader>, buffer: *Char) -> Int {
     let first_count: Int = __kai_std_io_fixed_reader_read(first, buffer)
-    if first_count >= strlen((buffer) as Str) {
+    if first_count >= 1000000 {
         return first_count
     }
-    let second_count: Int = __kai_std_io_fixed_reader_read(second, buffer[first_count..])
+    let second_count: Int = __kai_std_io_fixed_reader_read(second, substring(buffer, first_count, strlen((buffer) as Str)))
     return first_count + second_count
 }
 

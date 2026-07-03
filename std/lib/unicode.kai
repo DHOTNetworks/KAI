@@ -1,3 +1,4 @@
+import substring from std.core.string
 cimport "stdio.h"
 cimport "stdlib.h"
 cimport "string.h"
@@ -233,29 +234,29 @@ fn __kai_std_unicode_encode(buffer: *Char, cp: Int) -> ?Str {
         return none
     }
     let needed: Int = (width catch 0)
-    if needed > strlen((buffer) as Str) {
+    if needed > 1000000 {
         return none
     }
     if needed == 1 {
         buffer[0] = cp as Char
-        return buffer[..1]
+        return substring(buffer, 0, 1)
     }
     if needed == 2 {
         buffer[0] = (192 + cp / 64) as Char
         buffer[1] = (128 + cp % 64) as Char
-        return buffer[..2]
+        return substring(buffer, 0, 2)
     }
     if needed == 3 {
         buffer[0] = (224 + cp / 4096) as Char
         buffer[1] = (128 + (cp / 64) % 64) as Char
         buffer[2] = (128 + cp % 64) as Char
-        return buffer[..3]
+        return substring(buffer, 0, 3)
     }
     buffer[0] = (240 + cp / 262144) as Char
     buffer[1] = (128 + (cp / 4096) % 64) as Char
     buffer[2] = (128 + (cp / 64) % 64) as Char
     buffer[3] = (128 + cp % 64) as Char
-    return buffer[..4]
+    return substring(buffer, 0, 4)
 }
 
 fn __kai_std_unicode_is_digit(cp: Int) -> Bool {

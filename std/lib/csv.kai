@@ -1,3 +1,4 @@
+import substring from std.core.string
 cimport "stdio.h"
 cimport "stdlib.h"
 cimport "string.h"
@@ -134,7 +135,7 @@ fn csv_valid(bytes: Str) -> Bool {
         if end == none {
             return false
         }
-        let fields: ?Int = csv_field_count(bytes[start..(end catch 0)])
+        let fields: ?Int = csv_field_count(substring(bytes, start, (end catch 0)))
         if fields == none {
             return false
         }
@@ -151,7 +152,7 @@ fn csv_record_count(bytes: Str) -> ?Int {
         if end == none {
             return none
         }
-        let fields: ?Int = csv_field_count(bytes[start..(end catch 0)])
+        let fields: ?Int = csv_field_count(substring(bytes, start, (end catch 0)))
         if fields == none {
             return none
         }
@@ -169,12 +170,12 @@ fn csv_record(bytes: Str, ordinal: Int) -> ?Str {
         if end == none {
             return none
         }
-        let fields: ?Int = csv_field_count(bytes[start..(end catch 0)])
+        let fields: ?Int = csv_field_count(substring(bytes, start, (end catch 0)))
         if fields == none {
             return none
         }
         if count == ordinal {
-            return bytes[start..(end catch 0)]
+            return substring(bytes, start, (end catch 0))
         }
         count = count + 1
         start = csv_next_record_start(bytes, (end catch 0))
@@ -249,7 +250,7 @@ fn csv_field(buffer: *Char, record: Str, ordinal: Int) -> ?Str {
                 if csv_is_quote(byte) {
                     if input + 1 < strlen((record) as Str) && csv_is_quote(record[input + 1]) {
                         if field_index == ordinal {
-                            if output >= strlen((buffer) as Str) {
+                            if output >= 1000000 {
                                 return none
                             }
                             buffer[output] = Char(34)
@@ -262,7 +263,7 @@ fn csv_field(buffer: *Char, record: Str, ordinal: Int) -> ?Str {
                             return none
                         }
                         if field_index == ordinal {
-                            return buffer[..output]
+                            return substring(buffer, 0, output)
                         }
                         if input >= strlen((record) as Str) {
                             return none
@@ -273,7 +274,7 @@ fn csv_field(buffer: *Char, record: Str, ordinal: Int) -> ?Str {
                     }
                 } else {
                     if field_index == ordinal {
-                        if output >= strlen((buffer) as Str) {
+                        if output >= 1000000 {
                             return none
                         }
                         buffer[output] = byte
@@ -292,7 +293,7 @@ fn csv_field(buffer: *Char, record: Str, ordinal: Int) -> ?Str {
                     return none
                 }
                 if field_index == ordinal {
-                    if output >= strlen((buffer) as Str) {
+                    if output >= 1000000 {
                         return none
                     }
                     buffer[output] = byte
@@ -301,7 +302,7 @@ fn csv_field(buffer: *Char, record: Str, ordinal: Int) -> ?Str {
                 input = input + 1
             }
             if field_index == ordinal {
-                return buffer[..output]
+                return substring(buffer, 0, output)
             }
             if input < strlen((record) as Str) {
                 input = input + 1
@@ -316,7 +317,7 @@ fn csv_field(buffer: *Char, record: Str, ordinal: Int) -> ?Str {
 
 fn csv_write_field(buffer: *Char, field: Str) -> ?Str {
     let length: Int = csv_encoded_field_len(field)
-    if length > strlen((buffer) as Str) {
+    if length > 1000000 {
         return none
     }
     if !csv_field_needs_quotes(field) {
@@ -325,7 +326,7 @@ fn csv_write_field(buffer: *Char, field: Str) -> ?Str {
             buffer[index] = field[index]
             index = index + 1
         }
-        return buffer[..strlen((field) as Str)]
+        return substring(buffer, 0, strlen((field) as Str))
     }
     var output: Int = 0
     buffer[output] = Char(34)
@@ -342,14 +343,14 @@ fn csv_write_field(buffer: *Char, field: Str) -> ?Str {
         input = input + 1
     }
     buffer[output] = Char(34)
-    return buffer[..output + 1]
+    return substring(buffer, 0, output + 1)
 }
 
 fn csv_write_record2(buffer: *Char, left: Str, right: Str) -> ?Str {
     let left_len: Int = csv_encoded_field_len(left)
     let right_len: Int = csv_encoded_field_len(right)
     let total: Int = left_len + 1 + right_len + 1
-    if total > strlen((buffer) as Str) {
+    if total > 1000000 {
         return none
     }
     let left_out: ?Str = csv_write_field(buffer, left)
@@ -359,13 +360,13 @@ fn csv_write_record2(buffer: *Char, left: Str, right: Str) -> ?Str {
     var offset: Int = strlen(((left_out catch "")) as Str)
     buffer[offset] = Char(44)
     offset = offset + 1
-    let right_out: ?Str = csv_write_field(buffer[offset..], right)
+    let right_out: ?Str = csv_write_field(substring(buffer, offset, strlen((buffer) as Str)), right)
     if right_out == none {
         return none
     }
     offset = offset + strlen(((right_out catch "")) as Str)
     buffer[offset] = Char(10)
-    return buffer[..offset + 1]
+    return substring(buffer, 0, offset + 1)
 }
 
 fn csv_write_record3(buffer: *Char, first: Str, second: Str, third: Str) -> ?Str {
@@ -373,7 +374,7 @@ fn csv_write_record3(buffer: *Char, first: Str, second: Str, third: Str) -> ?Str
     let second_len: Int = csv_encoded_field_len(second)
     let third_len: Int = csv_encoded_field_len(third)
     let total: Int = first_len + 1 + second_len + 1 + third_len + 1
-    if total > strlen((buffer) as Str) {
+    if total > 1000000 {
         return none
     }
     let first_out: ?Str = csv_write_field(buffer, first)
@@ -383,18 +384,18 @@ fn csv_write_record3(buffer: *Char, first: Str, second: Str, third: Str) -> ?Str
     var offset: Int = strlen(((first_out catch "")) as Str)
     buffer[offset] = Char(44)
     offset = offset + 1
-    let second_out: ?Str = csv_write_field(buffer[offset..], second)
+    let second_out: ?Str = csv_write_field(substring(buffer, offset, strlen((buffer) as Str)), second)
     if second_out == none {
         return none
     }
     offset = offset + strlen(((second_out catch "")) as Str)
     buffer[offset] = Char(44)
     offset = offset + 1
-    let third_out: ?Str = csv_write_field(buffer[offset..], third)
+    let third_out: ?Str = csv_write_field(substring(buffer, offset, strlen((buffer) as Str)), third)
     if third_out == none {
         return none
     }
     offset = offset + strlen(((third_out catch "")) as Str)
     buffer[offset] = Char(10)
-    return buffer[..offset + 1]
+    return substring(buffer, 0, offset + 1)
 }

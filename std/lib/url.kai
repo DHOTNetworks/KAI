@@ -1,3 +1,4 @@
+import substring from std.core.string
 import std.lib.ascii
 
 cimport "stdio.h"
@@ -25,13 +26,13 @@ fn __kai_std_url_percent_encode(buffer: *Char, text: Str) -> ?Str {
     while input < strlen((text) as Str) {
         let byte: Char = text[input]
         if __kai_std_url_is_unreserved(byte) {
-            if output >= strlen((buffer) as Str) {
+            if output >= 1000000 {
                 return none
             }
             buffer[output] = byte
             output = output + 1
         } else {
-            if output + 3 > strlen((buffer) as Str) {
+            if output + 3 > 1000000 {
                 return none
             }
             buffer[output] = Char(37)
@@ -41,14 +42,14 @@ fn __kai_std_url_percent_encode(buffer: *Char, text: Str) -> ?Str {
         }
         input = input + 1
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_url_percent_decode(buffer: *Char, text: Str) -> ?Str {
     var input: Int = 0
     var output: Int = 0
     while input < strlen((text) as Str) {
-        if output >= strlen((buffer) as Str) {
+        if output >= 1000000 {
             return none
         }
         let byte: Char = text[input]
@@ -69,7 +70,7 @@ fn __kai_std_url_percent_decode(buffer: *Char, text: Str) -> ?Str {
         }
         output = output + 1
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_url_query_escape(buffer: *Char, text: Str) -> ?Str {
@@ -78,19 +79,19 @@ fn __kai_std_url_query_escape(buffer: *Char, text: Str) -> ?Str {
     while input < strlen((text) as Str) {
         let byte: Char = text[input]
         if byte == Char(32) {
-            if output >= strlen((buffer) as Str) {
+            if output >= 1000000 {
                 return none
             }
             buffer[output] = Char(43)
             output = output + 1
         } else if __kai_std_url_is_unreserved(byte) {
-            if output >= strlen((buffer) as Str) {
+            if output >= 1000000 {
                 return none
             }
             buffer[output] = byte
             output = output + 1
         } else {
-            if output + 3 > strlen((buffer) as Str) {
+            if output + 3 > 1000000 {
                 return none
             }
             buffer[output] = Char(37)
@@ -100,14 +101,14 @@ fn __kai_std_url_query_escape(buffer: *Char, text: Str) -> ?Str {
         }
         input = input + 1
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_url_query_unescape(buffer: *Char, text: Str) -> ?Str {
     var input: Int = 0
     var output: Int = 0
     while input < strlen((text) as Str) {
-        if output >= strlen((buffer) as Str) {
+        if output >= 1000000 {
             return none
         }
         let byte: Char = text[input]
@@ -131,7 +132,7 @@ fn __kai_std_url_query_unescape(buffer: *Char, text: Str) -> ?Str {
         }
         output = output + 1
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_url_scheme(url: Str) -> ?Str {
@@ -142,7 +143,7 @@ fn __kai_std_url_scheme(url: Str) -> ?Str {
             if index == 0 {
                 return none
             }
-            return url[..index]
+            return substring(url, 0, index)
         }
         if byte == Char(47) || byte == Char(63) || byte == Char(35) {
             return none
@@ -176,7 +177,7 @@ fn __kai_std_url_authority(url: Str) -> ?Str {
     if end == (start catch 0) {
         return none
     }
-    return url[(start catch 0)..end]
+    return substring(url, (start catch 0), end)
 }
 
 fn __kai_std_url_host(url: Str) -> ?Str {
@@ -203,7 +204,7 @@ fn __kai_std_url_host(url: Str) -> ?Str {
         if close + 1 < strlen(((authority catch "")) as Str) && (authority catch "")[close + 1] != Char(58) {
             return none
         }
-        return (authority catch "")[start..close + 1]
+        return substring((authority catch ""), start, close + 1)
     }
     var end: Int = start
     while end < strlen(((authority catch "")) as Str) && (authority catch "")[end] != Char(58) {
@@ -212,7 +213,7 @@ fn __kai_std_url_host(url: Str) -> ?Str {
     if end == start {
         return none
     }
-    return (authority catch "")[start..end]
+    return substring((authority catch ""), start, end)
 }
 
 fn __kai_std_url_path(url: Str) -> Str {
@@ -228,13 +229,13 @@ fn __kai_std_url_path(url: Str) -> Str {
         start = strlen(((scheme catch "")) as Str) + 1
     }
     if start >= strlen((url) as Str) {
-        return url[strlen((url) as Str)..]
+        return substring(url, strlen((url) as Str), strlen((url) as Str))
     }
     var end: Int = start
     while end < strlen((url) as Str) && url[end] != Char(63) && url[end] != Char(35) {
         end = end + 1
     }
-    return url[start..end]
+    return substring(url, start, end)
 }
 
 fn __kai_std_url_query(url: Str) -> ?Str {
@@ -253,7 +254,7 @@ fn __kai_std_url_query(url: Str) -> ?Str {
     while end < strlen((url) as Str) && url[end] != Char(35) {
         end = end + 1
     }
-    return url[start..end]
+    return substring(url, start, end)
 }
 
 fn __kai_std_url_fragment(url: Str) -> ?Str {
@@ -264,7 +265,7 @@ fn __kai_std_url_fragment(url: Str) -> ?Str {
     if start >= strlen((url) as Str) {
         return none
     }
-    return url[start + 1..]
+    return substring(url, start + 1, strlen((url) as Str))
 }
 
 fn __kai_std_url_query_value(query: Str, key: Str) -> ?Str {
@@ -278,12 +279,12 @@ fn __kai_std_url_query_value(query: Str, key: Str) -> ?Str {
         while eq < end && query[eq] != Char(61) {
             eq = eq + 1
         }
-        let name: Str = query[start..eq]
+        let name: Str = substring(query, start, eq)
         if strcmp(name, key) == 0 {
             if eq < end {
-                return query[eq + 1..end]
+                return substring(query, eq + 1, end)
             }
-            return query[end..end]
+            return substring(query, end, end)
         }
         if end == strlen((query) as Str) {
             return none
@@ -304,7 +305,7 @@ fn __kai_std_url_query_value_decoded(buffer: *Char, query: Str, key: Str) -> ?St
         while eq < end && query[eq] != Char(61) {
             eq = eq + 1
         }
-        let name: Str = query[start..eq]
+        let name: Str = substring(query, start, eq)
         var matched: Bool = strcmp(name, key) == 0
         if !matched {
             let decoded_name: ?Str = __kai_std_url_query_unescape(buffer, name)
@@ -314,9 +315,9 @@ fn __kai_std_url_query_value_decoded(buffer: *Char, query: Str, key: Str) -> ?St
         }
         if matched {
             if eq < end {
-                return __kai_std_url_query_unescape(buffer, query[eq + 1..end])
+                return __kai_std_url_query_unescape(buffer, substring(query, eq + 1, end))
             }
-            return buffer[..0]
+            return substring(buffer, 0, 0)
         }
         if end == strlen((query) as Str) {
             return none
@@ -333,17 +334,17 @@ fn __kai_std_url_write_query_param(buffer: *Char, key: Str, value: Str) -> ?Str 
         return none
     }
     output = output + strlen(((encoded_key catch "")) as Str)
-    if output >= strlen((buffer) as Str) {
+    if output >= 1000000 {
         return none
     }
     buffer[output] = Char(61)
     output = output + 1
-    let encoded_value: ?Str = __kai_std_url_query_escape(buffer[output..], value)
+    let encoded_value: ?Str = __kai_std_url_query_escape(substring(buffer, output, strlen((buffer) as Str)), value)
     if encoded_value == none {
         return none
     }
     output = output + strlen(((encoded_value catch "")) as Str)
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_url_write_form_field(buffer: *Char, key: Str, value: Str) -> ?Str {
@@ -354,7 +355,7 @@ fn __kai_std_url_append_form_field(buffer: *Char, form: Str, field: Str) -> ?Str
     let form_len: Int = strlen((form) as Str)
     let field_len: Int = strlen((field) as Str)
     if form_len == 0 {
-        if field_len > strlen((buffer) as Str) {
+        if field_len > 1000000 {
             return none
         }
         var field_index: Int = 0
@@ -362,12 +363,12 @@ fn __kai_std_url_append_form_field(buffer: *Char, form: Str, field: Str) -> ?Str
             buffer[field_index] = field[field_index]
             field_index = field_index + 1
         }
-        return buffer[..field_len]
+        return substring(buffer, 0, field_len)
     }
-    if form_len >= strlen((buffer) as Str) {
+    if form_len >= 1000000 {
         return none
     }
-    if field_len > strlen((buffer) as Str) - form_len - 1 {
+    if field_len > 1000000 - form_len - 1 {
         return none
     }
     var output: Int = 0
@@ -383,7 +384,7 @@ fn __kai_std_url_append_form_field(buffer: *Char, form: Str, field: Str) -> ?Str
         output = output + 1
         field_index = field_index + 1
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_url_form_value(buffer: *Char, form: Str, key: Str) -> ?Str {
@@ -392,10 +393,10 @@ fn __kai_std_url_form_value(buffer: *Char, form: Str, key: Str) -> ?Str {
 
 fn __kai_std_url_append_query(buffer: *Char, base: Str, query: Str) -> ?Str {
     let base_len: Int = strlen((base) as Str)
-    if base_len >= strlen((buffer) as Str) {
+    if base_len >= 1000000 {
         return none
     }
-    if strlen((query) as Str) > strlen((buffer) as Str) - base_len - 1 {
+    if strlen((query) as Str) > 1000000 - base_len - 1 {
         return none
     }
     var fragment: Int = 0
@@ -429,7 +430,7 @@ fn __kai_std_url_append_query(buffer: *Char, base: Str, query: Str) -> ?Str {
         output = output + 1
         fragment_index = fragment_index + 1
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_url_write_url(buffer: *Char, scheme: Str, host: Str, path: Str) -> ?Str {
@@ -466,7 +467,7 @@ fn __kai_std_url_write_url(buffer: *Char, scheme: Str, host: Str, path: Str) -> 
         }
         output = (path_end catch 0)
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_url_append_fragment(buffer: *Char, base: Str, fragment: Str) -> ?Str {
@@ -485,11 +486,11 @@ fn __kai_std_url_append_fragment(buffer: *Char, base: Str, fragment: Str) -> ?St
     if fragment_end == none {
         return none
     }
-    return buffer[..(fragment_end catch 0)]
+    return substring(buffer, 0, (fragment_end catch 0))
 }
 
 fn __kai_std_url_write_span(buffer: *Char, cursor: Int, bytes: Str) -> ?Int {
-    if cursor + strlen((bytes) as Str) > strlen((buffer) as Str) {
+    if cursor + strlen((bytes) as Str) > 1000000 {
         return none
     }
     var index: Int = 0

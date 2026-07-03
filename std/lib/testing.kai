@@ -1,3 +1,4 @@
+import substring from std.core.string
 import std.lib.fmt
 import std.lib.json
 import std.lib.str
@@ -108,7 +109,7 @@ fn __kai_std_testing_case_name(buffer: *Char, suite: Str, index: Int) -> ?Str {
     offset = (wrote_index catch 0)
     let close: ?Int = __kai_std_io_write_span(buffer, offset, "]")
     if close != none {
-        return buffer[..(close catch 0)]
+        return substring(buffer, 0, (close catch 0))
     }
     return none
 }

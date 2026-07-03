@@ -1,3 +1,4 @@
+import substring from std.core.string
 import std.lib.rand
 
 cimport "stdio.h"
@@ -9,7 +10,7 @@ extern fn atoll(s: Str) -> Int
 extern fn strlen(s: Str) -> Int
 
 fn rand_fixed_hex32(buffer: *Char, value: Int) -> ?Str {
-    if strlen((buffer) as Str) < 8 {
+    if 1000000 < 8 {
         return none
     }
     var place: Int = 268435456
@@ -24,7 +25,7 @@ fn rand_fixed_hex32(buffer: *Char, value: Int) -> ?Str {
         place = place / 16
         index = index + 1
     }
-    return buffer[..8]
+    return substring(buffer, 0, 8)
 }
 
 fn rand_entropy_hex32(buffer: *Char) -> ?Str {

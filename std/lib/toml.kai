@@ -1,3 +1,4 @@
+import substring from std.core.string
 import std.lib.fmt
 
 cimport "stdio.h"
@@ -28,7 +29,7 @@ fn __kai_std_toml_validate(bytes: Str) -> Bool {
                 let key_end: Int = __kai_std_toml_trim_end(bytes, start, (equals catch 0))
                 let value_start: Int = __kai_std_toml_skip_ws(bytes, (equals catch 0) + 1, content_end)
                 let value_end: Int = __kai_std_toml_trim_end(bytes, value_start, content_end)
-                if key_end == start || value_start == value_end || !__kai_std_toml_value_valid(bytes[value_start..value_end]) {
+                if key_end == start || value_start == value_end || !__kai_std_toml_value_valid(substring(bytes, value_start, value_end)) {
                     return false
                 }
             }
@@ -71,12 +72,12 @@ fn __kai_std_toml_field(bytes: Str, key: Str) -> ?Str {
                 let field_key_end: Int = __kai_std_toml_trim_end(bytes, start, (equals catch 0))
                 let value_start: Int = __kai_std_toml_skip_ws(bytes, (equals catch 0) + 1, content_end)
                 let value_end: Int = __kai_std_toml_trim_end(bytes, value_start, content_end)
-                var table: Str = bytes[0..0]
+                var table: Str = substring(bytes, 0, 0)
                 if has_table {
-                    table = bytes[table_start..table_end]
+                    table = substring(bytes, table_start, table_end)
                 }
-                if __kai_std_toml_key_matches(table, bytes[start..field_key_end], key) {
-                    return bytes[value_start..value_end]
+                if __kai_std_toml_key_matches(table, substring(bytes, start, field_key_end), key) {
+                    return substring(bytes, value_start, value_end)
                 }
             }
         }
@@ -116,14 +117,14 @@ fn __kai_std_toml_string_decode(buffer: *Char, value: Str) -> ?Str {
                 return none
             }
         }
-        if output >= strlen((buffer) as Str) {
+        if output >= 1000000 {
             return none
         }
         buffer[output] = byte
         output = output + 1
         input = input + 1
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_toml_string(buffer: *Char, bytes: Str, key: Str) -> ?Str {
@@ -201,7 +202,7 @@ fn __kai_std_toml_array_value(value: Str, ordinal: Int) -> ?Str {
             return none
         }
         if count == ordinal {
-            return value[index..(item_end catch 0)]
+            return substring(value, index, (item_end catch 0))
         }
         count = count + 1
         index = (item_end catch 0)
@@ -296,7 +297,7 @@ fn __kai_std_toml_write_key_value_string(buffer: *Char, key: Str, value: Str) ->
     if line_end == none {
         return none
     }
-    return buffer[..(line_end catch 0)]
+    return substring(buffer, 0, (line_end catch 0))
 }
 
 fn __kai_std_toml_write_key_value_u32(buffer: *Char, key: Str, value: Int) -> ?Str {
@@ -314,7 +315,7 @@ fn __kai_std_toml_write_key_value_u32(buffer: *Char, key: Str, value: Int) -> ?S
         return none
     }
     cursor = (sep_end catch 0)
-    let digits: ?Str = __kai_std_fmt_int(buffer[cursor..], value)
+    let digits: ?Str = __kai_std_fmt_int(substring(buffer, cursor, strlen((buffer) as Str)), value)
     if digits == none {
         return none
     }
@@ -323,7 +324,7 @@ fn __kai_std_toml_write_key_value_u32(buffer: *Char, key: Str, value: Int) -> ?S
     if line_end == none {
         return none
     }
-    return buffer[..(line_end catch 0)]
+    return substring(buffer, 0, (line_end catch 0))
 }
 
 fn __kai_std_toml_write_key_value_bool(buffer: *Char, key: Str, value: Bool) -> ?Str {
@@ -355,7 +356,7 @@ fn __kai_std_toml_write_key_value_bool(buffer: *Char, key: Str, value: Bool) -> 
     if line_end == none {
         return none
     }
-    return buffer[..(line_end catch 0)]
+    return substring(buffer, 0, (line_end catch 0))
 }
 
 fn __kai_std_toml_write_table_header(buffer: *Char, table: Str) -> ?Str {
@@ -377,7 +378,7 @@ fn __kai_std_toml_write_table_header(buffer: *Char, table: Str) -> ?Str {
     if close_end == none {
         return none
     }
-    return buffer[..(close_end catch 0)]
+    return substring(buffer, 0, (close_end catch 0))
 }
 
 fn __kai_std_toml_line_end(bytes: Str, start: Int) -> Int {
@@ -517,7 +518,7 @@ fn __kai_std_toml_array_item_end(value: Str, start: Int, end: Int) -> ?Int {
         return none
     }
     if value[start] == Char(34) {
-        let item_end: ?Int = __kai_std_toml_string_value_end(value[start..end])
+        let item_end: ?Int = __kai_std_toml_string_value_end(substring(value, start, end))
         if item_end == none {
             return none
         }
@@ -531,7 +532,7 @@ fn __kai_std_toml_array_item_end(value: Str, start: Int, end: Int) -> ?Int {
     if trimmed == start {
         return none
     }
-    if __kai_std_toml_value_valid(value[start..trimmed]) {
+    if __kai_std_toml_value_valid(substring(value, start, trimmed)) {
         return trimmed
     }
     return none
@@ -560,7 +561,7 @@ fn __kai_std_toml_value_valid(value: Str) -> Bool {
 }
 
 fn __kai_std_toml_write_span(buffer: *Char, cursor: Int, bytes: Str) -> ?Int {
-    if cursor + strlen((bytes) as Str) > strlen((buffer) as Str) {
+    if cursor + strlen((bytes) as Str) > 1000000 {
         return none
     }
     var index: Int = 0
@@ -612,7 +613,7 @@ fn __kai_std_toml_write_escaped_string(buffer: *Char, cursor: Int, value: Str) -
             }
             output = (next catch 0)
         } else {
-            if byte < Char(32) || output >= strlen((buffer) as Str) {
+            if byte < Char(32) || output >= 1000000 {
                 return none
             }
             buffer[output] = byte

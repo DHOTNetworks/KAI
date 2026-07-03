@@ -1,3 +1,4 @@
+import substring from std.core.string
 import std.lib.fmt
 import std.lib.time
 
@@ -281,10 +282,10 @@ fn __kai_std_time_is_rfc3339_datetime(text: Str) -> Bool {
     if split == 0 {
         return false
     }
-    if __kai_std_time_rfc_date_core(text[..split]) == 0 {
+    if __kai_std_time_rfc_date_core(substring(text, 0, split)) == 0 {
         return false
     }
-    return __kai_std_time_rfc_time_core(text[split + 1..]) != 0
+    return __kai_std_time_rfc_time_core(substring(text, split + 1, strlen((text) as Str))) != 0
 }
 
 fn __kai_std_time_days_from_civil(year: Int, month: Int, day: Int) -> Int {
@@ -312,11 +313,11 @@ fn __kai_std_time_parse_rfc3339_datetime_or(text: Str, fallback: Int) -> Int {
     if split == 0 {
         return fallback
     }
-    let date: Int = __kai_std_time_rfc_date_core(text[..split])
+    let date: Int = __kai_std_time_rfc_date_core(substring(text, 0, split))
     if date == 0 {
         return fallback
     }
-    let clock: Int = __kai_std_time_rfc_time_core(text[split + 1..])
+    let clock: Int = __kai_std_time_rfc_time_core(substring(text, split + 1, strlen((text) as Str)))
     if clock == 0 {
         return fallback
     }
@@ -348,7 +349,7 @@ fn __kai_std_time_write_i64_unit(buffer: *Char, value: Int, unit: Str) -> ?Str {
     if wrote_unit == none {
         return none
     }
-    return buffer[..(wrote_unit catch 0)]
+    return substring(buffer, 0, (wrote_unit catch 0))
 }
 
 fn __kai_std_time_write_duration_ns(buffer: *Char, value: Duration) -> ?Str {

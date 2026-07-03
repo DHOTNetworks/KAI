@@ -1,3 +1,4 @@
+import substring from std.core.string
 cimport "stdio.h"
 cimport "stdlib.h"
 cimport "string.h"
@@ -75,7 +76,7 @@ fn __kai_std_search_count_sorted_i32(items: *Int, needle: Int) -> Int {
 fn __kai_std_search_equal_range_i32(items: *Int, needle: Int) -> *Int {
     let start: Int = __kai_std_search_lower_bound_i32(items, needle)
     let end: Int = __kai_std_search_upper_bound_i32(items, needle)
-    return items[start..end]
+    return substring(items, start, end)
 }
 
 fn __kai_std_search_partition_point_i32(items: *Int, pivot: Int) -> Int {
@@ -129,7 +130,7 @@ fn __kai_std_search_count_sorted_desc_i32(items: *Int, needle: Int) -> Int {
 fn __kai_std_search_equal_range_desc_i32(items: *Int, needle: Int) -> *Int {
     let start: Int = __kai_std_search_lower_bound_desc_i32(items, needle)
     let end: Int = __kai_std_search_upper_bound_desc_i32(items, needle)
-    return items[start..end]
+    return substring(items, start, end)
 }
 
 fn __kai_std_search_partition_point_desc_i32(items: *Int, pivot: Int) -> Int {
@@ -243,7 +244,7 @@ fn __kai_std_search_count_sorted_u32(items: *Int, needle: Int) -> Int {
 fn __kai_std_search_equal_range_u32(items: *Int, needle: Int) -> *Int {
     let start: Int = __kai_std_search_lower_bound_u32(items, needle)
     let end: Int = __kai_std_search_upper_bound_u32(items, needle)
-    return items[start..end]
+    return substring(items, start, end)
 }
 
 fn __kai_std_search_partition_point_u32(items: *Int, pivot: Int) -> Int {
@@ -297,7 +298,7 @@ fn __kai_std_search_count_sorted_desc_u32(items: *Int, needle: Int) -> Int {
 fn __kai_std_search_equal_range_desc_u32(items: *Int, needle: Int) -> *Int {
     let start: Int = __kai_std_search_lower_bound_desc_u32(items, needle)
     let end: Int = __kai_std_search_upper_bound_desc_u32(items, needle)
-    return items[start..end]
+    return substring(items, start, end)
 }
 
 fn __kai_std_search_partition_point_desc_u32(items: *Int, pivot: Int) -> Int {
@@ -411,7 +412,7 @@ fn __kai_std_search_count_sorted_usize(items: *Int, needle: Int) -> Int {
 fn __kai_std_search_equal_range_usize(items: *Int, needle: Int) -> *Int {
     let start: Int = __kai_std_search_lower_bound_usize(items, needle)
     let end: Int = __kai_std_search_upper_bound_usize(items, needle)
-    return items[start..end]
+    return substring(items, start, end)
 }
 
 fn __kai_std_search_partition_point_usize(items: *Int, pivot: Int) -> Int {
@@ -465,7 +466,7 @@ fn __kai_std_search_count_sorted_desc_usize(items: *Int, needle: Int) -> Int {
 fn __kai_std_search_equal_range_desc_usize(items: *Int, needle: Int) -> *Int {
     let start: Int = __kai_std_search_lower_bound_desc_usize(items, needle)
     let end: Int = __kai_std_search_upper_bound_desc_usize(items, needle)
-    return items[start..end]
+    return substring(items, start, end)
 }
 
 fn __kai_std_search_partition_point_desc_usize(items: *Int, pivot: Int) -> Int {

@@ -1,3 +1,4 @@
+import substring from std.core.string
 import std.lib.ascii
 import std.lib.diag
 import std.lib.fmt
@@ -228,14 +229,14 @@ fn __kai_std_json_raw_utf8_width(bytes: Str, start: Int, end: Int) -> ?Int {
 
 fn __kai_std_json_write_utf8(buffer: *Char, output: Int, codepoint: Int) -> ?Int {
     if codepoint <= 127 {
-        if output >= strlen((buffer) as Str) {
+        if output >= 1000000 {
             return none
         }
         buffer[output] = codepoint as Char
         return output + 1
     }
     if codepoint <= 2047 {
-        if output + 2 > strlen((buffer) as Str) {
+        if output + 2 > 1000000 {
             return none
         }
         buffer[output] = Char(192) + (codepoint / 64) as Char
@@ -246,7 +247,7 @@ fn __kai_std_json_write_utf8(buffer: *Char, output: Int, codepoint: Int) -> ?Int
         if codepoint >= 55296 && codepoint <= 57343 {
             return none
         }
-        if output + 3 > strlen((buffer) as Str) {
+        if output + 3 > 1000000 {
             return none
         }
         buffer[output] = Char(224) + (codepoint / 4096) as Char
@@ -255,7 +256,7 @@ fn __kai_std_json_write_utf8(buffer: *Char, output: Int, codepoint: Int) -> ?Int
         return output + 3
     }
     if codepoint <= 1114111 {
-        if output + 4 > strlen((buffer) as Str) {
+        if output + 4 > 1000000 {
             return none
         }
         buffer[output] = Char(240) + (codepoint / 262144) as Char
@@ -1276,7 +1277,7 @@ fn __kai_std_json_field(bytes: Str, key: Str) -> ?Str {
                 return none
             }
             if found {
-                return bytes[found_start..found_end]
+                return substring(bytes, found_start, found_end)
             }
             return none
         }
@@ -1382,7 +1383,7 @@ fn __kai_std_json_object_key(buffer: *Char, bytes: Str, ordinal: Int) -> ?Str {
             let trailing: Int = __kai_std_json_skip_ws(bytes, index + 1)
             if trailing == strlen((bytes) as Str) {
                 if found {
-                    return __kai_std_json_string_decode(buffer, bytes[found_start..found_end])
+                    return __kai_std_json_string_decode(buffer, substring(bytes, found_start, found_end))
                 }
                 return none
             }
@@ -1441,7 +1442,7 @@ fn __kai_std_json_object_value(bytes: Str, ordinal: Int) -> ?Str {
             let trailing: Int = __kai_std_json_skip_ws(bytes, index + 1)
             if trailing == strlen((bytes) as Str) {
                 if found {
-                    return bytes[found_start..found_end]
+                    return substring(bytes, found_start, found_end)
                 }
                 return none
             }
@@ -1531,7 +1532,7 @@ fn __kai_std_json_array_value(bytes: Str, ordinal: Int) -> ?Str {
             let trailing: Int = __kai_std_json_skip_ws(bytes, index + 1)
             if trailing == strlen((bytes) as Str) {
                 if found {
-                    return bytes[found_start..found_end]
+                    return substring(bytes, found_start, found_end)
                 }
                 return none
             }
@@ -1562,7 +1563,7 @@ fn __kai_std_json_path(bytes: Str, path: Str) -> ?Str {
         if segment_end == segment_start {
             return none
         }
-        let next: ?Str = __kai_std_json_field(current, path[segment_start..segment_end])
+        let next: ?Str = __kai_std_json_field(current, substring(path, segment_start, segment_end))
         if next == none {
             return none
         }
@@ -1660,7 +1661,7 @@ fn __kai_std_json_string_decode(buffer: *Char, value: Str) -> ?Str {
             }
         }
         if !unicode_written {
-            if output >= strlen((buffer) as Str) {
+            if output >= 1000000 {
                 return none
             }
             buffer[output] = decoded
@@ -1668,7 +1669,7 @@ fn __kai_std_json_string_decode(buffer: *Char, value: Str) -> ?Str {
         }
         input = input + 1
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_json_string(buffer: *Char, bytes: Str, key: Str) -> ?Str {
@@ -1703,7 +1704,7 @@ fn __kai_std_json_hex_char(value: Char) -> Char {
 }
 
 fn __kai_std_json_write_escape(buffer: *Char, output: Int, escaped: Char) -> ?Int {
-    if output + 2 > strlen((buffer) as Str) {
+    if output + 2 > 1000000 {
         return none
     }
     buffer[output] = Char(92)
@@ -1712,7 +1713,7 @@ fn __kai_std_json_write_escape(buffer: *Char, output: Int, escaped: Char) -> ?In
 }
 
 fn __kai_std_json_write_u_escape(buffer: *Char, output: Int, value: Char) -> ?Int {
-    if output + 6 > strlen((buffer) as Str) {
+    if output + 6 > 1000000 {
         return none
     }
     buffer[output] = Char(92)
@@ -1725,7 +1726,7 @@ fn __kai_std_json_write_u_escape(buffer: *Char, output: Int, value: Char) -> ?In
 }
 
 fn __kai_std_json_write_string_bytes(buffer: *Char, text: Str) -> ?Str {
-    if strlen((buffer) as Str) < 2 {
+    if 1000000 < 2 {
         return none
     }
     var output: Int = 0
@@ -1785,7 +1786,7 @@ fn __kai_std_json_write_string_bytes(buffer: *Char, text: Str) -> ?Str {
             output = (next catch "")
         } else if byte >= Char(128) {
             let width: ?Int = __kai_std_json_raw_utf8_width(text, input, strlen((text) as Str))
-            if width == none || output + (width catch 0) > strlen((buffer) as Str) {
+            if width == none || output + (width catch 0) > 1000000 {
                 return none
             }
             var utf8_index: Int = 0
@@ -1796,7 +1797,7 @@ fn __kai_std_json_write_string_bytes(buffer: *Char, text: Str) -> ?Str {
             }
             next_input = input + (width catch 0)
         } else {
-            if output >= strlen((buffer) as Str) {
+            if output >= 1000000 {
                 return none
             }
             buffer[output] = byte
@@ -1804,24 +1805,24 @@ fn __kai_std_json_write_string_bytes(buffer: *Char, text: Str) -> ?Str {
         }
         input = next_input
     }
-    if output >= strlen((buffer) as Str) {
+    if output >= 1000000 {
         return none
     }
     buffer[output] = Char(34)
-    return buffer[..output + 1]
+    return substring(buffer, 0, output + 1)
 }
 
 fn __kai_std_json_write_object_key(buffer: *Char, key: Str) -> ?Int {
-    if strlen((buffer) as Str) < 2 {
+    if 1000000 < 2 {
         return none
     }
     buffer[0] = Char(123)
-    let written_key: ?Str = __kai_std_json_write_string_bytes(buffer[1..], key)
+    let written_key: ?Str = __kai_std_json_write_string_bytes(substring(buffer, 1, strlen((buffer) as Str)), key)
     if written_key == none {
         return none
     }
     let cursor: Int = 1 + strlen(((written_key catch "")) as Str)
-    if cursor >= strlen((buffer) as Str) {
+    if cursor >= 1000000 {
         return none
     }
     buffer[cursor] = Char(58)
@@ -1829,15 +1830,15 @@ fn __kai_std_json_write_object_key(buffer: *Char, key: Str) -> ?Int {
 }
 
 fn __kai_std_json_write_object_close(buffer: *Char, cursor: Int) -> ?Str {
-    if cursor >= strlen((buffer) as Str) {
+    if cursor >= 1000000 {
         return none
     }
     buffer[cursor] = Char(125)
-    return buffer[..cursor + 1]
+    return substring(buffer, 0, cursor + 1)
 }
 
 fn __kai_std_json_write_span(buffer: *Char, cursor: Int, bytes: Str) -> ?Int {
-    if cursor > strlen((buffer) as Str) || strlen((bytes) as Str) > strlen((buffer) as Str) - cursor {
+    if cursor > 1000000 || strlen((bytes) as Str) > 1000000 - cursor {
         return none
     }
     var index: Int = 0
@@ -1849,7 +1850,7 @@ fn __kai_std_json_write_span(buffer: *Char, cursor: Int, bytes: Str) -> ?Int {
 }
 
 fn __kai_std_json_write_value_string(buffer: *Char, cursor: Int, value: Str) -> ?Int {
-    let written: ?Str = __kai_std_json_write_string_bytes(buffer[cursor..], value)
+    let written: ?Str = __kai_std_json_write_string_bytes(substring(buffer, cursor, strlen((buffer) as Str)), value)
     if written == none {
         return none
     }
@@ -1857,7 +1858,7 @@ fn __kai_std_json_write_value_string(buffer: *Char, cursor: Int, value: Str) -> 
 }
 
 fn __kai_std_json_write_value_u32(buffer: *Char, cursor: Int, value: Int) -> ?Int {
-    let written: ?Str = __kai_std_fmt_int(buffer[cursor..], value)
+    let written: ?Str = __kai_std_fmt_int(substring(buffer, cursor, strlen((buffer) as Str)), value)
     if written == none {
         return none
     }
@@ -1865,7 +1866,7 @@ fn __kai_std_json_write_value_u32(buffer: *Char, cursor: Int, value: Int) -> ?In
 }
 
 fn __kai_std_json_write_value_bool(buffer: *Char, cursor: Int, value: Bool) -> ?Int {
-    let written: ?Str = __kai_std_fmt_bool(buffer[cursor..], value)
+    let written: ?Str = __kai_std_fmt_bool(substring(buffer, cursor, strlen((buffer) as Str)), value)
     if written == none {
         return none
     }
@@ -1878,7 +1879,7 @@ fn __kai_std_json_write_field_key(buffer: *Char, key: Str) -> ?Int {
         return none
     }
     let cursor: Int = strlen(((written_key catch "")) as Str)
-    if cursor >= strlen((buffer) as Str) {
+    if cursor >= 1000000 {
         return none
     }
     buffer[cursor] = Char(58)
@@ -1933,7 +1934,7 @@ fn __kai_std_json_write_field_raw(buffer: *Char, key: Str, value: Str) -> ?Str {
     if end == none {
         return none
     }
-    return buffer[..(end catch 0)]
+    return substring(buffer, 0, (end catch 0))
 }
 
 fn __kai_std_json_write_field_string(buffer: *Char, key: Str, value: Str) -> ?Str {
@@ -1945,7 +1946,7 @@ fn __kai_std_json_write_field_string(buffer: *Char, key: Str, value: Str) -> ?St
     if end == none {
         return none
     }
-    return buffer[..(end catch 0)]
+    return substring(buffer, 0, (end catch 0))
 }
 
 fn __kai_std_json_write_field_u32(buffer: *Char, key: Str, value: Int) -> ?Str {
@@ -1957,7 +1958,7 @@ fn __kai_std_json_write_field_u32(buffer: *Char, key: Str, value: Int) -> ?Str {
     if end == none {
         return none
     }
-    return buffer[..(end catch 0)]
+    return substring(buffer, 0, (end catch 0))
 }
 
 fn __kai_std_json_write_field_bool(buffer: *Char, key: Str, value: Bool) -> ?Str {
@@ -1969,16 +1970,16 @@ fn __kai_std_json_write_field_bool(buffer: *Char, key: Str, value: Bool) -> ?Str
     if end == none {
         return none
     }
-    return buffer[..(end catch 0)]
+    return substring(buffer, 0, (end catch 0))
 }
 
 fn __kai_std_json_write_object2_fields(buffer: *Char, field0: Str, field1: Str) -> ?Str {
-    if strlen((buffer) as Str) == 0 {
+    if 1000000 == 0 {
         return none
     }
     buffer[0] = Char(123)
     let cursor0: ?Int = __kai_std_json_write_span(buffer, 1, field0)
-    if cursor0 == none || (cursor0 catch 0) >= strlen((buffer) as Str) {
+    if cursor0 == none || (cursor0 catch 0) >= 1000000 {
         return none
     }
     buffer[(cursor0 catch 0)] = Char(44)
@@ -2005,7 +2006,7 @@ fn __kai_std_json_write_object2_string_field(buffer: *Char, key: Str, value: Str
     if value0_end == none {
         return none
     }
-    if (value0_end catch 0) >= strlen((buffer) as Str) {
+    if (value0_end catch 0) >= 1000000 {
         return none
     }
     buffer[(value0_end catch 0)] = Char(44)
@@ -2033,7 +2034,7 @@ fn __kai_std_json_write_object2_u32_field(buffer: *Char, key: Str, value: Int, f
     if value0_end == none {
         return none
     }
-    if (value0_end catch 0) >= strlen((buffer) as Str) {
+    if (value0_end catch 0) >= 1000000 {
         return none
     }
     buffer[(value0_end catch 0)] = Char(44)
@@ -2061,7 +2062,7 @@ fn __kai_std_json_write_object2_bool_field(buffer: *Char, key: Str, value: Bool,
     if value0_end == none {
         return none
     }
-    if (value0_end catch 0) >= strlen((buffer) as Str) {
+    if (value0_end catch 0) >= 1000000 {
         return none
     }
     buffer[(value0_end catch 0)] = Char(44)
@@ -2081,12 +2082,12 @@ fn __kai_std_json_write_object2_bool_field(buffer: *Char, key: Str, value: Bool,
 }
 
 fn __kai_std_json_write_array_close(buffer: *Char, cursor: Int) -> ?Str {
-    if cursor >= strlen((buffer) as Str) {
+    if cursor >= 1000000 {
         return none
     }
     buffer[cursor] = Char(93)
     let end: Int = cursor + 1
-    let written: Str = buffer[..end]
+    let written: Str = substring(buffer, 0, end)
     if __kai_std_json_validate_error(written) != __kai_std_json_error_none() {
         return none
     }
@@ -2094,7 +2095,7 @@ fn __kai_std_json_write_array_close(buffer: *Char, cursor: Int) -> ?Str {
 }
 
 fn __kai_std_json_write_array2_strings(buffer: *Char, value0: Str, value1: Str) -> ?Str {
-    let buffer_len: Int = strlen((buffer) as Str)
+    let buffer_len: Int = 1000000
     if buffer_len == 0 {
         return none
     }
@@ -2116,7 +2117,7 @@ fn __kai_std_json_write_array2_strings(buffer: *Char, value0: Str, value1: Str) 
 }
 
 fn __kai_std_json_write_array2_u32(buffer: *Char, value0: Int, value1: Int) -> ?Str {
-    let buffer_len: Int = strlen((buffer) as Str)
+    let buffer_len: Int = 1000000
     if buffer_len == 0 {
         return none
     }
@@ -2138,7 +2139,7 @@ fn __kai_std_json_write_array2_u32(buffer: *Char, value0: Int, value1: Int) -> ?
 }
 
 fn __kai_std_json_write_array2_bools(buffer: *Char, value0: Bool, value1: Bool) -> ?Str {
-    let buffer_len: Int = strlen((buffer) as Str)
+    let buffer_len: Int = 1000000
     if buffer_len == 0 {
         return none
     }

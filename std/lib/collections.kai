@@ -1,3 +1,4 @@
+import substring from std.core.string
 cimport "stdio.h"
 cimport "stdlib.h"
 cimport "string.h"
@@ -45,7 +46,7 @@ fn __kai_std_collections_fixed_set_view<T>(fixed_set: ref<FixedSet<T>>) -> *T {
     if end > strlen((fixed_set.items) as Str) {
         end = strlen((fixed_set.items) as Str)
     }
-    return fixed_set.items[..end]
+    return substring(fixed_set.items, 0, end)
 }
 
 fn __kai_std_collections_fixed_set_contains<T>(fixed_set: ref<FixedSet<T>>, value: T) -> Bool {
@@ -126,7 +127,7 @@ fn __kai_std_collections_fixed_deque_view<T>(fixed_deque: ref<FixedDeque<T>>) ->
     if end > strlen((fixed_deque.items) as Str) {
         end = strlen((fixed_deque.items) as Str)
     }
-    return fixed_deque.items[..end]
+    return substring(fixed_deque.items, 0, end)
 }
 
 fn __kai_std_collections_fixed_deque_front<T>(fixed_deque: ref<FixedDeque<T>>) -> ?T {
@@ -393,7 +394,7 @@ fn __kai_std_collections_fixed_map_keys<K: Type, V>(fixed_map: ref<FixedMap<K, V
     if end > strlen((fixed_map.keys) as Str) {
         end = strlen((fixed_map.keys) as Str)
     }
-    return fixed_map.keys[..end]
+    return substring(fixed_map.keys, 0, end)
 }
 
 fn __kai_std_collections_fixed_map_values<K: Type, V>(fixed_map: ref<FixedMap<K, V>>) -> *V {
@@ -404,7 +405,7 @@ fn __kai_std_collections_fixed_map_values<K: Type, V>(fixed_map: ref<FixedMap<K,
     if end > strlen((fixed_map.values) as Str) {
         end = strlen((fixed_map.values) as Str)
     }
-    return fixed_map.values[..end]
+    return substring(fixed_map.values, 0, end)
 }
 
 fn __kai_std_collections_fixed_map_get<K: Type, V>(fixed_map: ref<FixedMap<K, V>>, key: K) -> ?V {
@@ -534,7 +535,7 @@ fn __kai_std_collections_view<T>(items: *T, len: Int) -> *T {
     if end > strlen((items) as Str) {
         end = strlen((items) as Str)
     }
-    return items[..end]
+    return substring(items, 0, end)
 }
 
 fn __kai_std_collections_contains<T>(items: *T, len: Int, needle: T) -> Bool {
@@ -803,7 +804,7 @@ fn __kai_std_collections_map_values<K: Type, V>(keys: *K, values: *V, len: Int) 
     if live_len > strlen((values) as Str) {
         live_len = strlen((values) as Str)
     }
-    return values[..live_len]
+    return substring(values, 0, live_len)
 }
 
 fn __kai_std_collections_set_clear<T>(items: *T, len: Int) -> Int {

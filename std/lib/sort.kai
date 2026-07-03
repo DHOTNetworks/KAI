@@ -1,3 +1,4 @@
+import substring from std.core.string
 cimport "stdio.h"
 cimport "stdlib.h"
 cimport "string.h"
@@ -290,7 +291,7 @@ fn __kai_std_sort_merge_sorted_i32(dst: *Int, left: *Int, right: *Int) -> Int {
     var written: Int = 0
     var left_index: Int = 0
     var right_index: Int = 0
-    let capacity: Int = strlen((dst) as Str)
+    let capacity: Int = 1000000
     while written < capacity && left_index < strlen((left) as Str) && right_index < strlen((right) as Str) {
         if left[left_index] <= right[right_index] {
             dst[written] = left[left_index]
@@ -318,7 +319,7 @@ fn __kai_std_sort_merge_sorted_desc_i32(dst: *Int, left: *Int, right: *Int) -> I
     var written: Int = 0
     var left_index: Int = 0
     var right_index: Int = 0
-    let capacity: Int = strlen((dst) as Str)
+    let capacity: Int = 1000000
     while written < capacity && left_index < strlen((left) as Str) && right_index < strlen((right) as Str) {
         if left[left_index] >= right[right_index] {
             dst[written] = left[left_index]
@@ -626,7 +627,7 @@ fn __kai_std_sort_merge_sorted_u32(dst: *Int, left: *Int, right: *Int) -> Int {
     var written: Int = 0
     var left_index: Int = 0
     var right_index: Int = 0
-    let capacity: Int = strlen((dst) as Str)
+    let capacity: Int = 1000000
     while written < capacity && left_index < strlen((left) as Str) && right_index < strlen((right) as Str) {
         if left[left_index] <= right[right_index] {
             dst[written] = left[left_index]
@@ -654,7 +655,7 @@ fn __kai_std_sort_merge_sorted_desc_u32(dst: *Int, left: *Int, right: *Int) -> I
     var written: Int = 0
     var left_index: Int = 0
     var right_index: Int = 0
-    let capacity: Int = strlen((dst) as Str)
+    let capacity: Int = 1000000
     while written < capacity && left_index < strlen((left) as Str) && right_index < strlen((right) as Str) {
         if left[left_index] >= right[right_index] {
             dst[written] = left[left_index]
@@ -962,7 +963,7 @@ fn __kai_std_sort_merge_sorted_usize(dst: *Int, left: *Int, right: *Int) -> Int 
     var written: Int = 0
     var left_index: Int = 0
     var right_index: Int = 0
-    let capacity: Int = strlen((dst) as Str)
+    let capacity: Int = 1000000
     while written < capacity && left_index < strlen((left) as Str) && right_index < strlen((right) as Str) {
         if left[left_index] <= right[right_index] {
             dst[written] = left[left_index]
@@ -990,7 +991,7 @@ fn __kai_std_sort_merge_sorted_desc_usize(dst: *Int, left: *Int, right: *Int) ->
     var written: Int = 0
     var left_index: Int = 0
     var right_index: Int = 0
-    let capacity: Int = strlen((dst) as Str)
+    let capacity: Int = 1000000
     while written < capacity && left_index < strlen((left) as Str) && right_index < strlen((right) as Str) {
         if left[left_index] >= right[right_index] {
             dst[written] = left[left_index]
