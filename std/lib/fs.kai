@@ -1,0 +1,133 @@
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_fs_read_file(fs: Fs, path: Str, buffer: *Char) -> ?Int {
+    let opened: ?File = __kai_std_fs_open(fs, path)
+    if opened != none {
+        var file: File = (opened catch 0)
+        var total: Int = 0
+        var ok: Bool = true
+        var done: Bool = false
+        while ok && !done && total < strlen((buffer) as Str) {
+            let count: ?Int = __kai_std_fs_read(&file, buffer[total..])
+            if count == none {
+                ok = false
+            } else if (count catch 0) == 0 {
+                done = true
+            } else {
+                total = total + (count catch 0)
+            }
+        }
+        var extra: [64]Char = [Char(0); 64]
+        while ok && !done {
+            let count: ?Int = __kai_std_fs_read(&file, extra)
+            if count == none {
+                ok = false
+            } else if (count catch 0) == 0 {
+                done = true
+            } else {
+                total = total + (count catch 0)
+            }
+        }
+        __kai_std_fs_close(&file)
+        if ok {
+            return total
+        }
+        return none
+    }
+    return none
+}
+
+fn __kai_std_fs_write_file(fs: Fs, path: Str, bytes: Str) -> Bool {
+    let count: ?Int = __kai_std_fs_write_bytes(path, bytes)
+    return count != none && (count catch 0) == strlen((bytes) as Str)
+}
+
+fn __kai_std_fs_append_file(fs: Fs, path: Str, bytes: Str) -> Bool {
+    let count: ?Int = __kai_std_fs_append_bytes(path, bytes)
+    return count != none && (count catch 0) == strlen((bytes) as Str)
+}
+
+fn __kai_std_fs_copy_file(from_path: Str, to_path: Str, buffer: *Char) -> Bool {
+    if strlen((buffer) as Str) == 0 {
+        return false
+    }
+    let fs: Fs = __kai_std_fs_host()
+    let opened: ?File = __kai_std_fs_open(fs, from_path)
+    if opened == none {
+        return false
+    }
+    var src: File = (opened catch 0)
+    let created: ?File = __kai_std_fs_create(fs, to_path)
+    if created == none {
+        __kai_std_fs_close(&src)
+        return false
+    }
+    var dst: File = (created catch 0)
+    var ok: Bool = true
+    var done: Bool = false
+    while ok && !done {
+        let count: ?Int = __kai_std_fs_read(&src, buffer)
+        if count == none {
+            ok = false
+        } else if (count catch 0) == 0 {
+            done = true
+        } else {
+            let chunk: Str = buffer[..(count catch 0)]
+            if !__kai_std_fs_write_all(&dst, chunk) {
+                ok = false
+            }
+        }
+    }
+    __kai_std_fs_close(&src)
+    __kai_std_fs_close(&dst)
+    return ok
+}
+
+fn __kai_std_fs_file_size(fs: Fs, path: Str) -> ?Int {
+    let opened: ?File = __kai_std_fs_open(fs, path)
+    if opened != none {
+        var file: File = (opened catch 0)
+        let len: ?Int = __kai_std_fs_file_len(&file)
+        __kai_std_fs_close(&file)
+        return len
+    }
+    return none
+}
+
+fn __kai_std_fs_is_file(path: Str) -> Bool {
+    if __kai_std_fs_is_dir(path) {
+        return false
+    }
+    let fs: Fs = __kai_std_fs_host()
+    let size: ?Int = __kai_std_fs_file_size(fs, path)
+    return size != none
+}
+
+fn __kai_std_fs_ensure_dir(path: Str) -> Bool {
+    if __kai_std_fs_is_dir(path) {
+        return true
+    }
+    return __kai_std_fs_make_dir(path)
+}
+
+fn __kai_std_fs_read_file_bytes(fs: Fs, path: Str, buffer: *Char) -> ?Str {
+    let count: ?Int = __kai_std_fs_read_bytes(path, buffer)
+    if count != none && (count catch 0) <= strlen((buffer) as Str) {
+        return buffer[..(count catch 0)]
+    }
+    return none
+}
+
+fn __kai_std_fs_read_file_equals(fs: Fs, path: Str, buffer: *Char, expected: Str) -> Bool {
+    let bytes: ?Str = __kai_std_fs_read_file_bytes(fs, path, buffer)
+    if bytes != none {
+        return __kai_std_mem_eql_bytes((bytes catch ""), expected)
+    }
+    return false
+}

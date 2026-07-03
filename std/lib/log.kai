@@ -1,0 +1,201 @@
+import std.lib.json
+
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_log_write(buffer: *Char, offset: Int, bytes: Str) -> ?Int {
+    return __kai_std_io_write_span(buffer, offset, bytes)
+}
+
+fn __kai_std_log_write_json(buffer: *Char, offset: Int, value: Str) -> ?Int {
+    if offset > strlen((buffer) as Str) {
+        return none
+    }
+    let written: ?Str = __kai_std_json_write_string_bytes(buffer[offset..], value)
+    if written != none {
+        return offset + strlen(((written catch "")) as Str)
+    }
+    return none
+}
+
+fn __kai_std_log_message(buffer: *Char, level: Str, message: Str) -> ?Str {
+    var offset: Int = 0
+    let opened: ?Int = __kai_std_log_write(buffer, offset, "{\"level\":")
+    if opened == none {
+        return none
+    }
+    offset = (opened catch 0)
+    let wrote_level: ?Int = __kai_std_log_write_json(buffer, offset, level)
+    if wrote_level == none {
+        return none
+    }
+    offset = (wrote_level catch 0)
+    let wrote_message_key: ?Int = __kai_std_log_write(buffer, offset, ",\"message\":")
+    if wrote_message_key == none {
+        return none
+    }
+    offset = (wrote_message_key catch 0)
+    let wrote_message: ?Int = __kai_std_log_write_json(buffer, offset, message)
+    if wrote_message == none {
+        return none
+    }
+    offset = (wrote_message catch 0)
+    let closed: ?Int = __kai_std_log_write(buffer, offset, "}\n")
+    if closed != none {
+        return buffer[..(closed catch 0)]
+    }
+    return none
+}
+
+fn __kai_std_log_key_value(buffer: *Char, level: Str, key: Str, value: Str) -> ?Str {
+    var offset: Int = 0
+    let opened: ?Int = __kai_std_log_write(buffer, offset, "{\"level\":")
+    if opened == none {
+        return none
+    }
+    offset = (opened catch 0)
+    let wrote_level: ?Int = __kai_std_log_write_json(buffer, offset, level)
+    if wrote_level == none {
+        return none
+    }
+    offset = (wrote_level catch 0)
+    let wrote_key_name: ?Int = __kai_std_log_write(buffer, offset, ",\"key\":")
+    if wrote_key_name == none {
+        return none
+    }
+    offset = (wrote_key_name catch 0)
+    let wrote_key: ?Int = __kai_std_log_write_json(buffer, offset, key)
+    if wrote_key == none {
+        return none
+    }
+    offset = (wrote_key catch 0)
+    let wrote_value_name: ?Int = __kai_std_log_write(buffer, offset, ",\"value\":")
+    if wrote_value_name == none {
+        return none
+    }
+    offset = (wrote_value_name catch 0)
+    let wrote_value: ?Int = __kai_std_log_write_json(buffer, offset, value)
+    if wrote_value == none {
+        return none
+    }
+    offset = (wrote_value catch 0)
+    let closed: ?Int = __kai_std_log_write(buffer, offset, "}\n")
+    if closed != none {
+        return buffer[..(closed catch 0)]
+    }
+    return none
+}
+
+fn __kai_std_log_level_debug() -> Str {
+    return "debug"
+}
+
+fn __kai_std_log_level_info() -> Str {
+    return "info"
+}
+
+fn __kai_std_log_level_warn() -> Str {
+    return "warn"
+}
+
+fn __kai_std_log_level_error() -> Str {
+    return "error"
+}
+
+fn __kai_std_log_write_string_field(buffer: *Char, offset: Int, key: Str, value: Str) -> ?Int {
+    let wrote_key: ?Int = __kai_std_log_write_json(buffer, offset, key)
+    if wrote_key == none {
+        return none
+    }
+    var cursor: Int = (wrote_key catch 0)
+    let colon: ?Int = __kai_std_log_write(buffer, cursor, ":")
+    if colon == none {
+        return none
+    }
+    cursor = (colon catch 0)
+    return __kai_std_log_write_json(buffer, cursor, value)
+}
+
+fn __kai_std_log_string_field(buffer: *Char, key: Str, value: Str) -> ?Str {
+    let written: ?Int = __kai_std_log_write_string_field(buffer, 0, key, value)
+    if written != none {
+        return buffer[..(written catch "")]
+    }
+    return none
+}
+
+fn __kai_std_log_message_field(buffer: *Char, level: Str, message: Str, field: Str) -> ?Str {
+    var offset: Int = 0
+    let opened: ?Int = __kai_std_log_write(buffer, offset, "{\"level\":")
+    if opened == none {
+        return none
+    }
+    offset = (opened catch 0)
+    let wrote_level: ?Int = __kai_std_log_write_json(buffer, offset, level)
+    if wrote_level == none {
+        return none
+    }
+    offset = (wrote_level catch 0)
+    let wrote_message_key: ?Int = __kai_std_log_write(buffer, offset, ",\"message\":")
+    if wrote_message_key == none {
+        return none
+    }
+    offset = (wrote_message_key catch 0)
+    let wrote_message: ?Int = __kai_std_log_write_json(buffer, offset, message)
+    if wrote_message == none {
+        return none
+    }
+    offset = (wrote_message catch 0)
+    let comma: ?Int = __kai_std_log_write(buffer, offset, ",")
+    if comma == none {
+        return none
+    }
+    offset = (comma catch 0)
+    let wrote_field: ?Int = __kai_std_log_write(buffer, offset, field)
+    if wrote_field == none {
+        return none
+    }
+    offset = (wrote_field catch 0)
+    let closed: ?Int = __kai_std_log_write(buffer, offset, "}\n")
+    if closed != none {
+        if !__kai_std_json_validate_bytes(buffer[..(closed catch 0) - 1]) {
+            return none
+        }
+        return buffer[..(closed catch 0)]
+    }
+    return none
+}
+
+fn __kai_std_log_redacted(buffer: *Char, level: Str, key: Str) -> ?Str {
+    var offset: Int = 0
+    let opened: ?Int = __kai_std_log_write(buffer, offset, "{\"level\":")
+    if opened == none {
+        return none
+    }
+    offset = (opened catch 0)
+    let wrote_level: ?Int = __kai_std_log_write_json(buffer, offset, level)
+    if wrote_level == none {
+        return none
+    }
+    offset = (wrote_level catch 0)
+    let key_label: ?Int = __kai_std_log_write(buffer, offset, ",\"key\":")
+    if key_label == none {
+        return none
+    }
+    offset = (key_label catch 0)
+    let wrote_key: ?Int = __kai_std_log_write_json(buffer, offset, key)
+    if wrote_key == none {
+        return none
+    }
+    offset = (wrote_key catch 0)
+    let closed: ?Int = __kai_std_log_write(buffer, offset, ",\"redacted\":true}\n")
+    if closed != none {
+        return buffer[..(closed catch 0)]
+    }
+    return none
+}

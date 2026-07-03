@@ -1,0 +1,114 @@
+import std.lib.fmt
+import std.lib.json
+import std.lib.str
+
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_testing_is_true(value: Bool) -> Bool {
+    return value
+}
+
+fn __kai_std_testing_is_false(value: Bool) -> Bool {
+    return !value
+}
+
+fn __kai_std_testing_equal_bool(actual: Bool, expected: Bool) -> Bool {
+    return actual == expected
+}
+
+fn __kai_std_testing_equal_usize(actual: Int, expected: Int) -> Bool {
+    return actual == expected
+}
+
+fn __kai_std_testing_equal_u32(actual: Int, expected: Int) -> Bool {
+    return actual == expected
+}
+
+fn __kai_std_testing_equal_i32(actual: Int, expected: Int) -> Bool {
+    return actual == expected
+}
+
+fn __kai_std_testing_equal_bytes(actual: Str, expected: Str) -> Bool {
+    return __kai_std_mem_eql_bytes(actual, expected)
+}
+
+fn __kai_std_testing_contains_bytes(actual: Str, needle: Str) -> Bool {
+    return __kai_std_str_contains(actual, needle)
+}
+
+fn __kai_std_testing_starts_with(actual: Str, prefix: Str) -> Bool {
+    return __kai_std_str_starts_with(actual, prefix)
+}
+
+fn __kai_std_testing_ends_with(actual: Str, suffix: Str) -> Bool {
+    return __kai_std_str_ends_with(actual, suffix)
+}
+
+fn __kai_std_testing_not_equal_bytes(actual: Str, expected: Str) -> Bool {
+    return !__kai_std_mem_eql_bytes(actual, expected)
+}
+
+fn __kai_std_testing_diff_index_bytes(actual: Str, expected: Str) -> ?Int {
+    var index: Int = 0
+    while index < strlen((actual) as Str) && index < strlen((expected) as Str) {
+        if actual[index] != expected[index] {
+            return index
+        }
+        index = index + 1
+    }
+    if strlen((actual) as Str) != strlen((expected) as Str) {
+        return index
+    }
+    return none
+}
+
+fn __kai_std_testing_json_field_equals(actual: Str, key: Str, expected: Str) -> Bool {
+    let field: ?Str = __kai_std_json_field(actual, key)
+    if field != none {
+        return __kai_std_mem_eql_bytes((field catch ""), expected)
+    }
+    return false
+}
+
+fn __kai_std_testing_json_path_equals(actual: Str, path: Str, expected: Str) -> Bool {
+    let value: ?Str = __kai_std_json_path(actual, path)
+    if value != none {
+        return __kai_std_mem_eql_bytes((value catch ""), expected)
+    }
+    return false
+}
+
+fn __kai_std_testing_case_name(buffer: *Char, suite: Str, index: Int) -> ?Str {
+    var offset: Int = 0
+    let wrote_suite: ?Int = __kai_std_io_write_span(buffer, offset, suite)
+    if wrote_suite == none {
+        return none
+    }
+    offset = (wrote_suite catch 0)
+    let open: ?Int = __kai_std_io_write_span(buffer, offset, "[")
+    if open == none {
+        return none
+    }
+    offset = (open catch 0)
+    var index_storage: [24]Char = [Char(0); 24]
+    let index_text: ?Str = __kai_std_fmt_int(index_storage, index)
+    if index_text == none {
+        return none
+    }
+    let wrote_index: ?Int = __kai_std_io_write_span(buffer, offset, (index_text catch ""))
+    if wrote_index == none {
+        return none
+    }
+    offset = (wrote_index catch 0)
+    let close: ?Int = __kai_std_io_write_span(buffer, offset, "]")
+    if close != none {
+        return buffer[..(close catch 0)]
+    }
+    return none
+}

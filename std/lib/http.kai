@@ -1,0 +1,4105 @@
+import std.lib.ascii
+import std.lib.fmt
+import std.lib.http
+import std.lib.json
+import std.lib.str
+import std.lib.url
+
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_http_token_char(byte: Char) -> Bool {
+    return byte >= Char(65) && byte <= Char(90) || byte >= Char(97) && byte <= Char(122) || byte >= Char(48) && byte <= Char(57) || byte == Char(33) || byte == Char(35) || byte == Char(36) || byte == Char(37) || byte == Char(38) || byte == Char(39) || byte == Char(42) || byte == Char(43) || byte == Char(45) || byte == Char(46) || byte == Char(94) || byte == Char(95) || byte == Char(96) || byte == Char(124) || byte == Char(126)
+}
+
+fn __kai_std_http_method_valid(method: Str) -> Bool {
+    if strlen((method) as Str) == 0 {
+        return false
+    }
+    var index: Int = 0
+    while index < strlen((method) as Str) {
+        if !__kai_std_http_token_char(method[index]) {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_http_target_valid(target: Str) -> Bool {
+    if strlen((target) as Str) == 0 {
+        return false
+    }
+    var index: Int = 0
+    while index < strlen((target) as Str) {
+        if target[index] <= Char(32) {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_http_start_line_valid(line: Str) -> Bool {
+    var space: Int = 0
+    while space < strlen((line) as Str) && line[space] != Char(32) {
+        space = space + 1
+    }
+    if space == 0 || space + 1 >= strlen((line) as Str) {
+        return false
+    }
+    let method: Str = line[..space]
+    let target: Str = line[space + 1..]
+    return __kai_std_http_method_valid(method) && __kai_std_http_target_valid(target)
+}
+
+fn __kai_std_http_first_line_end(bytes: Str) -> ?Int {
+    var end: Int = 0
+    while end < strlen((bytes) as Str) && bytes[end] != Char(10) {
+        end = end + 1
+    }
+    if end >= strlen((bytes) as Str) {
+        return none
+    }
+    if end > 0 && bytes[end - 1] == Char(13) {
+        return end - 1
+    }
+    return end
+}
+
+fn __kai_std_http_body_start(bytes: Str) -> ?Int {
+    var start: Int = 0
+    while start < strlen((bytes) as Str) {
+        var end: Int = start
+        while end < strlen((bytes) as Str) && bytes[end] != Char(10) {
+            end = end + 1
+        }
+        var line_end: Int = end
+        if line_end > start && bytes[line_end - 1] == Char(13) {
+            line_end = line_end - 1
+        }
+        var next: Int = end
+        if end < strlen((bytes) as Str) {
+            next = end + 1
+        }
+        if line_end == start {
+            return next
+        }
+        start = next
+    }
+    return none
+}
+
+fn __kai_std_http_write(buffer: *Char, offset: Int, bytes: Str) -> ?Int {
+    return __kai_std_io_write_span(buffer, offset, bytes)
+}
+
+fn __kai_std_http_write_usize(buffer: *Char, offset: Int, value: Int) -> ?Int {
+    if offset > strlen((buffer) as Str) {
+        return none
+    }
+    let written: ?Str = __kai_std_fmt_int(buffer[offset..], value)
+    if written == none {
+        return none
+    }
+    return offset + strlen(((written catch "")) as Str)
+}
+
+fn __kai_std_http_write_content_length(buffer: *Char, offset: Int, len: Int) -> ?Int {
+    let prefix: ?Int = __kai_std_http_write(buffer, offset, "content-length: ")
+    if prefix == none {
+        return none
+    }
+    let count: ?Int = __kai_std_http_write_usize(buffer, (prefix catch 0), len)
+    if count == none {
+        return none
+    }
+    return __kai_std_http_write(buffer, (count catch 0), "\r\n")
+}
+
+fn __kai_std_http_status_reason(status: Int) -> Str {
+    if status == 100 {
+        return "Continue"
+    }
+    if status == 200 {
+        return "OK"
+    }
+    if status == 201 {
+        return "Created"
+    }
+    if status == 202 {
+        return "Accepted"
+    }
+    if status == 204 {
+        return "No Content"
+    }
+    if status == 301 {
+        return "Moved Permanently"
+    }
+    if status == 302 {
+        return "Found"
+    }
+    if status == 303 {
+        return "See Other"
+    }
+    if status == 304 {
+        return "Not Modified"
+    }
+    if status == 307 {
+        return "Temporary Redirect"
+    }
+    if status == 308 {
+        return "Permanent Redirect"
+    }
+    if status == 400 {
+        return "Bad Request"
+    }
+    if status == 401 {
+        return "Unauthorized"
+    }
+    if status == 403 {
+        return "Forbidden"
+    }
+    if status == 404 {
+        return "Not Found"
+    }
+    if status == 405 {
+        return "Method Not Allowed"
+    }
+    if status == 409 {
+        return "Conflict"
+    }
+    if status == 422 {
+        return "Unprocessable Content"
+    }
+    if status == 429 {
+        return "Too Many Requests"
+    }
+    if status == 500 {
+        return "Internal Server Error"
+    }
+    if status == 502 {
+        return "Bad Gateway"
+    }
+    if status == 503 {
+        return "Service Unavailable"
+    }
+    return "Unknown"
+}
+
+fn __kai_std_http_status_is_informational(status: Int) -> Bool {
+    return status >= 100 && status < 200
+}
+
+fn __kai_std_http_status_is_success(status: Int) -> Bool {
+    return status >= 200 && status < 300
+}
+
+fn __kai_std_http_status_is_redirect(status: Int) -> Bool {
+    return status >= 300 && status < 400
+}
+
+fn __kai_std_http_status_is_client_error(status: Int) -> Bool {
+    return status >= 400 && status < 500
+}
+
+fn __kai_std_http_status_is_server_error(status: Int) -> Bool {
+    return status >= 500 && status < 600
+}
+
+fn __kai_std_http_write_request(buffer: *Char, start_line: Str, body: Str) -> ?Str {
+    if !__kai_std_http_start_line_valid(start_line) {
+        return none
+    }
+    var offset: Int = 0
+    let wrote_line_text: ?Int = __kai_std_http_write(buffer, offset, start_line)
+    if wrote_line_text == none {
+        return none
+    }
+    offset = (wrote_line_text catch 0)
+    let wrote_line: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if wrote_line == none {
+        return none
+    }
+    offset = (wrote_line catch 0)
+    if strlen((body) as Str) > 0 {
+        let wrote_length: ?Int = __kai_std_http_write_content_length(buffer, offset, strlen((body) as Str))
+        if wrote_length == none {
+            return none
+        }
+        offset = (wrote_length catch 0)
+    }
+    let wrote_blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if wrote_blank == none {
+        return none
+    }
+    offset = (wrote_blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_write_json_request(buffer: *Char, start_line: Str, body: Str) -> ?Str {
+    if !__kai_std_http_start_line_valid(start_line) {
+        return none
+    }
+    var offset: Int = 0
+    let wrote_line_text: ?Int = __kai_std_http_write(buffer, offset, start_line)
+    if wrote_line_text == none {
+        return none
+    }
+    offset = (wrote_line_text catch 0)
+    let wrote_line: ?Int = __kai_std_http_write(buffer, offset, "\r\ncontent-struct: application/json\r\n")
+    if wrote_line == none {
+        return none
+    }
+    offset = (wrote_line catch 0)
+    let wrote_length: ?Int = __kai_std_http_write_content_length(buffer, offset, strlen((body) as Str))
+    if wrote_length == none {
+        return none
+    }
+    offset = (wrote_length catch 0)
+    let wrote_blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if wrote_blank == none {
+        return none
+    }
+    offset = (wrote_blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_method_target_start_line(buffer: *Char, method: Str, target: Str) -> ?Str {
+    if !__kai_std_http_method_valid(method) || !__kai_std_http_target_valid(target) {
+        return none
+    }
+    var offset: Int = 0
+    let wrote_method: ?Int = __kai_std_http_write(buffer, offset, method)
+    if wrote_method == none {
+        return none
+    }
+    offset = (wrote_method catch 0)
+    let wrote_space: ?Int = __kai_std_http_write(buffer, offset, " ")
+    if wrote_space == none {
+        return none
+    }
+    offset = (wrote_space catch 0)
+    let wrote_target: ?Int = __kai_std_http_write(buffer, offset, target)
+    if wrote_target == none {
+        return none
+    }
+    return buffer[..(wrote_target catch 0)]
+}
+
+fn __kai_std_http_write_method_request(buffer: *Char, method: Str, target: Str, body: Str) -> ?Str {
+    if !__kai_std_http_method_valid(method) || !__kai_std_http_target_valid(target) {
+        return none
+    }
+    var offset: Int = 0
+    let wrote_method: ?Int = __kai_std_http_write(buffer, offset, method)
+    if wrote_method == none {
+        return none
+    }
+    offset = (wrote_method catch 0)
+    let wrote_space: ?Int = __kai_std_http_write(buffer, offset, " ")
+    if wrote_space == none {
+        return none
+    }
+    offset = (wrote_space catch 0)
+    let wrote_target: ?Int = __kai_std_http_write(buffer, offset, target)
+    if wrote_target == none {
+        return none
+    }
+    offset = (wrote_target catch 0)
+    let wrote_line: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if wrote_line == none {
+        return none
+    }
+    offset = (wrote_line catch 0)
+    if strlen((body) as Str) > 0 {
+        let wrote_length: ?Int = __kai_std_http_write_content_length(buffer, offset, strlen((body) as Str))
+        if wrote_length == none {
+            return none
+        }
+        offset = (wrote_length catch 0)
+    }
+    let wrote_blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if wrote_blank == none {
+        return none
+    }
+    offset = (wrote_blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_write_json_method_request(buffer: *Char, method: Str, target: Str, body: Str) -> ?Str {
+    if !__kai_std_http_method_valid(method) || !__kai_std_http_target_valid(target) {
+        return none
+    }
+    var offset: Int = 0
+    let wrote_method: ?Int = __kai_std_http_write(buffer, offset, method)
+    if wrote_method == none {
+        return none
+    }
+    offset = (wrote_method catch 0)
+    let wrote_space: ?Int = __kai_std_http_write(buffer, offset, " ")
+    if wrote_space == none {
+        return none
+    }
+    offset = (wrote_space catch 0)
+    let wrote_target: ?Int = __kai_std_http_write(buffer, offset, target)
+    if wrote_target == none {
+        return none
+    }
+    offset = (wrote_target catch 0)
+    let wrote_line: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if wrote_line == none {
+        return none
+    }
+    offset = (wrote_line catch 0)
+    let wrote_type: ?Int = __kai_std_http_write(buffer, offset, "content-struct: application/json\r\n")
+    if wrote_type == none {
+        return none
+    }
+    offset = (wrote_type catch 0)
+    let wrote_length: ?Int = __kai_std_http_write_content_length(buffer, offset, strlen((body) as Str))
+    if wrote_length == none {
+        return none
+    }
+    offset = (wrote_length catch 0)
+    let wrote_blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if wrote_blank == none {
+        return none
+    }
+    offset = (wrote_blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_write_get_request(buffer: *Char, target: Str) -> ?Str {
+    return __kai_std_http_write_method_request(buffer, "GET", target, "")
+}
+
+fn __kai_std_http_write_head_request(buffer: *Char, target: Str) -> ?Str {
+    return __kai_std_http_write_method_request(buffer, "HEAD", target, "")
+}
+
+fn __kai_std_http_write_delete_request(buffer: *Char, target: Str) -> ?Str {
+    return __kai_std_http_write_method_request(buffer, "DELETE", target, "")
+}
+
+fn __kai_std_http_write_post_json_request(buffer: *Char, target: Str, body: Str) -> ?Str {
+    return __kai_std_http_write_json_method_request(buffer, "POST", target, body)
+}
+
+fn __kai_std_http_write_put_json_request(buffer: *Char, target: Str, body: Str) -> ?Str {
+    return __kai_std_http_write_json_method_request(buffer, "PUT", target, body)
+}
+
+fn __kai_std_http_write_patch_json_request(buffer: *Char, target: Str, body: Str) -> ?Str {
+    return __kai_std_http_write_json_method_request(buffer, "PATCH", target, body)
+}
+
+fn __kai_std_http_write_response(buffer: *Char, status: Int, body: Str) -> ?Str {
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_http_write(buffer, offset, "HTTP/1.1 ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let code: ?Int = __kai_std_http_write_usize(buffer, offset, status as Int)
+    if code == none {
+        return none
+    }
+    offset = (code catch 0)
+    let space: ?Int = __kai_std_http_write(buffer, offset, " ")
+    if space == none {
+        return none
+    }
+    offset = (space catch 0)
+    let reason: ?Int = __kai_std_http_write(buffer, offset, __kai_std_mem_span(__kai_std_http_status_reason(status)))
+    if reason == none {
+        return none
+    }
+    offset = (reason catch 0)
+    let line: ?Int = __kai_std_http_write(buffer, offset, "\r\nconnection: close\r\n")
+    if line == none {
+        return none
+    }
+    offset = (line catch 0)
+    let length: ?Int = __kai_std_http_write_content_length(buffer, offset, strlen((body) as Str))
+    if length == none {
+        return none
+    }
+    offset = (length catch 0)
+    let blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if blank == none {
+        return none
+    }
+    offset = (blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_write_json_response(buffer: *Char, status: Int, body: Str) -> ?Str {
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_http_write(buffer, offset, "HTTP/1.1 ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let code: ?Int = __kai_std_http_write_usize(buffer, offset, status as Int)
+    if code == none {
+        return none
+    }
+    offset = (code catch 0)
+    let space: ?Int = __kai_std_http_write(buffer, offset, " ")
+    if space == none {
+        return none
+    }
+    offset = (space catch 0)
+    let reason: ?Int = __kai_std_http_write(buffer, offset, __kai_std_mem_span(__kai_std_http_status_reason(status)))
+    if reason == none {
+        return none
+    }
+    offset = (reason catch 0)
+    let line: ?Int = __kai_std_http_write(buffer, offset, "\r\ncontent-struct: application/json\r\nconnection: close\r\n")
+    if line == none {
+        return none
+    }
+    offset = (line catch 0)
+    let length: ?Int = __kai_std_http_write_content_length(buffer, offset, strlen((body) as Str))
+    if length == none {
+        return none
+    }
+    offset = (length catch 0)
+    let blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if blank == none {
+        return none
+    }
+    offset = (blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_request_method_name(request: Str) -> ?Str {
+    let line_end: ?Int = __kai_std_http_first_line_end(request)
+    if line_end == none {
+        return none
+    }
+    var space: Int = 0
+    while space < (line_end catch 0) && request[space] != Char(32) {
+        space = space + 1
+    }
+    if space == 0 || space >= (line_end catch 0) {
+        return none
+    }
+    let method: Str = request[..space]
+    if !__kai_std_http_method_valid(method) {
+        return none
+    }
+    return method
+}
+
+fn __kai_std_http_request_target(request: Str) -> ?Str {
+    let line_end: ?Int = __kai_std_http_first_line_end(request)
+    if line_end == none {
+        return none
+    }
+    var space: Int = 0
+    while space < (line_end catch 0) && request[space] != Char(32) {
+        space = space + 1
+    }
+    if space == 0 || space + 1 >= (line_end catch 0) {
+        return none
+    }
+    var index: Int = space + 1
+    while index < (line_end catch 0) && request[index] != Char(32) {
+        if request[index] <= Char(32) {
+            return none
+        }
+        index = index + 1
+    }
+    if index == space + 1 {
+        return none
+    }
+    if index < (line_end catch 0) {
+        var version_start: Int = index
+        while version_start < (line_end catch 0) && request[version_start] == Char(32) {
+            version_start = version_start + 1
+        }
+        if version_start < (line_end catch 0) {
+            let version: Str = request[version_start..(line_end catch 0)]
+            if !strcmp(version, "HTTP/1.0") == 0 && !strcmp(version, "HTTP/1.1") == 0 {
+                return none
+            }
+        }
+    }
+    return request[space + 1..index]
+}
+
+fn __kai_std_http_request_path(request: Str) -> ?Str {
+    let target: ?Str = __kai_std_http_request_target(request)
+    if target == none {
+        return none
+    }
+    let absolute_path: Str = __kai_std_url_path((target catch ""))
+    if strlen((absolute_path) as Str) > 0 {
+        return absolute_path
+    }
+    if __kai_std_str_starts_with((target catch ""), "http://") || __kai_std_str_starts_with((target catch ""), "https://") {
+        let root: Str = "/"
+        return root
+    }
+    var end: Int = 0
+    while end < strlen(((target catch "")) as Str) && (target catch "")[end] != Char(63) && (target catch "")[end] != Char(35) {
+        end = end + 1
+    }
+    if end == 0 {
+        return none
+    }
+    return (target catch "")[..end]
+}
+
+fn __kai_std_http_request_query(request: Str) -> ?Str {
+    let target: ?Str = __kai_std_http_request_target(request)
+    if target == none {
+        return none
+    }
+    let absolute_query: ?Str = __kai_std_url_query((target catch ""))
+    if absolute_query != none {
+        return (absolute_query catch "")
+    }
+    var start: Int = 0
+    while start < strlen(((target catch "")) as Str) && (target catch "")[start] != Char(63) {
+        if (target catch "")[start] == Char(35) {
+            return none
+        }
+        start = start + 1
+    }
+    if start >= strlen(((target catch "")) as Str) {
+        return none
+    }
+    start = start + 1
+    var end: Int = start
+    while end < strlen(((target catch "")) as Str) && (target catch "")[end] != Char(35) {
+        end = end + 1
+    }
+    return (target catch "")[start..end]
+}
+
+fn __kai_std_http_request_query_value(request: Str, name: Str) -> ?Str {
+    let query: ?Str = __kai_std_http_request_query(request)
+    if query == none {
+        return none
+    }
+    return __kai_std_url_query_value((query catch ""), name)
+}
+
+fn __kai_std_http_request_header(request: Str, name: Str) -> ?Str {
+    if strlen((name) as Str) == 0 {
+        return none
+    }
+    let body_start: ?Int = __kai_std_http_body_start(request)
+    if body_start == none {
+        return none
+    }
+    var start: Int = __kai_std_io_next_line_start(request, 0)
+    while start < (body_start catch 0) {
+        let line: ?Str = __kai_std_io_next_line(request, start)
+        if line == none || strlen(((line catch "")) as Str) == 0 {
+            return none
+        }
+        var colon: Int = 0
+        while colon < strlen(((line catch "")) as Str) && (line catch "")[colon] != Char(58) {
+            colon = colon + 1
+        }
+        if colon > 0 && colon < strlen(((line catch "")) as Str) {
+            let header_name: Str = (line catch "")[..colon]
+            if __kai_std_str_eql_ignore_ascii_case(header_name, name) {
+                return __kai_std_str_trim_ascii((line catch "")[colon + 1..])
+            }
+        }
+        start = __kai_std_io_next_line_start(request, start)
+    }
+    return none
+}
+
+fn __kai_std_http_request_body(request: Str) -> ?Str {
+    let start: ?Int = __kai_std_http_body_start(request)
+    if start == none {
+        return none
+    }
+    return request[(start catch 0)..]
+}
+
+fn __kai_std_http_request_body_within(request: Str, max: Int) -> ?Str {
+    let body: ?Str = __kai_std_http_request_body(request)
+    if body == none || strlen(((body catch "")) as Str) > max {
+        return none
+    }
+    return (body catch "")
+}
+
+fn __kai_std_http_request_matches(request: Str, method: Str, path: Str) -> Bool {
+    let found_method: ?Str = __kai_std_http_request_method_name(request)
+    if found_method == none {
+        return false
+    }
+    if !strcmp((found_method catch ""), method) == 0 {
+        return false
+    }
+    let found_path: ?Str = __kai_std_http_request_path(request)
+    if found_path == none {
+        return false
+    }
+    return strcmp((found_path catch ""), path) == 0
+}
+
+fn __kai_std_http_header_bytes(response: Str, value: HttpHeaderValue) -> ?Str {
+    if !__kai_std_http_header_found(value) {
+        return none
+    }
+    let offset: Int = __kai_std_http_header_offset(value)
+    let len: Int = __kai_std_http_header_len(value)
+    if offset > strlen((response) as Str) || len > strlen((response) as Str) - offset {
+        return none
+    }
+    return response[offset..offset + len]
+}
+
+fn __kai_std_http_response_body(response: Str, result: HttpResult) -> ?Str {
+    if __kai_std_http_result_error(result) != __kai_std_http_error_none() {
+        return none
+    }
+    let offset: Int = __kai_std_http_response_body_offset(response)
+    let len: Int = __kai_std_http_result_body_len(result)
+    if offset > strlen((response) as Str) || len > strlen((response) as Str) - offset {
+        return none
+    }
+    return response[offset..offset + len]
+}
+
+fn __kai_std_http_error_name(code: Int) -> Str {
+    if code == 0 {
+        return "ok"
+    }
+    if code == 1 {
+        return "invalid_url"
+    }
+    if code == 2 {
+        return "unsupported_protocol"
+    }
+    if code == 3 {
+        return "dns"
+    }
+    if code == 4 {
+        return "connect"
+    }
+    if code == 5 {
+        return "tls"
+    }
+    if code == 6 {
+        return "timeout"
+    }
+    if code == 7 {
+        return "too_large"
+    }
+    if code == 8 {
+        return "provider_unavailable"
+    }
+    if code == 9 {
+        return "io"
+    }
+    if code == 10 {
+        return "invalid_request"
+    }
+    return "unknown"
+}
+
+fn __kai_std_http_write_json_ok(buffer: *Char, body: Str) -> ?Str {
+    return __kai_std_http_write_json_response(buffer, 200, body)
+}
+
+fn __kai_std_http_write_json_created(buffer: *Char, body: Str) -> ?Str {
+    return __kai_std_http_write_json_response(buffer, 201, body)
+}
+
+fn __kai_std_http_write_json_bad_request(buffer: *Char, body: Str) -> ?Str {
+    return __kai_std_http_write_json_response(buffer, 400, body)
+}
+
+fn __kai_std_http_write_json_not_found(buffer: *Char, body: Str) -> ?Str {
+    return __kai_std_http_write_json_response(buffer, 404, body)
+}
+
+fn __kai_std_http_write_json_method_not_allowed(buffer: *Char, body: Str) -> ?Str {
+    return __kai_std_http_write_json_response(buffer, 405, body)
+}
+
+fn __kai_std_http_request_has_json_content_type(request: Str) -> Bool {
+    let content_type: ?Str = __kai_std_http_request_header(request, "content-struct")
+    if content_type == none {
+        return false
+    }
+    let value: Str = __kai_std_str_trim_ascii((content_type catch ""))
+    if strlen((value) as Str) < 16 {
+        return false
+    }
+    let prefix: Str = value[..16]
+    if !__kai_std_str_eql_ignore_ascii_case(prefix, "application/json") {
+        return false
+    }
+    if strlen((value) as Str) == 16 {
+        return true
+    }
+    return value[16] == Char(59)
+}
+
+fn __kai_std_http_request_json_body_within(request: Str, max: Int) -> ?Str {
+    let has_json: Bool = __kai_std_http_request_has_json_content_type(request)
+    if !has_json {
+        return none
+    }
+    let body: ?Str = __kai_std_http_request_body_within(request, max)
+    if body == none {
+        return none
+    }
+    if !__kai_std_json_validate_bytes((body catch "")) {
+        return none
+    }
+    return (body catch "")
+}
+
+fn __kai_std_http_response_body_bytes(response: Str) -> ?Str {
+    let offset: Int = __kai_std_http_response_body_offset(response)
+    if offset > strlen((response) as Str) {
+        return none
+    }
+    return response[offset..]
+}
+
+fn __kai_std_http_response_status(response: Str) -> ?Int {
+    let line_end: ?Int = __kai_std_http_first_line_end(response)
+    if line_end == none || (line_end catch 0) < 12 {
+        return none
+    }
+    if !strcmp(response[..9], "HTTP/1.1 ") == 0 && !strcmp(response[..9], "HTTP/1.0 ") == 0 {
+        return none
+    }
+    let code: ?Int = __kai_std_parse_parse_usize(response[9..12])
+    if code == none || (code catch 0) < 100 || (code catch 0) > 999 || ((line_end catch 0) > 12 && response[12] != Char(32)) {
+        return none
+    }
+    return (code catch 0) as Int
+}
+
+fn __kai_std_http_response_status_is(response: Str, status: Int) -> Bool {
+    let found: ?Int = __kai_std_http_response_status(response)
+    return found != none && (found catch 0) == status
+}
+
+fn __kai_std_http_response_header(response: Str, name: Str) -> ?Str {
+    if strlen((name) as Str) == 0 {
+        return none
+    }
+    let body_start: ?Int = __kai_std_http_body_start(response)
+    if body_start == none {
+        return none
+    }
+    var start: Int = __kai_std_io_next_line_start(response, 0)
+    while start < (body_start catch 0) {
+        let line: ?Str = __kai_std_io_next_line(response, start)
+        if line == none || strlen(((line catch "")) as Str) == 0 {
+            return none
+        }
+        var colon: Int = 0
+        while colon < strlen(((line catch "")) as Str) && (line catch "")[colon] != Char(58) {
+            colon = colon + 1
+        }
+        if colon > 0 && colon < strlen(((line catch "")) as Str) {
+            let header_name: Str = (line catch "")[..colon]
+            if __kai_std_str_eql_ignore_ascii_case(header_name, name) {
+                return __kai_std_str_trim_ascii((line catch "")[colon + 1..])
+            }
+        }
+        start = __kai_std_io_next_line_start(response, start)
+    }
+    return none
+}
+
+fn __kai_std_http_response_content_type(response: Str) -> ?Str {
+    let header: ?Str = __kai_std_http_response_header(response, "content-struct")
+    if header == none {
+        return none
+    }
+    let trimmed: Str = __kai_std_str_trim_ascii((header catch ""))
+    var end: Int = 0
+    while end < strlen((trimmed) as Str) && trimmed[end] != Char(59) {
+        end = end + 1
+    }
+    return __kai_std_str_trim_ascii(trimmed[..end])
+}
+
+fn __kai_std_http_response_redirect_location(response: Str) -> ?Str {
+    return __kai_std_http_response_header(response, "location")
+}
+
+fn __kai_std_http_response_body_equals(response: Str, expected: Str) -> Bool {
+    let body: ?Str = __kai_std_http_response_body_bytes(response)
+    return body != none && strcmp((body catch ""), expected) == 0
+}
+
+fn __kai_std_http_response_matches(response: Str, status: Int, content_type: Str, body: Str) -> Bool {
+    if !__kai_std_http_response_status_is(response, status) {
+        return false
+    }
+    if strlen((content_type) as Str) > 0 {
+        let found_type: ?Str = __kai_std_http_response_content_type(response)
+        if found_type == none || !__kai_std_str_eql_ignore_ascii_case((found_type catch ""), content_type) {
+            return false
+        }
+    }
+    return __kai_std_http_response_body_equals(response, body)
+}
+
+fn __kai_std_http_request_method_is(request: Str, method: Str) -> Bool {
+    let found: ?Str = __kai_std_http_request_method_name(request)
+    if found == none {
+        return false
+    }
+    return strcmp((found catch ""), method) == 0
+}
+
+fn __kai_std_http_method_allowed(method: Str, allowed: Str) -> Bool {
+    if strlen((method) as Str) == 0 {
+        return false
+    }
+    var start: Int = 0
+    while start <= strlen((allowed) as Str) {
+        var end: Int = start
+        while end < strlen((allowed) as Str) && allowed[end] != Char(44) {
+            end = end + 1
+        }
+        let item: Str = __kai_std_str_trim_ascii(allowed[start..end])
+        if strcmp(item, "*") == 0 || __kai_std_str_eql_ignore_ascii_case(item, method) {
+            return true
+        }
+        if end == strlen((allowed) as Str) {
+            return false
+        }
+        start = end + 1
+    }
+    return false
+}
+
+fn __kai_std_http_request_method_allowed(request: Str, allowed: Str) -> Bool {
+    let method: ?Str = __kai_std_http_request_method_name(request)
+    return method != none && __kai_std_http_method_allowed((method catch ""), allowed)
+}
+
+fn __kai_std_http_request_route_method_allowed(request: Str, pattern: Str, allowed: Str) -> Bool {
+    if !__kai_std_http_request_method_allowed(request, allowed) {
+        return false
+    }
+    let path: ?Str = __kai_std_http_request_path(request)
+    if path == none {
+        return false
+    }
+    return __kai_std_http_path_matches_pattern((path catch ""), pattern)
+}
+
+fn __kai_std_http_request_is_get(request: Str, path: Str) -> Bool {
+    return __kai_std_http_request_matches(request, "GET", path)
+}
+
+fn __kai_std_http_request_is_post(request: Str, path: Str) -> Bool {
+    return __kai_std_http_request_matches(request, "POST", path)
+}
+
+fn __kai_std_http_request_is_put(request: Str, path: Str) -> Bool {
+    return __kai_std_http_request_matches(request, "PUT", path)
+}
+
+fn __kai_std_http_request_is_patch(request: Str, path: Str) -> Bool {
+    return __kai_std_http_request_matches(request, "PATCH", path)
+}
+
+fn __kai_std_http_request_is_delete(request: Str, path: Str) -> Bool {
+    return __kai_std_http_request_matches(request, "DELETE", path)
+}
+
+fn __kai_std_http_request_path_starts_with(request: Str, prefix: Str) -> Bool {
+    let path: ?Str = __kai_std_http_request_path(request)
+    if path == none {
+        return false
+    }
+    return __kai_std_str_starts_with((path catch ""), prefix)
+}
+
+fn __kai_std_http_request_path_tail_after(request: Str, prefix: Str) -> ?Str {
+    let path: ?Str = __kai_std_http_request_path(request)
+    if path == none {
+        return none
+    }
+    if !__kai_std_str_starts_with((path catch ""), prefix) {
+        return none
+    }
+    let size: Int = strlen((prefix) as Str)
+    return __kai_std_mem_drop_prefix((path catch ""), size)
+}
+
+fn __kai_std_http_pattern_segment_matches(pattern: Str, segment: Str) -> Bool {
+    if strlen((pattern) as Str) == 0 {
+        return false
+    }
+    if strcmp(pattern, "*") == 0 {
+        return true
+    }
+    if pattern[0] == Char(58) {
+        return strlen((pattern) as Str) > 1 && strlen((segment) as Str) > 0
+    }
+    return strcmp(pattern, segment) == 0
+}
+
+fn __kai_std_http_path_matches_pattern(path: Str, pattern: Str) -> Bool {
+    let path_count: Int = __kai_std_http_path_segment_count(path)
+    let pattern_count: Int = __kai_std_http_path_segment_count(pattern)
+    if pattern_count == 0 {
+        return path_count == 0
+    }
+    let last_pattern: ?Str = __kai_std_http_path_segment(pattern, pattern_count - 1)
+    var wildcard_tail: Bool = false
+    if last_pattern != none {
+        wildcard_tail = strcmp((last_pattern catch ""), "*") == 0
+    }
+    var pattern_index: Int = 0
+    let non_tail_limit: Int = pattern_count - 1
+    while pattern_index < non_tail_limit {
+        let pattern_segment: ?Str = __kai_std_http_path_segment(pattern, pattern_index)
+        if pattern_segment != none && strcmp((pattern_segment catch ""), "*") == 0 {
+            return false
+        }
+        pattern_index = pattern_index + 1
+    }
+    if wildcard_tail {
+        if path_count < pattern_count - 1 {
+            return false
+        }
+    } else if path_count != pattern_count {
+        return false
+    }
+    var index: Int = 0
+    var limit: Int = pattern_count
+    if wildcard_tail {
+        limit = pattern_count - 1
+    }
+    while index < limit {
+        let pattern_segment: ?Str = __kai_std_http_path_segment(pattern, index)
+        let path_segment: ?Str = __kai_std_http_path_segment(path, index)
+        if pattern_segment == none || path_segment == none {
+            return false
+        }
+        if !__kai_std_http_pattern_segment_matches((pattern_segment catch ""), (path_segment catch "")) {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_http_request_route_matches(request: Str, method: Str, pattern: Str) -> Bool {
+    if !__kai_std_http_request_method_is(request, method) {
+        return false
+    }
+    let path: ?Str = __kai_std_http_request_path(request)
+    if path == none {
+        return false
+    }
+    return __kai_std_http_path_matches_pattern((path catch ""), pattern)
+}
+
+fn __kai_std_http_path_param(path: Str, pattern: Str, name: Str) -> ?Str {
+    if strlen((name) as Str) == 0 {
+        return none
+    }
+    if !__kai_std_http_path_matches_pattern(path, pattern) {
+        return none
+    }
+    let pattern_count: Int = __kai_std_http_path_segment_count(pattern)
+    var index: Int = 0
+    while index < pattern_count {
+        let pattern_segment: ?Str = __kai_std_http_path_segment(pattern, index)
+        if pattern_segment != none && strlen(((pattern_segment catch "")) as Str) > 1 && (pattern_segment catch "")[0] == Char(58) {
+            if strcmp((pattern_segment catch "")[1..], name) == 0 {
+                return __kai_std_http_path_segment(path, index)
+            }
+        }
+        index = index + 1
+    }
+    return none
+}
+
+fn __kai_std_http_request_path_param(request: Str, pattern: Str, name: Str) -> ?Str {
+    let path: ?Str = __kai_std_http_request_path(request)
+    if path == none {
+        return none
+    }
+    return __kai_std_http_path_param((path catch ""), pattern, name)
+}
+
+fn __kai_std_http_request_content_length(request: Str) -> ?Int {
+    let header: ?Str = __kai_std_http_request_header(request, "content-length")
+    if header == none {
+        return none
+    }
+    let trimmed: Str = __kai_std_str_trim_ascii((header catch ""))
+    if strlen((trimmed) as Str) == 0 {
+        return none
+    }
+    return __kai_std_parse_parse_usize(trimmed)
+}
+
+fn __kai_std_http_request_content_type(request: Str) -> ?Str {
+    let header: ?Str = __kai_std_http_request_header(request, "content-struct")
+    if header == none {
+        return none
+    }
+    let trimmed: Str = __kai_std_str_trim_ascii((header catch ""))
+    var end: Int = 0
+    while end < strlen((trimmed) as Str) && trimmed[end] != Char(59) {
+        end = end + 1
+    }
+    return __kai_std_str_trim_ascii(trimmed[..end])
+}
+
+fn __kai_std_http_q_value_zero(value: Str) -> Bool {
+    if strlen((value) as Str) == 0 || value[0] != Char(48) {
+        return false
+    }
+    if strlen((value) as Str) == 1 {
+        return true
+    }
+    if value[1] != Char(46) {
+        return false
+    }
+    var index: Int = 2
+    while index < strlen((value) as Str) {
+        let byte: Char = value[index]
+        if byte < Char(48) || byte > Char(57) {
+            return false
+        }
+        if byte != Char(48) {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_http_accept_q_allows(item: Str) -> Bool {
+    var start: Int = 0
+    while start < strlen((item) as Str) && item[start] != Char(59) {
+        start = start + 1
+    }
+    if start >= strlen((item) as Str) {
+        return true
+    }
+    start = start + 1
+    while start < strlen((item) as Str) {
+        var end: Int = start
+        while end < strlen((item) as Str) && item[end] != Char(59) {
+            end = end + 1
+        }
+        let parameter: Str = __kai_std_str_trim_ascii(item[start..end])
+        var eq: Int = 0
+        while eq < strlen((parameter) as Str) && parameter[eq] != Char(61) {
+            eq = eq + 1
+        }
+        if eq > 0 && eq < strlen((parameter) as Str) {
+            let name: Str = __kai_std_str_trim_ascii(parameter[..eq])
+            if __kai_std_str_eql_ignore_ascii_case(name, "q") {
+                let q_value: Str = __kai_std_str_trim_ascii(parameter[eq + 1..])
+                return !__kai_std_http_q_value_zero(q_value)
+            }
+        }
+        if end == strlen((item) as Str) {
+            return true
+        }
+        start = end + 1
+    }
+    return true
+}
+
+fn __kai_std_http_request_accepts(request: Str, media: Str) -> Bool {
+    if strlen((media) as Str) == 0 {
+        return false
+    }
+    let header: ?Str = __kai_std_http_request_header(request, "accept")
+    if header == none {
+        return true
+    }
+    var start: Int = 0
+    var exact_seen: Bool = false
+    var exact_allowed: Bool = false
+    var subtype_seen: Bool = false
+    var subtype_allowed: Bool = false
+    var wildcard_seen: Bool = false
+    var wildcard_allowed: Bool = false
+    while start <= strlen(((header catch "")) as Str) {
+        var end: Int = start
+        while end < strlen(((header catch "")) as Str) && (header catch "")[end] != Char(44) {
+            end = end + 1
+        }
+        let item: Str = __kai_std_str_trim_ascii((header catch "")[start..end])
+        var value_end: Int = 0
+        while value_end < strlen((item) as Str) && item[value_end] != Char(59) {
+            value_end = value_end + 1
+        }
+        let value: Str = __kai_std_str_trim_ascii(item[..value_end])
+        var specificity: Int = 0
+        if __kai_std_str_eql_ignore_ascii_case(value, media) {
+            specificity = 3
+        } else {
+            var slash: Int = 0
+            while slash < strlen((value) as Str) && value[slash] != Char(47) {
+                slash = slash + 1
+            }
+            let value_len: Int = strlen((value) as Str)
+            if strcmp(value, "*/*") == 0 {
+                specificity = 1
+            } else if slash + 2 == value_len && value[slash + 1] == Char(42) {
+                if strlen((media) as Str) > slash && media[slash] == Char(47) {
+                    if __kai_std_str_eql_ignore_ascii_case(value[..slash], media[..slash]) {
+                        specificity = 2
+                    }
+                }
+            }
+        }
+        let allowed: Bool = __kai_std_http_accept_q_allows(item)
+        if specificity == 3 {
+            exact_seen = true
+            if allowed {
+                exact_allowed = true
+            } else {
+                exact_allowed = false
+            }
+        } else if specificity == 2 {
+            subtype_seen = true
+            if allowed {
+                subtype_allowed = true
+            } else {
+                subtype_allowed = false
+            }
+        } else if specificity == 1 {
+            wildcard_seen = true
+            if allowed {
+                wildcard_allowed = true
+            } else {
+                wildcard_allowed = false
+            }
+        }
+        if end == strlen(((header catch "")) as Str) {
+            if exact_seen {
+                return exact_allowed
+            }
+            if subtype_seen {
+                return subtype_allowed
+            }
+            if wildcard_seen {
+                return wildcard_allowed
+            }
+            return false
+        }
+        start = end + 1
+    }
+    if exact_seen {
+        return exact_allowed
+    }
+    if subtype_seen {
+        return subtype_allowed
+    }
+    if wildcard_seen {
+        return wildcard_allowed
+    }
+    return false
+}
+
+fn __kai_std_http_request_accepts_json(request: Str) -> Bool {
+    return __kai_std_http_request_accepts(request, "application/json")
+}
+
+fn __kai_std_http_request_json_field(request: Str, name: Str, max: Int) -> ?Str {
+    let body: ?Str = __kai_std_http_request_json_body_within(request, max)
+    if body == none {
+        return none
+    }
+    return __kai_std_json_field((body catch ""), name)
+}
+
+fn __kai_std_http_write_json_unauthorized(buffer: *Char, body: Str) -> ?Str {
+    return __kai_std_http_write_json_response(buffer, 401, body)
+}
+
+fn __kai_std_http_write_json_forbidden(buffer: *Char, body: Str) -> ?Str {
+    return __kai_std_http_write_json_response(buffer, 403, body)
+}
+
+fn __kai_std_http_write_json_conflict(buffer: *Char, body: Str) -> ?Str {
+    return __kai_std_http_write_json_response(buffer, 409, body)
+}
+
+fn __kai_std_http_write_json_unprocessable(buffer: *Char, body: Str) -> ?Str {
+    return __kai_std_http_write_json_response(buffer, 422, body)
+}
+
+fn __kai_std_http_write_json_too_many_requests(buffer: *Char, body: Str) -> ?Str {
+    return __kai_std_http_write_json_response(buffer, 429, body)
+}
+
+fn __kai_std_http_write_json_internal_server_error(buffer: *Char, body: Str) -> ?Str {
+    return __kai_std_http_write_json_response(buffer, 500, body)
+}
+
+fn __kai_std_http_write_no_content(buffer: *Char) -> ?Str {
+    return __kai_std_http_write_response(buffer, 204, "")
+}
+
+fn __kai_std_http_path_segment_count(path: Str) -> Int {
+    var count: Int = 0
+    var index: Int = 0
+    while index < strlen((path) as Str) {
+        while index < strlen((path) as Str) && path[index] == Char(47) {
+            index = index + 1
+        }
+        if index < strlen((path) as Str) {
+            count = count + 1
+            while index < strlen((path) as Str) && path[index] != Char(47) {
+                index = index + 1
+            }
+        }
+    }
+    return count
+}
+
+fn __kai_std_http_path_segment(path: Str, index: Int) -> ?Str {
+    var current: Int = 0
+    var start: Int = 0
+    while start < strlen((path) as Str) {
+        while start < strlen((path) as Str) && path[start] == Char(47) {
+            start = start + 1
+        }
+        if start < strlen((path) as Str) {
+            var end: Int = start
+            while end < strlen((path) as Str) && path[end] != Char(47) {
+                end = end + 1
+            }
+            if current == index {
+                return path[start..end]
+            }
+            current = current + 1
+            start = end
+        }
+    }
+    return none
+}
+
+fn __kai_std_http_request_path_segment_count(request: Str) -> Int {
+    let path: ?Str = __kai_std_http_request_path(request)
+    if path == none {
+        return 0
+    }
+    return __kai_std_http_path_segment_count((path catch ""))
+}
+
+fn __kai_std_http_request_path_segment(request: Str, index: Int) -> ?Str {
+    let path: ?Str = __kai_std_http_request_path(request)
+    if path == none {
+        return none
+    }
+    return __kai_std_http_path_segment((path catch ""), index)
+}
+
+fn __kai_std_http_request_is_head(request: Str, path: Str) -> Bool {
+    return __kai_std_http_request_matches(request, "HEAD", path)
+}
+
+fn __kai_std_http_request_is_options(request: Str, path: Str) -> Bool {
+    return __kai_std_http_request_matches(request, "OPTIONS", path)
+}
+
+fn __kai_std_http_write_cors_preflight(buffer: *Char, allow_origin: Str, allow_methods: Str, allow_headers: Str) -> ?Str {
+    var offset: Int = 0
+    let status: ?Int = __kai_std_http_write(buffer, offset, "HTTP/1.1 204 No Content\r\nconnection: close\r\n")
+    if status == none {
+        return none
+    }
+    offset = (status catch 0)
+    let origin_label: ?Int = __kai_std_http_write(buffer, offset, "access-control-allow-origin: ")
+    if origin_label == none {
+        return none
+    }
+    offset = (origin_label catch 0)
+    let origin_value: ?Int = __kai_std_http_write(buffer, offset, allow_origin)
+    if origin_value == none {
+        return none
+    }
+    offset = (origin_value catch 0)
+    let origin_line: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if origin_line == none {
+        return none
+    }
+    offset = (origin_line catch 0)
+    let methods_label: ?Int = __kai_std_http_write(buffer, offset, "access-control-allow-methods: ")
+    if methods_label == none {
+        return none
+    }
+    offset = (methods_label catch 0)
+    let methods_value: ?Int = __kai_std_http_write(buffer, offset, allow_methods)
+    if methods_value == none {
+        return none
+    }
+    offset = (methods_value catch 0)
+    let methods_line: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if methods_line == none {
+        return none
+    }
+    offset = (methods_line catch 0)
+    let headers_label: ?Int = __kai_std_http_write(buffer, offset, "access-control-allow-headers: ")
+    if headers_label == none {
+        return none
+    }
+    offset = (headers_label catch 0)
+    let headers_value: ?Int = __kai_std_http_write(buffer, offset, allow_headers)
+    if headers_value == none {
+        return none
+    }
+    offset = (headers_value catch 0)
+    let headers_line: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if headers_line == none {
+        return none
+    }
+    offset = (headers_line catch 0)
+    let length: ?Int = __kai_std_http_write_content_length(buffer, offset, 0)
+    if length == none {
+        return none
+    }
+    offset = (length catch 0)
+    let blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if blank == none {
+        return none
+    }
+    return buffer[..(blank catch 0)]
+}
+
+fn __kai_std_http_write_cors_json_response(buffer: *Char, status_line: Str, body: Str, allow_origin: Str) -> ?Str {
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_http_write(buffer, offset, "HTTP/1.1 ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let status: ?Int = __kai_std_http_write(buffer, offset, status_line)
+    if status == none {
+        return none
+    }
+    offset = (status catch 0)
+    let content_type: ?Int = __kai_std_http_write(buffer, offset, "\r\ncontent-struct: application/json\r\nconnection: close\r\naccess-control-allow-origin: ")
+    if content_type == none {
+        return none
+    }
+    offset = (content_type catch "")
+    let origin_value: ?Int = __kai_std_http_write(buffer, offset, allow_origin)
+    if origin_value == none {
+        return none
+    }
+    offset = (origin_value catch 0)
+    let origin_line: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if origin_line == none {
+        return none
+    }
+    offset = (origin_line catch 0)
+    let body_len: Int = strlen((body) as Str)
+    let length: ?Int = __kai_std_http_write_content_length(buffer, offset, body_len)
+    if length == none {
+        return none
+    }
+    offset = (length catch 0)
+    let blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if blank == none {
+        return none
+    }
+    offset = (blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_request_bearer_token(request: Str) -> ?Str {
+    let authorization: ?Str = __kai_std_http_request_header(request, "authorization")
+    if authorization == none {
+        return none
+    }
+    let value: Str = __kai_std_str_trim_ascii((authorization catch ""))
+    if strlen((value) as Str) <= 7 {
+        return none
+    }
+    let scheme: Str = value[..7]
+    if !__kai_std_str_eql_ignore_ascii_case(scheme, "Bearer ") {
+        return none
+    }
+    let token: Str = __kai_std_str_trim_ascii(value[7..])
+    if strlen((token) as Str) == 0 {
+        return none
+    }
+    return token
+}
+
+fn __kai_std_http_request_cookie(request: Str, name: Str) -> ?Str {
+    if strlen((name) as Str) == 0 {
+        return none
+    }
+    let cookie: ?Str = __kai_std_http_request_header(request, "cookie")
+    if cookie == none {
+        return none
+    }
+    var start: Int = 0
+    while start <= strlen(((cookie catch "")) as Str) {
+        var end: Int = start
+        while end < strlen(((cookie catch "")) as Str) && (cookie catch "")[end] != Char(59) {
+            end = end + 1
+        }
+        var eq: Int = start
+        while eq < end && (cookie catch "")[eq] != Char(61) {
+            eq = eq + 1
+        }
+        let cookie_name: Str = __kai_std_str_trim_ascii((cookie catch "")[start..eq])
+        if strcmp(cookie_name, name) == 0 {
+            if eq < end {
+                let value_start: Int = eq + 1
+                return __kai_std_str_trim_ascii((cookie catch "")[value_start..end])
+            }
+            return (cookie catch "")[end..end]
+        }
+        if end == strlen(((cookie catch "")) as Str) {
+            return none
+        }
+        start = end + 1
+    }
+    return none
+}
+
+fn __kai_std_http_error_code_valid(code: Str) -> Bool {
+    if strlen((code) as Str) == 0 {
+        return false
+    }
+    var index: Int = 0
+    while index < strlen((code) as Str) {
+        let byte: Char = code[index]
+        if !(byte >= Char(97) && byte <= Char(122) || byte >= Char(48) && byte <= Char(57) || byte == Char(45) || byte == Char(95)) {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_http_write_json_error(buffer: *Char, status: Int, code: Str) -> ?Str {
+    if !__kai_std_http_error_code_valid(code) {
+        return none
+    }
+    let body_len: Int = 12 + strlen((code) as Str)
+    let status_value: Int = status as Int
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_http_write(buffer, offset, "HTTP/1.1 ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let status_text: ?Int = __kai_std_http_write_usize(buffer, offset, status_value)
+    if status_text == none {
+        return none
+    }
+    offset = (status_text catch 0)
+    let space: ?Int = __kai_std_http_write(buffer, offset, " ")
+    if space == none {
+        return none
+    }
+    offset = (space catch 0)
+    let reason_text: Str = __kai_std_http_status_reason(status)
+    let reason_span: Str = __kai_std_mem_span(reason_text)
+    let reason: ?Int = __kai_std_http_write(buffer, offset, reason_span)
+    if reason == none {
+        return none
+    }
+    offset = (reason catch 0)
+    let line: ?Int = __kai_std_http_write(buffer, offset, "\r\ncontent-struct: application/json\r\nconnection: close\r\n")
+    if line == none {
+        return none
+    }
+    offset = (line catch "")
+    let length: ?Int = __kai_std_http_write_content_length(buffer, offset, body_len)
+    if length == none {
+        return none
+    }
+    offset = (length catch 0)
+    let blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if blank == none {
+        return none
+    }
+    offset = (blank catch 0)
+    let body_prefix: ?Int = __kai_std_http_write(buffer, offset, "{\"error\":\"")
+    if body_prefix == none {
+        return none
+    }
+    offset = (body_prefix catch 0)
+    let wrote_code: ?Int = __kai_std_http_write(buffer, offset, code)
+    if wrote_code == none {
+        return none
+    }
+    offset = (wrote_code catch 0)
+    let body_suffix: ?Int = __kai_std_http_write(buffer, offset, "\"}")
+    if body_suffix == none {
+        return none
+    }
+    return buffer[..(body_suffix catch 0)]
+}
+
+fn __kai_std_http_write_typed_response(buffer: *Char, status: Int, content_type: Str, body: Str) -> ?Str {
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_http_write(buffer, offset, "HTTP/1.1 ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let status_value: Int = status as Int
+    let code: ?Int = __kai_std_http_write_usize(buffer, offset, status_value)
+    if code == none {
+        return none
+    }
+    offset = (code catch 0)
+    let space: ?Int = __kai_std_http_write(buffer, offset, " ")
+    if space == none {
+        return none
+    }
+    offset = (space catch 0)
+    let reason_text: Str = __kai_std_http_status_reason(status)
+    let reason_span: Str = __kai_std_mem_span(reason_text)
+    let reason: ?Int = __kai_std_http_write(buffer, offset, reason_span)
+    if reason == none {
+        return none
+    }
+    offset = (reason catch 0)
+    let header: ?Int = __kai_std_http_write(buffer, offset, "\r\ncontent-struct: ")
+    if header == none {
+        return none
+    }
+    offset = (header catch "")
+    let header_value: ?Int = __kai_std_http_write(buffer, offset, content_type)
+    if header_value == none {
+        return none
+    }
+    offset = (header_value catch 0)
+    let line: ?Int = __kai_std_http_write(buffer, offset, "\r\nconnection: close\r\n")
+    if line == none {
+        return none
+    }
+    offset = (line catch "")
+    let body_len: Int = strlen((body) as Str)
+    let length: ?Int = __kai_std_http_write_content_length(buffer, offset, body_len)
+    if length == none {
+        return none
+    }
+    offset = (length catch 0)
+    let blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if blank == none {
+        return none
+    }
+    offset = (blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_write_text_response(buffer: *Char, status: Int, body: Str) -> ?Str {
+    return __kai_std_http_write_typed_response(buffer, status, "text/plain; charset=utf-8", body)
+}
+
+fn __kai_std_http_write_html_response(buffer: *Char, status: Int, body: Str) -> ?Str {
+    return __kai_std_http_write_typed_response(buffer, status, "text/html; charset=utf-8", body)
+}
+
+fn __kai_std_http_header_name_safe(name: Str) -> Bool {
+    return __kai_std_http_method_valid(name)
+}
+
+fn __kai_std_http_header_line_safe(line: Str) -> Bool {
+    var index: Int = 0
+    while index < strlen((line) as Str) {
+        if line[index] == Char(10) || line[index] == Char(13) {
+            return false
+        }
+        index = index + 1
+    }
+    var colon: Int = 0
+    while colon < strlen((line) as Str) && line[colon] != Char(58) {
+        colon = colon + 1
+    }
+    if colon == 0 || colon >= strlen((line) as Str) {
+        return false
+    }
+    let header_name: Str = line[..colon]
+    let header_value: Str = __kai_std_str_trim_ascii(line[colon + 1..])
+    return __kai_std_http_header_name_safe(header_name) && __kai_std_http_header_value_safe(header_value)
+}
+
+fn __kai_std_http_header_block_safe(headers: Str) -> Bool {
+    if strlen((headers) as Str) == 0 {
+        return false
+    }
+    var start: Int = 0
+    while start < strlen((headers) as Str) {
+        var end: Int = start
+        while end < strlen((headers) as Str) && headers[end] != Char(10) {
+            end = end + 1
+        }
+        var line_end: Int = end
+        if line_end > start && headers[line_end - 1] == Char(13) {
+            line_end = line_end - 1
+        }
+        if line_end == start || !__kai_std_http_header_line_safe(headers[start..line_end]) {
+            return false
+        }
+        if end == strlen((headers) as Str) {
+            return true
+        }
+        start = end + 1
+        if start >= strlen((headers) as Str) {
+            return false
+        }
+    }
+    return true
+}
+
+fn __kai_std_http_write_header_block(buffer: *Char, offset: Int, headers: Str) -> ?Int {
+    if !__kai_std_http_header_block_safe(headers) {
+        return none
+    }
+    var current: Int = offset
+    var start: Int = 0
+    while start < strlen((headers) as Str) {
+        var end: Int = start
+        while end < strlen((headers) as Str) && headers[end] != Char(10) {
+            end = end + 1
+        }
+        var line_end: Int = end
+        if line_end > start && headers[line_end - 1] == Char(13) {
+            line_end = line_end - 1
+        }
+        let wrote_header: ?Int = __kai_std_http_write(buffer, current, headers[start..line_end])
+        if wrote_header == none {
+            return none
+        }
+        current = (wrote_header catch 0)
+        let wrote_line: ?Int = __kai_std_http_write(buffer, current, "\r\n")
+        if wrote_line == none {
+            return none
+        }
+        current = (wrote_line catch 0)
+        if end == strlen((headers) as Str) {
+            return current
+        }
+        start = end + 1
+    }
+    return current
+}
+
+fn __kai_std_http_write_response_with_header(buffer: *Char, status: Int, header_line: Str, body: Str) -> ?Str {
+    if !__kai_std_http_header_line_safe(header_line) {
+        return none
+    }
+    var header_colon: Int = 0
+    while header_colon < strlen((header_line) as Str) && header_line[header_colon] != Char(58) {
+        header_colon = header_colon + 1
+    }
+    let header_name: Str = header_line[..header_colon]
+    if __kai_std_str_eql_ignore_ascii_case(header_name, "content-length") || (__kai_std_str_eql_ignore_ascii_case(header_name, "transfer-encoding") || __kai_std_str_eql_ignore_ascii_case(header_name, "connection")) {
+        return none
+    }
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_http_write(buffer, offset, "HTTP/1.1 ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let status_value: Int = status as Int
+    let code: ?Int = __kai_std_http_write_usize(buffer, offset, status_value)
+    if code == none {
+        return none
+    }
+    offset = (code catch 0)
+    let space: ?Int = __kai_std_http_write(buffer, offset, " ")
+    if space == none {
+        return none
+    }
+    offset = (space catch 0)
+    let reason_text: Str = __kai_std_http_status_reason(status)
+    let reason: ?Int = __kai_std_http_write(buffer, offset, __kai_std_mem_span(reason_text))
+    if reason == none {
+        return none
+    }
+    offset = (reason catch 0)
+    let connection: ?Int = __kai_std_http_write(buffer, offset, "\r\nconnection: close\r\n")
+    if connection == none {
+        return none
+    }
+    offset = (connection catch 0)
+    let header_written: ?Int = __kai_std_http_write(buffer, offset, header_line)
+    if header_written == none {
+        return none
+    }
+    offset = (header_written catch 0)
+    let header_end: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if header_end == none {
+        return none
+    }
+    offset = (header_end catch 0)
+    let length: ?Int = __kai_std_http_write_content_length(buffer, offset, strlen((body) as Str))
+    if length == none {
+        return none
+    }
+    offset = (length catch 0)
+    let blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if blank == none {
+        return none
+    }
+    offset = (blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_write_response_with_headers(buffer: *Char, status: Int, headers: Str, body: Str) -> ?Str {
+    if !__kai_std_http_header_block_safe(headers) {
+        return none
+    }
+    var header_start: Int = 0
+    while header_start < strlen((headers) as Str) {
+        var header_end: Int = header_start
+        while header_end < strlen((headers) as Str) && headers[header_end] != Char(10) {
+            header_end = header_end + 1
+        }
+        var header_line_end: Int = header_end
+        if header_line_end > header_start && headers[header_line_end - 1] == Char(13) {
+            header_line_end = header_line_end - 1
+        }
+        var header_colon: Int = header_start
+        while header_colon < header_line_end && headers[header_colon] != Char(58) {
+            header_colon = header_colon + 1
+        }
+        let header_name: Str = headers[header_start..header_colon]
+        if __kai_std_str_eql_ignore_ascii_case(header_name, "content-length") || (__kai_std_str_eql_ignore_ascii_case(header_name, "transfer-encoding") || __kai_std_str_eql_ignore_ascii_case(header_name, "connection")) {
+            return none
+        }
+        if header_end == strlen((headers) as Str) {
+            header_start = strlen((headers) as Str)
+        } else {
+            header_start = header_end + 1
+        }
+    }
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_http_write(buffer, offset, "HTTP/1.1 ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let status_value: Int = status as Int
+    let code: ?Int = __kai_std_http_write_usize(buffer, offset, status_value)
+    if code == none {
+        return none
+    }
+    offset = (code catch 0)
+    let space: ?Int = __kai_std_http_write(buffer, offset, " ")
+    if space == none {
+        return none
+    }
+    offset = (space catch 0)
+    let reason_text: Str = __kai_std_http_status_reason(status)
+    let reason: ?Int = __kai_std_http_write(buffer, offset, __kai_std_mem_span(reason_text))
+    if reason == none {
+        return none
+    }
+    offset = (reason catch 0)
+    let connection: ?Int = __kai_std_http_write(buffer, offset, "\r\nconnection: close\r\n")
+    if connection == none {
+        return none
+    }
+    offset = (connection catch 0)
+    let headers_written: ?Int = __kai_std_http_write_header_block(buffer, offset, headers)
+    if headers_written == none {
+        return none
+    }
+    offset = (headers_written catch 0)
+    let length: ?Int = __kai_std_http_write_content_length(buffer, offset, strlen((body) as Str))
+    if length == none {
+        return none
+    }
+    offset = (length catch 0)
+    let blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if blank == none {
+        return none
+    }
+    offset = (blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_write_json_response_with_header(buffer: *Char, status: Int, header_line: Str, body: Str) -> ?Str {
+    if !__kai_std_http_header_line_safe(header_line) {
+        return none
+    }
+    var header_colon: Int = 0
+    while header_colon < strlen((header_line) as Str) && header_line[header_colon] != Char(58) {
+        header_colon = header_colon + 1
+    }
+    let header_name: Str = header_line[..header_colon]
+    if __kai_std_str_eql_ignore_ascii_case(header_name, "content-length") || (__kai_std_str_eql_ignore_ascii_case(header_name, "transfer-encoding") || (__kai_std_str_eql_ignore_ascii_case(header_name, "content-struct") || __kai_std_str_eql_ignore_ascii_case(header_name, "connection"))) {
+        return none
+    }
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_http_write(buffer, offset, "HTTP/1.1 ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let status_value: Int = status as Int
+    let code: ?Int = __kai_std_http_write_usize(buffer, offset, status_value)
+    if code == none {
+        return none
+    }
+    offset = (code catch 0)
+    let space: ?Int = __kai_std_http_write(buffer, offset, " ")
+    if space == none {
+        return none
+    }
+    offset = (space catch 0)
+    let reason_text: Str = __kai_std_http_status_reason(status)
+    let reason: ?Int = __kai_std_http_write(buffer, offset, __kai_std_mem_span(reason_text))
+    if reason == none {
+        return none
+    }
+    offset = (reason catch 0)
+    let fixed_headers: ?Int = __kai_std_http_write(buffer, offset, "\r\ncontent-struct: application/json\r\nconnection: close\r\n")
+    if fixed_headers == none {
+        return none
+    }
+    offset = (fixed_headers catch 0)
+    let header_written: ?Int = __kai_std_http_write(buffer, offset, header_line)
+    if header_written == none {
+        return none
+    }
+    offset = (header_written catch 0)
+    let header_end: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if header_end == none {
+        return none
+    }
+    offset = (header_end catch 0)
+    let length: ?Int = __kai_std_http_write_content_length(buffer, offset, strlen((body) as Str))
+    if length == none {
+        return none
+    }
+    offset = (length catch 0)
+    let blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if blank == none {
+        return none
+    }
+    offset = (blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_write_json_response_with_headers(buffer: *Char, status: Int, headers: Str, body: Str) -> ?Str {
+    if !__kai_std_http_header_block_safe(headers) {
+        return none
+    }
+    var header_start: Int = 0
+    while header_start < strlen((headers) as Str) {
+        var header_end: Int = header_start
+        while header_end < strlen((headers) as Str) && headers[header_end] != Char(10) {
+            header_end = header_end + 1
+        }
+        var header_line_end: Int = header_end
+        if header_line_end > header_start && headers[header_line_end - 1] == Char(13) {
+            header_line_end = header_line_end - 1
+        }
+        var header_colon: Int = header_start
+        while header_colon < header_line_end && headers[header_colon] != Char(58) {
+            header_colon = header_colon + 1
+        }
+        let header_name: Str = headers[header_start..header_colon]
+        if __kai_std_str_eql_ignore_ascii_case(header_name, "content-length") || (__kai_std_str_eql_ignore_ascii_case(header_name, "transfer-encoding") || (__kai_std_str_eql_ignore_ascii_case(header_name, "content-struct") || __kai_std_str_eql_ignore_ascii_case(header_name, "connection"))) {
+            return none
+        }
+        if header_end == strlen((headers) as Str) {
+            header_start = strlen((headers) as Str)
+        } else {
+            header_start = header_end + 1
+        }
+    }
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_http_write(buffer, offset, "HTTP/1.1 ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let status_value: Int = status as Int
+    let code: ?Int = __kai_std_http_write_usize(buffer, offset, status_value)
+    if code == none {
+        return none
+    }
+    offset = (code catch 0)
+    let space: ?Int = __kai_std_http_write(buffer, offset, " ")
+    if space == none {
+        return none
+    }
+    offset = (space catch 0)
+    let reason_text: Str = __kai_std_http_status_reason(status)
+    let reason: ?Int = __kai_std_http_write(buffer, offset, __kai_std_mem_span(reason_text))
+    if reason == none {
+        return none
+    }
+    offset = (reason catch 0)
+    let fixed_headers: ?Int = __kai_std_http_write(buffer, offset, "\r\ncontent-struct: application/json\r\nconnection: close\r\n")
+    if fixed_headers == none {
+        return none
+    }
+    offset = (fixed_headers catch 0)
+    let headers_written: ?Int = __kai_std_http_write_header_block(buffer, offset, headers)
+    if headers_written == none {
+        return none
+    }
+    offset = (headers_written catch 0)
+    let length: ?Int = __kai_std_http_write_content_length(buffer, offset, strlen((body) as Str))
+    if length == none {
+        return none
+    }
+    offset = (length catch 0)
+    let blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if blank == none {
+        return none
+    }
+    offset = (blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_cookie_value_safe(value: Str) -> Bool {
+    var index: Int = 0
+    while index < strlen((value) as Str) {
+        let byte: Char = value[index]
+        if byte <= Char(32) || byte == Char(34) || byte == Char(44) || byte == Char(59) || byte == Char(92) || byte == Char(127) {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_http_write_json_response_with_cookie(buffer: *Char, status: Int, cookie: Str, body: Str) -> ?Str {
+    if !__kai_std_http_header_value_safe(cookie) {
+        return none
+    }
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_http_write(buffer, offset, "HTTP/1.1 ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let status_value: Int = status as Int
+    let code: ?Int = __kai_std_http_write_usize(buffer, offset, status_value)
+    if code == none {
+        return none
+    }
+    offset = (code catch 0)
+    let space: ?Int = __kai_std_http_write(buffer, offset, " ")
+    if space == none {
+        return none
+    }
+    offset = (space catch 0)
+    let reason_text: Str = __kai_std_http_status_reason(status)
+    let reason: ?Int = __kai_std_http_write(buffer, offset, __kai_std_mem_span(reason_text))
+    if reason == none {
+        return none
+    }
+    offset = (reason catch 0)
+    let fixed_headers: ?Int = __kai_std_http_write(buffer, offset, "\r\ncontent-struct: application/json\r\nconnection: close\r\nset-cookie: ")
+    if fixed_headers == none {
+        return none
+    }
+    offset = (fixed_headers catch 0)
+    let cookie_value: ?Int = __kai_std_http_write(buffer, offset, cookie)
+    if cookie_value == none {
+        return none
+    }
+    offset = (cookie_value catch 0)
+    let cookie_end: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if cookie_end == none {
+        return none
+    }
+    offset = (cookie_end catch 0)
+    let length: ?Int = __kai_std_http_write_content_length(buffer, offset, strlen((body) as Str))
+    if length == none {
+        return none
+    }
+    offset = (length catch 0)
+    let blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if blank == none {
+        return none
+    }
+    offset = (blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_write_request_with_header(buffer: *Char, start_line: Str, header_line: Str, body: Str) -> ?Str {
+    if !__kai_std_http_start_line_valid(start_line) || !__kai_std_http_header_line_safe(header_line) {
+        return none
+    }
+    var header_colon: Int = 0
+    while header_colon < strlen((header_line) as Str) && header_line[header_colon] != Char(58) {
+        header_colon = header_colon + 1
+    }
+    let header_name: Str = header_line[..header_colon]
+    if __kai_std_str_eql_ignore_ascii_case(header_name, "content-length") || __kai_std_str_eql_ignore_ascii_case(header_name, "transfer-encoding") {
+        return none
+    }
+    var offset: Int = 0
+    let wrote_line_text: ?Int = __kai_std_http_write(buffer, offset, start_line)
+    if wrote_line_text == none {
+        return none
+    }
+    offset = (wrote_line_text catch 0)
+    let wrote_line: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if wrote_line == none {
+        return none
+    }
+    offset = (wrote_line catch 0)
+    let header_written: ?Int = __kai_std_http_write(buffer, offset, header_line)
+    if header_written == none {
+        return none
+    }
+    offset = (header_written catch 0)
+    let header_end: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if header_end == none {
+        return none
+    }
+    offset = (header_end catch 0)
+    if strlen((body) as Str) > 0 {
+        let wrote_length: ?Int = __kai_std_http_write_content_length(buffer, offset, strlen((body) as Str))
+        if wrote_length == none {
+            return none
+        }
+        offset = (wrote_length catch 0)
+    }
+    let wrote_blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if wrote_blank == none {
+        return none
+    }
+    offset = (wrote_blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_write_request_with_headers(buffer: *Char, start_line: Str, headers: Str, body: Str) -> ?Str {
+    if !__kai_std_http_start_line_valid(start_line) || !__kai_std_http_header_block_safe(headers) {
+        return none
+    }
+    var header_start: Int = 0
+    while header_start < strlen((headers) as Str) {
+        var header_end: Int = header_start
+        while header_end < strlen((headers) as Str) && headers[header_end] != Char(10) {
+            header_end = header_end + 1
+        }
+        var header_line_end: Int = header_end
+        if header_line_end > header_start && headers[header_line_end - 1] == Char(13) {
+            header_line_end = header_line_end - 1
+        }
+        var header_colon: Int = header_start
+        while header_colon < header_line_end && headers[header_colon] != Char(58) {
+            header_colon = header_colon + 1
+        }
+        let header_name: Str = headers[header_start..header_colon]
+        if __kai_std_str_eql_ignore_ascii_case(header_name, "content-length") || __kai_std_str_eql_ignore_ascii_case(header_name, "transfer-encoding") {
+            return none
+        }
+        if header_end == strlen((headers) as Str) {
+            header_start = strlen((headers) as Str)
+        } else {
+            header_start = header_end + 1
+        }
+    }
+    var offset: Int = 0
+    let wrote_line_text: ?Int = __kai_std_http_write(buffer, offset, start_line)
+    if wrote_line_text == none {
+        return none
+    }
+    offset = (wrote_line_text catch 0)
+    let wrote_line: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if wrote_line == none {
+        return none
+    }
+    offset = (wrote_line catch 0)
+    let headers_written: ?Int = __kai_std_http_write_header_block(buffer, offset, headers)
+    if headers_written == none {
+        return none
+    }
+    offset = (headers_written catch 0)
+    if strlen((body) as Str) > 0 {
+        let wrote_length: ?Int = __kai_std_http_write_content_length(buffer, offset, strlen((body) as Str))
+        if wrote_length == none {
+            return none
+        }
+        offset = (wrote_length catch 0)
+    }
+    let wrote_blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if wrote_blank == none {
+        return none
+    }
+    offset = (wrote_blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_write_json_request_with_header(buffer: *Char, start_line: Str, header_line: Str, body: Str) -> ?Str {
+    if !__kai_std_http_start_line_valid(start_line) || !__kai_std_http_header_line_safe(header_line) {
+        return none
+    }
+    var header_colon: Int = 0
+    while header_colon < strlen((header_line) as Str) && header_line[header_colon] != Char(58) {
+        header_colon = header_colon + 1
+    }
+    let header_name: Str = header_line[..header_colon]
+    if __kai_std_str_eql_ignore_ascii_case(header_name, "content-length") || (__kai_std_str_eql_ignore_ascii_case(header_name, "transfer-encoding") || __kai_std_str_eql_ignore_ascii_case(header_name, "content-struct")) {
+        return none
+    }
+    var offset: Int = 0
+    let wrote_line_text: ?Int = __kai_std_http_write(buffer, offset, start_line)
+    if wrote_line_text == none {
+        return none
+    }
+    offset = (wrote_line_text catch 0)
+    let wrote_line: ?Int = __kai_std_http_write(buffer, offset, "\r\ncontent-struct: application/json\r\n")
+    if wrote_line == none {
+        return none
+    }
+    offset = (wrote_line catch 0)
+    let header_written: ?Int = __kai_std_http_write(buffer, offset, header_line)
+    if header_written == none {
+        return none
+    }
+    offset = (header_written catch 0)
+    let header_end: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if header_end == none {
+        return none
+    }
+    offset = (header_end catch 0)
+    let wrote_length: ?Int = __kai_std_http_write_content_length(buffer, offset, strlen((body) as Str))
+    if wrote_length == none {
+        return none
+    }
+    offset = (wrote_length catch 0)
+    let wrote_blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if wrote_blank == none {
+        return none
+    }
+    offset = (wrote_blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_write_json_request_with_headers(buffer: *Char, start_line: Str, headers: Str, body: Str) -> ?Str {
+    if !__kai_std_http_start_line_valid(start_line) || !__kai_std_http_header_block_safe(headers) {
+        return none
+    }
+    var header_start: Int = 0
+    while header_start < strlen((headers) as Str) {
+        var header_end: Int = header_start
+        while header_end < strlen((headers) as Str) && headers[header_end] != Char(10) {
+            header_end = header_end + 1
+        }
+        var header_line_end: Int = header_end
+        if header_line_end > header_start && headers[header_line_end - 1] == Char(13) {
+            header_line_end = header_line_end - 1
+        }
+        var header_colon: Int = header_start
+        while header_colon < header_line_end && headers[header_colon] != Char(58) {
+            header_colon = header_colon + 1
+        }
+        let header_name: Str = headers[header_start..header_colon]
+        if __kai_std_str_eql_ignore_ascii_case(header_name, "content-length") || (__kai_std_str_eql_ignore_ascii_case(header_name, "transfer-encoding") || __kai_std_str_eql_ignore_ascii_case(header_name, "content-struct")) {
+            return none
+        }
+        if header_end == strlen((headers) as Str) {
+            header_start = strlen((headers) as Str)
+        } else {
+            header_start = header_end + 1
+        }
+    }
+    var offset: Int = 0
+    let wrote_line_text: ?Int = __kai_std_http_write(buffer, offset, start_line)
+    if wrote_line_text == none {
+        return none
+    }
+    offset = (wrote_line_text catch 0)
+    let wrote_line: ?Int = __kai_std_http_write(buffer, offset, "\r\ncontent-struct: application/json\r\n")
+    if wrote_line == none {
+        return none
+    }
+    offset = (wrote_line catch 0)
+    let headers_written: ?Int = __kai_std_http_write_header_block(buffer, offset, headers)
+    if headers_written == none {
+        return none
+    }
+    offset = (headers_written catch 0)
+    let wrote_length: ?Int = __kai_std_http_write_content_length(buffer, offset, strlen((body) as Str))
+    if wrote_length == none {
+        return none
+    }
+    offset = (wrote_length catch 0)
+    let wrote_blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if wrote_blank == none {
+        return none
+    }
+    offset = (wrote_blank catch 0)
+    let wrote_body: ?Int = __kai_std_http_write(buffer, offset, body)
+    if wrote_body == none {
+        return none
+    }
+    return buffer[..(wrote_body catch 0)]
+}
+
+fn __kai_std_http_write_text_ok(buffer: *Char, body: Str) -> ?Str {
+    return __kai_std_http_write_text_response(buffer, 200, body)
+}
+
+fn __kai_std_http_write_html_ok(buffer: *Char, body: Str) -> ?Str {
+    return __kai_std_http_write_html_response(buffer, 200, body)
+}
+
+fn __kai_std_http_path_ends_ignore_ascii_case(path: Str, suffix: Str) -> Bool {
+    let path_len: Int = strlen((path) as Str)
+    let suffix_len: Int = strlen((suffix) as Str)
+    if suffix_len > path_len {
+        return false
+    }
+    return __kai_std_str_eql_ignore_ascii_case(path[path_len - suffix_len..], suffix)
+}
+
+fn __kai_std_http_content_type_for_path(path: Str) -> Str {
+    if __kai_std_http_path_ends_ignore_ascii_case(path, ".html") || __kai_std_http_path_ends_ignore_ascii_case(path, ".htm") {
+        return "text/html; charset=utf-8"
+    }
+    if __kai_std_http_path_ends_ignore_ascii_case(path, ".css") {
+        return "text/css; charset=utf-8"
+    }
+    if __kai_std_http_path_ends_ignore_ascii_case(path, ".js") || __kai_std_http_path_ends_ignore_ascii_case(path, ".mjs") {
+        return "text/javascript; charset=utf-8"
+    }
+    if __kai_std_http_path_ends_ignore_ascii_case(path, ".json") {
+        return "application/json"
+    }
+    if __kai_std_http_path_ends_ignore_ascii_case(path, ".txt") {
+        return "text/plain; charset=utf-8"
+    }
+    if __kai_std_http_path_ends_ignore_ascii_case(path, ".svg") {
+        return "image/svg+xml"
+    }
+    if __kai_std_http_path_ends_ignore_ascii_case(path, ".png") {
+        return "image/png"
+    }
+    if __kai_std_http_path_ends_ignore_ascii_case(path, ".jpg") || __kai_std_http_path_ends_ignore_ascii_case(path, ".jpeg") {
+        return "image/jpeg"
+    }
+    if __kai_std_http_path_ends_ignore_ascii_case(path, ".gif") {
+        return "image/gif"
+    }
+    if __kai_std_http_path_ends_ignore_ascii_case(path, ".webp") {
+        return "image/webp"
+    }
+    if __kai_std_http_path_ends_ignore_ascii_case(path, ".wasm") {
+        return "application/wasm"
+    }
+    if __kai_std_http_path_ends_ignore_ascii_case(path, ".xml") {
+        return "application/xml"
+    }
+    if __kai_std_http_path_ends_ignore_ascii_case(path, ".csv") {
+        return "text/csv; charset=utf-8"
+    }
+    return "application/octet-stream"
+}
+
+fn __kai_std_http_write_static_response(buffer: *Char, status: Int, path: Str, body: Str) -> ?Str {
+    let content_type: Str = __kai_std_http_content_type_for_path(path)
+    return __kai_std_http_write_typed_response(buffer, status, __kai_std_mem_span(content_type), body)
+}
+
+fn __kai_std_http_test_request(buffer: *Char, method: Str, target: Str, body: Str) -> ?Str {
+    return __kai_std_http_write_method_request(buffer, method, target, body)
+}
+
+fn __kai_std_http_test_json_request(buffer: *Char, method: Str, target: Str, body: Str) -> ?Str {
+    return __kai_std_http_write_json_method_request(buffer, method, target, body)
+}
+
+fn __kai_std_http_header_value_safe(value: Str) -> Bool {
+    if strlen((value) as Str) == 0 {
+        return false
+    }
+    var index: Int = 0
+    while index < strlen((value) as Str) {
+        let byte: Char = value[index]
+        if byte < Char(32) || byte == Char(127) {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_http_write_redirect(buffer: *Char, status: Int, location: Str) -> ?Str {
+    let redirect_status: Bool = __kai_std_http_status_is_redirect(status)
+    if !redirect_status {
+        return none
+    }
+    let safe_location: Bool = __kai_std_http_header_value_safe(location)
+    if !safe_location {
+        return none
+    }
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_http_write(buffer, offset, "HTTP/1.1 ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let status_value: Int = status as Int
+    let code: ?Int = __kai_std_http_write_usize(buffer, offset, status_value)
+    if code == none {
+        return none
+    }
+    offset = (code catch 0)
+    let space: ?Int = __kai_std_http_write(buffer, offset, " ")
+    if space == none {
+        return none
+    }
+    offset = (space catch 0)
+    let reason_text: Str = __kai_std_http_status_reason(status)
+    let reason_span: Str = __kai_std_mem_span(reason_text)
+    let reason: ?Int = __kai_std_http_write(buffer, offset, reason_span)
+    if reason == none {
+        return none
+    }
+    offset = (reason catch 0)
+    let location_label: ?Int = __kai_std_http_write(buffer, offset, "\r\nlocation: ")
+    if location_label == none {
+        return none
+    }
+    offset = (location_label catch 0)
+    let location_value: ?Int = __kai_std_http_write(buffer, offset, location)
+    if location_value == none {
+        return none
+    }
+    offset = (location_value catch 0)
+    let line: ?Int = __kai_std_http_write(buffer, offset, "\r\nconnection: close\r\n")
+    if line == none {
+        return none
+    }
+    offset = (line catch "")
+    let body_len: Int = 0
+    let length: ?Int = __kai_std_http_write_content_length(buffer, offset, body_len)
+    if length == none {
+        return none
+    }
+    offset = (length catch 0)
+    let blank: ?Int = __kai_std_http_write(buffer, offset, "\r\n")
+    if blank == none {
+        return none
+    }
+    return buffer[..(blank catch 0)]
+}
+
+fn __kai_std_http_write_found(buffer: *Char, location: Str) -> ?Str {
+    return __kai_std_http_write_redirect(buffer, 302, location)
+}
+
+fn __kai_std_http_write_see_other(buffer: *Char, location: Str) -> ?Str {
+    return __kai_std_http_write_redirect(buffer, 303, location)
+}
+
+fn __kai_std_http_write_moved_permanently(buffer: *Char, location: Str) -> ?Str {
+    return __kai_std_http_write_redirect(buffer, 301, location)
+}
+
+fn __kai_std_http_write_permanent_redirect(buffer: *Char, location: Str) -> ?Str {
+    return __kai_std_http_write_redirect(buffer, 308, location)
+}
+
+fn __kai_std_io_write_byte(buffer: *Char, offset: Int, byte: Char) -> ?Int {
+    if offset >= strlen((buffer) as Str) {
+        return none
+    }
+    buffer[offset] = byte
+    return offset + 1
+}
+
+fn __kai_std_io_write_span(buffer: *Char, offset: Int, bytes: Str) -> ?Int {
+    if offset > strlen((buffer) as Str) {
+        return none
+    }
+    if strlen((bytes) as Str) > strlen((buffer) as Str) - offset {
+        return none
+    }
+    var index: Int = 0
+    while index < strlen((bytes) as Str) {
+        buffer[offset + index] = bytes[index]
+        index = index + 1
+    }
+    return offset + strlen((bytes) as Str)
+}
+
+fn __kai_std_io_written(buffer: Str, len: Int) -> Str {
+    if len > strlen((buffer) as Str) {
+        return buffer
+    }
+    return buffer[..len]
+}
+
+fn __kai_std_io_remaining(buffer: Str, offset: Int) -> Int {
+    if offset >= strlen((buffer) as Str) {
+        return 0
+    }
+    return strlen((buffer) as Str) - offset
+}
+
+fn __kai_std_io_next_line(bytes: Str, start: Int) -> ?Str {
+    if start >= strlen((bytes) as Str) {
+        return none
+    }
+    var end: Int = start
+    while end < strlen((bytes) as Str) && bytes[end] != Char(10) {
+        end = end + 1
+    }
+    if end > start && bytes[end - 1] == Char(13) {
+        return bytes[start..end - 1]
+    }
+    return bytes[start..end]
+}
+
+fn __kai_std_io_next_line_start(bytes: Str, start: Int) -> Int {
+    if start >= strlen((bytes) as Str) {
+        return strlen((bytes) as Str)
+    }
+    var end: Int = start
+    while end < strlen((bytes) as Str) && bytes[end] != Char(10) {
+        end = end + 1
+    }
+    if end < strlen((bytes) as Str) {
+        return end + 1
+    }
+    return strlen((bytes) as Str)
+}
+
+fn __kai_std_io_count_lines(bytes: Str) -> Int {
+    var start: Int = 0
+    var count: Int = 0
+    while start < strlen((bytes) as Str) {
+        count = count + 1
+        start = __kai_std_io_next_line_start(bytes, start)
+    }
+    return count
+}
+
+fn __kai_std_json_decode_boundary() -> Str {
+    return "typed-decode-explicit-shape"
+}
+
+fn __kai_std_json_write_string(buffer: *Char, text: Str) -> ?Str {
+    return __kai_std_json_write_string_bytes(buffer, text)
+}
+
+fn __kai_std_json_validate(bytes: Str) -> Bool {
+    return __kai_std_json_validate_error(bytes) == __kai_std_json_error_none()
+}
+
+fn __kai_std_json_validate_bytes(bytes: Str) -> Bool {
+    return __kai_std_json_validate(bytes)
+}
+
+fn __kai_std_json_stream_tokens(bytes: Str) -> Int {
+    let count: ?Int = __kai_std_json_token_count(bytes)
+    if count != none {
+        return (count catch 0)
+    }
+    return 0
+}
+
+fn __kai_std_json_stream_tokens_bytes(bytes: Str) -> Int {
+    return __kai_std_json_stream_tokens(bytes)
+}
+
+fn __kai_std_json_error_none() -> Int {
+    return 0
+}
+
+fn __kai_std_json_error_invalid() -> Int {
+    return 1
+}
+
+fn __kai_std_json_error_trailing() -> Int {
+    return 2
+}
+
+fn __kai_std_json_is_ws(byte: Char) -> Bool {
+    return byte == Char(32) || byte == Char(9) || byte == Char(10) || byte == Char(13)
+}
+
+fn __kai_std_json_skip_ws(bytes: Str, start: Int) -> Int {
+    var index: Int = start
+    while index < strlen((bytes) as Str) && __kai_std_json_is_ws(bytes[index]) {
+        index = index + 1
+    }
+    return index
+}
+
+fn __kai_std_json_is_digit(byte: Char) -> Bool {
+    return byte >= Char(48) && byte <= Char(57)
+}
+
+fn __kai_std_json_literal_end(bytes: Str, start: Int, literal: Str) -> ?Int {
+    if strlen((bytes) as Str) - start < strlen((literal) as Str) {
+        return none
+    }
+    var index: Int = 0
+    while index < strlen((literal) as Str) {
+        if bytes[start + index] != literal[index] {
+            return none
+        }
+        index = index + 1
+    }
+    return start + strlen((literal) as Str)
+}
+
+fn __kai_std_json_hex_u16(bytes: Str, start: Int) -> ?Int {
+    if start + 3 >= strlen((bytes) as Str) {
+        return none
+    }
+    let h0: ?Char = __kai_std_ascii_hex_value(bytes[start])
+    let h1: ?Char = __kai_std_ascii_hex_value(bytes[start + 1])
+    let h2: ?Char = __kai_std_ascii_hex_value(bytes[start + 2])
+    let h3: ?Char = __kai_std_ascii_hex_value(bytes[start + 3])
+    if h0 == none || h1 == none || h2 == none || h3 == none {
+        return none
+    }
+    return (h0 catch Char(0)) as Int * 4096 + (h1 catch Char(0)) as Int * 256 + (h2 catch Char(0)) as Int * 16 + (h3 catch Char(0)) as Int
+}
+
+fn __kai_std_json_is_high_surrogate(value: Int) -> Bool {
+    return value >= 0xd800_u16 && value <= 0xdbff_u16
+}
+
+fn __kai_std_json_is_low_surrogate(value: Int) -> Bool {
+    return value >= 0xdc00_u16 && value <= 0xdfff_u16
+}
+
+fn __kai_std_json_surrogate_codepoint(high: Int, low: Int) -> Int {
+    return 65536 + (high as Int - 55296) * 1024 + (low as Int - 56320)
+}
+
+fn __kai_std_json_utf8_sequence_len(first: Char) -> Int {
+    if first < Char(128) {
+        return 1
+    }
+    if first >= Char(194) && first <= Char(223) {
+        return 2
+    }
+    if first >= Char(224) && first <= Char(239) {
+        return 3
+    }
+    if first >= Char(240) && first <= Char(244) {
+        return 4
+    }
+    return 0
+}
+
+fn __kai_std_json_is_utf8_cont(byte: Char) -> Bool {
+    return byte >= Char(128) && byte <= Char(191)
+}
+
+fn __kai_std_json_raw_utf8_width(bytes: Str, start: Int, end: Int) -> ?Int {
+    if start >= end {
+        return none
+    }
+    let first: Char = bytes[start]
+    let width: Int = __kai_std_json_utf8_sequence_len(first)
+    if width == 0 || start + width > end {
+        return none
+    }
+    if width == 1 {
+        return 1
+    }
+    let second: Char = bytes[start + 1]
+    if width == 2 {
+        if !__kai_std_json_is_utf8_cont(second) {
+            return none
+        }
+        return 2
+    }
+    if width == 3 {
+        if !__kai_std_json_is_utf8_cont(second) || !__kai_std_json_is_utf8_cont(bytes[start + 2]) {
+            return none
+        }
+        if first == Char(224) && second < Char(160) {
+            return none
+        }
+        if first == Char(237) && second > Char(159) {
+            return none
+        }
+        return 3
+    }
+    if !__kai_std_json_is_utf8_cont(second) || !__kai_std_json_is_utf8_cont(bytes[start + 2]) || !__kai_std_json_is_utf8_cont(bytes[start + 3]) {
+        return none
+    }
+    if first == Char(240) && second < Char(144) {
+        return none
+    }
+    if first == Char(244) && second > Char(143) {
+        return none
+    }
+    return 4
+}
+
+fn __kai_std_json_write_utf8(buffer: *Char, output: Int, codepoint: Int) -> ?Int {
+    if codepoint <= 127 {
+        if output >= strlen((buffer) as Str) {
+            return none
+        }
+        buffer[output] = codepoint as Char
+        return output + 1
+    }
+    if codepoint <= 2047 {
+        if output + 2 > strlen((buffer) as Str) {
+            return none
+        }
+        buffer[output] = Char(192) + (codepoint / 64) as Char
+        buffer[output + 1] = Char(128) + (codepoint % 64) as Char
+        return output + 2
+    }
+    if codepoint <= 65535 {
+        if codepoint >= 55296 && codepoint <= 57343 {
+            return none
+        }
+        if output + 3 > strlen((buffer) as Str) {
+            return none
+        }
+        buffer[output] = Char(224) + (codepoint / 4096) as Char
+        buffer[output + 1] = Char(128) + (codepoint / 64 % 64) as Char
+        buffer[output + 2] = Char(128) + (codepoint % 64) as Char
+        return output + 3
+    }
+    if codepoint <= 1114111 {
+        if output + 4 > strlen((buffer) as Str) {
+            return none
+        }
+        buffer[output] = Char(240) + (codepoint / 262144) as Char
+        buffer[output + 1] = Char(128) + (codepoint / 4096 % 64) as Char
+        buffer[output + 2] = Char(128) + (codepoint / 64 % 64) as Char
+        buffer[output + 3] = Char(128) + (codepoint % 64) as Char
+        return output + 4
+    }
+    return none
+}
+
+fn __kai_std_json_string_end(bytes: Str, start: Int) -> ?Int {
+    if start >= strlen((bytes) as Str) || bytes[start] != Char(34) {
+        return none
+    }
+    var index: Int = start + 1
+    while index < strlen((bytes) as Str) {
+        let byte: Char = bytes[index]
+        if byte == Char(34) {
+            return index + 1
+        }
+        if byte < Char(32) {
+            return none
+        }
+        if byte == Char(92) {
+            index = index + 1
+            if index >= strlen((bytes) as Str) {
+                return none
+            }
+            let escaped: Char = bytes[index]
+            if escaped == Char(117) {
+                let unit: ?Int = __kai_std_json_hex_u16(bytes, index + 1)
+                if unit == none {
+                    return none
+                }
+                if __kai_std_json_is_high_surrogate((unit catch 0)) {
+                    if index + 10 >= strlen((bytes) as Str) || bytes[index + 5] != Char(92) || bytes[index + 6] != Char(117) {
+                        return none
+                    }
+                    let low: ?Int = __kai_std_json_hex_u16(bytes, index + 7)
+                    if low == none || !__kai_std_json_is_low_surrogate((low catch 0)) {
+                        return none
+                    }
+                    index = index + 11
+                } else if __kai_std_json_is_low_surrogate((unit catch 0)) {
+                    return none
+                } else {
+                    index = index + 5
+                }
+            } else if escaped == Char(34) || escaped == Char(92) || escaped == Char(47) || escaped == Char(98) || escaped == Char(102) || escaped == Char(110) || escaped == Char(114) || escaped == Char(116) {
+                index = index + 1
+            } else {
+                return none
+            }
+        } else if byte >= Char(128) {
+            let width: ?Int = __kai_std_json_raw_utf8_width(bytes, index, strlen((bytes) as Str))
+            if width == none {
+                return none
+            }
+            index = index + (width catch 0)
+        } else {
+            index = index + 1
+        }
+    }
+    return none
+}
+
+fn __kai_std_json_number_end(bytes: Str, start: Int) -> ?Int {
+    var index: Int = start
+    if index < strlen((bytes) as Str) && bytes[index] == Char(45) {
+        index = index + 1
+    }
+    if index >= strlen((bytes) as Str) {
+        return none
+    }
+    if bytes[index] == Char(48) {
+        index = index + 1
+    } else if bytes[index] >= Char(49) && bytes[index] <= Char(57) {
+        while index < strlen((bytes) as Str) && __kai_std_json_is_digit(bytes[index]) {
+            index = index + 1
+        }
+    } else {
+        return none
+    }
+    if index < strlen((bytes) as Str) && bytes[index] == Char(46) {
+        index = index + 1
+        let first_fraction: Int = index
+        while index < strlen((bytes) as Str) && __kai_std_json_is_digit(bytes[index]) {
+            index = index + 1
+        }
+        if first_fraction == index {
+            return none
+        }
+    }
+    if index < strlen((bytes) as Str) && (bytes[index] == Char(101) || bytes[index] == Char(69)) {
+        index = index + 1
+        if index < strlen((bytes) as Str) && (bytes[index] == Char(43) || bytes[index] == Char(45)) {
+            index = index + 1
+        }
+        let first_exp: Int = index
+        while index < strlen((bytes) as Str) && __kai_std_json_is_digit(bytes[index]) {
+            index = index + 1
+        }
+        if first_exp == index {
+            return none
+        }
+    }
+    return index
+}
+
+fn __kai_std_json_value_end(bytes: Str, start: Int) -> ?Int {
+    var index: Int = __kai_std_json_skip_ws(bytes, start)
+    if index >= strlen((bytes) as Str) {
+        return none
+    }
+    var states: [64]Char = [Char(0); 64]
+    var depth: Int = 0
+    while index < strlen((bytes) as Str) {
+        if depth == 0 {
+            let byte: Char = bytes[index]
+            if byte == Char(123) {
+                states[depth] = Char(2)
+                depth = depth + 1
+                index = index + 1
+            } else if byte == Char(91) {
+                states[depth] = Char(0)
+                depth = depth + 1
+                index = index + 1
+            } else if byte == Char(34) {
+                return __kai_std_json_string_end(bytes, index)
+            } else if byte == Char(116) {
+                return __kai_std_json_literal_end(bytes, index, "true")
+            } else if byte == Char(102) {
+                return __kai_std_json_literal_end(bytes, index, "false")
+            } else if byte == Char(110) {
+                return __kai_std_json_literal_end(bytes, index, "none")
+            } else {
+                return __kai_std_json_number_end(bytes, index)
+            }
+        } else {
+            index = __kai_std_json_skip_ws(bytes, index)
+            if index >= strlen((bytes) as Str) {
+                return none
+            }
+            let state: Char = states[depth - 1]
+            if state == Char(0) {
+                let byte: Char = bytes[index]
+                if byte == Char(93) {
+                    depth = depth - 1
+                    index = index + 1
+                    if depth == 0 {
+                        return index
+                    }
+                } else if byte == Char(123) {
+                    states[depth - 1] = Char(1)
+                    if depth >= 64 {
+                        return none
+                    }
+                    states[depth] = Char(2)
+                    depth = depth + 1
+                    index = index + 1
+                } else if byte == Char(91) {
+                    states[depth - 1] = Char(1)
+                    if depth >= 64 {
+                        return none
+                    }
+                    states[depth] = Char(0)
+                    depth = depth + 1
+                    index = index + 1
+                } else if byte == Char(34) {
+                    let end: ?Int = __kai_std_json_string_end(bytes, index)
+                    if end == none {
+                        return none
+                    }
+                    index = (end catch 0)
+                    states[depth - 1] = Char(1)
+                } else if byte == Char(116) {
+                    let end: ?Int = __kai_std_json_literal_end(bytes, index, "true")
+                    if end == none {
+                        return none
+                    }
+                    index = (end catch 0)
+                    states[depth - 1] = Char(1)
+                } else if byte == Char(102) {
+                    let end: ?Int = __kai_std_json_literal_end(bytes, index, "false")
+                    if end == none {
+                        return none
+                    }
+                    index = (end catch 0)
+                    states[depth - 1] = Char(1)
+                } else if byte == Char(110) {
+                    let end: ?Int = __kai_std_json_literal_end(bytes, index, "none")
+                    if end == none {
+                        return none
+                    }
+                    index = (end catch 0)
+                    states[depth - 1] = Char(1)
+                } else {
+                    let end: ?Int = __kai_std_json_number_end(bytes, index)
+                    if end == none {
+                        return none
+                    }
+                    index = (end catch 0)
+                    states[depth - 1] = Char(1)
+                }
+            } else if state == Char(1) {
+                if bytes[index] == Char(44) {
+                    index = index + 1
+                    let next: Int = __kai_std_json_skip_ws(bytes, index)
+                    if next >= strlen((bytes) as Str) || bytes[next] == Char(93) {
+                        return none
+                    }
+                    states[depth - 1] = Char(0)
+                } else if bytes[index] == Char(93) {
+                    depth = depth - 1
+                    index = index + 1
+                    if depth == 0 {
+                        return index
+                    }
+                } else {
+                    return none
+                }
+            } else if state == Char(2) {
+                if bytes[index] == Char(125) {
+                    depth = depth - 1
+                    index = index + 1
+                    if depth == 0 {
+                        return index
+                    }
+                } else {
+                    let end: ?Int = __kai_std_json_string_end(bytes, index)
+                    if end == none {
+                        return none
+                    }
+                    index = (end catch 0)
+                    states[depth - 1] = Char(3)
+                }
+            } else if state == Char(3) {
+                if bytes[index] != Char(58) {
+                    return none
+                }
+                states[depth - 1] = Char(4)
+                index = index + 1
+            } else if state == Char(4) {
+                let byte: Char = bytes[index]
+                if byte == Char(123) {
+                    states[depth - 1] = Char(5)
+                    if depth >= 64 {
+                        return none
+                    }
+                    states[depth] = Char(2)
+                    depth = depth + 1
+                    index = index + 1
+                } else if byte == Char(91) {
+                    states[depth - 1] = Char(5)
+                    if depth >= 64 {
+                        return none
+                    }
+                    states[depth] = Char(0)
+                    depth = depth + 1
+                    index = index + 1
+                } else if byte == Char(34) {
+                    let end: ?Int = __kai_std_json_string_end(bytes, index)
+                    if end == none {
+                        return none
+                    }
+                    index = (end catch 0)
+                    states[depth - 1] = Char(5)
+                } else if byte == Char(116) {
+                    let end: ?Int = __kai_std_json_literal_end(bytes, index, "true")
+                    if end == none {
+                        return none
+                    }
+                    index = (end catch 0)
+                    states[depth - 1] = Char(5)
+                } else if byte == Char(102) {
+                    let end: ?Int = __kai_std_json_literal_end(bytes, index, "false")
+                    if end == none {
+                        return none
+                    }
+                    index = (end catch 0)
+                    states[depth - 1] = Char(5)
+                } else if byte == Char(110) {
+                    let end: ?Int = __kai_std_json_literal_end(bytes, index, "none")
+                    if end == none {
+                        return none
+                    }
+                    index = (end catch 0)
+                    states[depth - 1] = Char(5)
+                } else {
+                    let end: ?Int = __kai_std_json_number_end(bytes, index)
+                    if end == none {
+                        return none
+                    }
+                    index = (end catch 0)
+                    states[depth - 1] = Char(5)
+                }
+            } else if state == Char(5) {
+                if bytes[index] == Char(44) {
+                    index = index + 1
+                    let next: Int = __kai_std_json_skip_ws(bytes, index)
+                    if next >= strlen((bytes) as Str) || bytes[next] == Char(125) {
+                        return none
+                    }
+                    states[depth - 1] = Char(2)
+                } else if bytes[index] == Char(125) {
+                    depth = depth - 1
+                    index = index + 1
+                    if depth == 0 {
+                        return index
+                    }
+                } else {
+                    return none
+                }
+            } else {
+                return none
+            }
+        }
+    }
+    return none
+}
+
+fn __kai_std_json_token_count(bytes: Str) -> ?Int {
+    var index: Int = __kai_std_json_skip_ws(bytes, 0)
+    if index >= strlen((bytes) as Str) {
+        return none
+    }
+    var states: [64]Char = [Char(0); 64]
+    var depth: Int = 0
+    var tokens: Int = 0
+    while index < strlen((bytes) as Str) {
+        if depth == 0 {
+            let byte: Char = bytes[index]
+            if byte == Char(123) {
+                tokens = tokens + 1
+                states[depth] = Char(2)
+                depth = depth + 1
+                index = index + 1
+            } else if byte == Char(91) {
+                tokens = tokens + 1
+                states[depth] = Char(0)
+                depth = depth + 1
+                index = index + 1
+            } else {
+                var end: ?Int = none
+                if byte == Char(34) {
+                    end = __kai_std_json_string_end(bytes, index)
+                } else if byte == Char(116) {
+                    end = __kai_std_json_literal_end(bytes, index, "true")
+                } else if byte == Char(102) {
+                    end = __kai_std_json_literal_end(bytes, index, "false")
+                } else if byte == Char(110) {
+                    end = __kai_std_json_literal_end(bytes, index, "none")
+                } else {
+                    end = __kai_std_json_number_end(bytes, index)
+                }
+                if end == none {
+                    return none
+                }
+                let trailing: Int = __kai_std_json_skip_ws(bytes, (end catch 0))
+                if trailing == strlen((bytes) as Str) {
+                    return tokens + 1
+                }
+                return none
+            }
+        } else {
+            index = __kai_std_json_skip_ws(bytes, index)
+            if index >= strlen((bytes) as Str) {
+                return none
+            }
+            let state: Char = states[depth - 1]
+            if state == Char(0) {
+                let byte: Char = bytes[index]
+                if byte == Char(93) {
+                    depth = depth - 1
+                    index = index + 1
+                    if depth == 0 {
+                        let trailing: Int = __kai_std_json_skip_ws(bytes, index)
+                        if trailing == strlen((bytes) as Str) {
+                            return tokens
+                        }
+                        return none
+                    }
+                } else if byte == Char(123) {
+                    tokens = tokens + 1
+                    states[depth - 1] = Char(1)
+                    if depth >= 64 {
+                        return none
+                    }
+                    states[depth] = Char(2)
+                    depth = depth + 1
+                    index = index + 1
+                } else if byte == Char(91) {
+                    tokens = tokens + 1
+                    states[depth - 1] = Char(1)
+                    if depth >= 64 {
+                        return none
+                    }
+                    states[depth] = Char(0)
+                    depth = depth + 1
+                    index = index + 1
+                } else {
+                    var end: ?Int = none
+                    if byte == Char(34) {
+                        end = __kai_std_json_string_end(bytes, index)
+                    } else if byte == Char(116) {
+                        end = __kai_std_json_literal_end(bytes, index, "true")
+                    } else if byte == Char(102) {
+                        end = __kai_std_json_literal_end(bytes, index, "false")
+                    } else if byte == Char(110) {
+                        end = __kai_std_json_literal_end(bytes, index, "none")
+                    } else {
+                        end = __kai_std_json_number_end(bytes, index)
+                    }
+                    if end == none {
+                        return none
+                    }
+                    tokens = tokens + 1
+                    index = (end catch 0)
+                    states[depth - 1] = Char(1)
+                }
+            } else if state == Char(1) {
+                if bytes[index] == Char(44) {
+                    index = index + 1
+                    let next: Int = __kai_std_json_skip_ws(bytes, index)
+                    if next >= strlen((bytes) as Str) || bytes[next] == Char(93) {
+                        return none
+                    }
+                    states[depth - 1] = Char(0)
+                } else if bytes[index] == Char(93) {
+                    depth = depth - 1
+                    index = index + 1
+                    if depth == 0 {
+                        let trailing: Int = __kai_std_json_skip_ws(bytes, index)
+                        if trailing == strlen((bytes) as Str) {
+                            return tokens
+                        }
+                        return none
+                    }
+                } else {
+                    return none
+                }
+            } else if state == Char(2) {
+                if bytes[index] == Char(125) {
+                    depth = depth - 1
+                    index = index + 1
+                    if depth == 0 {
+                        let trailing: Int = __kai_std_json_skip_ws(bytes, index)
+                        if trailing == strlen((bytes) as Str) {
+                            return tokens
+                        }
+                        return none
+                    }
+                } else {
+                    let end: ?Int = __kai_std_json_string_end(bytes, index)
+                    if end == none {
+                        return none
+                    }
+                    tokens = tokens + 1
+                    index = (end catch 0)
+                    states[depth - 1] = Char(3)
+                }
+            } else if state == Char(3) {
+                if bytes[index] != Char(58) {
+                    return none
+                }
+                states[depth - 1] = Char(4)
+                index = index + 1
+            } else if state == Char(4) {
+                let byte: Char = bytes[index]
+                if byte == Char(123) {
+                    tokens = tokens + 1
+                    states[depth - 1] = Char(5)
+                    if depth >= 64 {
+                        return none
+                    }
+                    states[depth] = Char(2)
+                    depth = depth + 1
+                    index = index + 1
+                } else if byte == Char(91) {
+                    tokens = tokens + 1
+                    states[depth - 1] = Char(5)
+                    if depth >= 64 {
+                        return none
+                    }
+                    states[depth] = Char(0)
+                    depth = depth + 1
+                    index = index + 1
+                } else {
+                    var end: ?Int = none
+                    if byte == Char(34) {
+                        end = __kai_std_json_string_end(bytes, index)
+                    } else if byte == Char(116) {
+                        end = __kai_std_json_literal_end(bytes, index, "true")
+                    } else if byte == Char(102) {
+                        end = __kai_std_json_literal_end(bytes, index, "false")
+                    } else if byte == Char(110) {
+                        end = __kai_std_json_literal_end(bytes, index, "none")
+                    } else {
+                        end = __kai_std_json_number_end(bytes, index)
+                    }
+                    if end == none {
+                        return none
+                    }
+                    tokens = tokens + 1
+                    index = (end catch 0)
+                    states[depth - 1] = Char(5)
+                }
+            } else if state == Char(5) {
+                if bytes[index] == Char(44) {
+                    index = index + 1
+                    let next: Int = __kai_std_json_skip_ws(bytes, index)
+                    if next >= strlen((bytes) as Str) || bytes[next] == Char(125) {
+                        return none
+                    }
+                    states[depth - 1] = Char(2)
+                } else if bytes[index] == Char(125) {
+                    depth = depth - 1
+                    index = index + 1
+                    if depth == 0 {
+                        let trailing: Int = __kai_std_json_skip_ws(bytes, index)
+                        if trailing == strlen((bytes) as Str) {
+                            return tokens
+                        }
+                        return none
+                    }
+                } else {
+                    return none
+                }
+            } else {
+                return none
+            }
+        }
+    }
+    return none
+}
+
+fn __kai_std_json_validate_error(bytes: Str) -> Int {
+    let start: Int = __kai_std_json_skip_ws(bytes, 0)
+    let end: ?Int = __kai_std_json_value_end(bytes, start)
+    if end == none {
+        return __kai_std_json_error_invalid()
+    }
+    let trailing: Int = __kai_std_json_skip_ws(bytes, (end catch 0))
+    if trailing != strlen((bytes) as Str) {
+        return __kai_std_json_error_trailing()
+    }
+    return __kai_std_json_error_none()
+}
+
+fn __kai_std_json_key_matches(bytes: Str, start: Int, end: Int, key: Str) -> Bool {
+    if start >= end || bytes[start] != Char(34) {
+        return false
+    }
+    var input: Int = start + 1
+    var key_index: Int = 0
+    while input + 1 < end {
+        var decoded: Char = bytes[input]
+        var unicode_matched: Bool = false
+        if decoded == Char(92) {
+            input = input + 1
+            if input + 1 >= end {
+                return false
+            }
+            let escaped: Char = bytes[input]
+            if escaped == Char(34) {
+                decoded = Char(34)
+            } else if escaped == Char(92) {
+                decoded = Char(92)
+            } else if escaped == Char(47) {
+                decoded = Char(47)
+            } else if escaped == Char(98) {
+                decoded = Char(8)
+            } else if escaped == Char(102) {
+                decoded = Char(12)
+            } else if escaped == Char(110) {
+                decoded = Char(10)
+            } else if escaped == Char(114) {
+                decoded = Char(13)
+            } else if escaped == Char(116) {
+                decoded = Char(9)
+            } else if escaped == Char(117) {
+                let unit: ?Int = __kai_std_json_hex_u16(bytes, input + 1)
+                if unit == none {
+                    return false
+                }
+                var codepoint: Int = (unit catch 0) as Int
+                if __kai_std_json_is_high_surrogate((unit catch 0)) {
+                    if input + 10 >= end || bytes[input + 5] != Char(92) || bytes[input + 6] != Char(117) {
+                        return false
+                    }
+                    let low: ?Int = __kai_std_json_hex_u16(bytes, input + 7)
+                    if low == none || !__kai_std_json_is_low_surrogate((low catch 0)) {
+                        return false
+                    }
+                    codepoint = __kai_std_json_surrogate_codepoint((unit catch 0), (low catch 0))
+                    input = input + 10
+                } else if __kai_std_json_is_low_surrogate((unit catch 0)) {
+                    return false
+                } else {
+                    input = input + 4
+                }
+                var scratch: [4]Char = [Char(0); 4]
+                let written: ?Int = __kai_std_json_write_utf8(scratch, 0, codepoint)
+                if written == none {
+                    return false
+                }
+                var scratch_index: Int = 0
+                while scratch_index < (written catch "") {
+                    if key_index >= strlen((key) as Str) || key[key_index] != scratch[scratch_index] {
+                        return false
+                    }
+                    key_index = key_index + 1
+                    scratch_index = scratch_index + 1
+                }
+                unicode_matched = true
+            } else {
+                return false
+            }
+        }
+        if !unicode_matched {
+            if key_index >= strlen((key) as Str) || key[key_index] != decoded {
+                return false
+            }
+            key_index = key_index + 1
+        }
+        input = input + 1
+    }
+    return key_index == strlen((key) as Str)
+}
+
+fn __kai_std_json_field(bytes: Str, key: Str) -> ?Str {
+    let start: Int = __kai_std_json_skip_ws(bytes, 0)
+    if start >= strlen((bytes) as Str) || bytes[start] != Char(123) {
+        return none
+    }
+    var index: Int = __kai_std_json_skip_ws(bytes, start + 1)
+    if index < strlen((bytes) as Str) && bytes[index] == Char(125) {
+        return none
+    }
+    var found: Bool = false
+    var found_start: Int = 0
+    var found_end: Int = 0
+    while index < strlen((bytes) as Str) {
+        let key_end: ?Int = __kai_std_json_string_end(bytes, index)
+        if key_end == none {
+            return none
+        }
+        let matched: Bool = __kai_std_json_key_matches(bytes, index, (key_end catch 0), key)
+        index = __kai_std_json_skip_ws(bytes, (key_end catch 0))
+        if index >= strlen((bytes) as Str) || bytes[index] != Char(58) {
+            return none
+        }
+        let value_start: Int = __kai_std_json_skip_ws(bytes, index + 1)
+        let value_end: ?Int = __kai_std_json_value_end(bytes, value_start)
+        if value_end == none {
+            return none
+        }
+        if matched && !found {
+            found = true
+            found_start = value_start
+            found_end = (value_end catch 0)
+        }
+        index = __kai_std_json_skip_ws(bytes, (value_end catch 0))
+        if index < strlen((bytes) as Str) && bytes[index] == Char(125) {
+            let trailing: Int = __kai_std_json_skip_ws(bytes, index + 1)
+            if trailing != strlen((bytes) as Str) {
+                return none
+            }
+            if found {
+                return bytes[found_start..found_end]
+            }
+            return none
+        }
+        if index >= strlen((bytes) as Str) || bytes[index] != Char(44) {
+            return none
+        }
+        index = __kai_std_json_skip_ws(bytes, index + 1)
+        if index >= strlen((bytes) as Str) || bytes[index] == Char(125) {
+            return none
+        }
+    }
+    return none
+}
+
+fn __kai_std_json_string_decode(buffer: *Char, value: Str) -> ?Str {
+    let end: ?Int = __kai_std_json_string_end(value, 0)
+    if end == none || (end catch 0) != strlen((value) as Str) {
+        return none
+    }
+    var input: Int = 1
+    var output: Int = 0
+    while input + 1 < strlen((value) as Str) {
+        var decoded: Char = value[input]
+        var unicode_written: Bool = false
+        if decoded == Char(92) {
+            input = input + 1
+            let escaped: Char = value[input]
+            if escaped == Char(34) {
+                decoded = Char(34)
+            } else if escaped == Char(92) {
+                decoded = Char(92)
+            } else if escaped == Char(47) {
+                decoded = Char(47)
+            } else if escaped == Char(98) {
+                decoded = Char(8)
+            } else if escaped == Char(102) {
+                decoded = Char(12)
+            } else if escaped == Char(110) {
+                decoded = Char(10)
+            } else if escaped == Char(114) {
+                decoded = Char(13)
+            } else if escaped == Char(116) {
+                decoded = Char(9)
+            } else if escaped == Char(117) {
+                let unit: ?Int = __kai_std_json_hex_u16(value, input + 1)
+                if unit == none {
+                    return none
+                }
+                var codepoint: Int = (unit catch 0) as Int
+                if __kai_std_json_is_high_surrogate((unit catch 0)) {
+                    if input + 10 >= strlen((value) as Str) || value[input + 5] != Char(92) || value[input + 6] != Char(117) {
+                        return none
+                    }
+                    let low: ?Int = __kai_std_json_hex_u16(value, input + 7)
+                    if low == none || !__kai_std_json_is_low_surrogate((low catch 0)) {
+                        return none
+                    }
+                    codepoint = __kai_std_json_surrogate_codepoint((unit catch 0), (low catch 0))
+                    input = input + 10
+                } else if __kai_std_json_is_low_surrogate((unit catch 0)) {
+                    return none
+                } else {
+                    input = input + 4
+                }
+                let next: ?Int = __kai_std_json_write_utf8(buffer, output, codepoint)
+                if next == none {
+                    return none
+                }
+                output = (next catch 0)
+                unicode_written = true
+            } else {
+                return none
+            }
+        }
+        if !unicode_written {
+            if output >= strlen((buffer) as Str) {
+                return none
+            }
+            buffer[output] = decoded
+            output = output + 1
+        }
+        input = input + 1
+    }
+    return buffer[..output]
+}
+
+fn __kai_std_json_string(buffer: *Char, bytes: Str, key: Str) -> ?Str {
+    let raw: ?Str = __kai_std_json_field(bytes, key)
+    if raw == none {
+        return none
+    }
+    return __kai_std_json_string_decode(buffer, (raw catch ""))
+}
+
+fn __kai_std_json_u32(bytes: Str, key: Str) -> ?Int {
+    let raw: ?Str = __kai_std_json_field(bytes, key)
+    if raw == none {
+        return none
+    }
+    return atoll((raw catch ""))
+}
+
+fn __kai_std_json_bool(bytes: Str, key: Str) -> ?Bool {
+    let raw: ?Str = __kai_std_json_field(bytes, key)
+    if raw == none {
+        return none
+    }
+    return __kai_std_parse_parse_bool((raw catch ""))
+}
+
+fn __kai_std_json_hex_char(value: Char) -> Char {
+    if value < Char(10) {
+        return Char(48) + value
+    }
+    return Char(97) + value - Char(10)
+}
+
+fn __kai_std_json_write_escape(buffer: *Char, output: Int, escaped: Char) -> ?Int {
+    if output + 2 > strlen((buffer) as Str) {
+        return none
+    }
+    buffer[output] = Char(92)
+    buffer[output + 1] = escaped
+    return output + 2
+}
+
+fn __kai_std_json_write_u_escape(buffer: *Char, output: Int, value: Char) -> ?Int {
+    if output + 6 > strlen((buffer) as Str) {
+        return none
+    }
+    buffer[output] = Char(92)
+    buffer[output + 1] = Char(117)
+    buffer[output + 2] = Char(48)
+    buffer[output + 3] = Char(48)
+    buffer[output + 4] = __kai_std_json_hex_char(value / Char(16))
+    buffer[output + 5] = __kai_std_json_hex_char(value % Char(16))
+    return output + 6
+}
+
+fn __kai_std_json_write_string_bytes(buffer: *Char, text: Str) -> ?Str {
+    if strlen((buffer) as Str) < 2 {
+        return none
+    }
+    var output: Int = 0
+    buffer[output] = Char(34)
+    output = output + 1
+    var input: Int = 0
+    while input < strlen((text) as Str) {
+        let byte: Char = text[input]
+        var next_input: Int = input + 1
+        if byte == Char(34) {
+            let next: ?Int = __kai_std_json_write_escape(buffer, output, Char(34))
+            if next == none {
+                return none
+            }
+            output = (next catch 0)
+        } else if byte == Char(92) {
+            let next: ?Int = __kai_std_json_write_escape(buffer, output, Char(92))
+            if next == none {
+                return none
+            }
+            output = (next catch 0)
+        } else if byte == Char(8) {
+            let next: ?Int = __kai_std_json_write_escape(buffer, output, Char(98))
+            if next == none {
+                return none
+            }
+            output = (next catch 0)
+        } else if byte == Char(12) {
+            let next: ?Int = __kai_std_json_write_escape(buffer, output, Char(102))
+            if next == none {
+                return none
+            }
+            output = (next catch 0)
+        } else if byte == Char(10) {
+            let next: ?Int = __kai_std_json_write_escape(buffer, output, Char(110))
+            if next == none {
+                return none
+            }
+            output = (next catch 0)
+        } else if byte == Char(13) {
+            let next: ?Int = __kai_std_json_write_escape(buffer, output, Char(114))
+            if next == none {
+                return none
+            }
+            output = (next catch 0)
+        } else if byte == Char(9) {
+            let next: ?Int = __kai_std_json_write_escape(buffer, output, Char(116))
+            if next == none {
+                return none
+            }
+            output = (next catch 0)
+        } else if byte < Char(32) {
+            let next: ?Int = __kai_std_json_write_u_escape(buffer, output, byte)
+            if next == none {
+                return none
+            }
+            output = (next catch 0)
+        } else if byte >= Char(128) {
+            let width: ?Int = __kai_std_json_raw_utf8_width(text, input, strlen((text) as Str))
+            if width == none || output + (width catch 0) > strlen((buffer) as Str) {
+                return none
+            }
+            var utf8_index: Int = 0
+            while utf8_index < (width catch 0) {
+                buffer[output] = text[input + utf8_index]
+                output = output + 1
+                utf8_index = utf8_index + 1
+            }
+            next_input = input + (width catch 0)
+        } else {
+            if output >= strlen((buffer) as Str) {
+                return none
+            }
+            buffer[output] = byte
+            output = output + 1
+        }
+        input = next_input
+    }
+    if output >= strlen((buffer) as Str) {
+        return none
+    }
+    buffer[output] = Char(34)
+    return buffer[..output + 1]
+}
+
+fn __kai_std_json_write_object_key(buffer: *Char, key: Str) -> ?Int {
+    if strlen((buffer) as Str) < 2 {
+        return none
+    }
+    buffer[0] = Char(123)
+    let written_key: ?Str = __kai_std_json_write_string_bytes(buffer[1..], key)
+    if written_key == none {
+        return none
+    }
+    let cursor: Int = 1 + strlen(((written_key catch "")) as Str)
+    if cursor >= strlen((buffer) as Str) {
+        return none
+    }
+    buffer[cursor] = Char(58)
+    return cursor + 1
+}
+
+fn __kai_std_json_write_object_close(buffer: *Char, cursor: Int) -> ?Str {
+    if cursor >= strlen((buffer) as Str) {
+        return none
+    }
+    buffer[cursor] = Char(125)
+    return buffer[..cursor + 1]
+}
+
+fn __kai_std_json_write_object1_string(buffer: *Char, key: Str, value: Str) -> ?Str {
+    let cursor: ?Int = __kai_std_json_write_object_key(buffer, key)
+    if cursor == none {
+        return none
+    }
+    let written_value: ?Str = __kai_std_json_write_string_bytes(buffer[(cursor catch 0)..], value)
+    if written_value == none {
+        return none
+    }
+    return __kai_std_json_write_object_close(buffer, (cursor catch 0) + strlen(((written_value catch "")) as Str))
+}
+
+fn __kai_std_json_write_object1_u32(buffer: *Char, key: Str, value: Int) -> ?Str {
+    let cursor: ?Int = __kai_std_json_write_object_key(buffer, key)
+    if cursor == none {
+        return none
+    }
+    let written_value: ?Str = __kai_std_fmt_int(buffer[(cursor catch 0)..], value)
+    if written_value == none {
+        return none
+    }
+    return __kai_std_json_write_object_close(buffer, (cursor catch 0) + strlen(((written_value catch "")) as Str))
+}
+
+fn __kai_std_json_write_object1_bool(buffer: *Char, key: Str, value: Bool) -> ?Str {
+    let cursor: ?Int = __kai_std_json_write_object_key(buffer, key)
+    if cursor == none {
+        return none
+    }
+    let written_value: ?Str = __kai_std_fmt_bool(buffer[(cursor catch 0)..], value)
+    if written_value == none {
+        return none
+    }
+    return __kai_std_json_write_object_close(buffer, (cursor catch 0) + strlen(((written_value catch "")) as Str))
+}
+
+fn __kai_std_mem_copy_items<T>(dst: *T, src: *T) -> Int {
+    var count: Int = strlen((src) as Str)
+    let capacity: Int = strlen((dst) as Str)
+    if count > capacity {
+        count = capacity
+    }
+    var index: Int = 0
+    while index < count {
+        dst[index] = src[index]
+        index = index + 1
+    }
+    return count
+}
+
+fn __kai_std_mem_fill_items<T>(dst: *T, value: T) -> Int {
+    var index: Int = 0
+    let len: Int = strlen((dst) as Str)
+    while index < len {
+        dst[index] = value
+        index = index + 1
+    }
+    return len
+}
+
+fn __kai_std_mem_contains<T>(items: *T, needle: T) -> Bool {
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] == needle {
+            return true
+        }
+        index = index + 1
+    }
+    return false
+}
+
+fn __kai_std_mem_is_empty<T>(items: *T) -> Bool {
+    return strlen((items) as Str) == 0
+}
+
+fn __kai_std_mem_prefix<T>(items: *T, count: Int) -> *T {
+    var end: Int = count
+    if end > strlen((items) as Str) {
+        end = strlen((items) as Str)
+    }
+    return items[..end]
+}
+
+fn __kai_std_mem_drop_prefix<T>(items: *T, count: Int) -> *T {
+    var start: Int = count
+    if start > strlen((items) as Str) {
+        start = strlen((items) as Str)
+    }
+    return items[start..]
+}
+
+fn __kai_std_url_is_unreserved(byte: Char) -> Bool {
+    return byte >= Char(65) && byte <= Char(90) || byte >= Char(97) && byte <= Char(122) || byte >= Char(48) && byte <= Char(57) || byte == Char(45) || byte == Char(46) || byte == Char(95) || byte == Char(126)
+}
+
+fn __kai_std_url_hex_char(value: Char) -> Char {
+    if value < Char(10) {
+        return Char(48) + value
+    }
+    return Char(65) + value - Char(10)
+}
+
+fn __kai_std_url_percent_encode(buffer: *Char, text: Str) -> ?Str {
+    var input: Int = 0
+    var output: Int = 0
+    while input < strlen((text) as Str) {
+        let byte: Char = text[input]
+        if __kai_std_url_is_unreserved(byte) {
+            if output >= strlen((buffer) as Str) {
+                return none
+            }
+            buffer[output] = byte
+            output = output + 1
+        } else {
+            if output + 3 > strlen((buffer) as Str) {
+                return none
+            }
+            buffer[output] = Char(37)
+            buffer[output + 1] = __kai_std_url_hex_char(byte / Char(16))
+            buffer[output + 2] = __kai_std_url_hex_char(byte % Char(16))
+            output = output + 3
+        }
+        input = input + 1
+    }
+    return buffer[..output]
+}
+
+fn __kai_std_url_percent_decode(buffer: *Char, text: Str) -> ?Str {
+    var input: Int = 0
+    var output: Int = 0
+    while input < strlen((text) as Str) {
+        if output >= strlen((buffer) as Str) {
+            return none
+        }
+        let byte: Char = text[input]
+        if byte == Char(37) {
+            if input + 2 >= strlen((text) as Str) {
+                return none
+            }
+            let high: ?Char = __kai_std_ascii_hex_value(text[input + 1])
+            let low: ?Char = __kai_std_ascii_hex_value(text[input + 2])
+            if high == none || low == none {
+                return none
+            }
+            buffer[output] = (high catch Char(0)) * Char(16) + (low catch Char(0))
+            input = input + 3
+        } else {
+            buffer[output] = byte
+            input = input + 1
+        }
+        output = output + 1
+    }
+    return buffer[..output]
+}
+
+fn __kai_std_url_query_escape(buffer: *Char, text: Str) -> ?Str {
+    var input: Int = 0
+    var output: Int = 0
+    while input < strlen((text) as Str) {
+        let byte: Char = text[input]
+        if byte == Char(32) {
+            if output >= strlen((buffer) as Str) {
+                return none
+            }
+            buffer[output] = Char(43)
+            output = output + 1
+        } else if __kai_std_url_is_unreserved(byte) {
+            if output >= strlen((buffer) as Str) {
+                return none
+            }
+            buffer[output] = byte
+            output = output + 1
+        } else {
+            if output + 3 > strlen((buffer) as Str) {
+                return none
+            }
+            buffer[output] = Char(37)
+            buffer[output + 1] = __kai_std_url_hex_char(byte / Char(16))
+            buffer[output + 2] = __kai_std_url_hex_char(byte % Char(16))
+            output = output + 3
+        }
+        input = input + 1
+    }
+    return buffer[..output]
+}
+
+fn __kai_std_url_query_unescape(buffer: *Char, text: Str) -> ?Str {
+    var input: Int = 0
+    var output: Int = 0
+    while input < strlen((text) as Str) {
+        if output >= strlen((buffer) as Str) {
+            return none
+        }
+        let byte: Char = text[input]
+        if byte == Char(43) {
+            buffer[output] = Char(32)
+            input = input + 1
+        } else if byte == Char(37) {
+            if input + 2 >= strlen((text) as Str) {
+                return none
+            }
+            let high: ?Char = __kai_std_ascii_hex_value(text[input + 1])
+            let low: ?Char = __kai_std_ascii_hex_value(text[input + 2])
+            if high == none || low == none {
+                return none
+            }
+            buffer[output] = (high catch Char(0)) * Char(16) + (low catch Char(0))
+            input = input + 3
+        } else {
+            buffer[output] = byte
+            input = input + 1
+        }
+        output = output + 1
+    }
+    return buffer[..output]
+}
+
+fn __kai_std_url_scheme(url: Str) -> ?Str {
+    var index: Int = 0
+    while index < strlen((url) as Str) {
+        let byte: Char = url[index]
+        if byte == Char(58) {
+            if index == 0 {
+                return none
+            }
+            return url[..index]
+        }
+        if byte == Char(47) || byte == Char(63) || byte == Char(35) {
+            return none
+        }
+        index = index + 1
+    }
+    return none
+}
+
+fn __kai_std_url_authority_start(url: Str) -> ?Int {
+    let scheme: ?Str = __kai_std_url_scheme(url)
+    if scheme == none {
+        return none
+    }
+    let start: Int = strlen(((scheme catch "")) as Str) + 1
+    if start + 1 >= strlen((url) as Str) || url[start] != Char(47) || url[start + 1] != Char(47) {
+        return none
+    }
+    return start + 2
+}
+
+fn __kai_std_url_authority(url: Str) -> ?Str {
+    let start: ?Int = __kai_std_url_authority_start(url)
+    if start == none {
+        return none
+    }
+    var end: Int = (start catch 0)
+    while end < strlen((url) as Str) && url[end] != Char(47) && url[end] != Char(63) && url[end] != Char(35) {
+        end = end + 1
+    }
+    if end == (start catch 0) {
+        return none
+    }
+    return url[(start catch 0)..end]
+}
+
+fn __kai_std_url_host(url: Str) -> ?Str {
+    let authority: ?Str = __kai_std_url_authority(url)
+    if authority == none {
+        return none
+    }
+    var start: Int = 0
+    var index: Int = 0
+    while index < strlen(((authority catch "")) as Str) {
+        if (authority catch "")[index] == Char(64) {
+            start = index + 1
+        }
+        index = index + 1
+    }
+    if start < strlen(((authority catch "")) as Str) && (authority catch "")[start] == Char(91) {
+        var close: Int = start + 1
+        while close < strlen(((authority catch "")) as Str) && (authority catch "")[close] != Char(93) {
+            close = close + 1
+        }
+        if close >= strlen(((authority catch "")) as Str) || close == start + 1 {
+            return none
+        }
+        if close + 1 < strlen(((authority catch "")) as Str) && (authority catch "")[close + 1] != Char(58) {
+            return none
+        }
+        return (authority catch "")[start..close + 1]
+    }
+    var end: Int = start
+    while end < strlen(((authority catch "")) as Str) && (authority catch "")[end] != Char(58) {
+        end = end + 1
+    }
+    if end == start {
+        return none
+    }
+    return (authority catch "")[start..end]
+}
+
+fn __kai_std_url_path(url: Str) -> Str {
+    var start: Int = 0
+    let scheme: ?Str = __kai_std_url_scheme(url)
+    let authority_start: ?Int = __kai_std_url_authority_start(url)
+    if authority_start != none {
+        start = (authority_start catch 0)
+        while start < strlen((url) as Str) && url[start] != Char(47) && url[start] != Char(63) && url[start] != Char(35) {
+            start = start + 1
+        }
+    } else if scheme != none {
+        start = strlen(((scheme catch "")) as Str) + 1
+    }
+    if start >= strlen((url) as Str) {
+        return url[strlen((url) as Str)..]
+    }
+    var end: Int = start
+    while end < strlen((url) as Str) && url[end] != Char(63) && url[end] != Char(35) {
+        end = end + 1
+    }
+    return url[start..end]
+}
+
+fn __kai_std_url_query(url: Str) -> ?Str {
+    var start: Int = 0
+    while start < strlen((url) as Str) && url[start] != Char(63) {
+        if url[start] == Char(35) {
+            return none
+        }
+        start = start + 1
+    }
+    if start >= strlen((url) as Str) {
+        return none
+    }
+    start = start + 1
+    var end: Int = start
+    while end < strlen((url) as Str) && url[end] != Char(35) {
+        end = end + 1
+    }
+    return url[start..end]
+}
+
+fn __kai_std_url_query_value(query: Str, key: Str) -> ?Str {
+    var start: Int = 0
+    while start <= strlen((query) as Str) {
+        var end: Int = start
+        while end < strlen((query) as Str) && query[end] != Char(38) {
+            end = end + 1
+        }
+        var eq: Int = start
+        while eq < end && query[eq] != Char(61) {
+            eq = eq + 1
+        }
+        let name: Str = query[start..eq]
+        if strcmp(name, key) == 0 {
+            if eq < end {
+                return query[eq + 1..end]
+            }
+            return query[end..end]
+        }
+        if end == strlen((query) as Str) {
+            return none
+        }
+        start = end + 1
+    }
+    return none
+}
+
+fn __kai_std_url_write_query_param(buffer: *Char, key: Str, value: Str) -> ?Str {
+    var output: Int = 0
+    let encoded_key: ?Str = __kai_std_url_query_escape(buffer, key)
+    if encoded_key == none {
+        return none
+    }
+    output = output + strlen(((encoded_key catch "")) as Str)
+    if output >= strlen((buffer) as Str) {
+        return none
+    }
+    buffer[output] = Char(61)
+    output = output + 1
+    let encoded_value: ?Str = __kai_std_url_query_escape(buffer[output..], value)
+    if encoded_value == none {
+        return none
+    }
+    output = output + strlen(((encoded_value catch "")) as Str)
+    return buffer[..output]
+}
+
+fn __kai_std_url_append_query(buffer: *Char, base: Str, query: Str) -> ?Str {
+    let base_len: Int = strlen((base) as Str)
+    if base_len >= strlen((buffer) as Str) {
+        return none
+    }
+    if strlen((query) as Str) > strlen((buffer) as Str) - base_len - 1 {
+        return none
+    }
+    var fragment: Int = 0
+    while fragment < base_len && base[fragment] != Char(35) {
+        fragment = fragment + 1
+    }
+    var output: Int = 0
+    while output < fragment {
+        buffer[output] = base[output]
+        output = output + 1
+    }
+    var separator: Char = Char(63)
+    var index: Int = 0
+    while index < fragment {
+        if base[index] == Char(63) {
+            separator = Char(38)
+        }
+        index = index + 1
+    }
+    buffer[output] = separator
+    output = output + 1
+    var query_index: Int = 0
+    while query_index < strlen((query) as Str) {
+        buffer[output] = query[query_index]
+        output = output + 1
+        query_index = query_index + 1
+    }
+    var fragment_index: Int = fragment
+    while fragment_index < base_len {
+        buffer[output] = base[fragment_index]
+        output = output + 1
+        fragment_index = fragment_index + 1
+    }
+    return buffer[..output]
+}

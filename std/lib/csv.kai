@@ -1,0 +1,400 @@
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn csv_is_comma(byte: Char) -> Bool {
+    return byte == Char(44)
+}
+
+fn csv_is_quote(byte: Char) -> Bool {
+    return byte == Char(34)
+}
+
+fn csv_is_lf(byte: Char) -> Bool {
+    return byte == Char(10)
+}
+
+fn csv_is_cr(byte: Char) -> Bool {
+    return byte == Char(13)
+}
+
+fn csv_field_needs_quotes(field: Str) -> Bool {
+    if strlen((field) as Str) == 0 {
+        return false
+    }
+    var index: Int = 0
+    while index < strlen((field) as Str) {
+        let byte: Char = field[index]
+        if csv_is_comma(byte) || csv_is_quote(byte) || csv_is_lf(byte) || csv_is_cr(byte) {
+            return true
+        }
+        index = index + 1
+    }
+    return false
+}
+
+fn csv_encoded_field_len(field: Str) -> Int {
+    if !csv_field_needs_quotes(field) {
+        return strlen((field) as Str)
+    }
+    var length: Int = 2
+    var index: Int = 0
+    while index < strlen((field) as Str) {
+        length = length + 1
+        if csv_is_quote(field[index]) {
+            length = length + 1
+        }
+        index = index + 1
+    }
+    return length
+}
+
+fn csv_record_end(bytes: Str, start: Int) -> ?Int {
+    if start > strlen((bytes) as Str) {
+        return none
+    }
+    var index: Int = start
+    var in_quotes: Bool = false
+    var after_quote: Bool = false
+    var at_field_start: Bool = true
+    while index < strlen((bytes) as Str) {
+        let byte: Char = bytes[index]
+        if in_quotes {
+            if csv_is_quote(byte) {
+                if index + 1 < strlen((bytes) as Str) && csv_is_quote(bytes[index + 1]) {
+                    index = index + 2
+                } else {
+                    in_quotes = false
+                    after_quote = true
+                    index = index + 1
+                }
+            } else {
+                index = index + 1
+            }
+        } else if after_quote {
+            if csv_is_comma(byte) {
+                after_quote = false
+                at_field_start = true
+                index = index + 1
+            } else if csv_is_lf(byte) {
+                return index
+            } else if csv_is_cr(byte) {
+                if index + 1 < strlen((bytes) as Str) && csv_is_lf(bytes[index + 1]) {
+                    return index
+                }
+                return none
+            } else {
+                return none
+            }
+        } else if at_field_start && csv_is_quote(byte) {
+            in_quotes = true
+            at_field_start = false
+            index = index + 1
+        } else if csv_is_comma(byte) {
+            at_field_start = true
+            index = index + 1
+        } else if csv_is_lf(byte) {
+            return index
+        } else if csv_is_cr(byte) {
+            if index + 1 < strlen((bytes) as Str) && csv_is_lf(bytes[index + 1]) {
+                return index
+            }
+            return none
+        } else if csv_is_quote(byte) {
+            return none
+        } else {
+            at_field_start = false
+            index = index + 1
+        }
+    }
+    if in_quotes {
+        return none
+    }
+    return strlen((bytes) as Str)
+}
+
+fn csv_next_record_start(bytes: Str, end: Int) -> Int {
+    if end >= strlen((bytes) as Str) {
+        return strlen((bytes) as Str)
+    }
+    if csv_is_cr(bytes[end]) && end + 1 < strlen((bytes) as Str) && csv_is_lf(bytes[end + 1]) {
+        return end + 2
+    }
+    return end + 1
+}
+
+fn csv_valid(bytes: Str) -> Bool {
+    var start: Int = 0
+    while start < strlen((bytes) as Str) {
+        let end: ?Int = csv_record_end(bytes, start)
+        if end == none {
+            return false
+        }
+        let fields: ?Int = csv_field_count(bytes[start..(end catch 0)])
+        if fields == none {
+            return false
+        }
+        start = csv_next_record_start(bytes, (end catch 0))
+    }
+    return true
+}
+
+fn csv_record_count(bytes: Str) -> ?Int {
+    var count: Int = 0
+    var start: Int = 0
+    while start < strlen((bytes) as Str) {
+        let end: ?Int = csv_record_end(bytes, start)
+        if end == none {
+            return none
+        }
+        let fields: ?Int = csv_field_count(bytes[start..(end catch 0)])
+        if fields == none {
+            return none
+        }
+        count = count + 1
+        start = csv_next_record_start(bytes, (end catch 0))
+    }
+    return count
+}
+
+fn csv_record(bytes: Str, ordinal: Int) -> ?Str {
+    var count: Int = 0
+    var start: Int = 0
+    while start < strlen((bytes) as Str) {
+        let end: ?Int = csv_record_end(bytes, start)
+        if end == none {
+            return none
+        }
+        let fields: ?Int = csv_field_count(bytes[start..(end catch 0)])
+        if fields == none {
+            return none
+        }
+        if count == ordinal {
+            return bytes[start..(end catch 0)]
+        }
+        count = count + 1
+        start = csv_next_record_start(bytes, (end catch 0))
+    }
+    return none
+}
+
+fn csv_field_count(record: Str) -> ?Int {
+    var count: Int = 1
+    var index: Int = 0
+    var in_quotes: Bool = false
+    var after_quote: Bool = false
+    var at_field_start: Bool = true
+    while index < strlen((record) as Str) {
+        let byte: Char = record[index]
+        if in_quotes {
+            if csv_is_quote(byte) {
+                if index + 1 < strlen((record) as Str) && csv_is_quote(record[index + 1]) {
+                    index = index + 2
+                } else {
+                    in_quotes = false
+                    after_quote = true
+                    index = index + 1
+                }
+            } else {
+                index = index + 1
+            }
+        } else if after_quote {
+            if csv_is_comma(byte) {
+                count = count + 1
+                after_quote = false
+                at_field_start = true
+                index = index + 1
+            } else {
+                return none
+            }
+        } else if at_field_start && csv_is_quote(byte) {
+            in_quotes = true
+            at_field_start = false
+            index = index + 1
+        } else if csv_is_comma(byte) {
+            count = count + 1
+            at_field_start = true
+            index = index + 1
+        } else if csv_is_lf(byte) || csv_is_cr(byte) || csv_is_quote(byte) {
+            return none
+        } else {
+            at_field_start = false
+            index = index + 1
+        }
+    }
+    if in_quotes {
+        return none
+    }
+    return count
+}
+
+fn csv_field(buffer: *Char, record: Str, ordinal: Int) -> ?Str {
+    let fields: ?Int = csv_field_count(record)
+    if fields == none || ordinal >= (fields catch 0) {
+        return none
+    }
+    var field_index: Int = 0
+    var input: Int = 0
+    while input <= strlen((record) as Str) {
+        var output: Int = 0
+        if input < strlen((record) as Str) && csv_is_quote(record[input]) {
+            input = input + 1
+            var closed: Bool = false
+            while input < strlen((record) as Str) {
+                let byte: Char = record[input]
+                if csv_is_quote(byte) {
+                    if input + 1 < strlen((record) as Str) && csv_is_quote(record[input + 1]) {
+                        if field_index == ordinal {
+                            if output >= strlen((buffer) as Str) {
+                                return none
+                            }
+                            buffer[output] = Char(34)
+                            output = output + 1
+                        }
+                        input = input + 2
+                    } else {
+                        input = input + 1
+                        if input < strlen((record) as Str) && !csv_is_comma(record[input]) {
+                            return none
+                        }
+                        if field_index == ordinal {
+                            return buffer[..output]
+                        }
+                        if input >= strlen((record) as Str) {
+                            return none
+                        }
+                        input = input + 1
+                        closed = true
+                        break
+                    }
+                } else {
+                    if field_index == ordinal {
+                        if output >= strlen((buffer) as Str) {
+                            return none
+                        }
+                        buffer[output] = byte
+                        output = output + 1
+                    }
+                    input = input + 1
+                }
+            }
+            if !closed {
+                return none
+            }
+        } else {
+            while input < strlen((record) as Str) && !csv_is_comma(record[input]) {
+                let byte: Char = record[input]
+                if csv_is_quote(byte) || csv_is_lf(byte) || csv_is_cr(byte) {
+                    return none
+                }
+                if field_index == ordinal {
+                    if output >= strlen((buffer) as Str) {
+                        return none
+                    }
+                    buffer[output] = byte
+                    output = output + 1
+                }
+                input = input + 1
+            }
+            if field_index == ordinal {
+                return buffer[..output]
+            }
+            if input < strlen((record) as Str) {
+                input = input + 1
+            } else {
+                return none
+            }
+        }
+        field_index = field_index + 1
+    }
+    return none
+}
+
+fn csv_write_field(buffer: *Char, field: Str) -> ?Str {
+    let length: Int = csv_encoded_field_len(field)
+    if length > strlen((buffer) as Str) {
+        return none
+    }
+    if !csv_field_needs_quotes(field) {
+        var index: Int = 0
+        while index < strlen((field) as Str) {
+            buffer[index] = field[index]
+            index = index + 1
+        }
+        return buffer[..strlen((field) as Str)]
+    }
+    var output: Int = 0
+    buffer[output] = Char(34)
+    output = output + 1
+    var input: Int = 0
+    while input < strlen((field) as Str) {
+        let byte: Char = field[input]
+        buffer[output] = byte
+        output = output + 1
+        if csv_is_quote(byte) {
+            buffer[output] = byte
+            output = output + 1
+        }
+        input = input + 1
+    }
+    buffer[output] = Char(34)
+    return buffer[..output + 1]
+}
+
+fn csv_write_record2(buffer: *Char, left: Str, right: Str) -> ?Str {
+    let left_len: Int = csv_encoded_field_len(left)
+    let right_len: Int = csv_encoded_field_len(right)
+    let total: Int = left_len + 1 + right_len + 1
+    if total > strlen((buffer) as Str) {
+        return none
+    }
+    let left_out: ?Str = csv_write_field(buffer, left)
+    if left_out == none {
+        return none
+    }
+    var offset: Int = strlen(((left_out catch "")) as Str)
+    buffer[offset] = Char(44)
+    offset = offset + 1
+    let right_out: ?Str = csv_write_field(buffer[offset..], right)
+    if right_out == none {
+        return none
+    }
+    offset = offset + strlen(((right_out catch "")) as Str)
+    buffer[offset] = Char(10)
+    return buffer[..offset + 1]
+}
+
+fn csv_write_record3(buffer: *Char, first: Str, second: Str, third: Str) -> ?Str {
+    let first_len: Int = csv_encoded_field_len(first)
+    let second_len: Int = csv_encoded_field_len(second)
+    let third_len: Int = csv_encoded_field_len(third)
+    let total: Int = first_len + 1 + second_len + 1 + third_len + 1
+    if total > strlen((buffer) as Str) {
+        return none
+    }
+    let first_out: ?Str = csv_write_field(buffer, first)
+    if first_out == none {
+        return none
+    }
+    var offset: Int = strlen(((first_out catch "")) as Str)
+    buffer[offset] = Char(44)
+    offset = offset + 1
+    let second_out: ?Str = csv_write_field(buffer[offset..], second)
+    if second_out == none {
+        return none
+    }
+    offset = offset + strlen(((second_out catch "")) as Str)
+    buffer[offset] = Char(44)
+    offset = offset + 1
+    let third_out: ?Str = csv_write_field(buffer[offset..], third)
+    if third_out == none {
+        return none
+    }
+    offset = offset + strlen(((third_out catch "")) as Str)
+    buffer[offset] = Char(10)
+    return buffer[..offset + 1]
+}

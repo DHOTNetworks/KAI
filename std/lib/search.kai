@@ -1,0 +1,533 @@
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_search_index_of<T>(items: *T, needle: T) -> Int {
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] == needle {
+            return index
+        }
+        index = index + 1
+    }
+    return strlen((items) as Str)
+}
+
+fn __kai_std_search_last_index_of<T>(items: *T, needle: T) -> Int {
+    var index: Int = strlen((items) as Str)
+    while index > 0 {
+        index = index - 1
+        if items[index] == needle {
+            return index
+        }
+    }
+    return strlen((items) as Str)
+}
+
+fn __kai_std_search_lower_bound_i32(items: *Int, needle: Int) -> Int {
+    var low: Int = 0
+    var high: Int = strlen((items) as Str)
+    while low < high {
+        let mid: Int = low + (high - low) / 2
+        if items[mid] < needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __kai_std_search_upper_bound_i32(items: *Int, needle: Int) -> Int {
+    var low: Int = 0
+    var high: Int = strlen((items) as Str)
+    while low < high {
+        let mid: Int = low + (high - low) / 2
+        if items[mid] <= needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __kai_std_search_binary_i32(items: *Int, needle: Int) -> Int {
+    let index: Int = __kai_std_search_lower_bound_i32(items, needle)
+    if index < strlen((items) as Str) && items[index] == needle {
+        return index
+    }
+    return strlen((items) as Str)
+}
+
+fn __kai_std_search_contains_sorted_i32(items: *Int, needle: Int) -> Bool {
+    return __kai_std_search_binary_i32(items, needle) < strlen((items) as Str)
+}
+
+fn __kai_std_search_count_sorted_i32(items: *Int, needle: Int) -> Int {
+    return __kai_std_search_upper_bound_i32(items, needle) - __kai_std_search_lower_bound_i32(items, needle)
+}
+
+fn __kai_std_search_equal_range_i32(items: *Int, needle: Int) -> *Int {
+    let start: Int = __kai_std_search_lower_bound_i32(items, needle)
+    let end: Int = __kai_std_search_upper_bound_i32(items, needle)
+    return items[start..end]
+}
+
+fn __kai_std_search_partition_point_i32(items: *Int, pivot: Int) -> Int {
+    return __kai_std_search_lower_bound_i32(items, pivot)
+}
+
+fn __kai_std_search_lower_bound_desc_i32(items: *Int, needle: Int) -> Int {
+    var low: Int = 0
+    var high: Int = strlen((items) as Str)
+    while low < high {
+        let mid: Int = low + (high - low) / 2
+        if items[mid] > needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __kai_std_search_upper_bound_desc_i32(items: *Int, needle: Int) -> Int {
+    var low: Int = 0
+    var high: Int = strlen((items) as Str)
+    while low < high {
+        let mid: Int = low + (high - low) / 2
+        if items[mid] >= needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __kai_std_search_binary_desc_i32(items: *Int, needle: Int) -> Int {
+    let index: Int = __kai_std_search_lower_bound_desc_i32(items, needle)
+    if index < strlen((items) as Str) && items[index] == needle {
+        return index
+    }
+    return strlen((items) as Str)
+}
+
+fn __kai_std_search_contains_sorted_desc_i32(items: *Int, needle: Int) -> Bool {
+    return __kai_std_search_binary_desc_i32(items, needle) < strlen((items) as Str)
+}
+
+fn __kai_std_search_count_sorted_desc_i32(items: *Int, needle: Int) -> Int {
+    return __kai_std_search_upper_bound_desc_i32(items, needle) - __kai_std_search_lower_bound_desc_i32(items, needle)
+}
+
+fn __kai_std_search_equal_range_desc_i32(items: *Int, needle: Int) -> *Int {
+    let start: Int = __kai_std_search_lower_bound_desc_i32(items, needle)
+    let end: Int = __kai_std_search_upper_bound_desc_i32(items, needle)
+    return items[start..end]
+}
+
+fn __kai_std_search_partition_point_desc_i32(items: *Int, pivot: Int) -> Int {
+    return __kai_std_search_lower_bound_desc_i32(items, pivot)
+}
+
+fn __kai_std_search_min_i32(items: *Int) -> ?Int {
+    if __kai_std_mem_is_empty(items) {
+        return none
+    }
+    var best: Int = items[0]
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] < best {
+            best = items[index]
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __kai_std_search_min_index_i32(items: *Int) -> Int {
+    if __kai_std_mem_is_empty(items) {
+        return strlen((items) as Str)
+    }
+    var best: Int = 0
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] < items[best] {
+            best = index
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __kai_std_search_max_i32(items: *Int) -> ?Int {
+    if __kai_std_mem_is_empty(items) {
+        return none
+    }
+    var best: Int = items[0]
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] > best {
+            best = items[index]
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __kai_std_search_max_index_i32(items: *Int) -> Int {
+    if __kai_std_mem_is_empty(items) {
+        return strlen((items) as Str)
+    }
+    var best: Int = 0
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] > items[best] {
+            best = index
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __kai_std_search_lower_bound_u32(items: *Int, needle: Int) -> Int {
+    var low: Int = 0
+    var high: Int = strlen((items) as Str)
+    while low < high {
+        let mid: Int = low + (high - low) / 2
+        if items[mid] < needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __kai_std_search_upper_bound_u32(items: *Int, needle: Int) -> Int {
+    var low: Int = 0
+    var high: Int = strlen((items) as Str)
+    while low < high {
+        let mid: Int = low + (high - low) / 2
+        if items[mid] <= needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __kai_std_search_binary_u32(items: *Int, needle: Int) -> Int {
+    let index: Int = __kai_std_search_lower_bound_u32(items, needle)
+    if index < strlen((items) as Str) && items[index] == needle {
+        return index
+    }
+    return strlen((items) as Str)
+}
+
+fn __kai_std_search_contains_sorted_u32(items: *Int, needle: Int) -> Bool {
+    return __kai_std_search_binary_u32(items, needle) < strlen((items) as Str)
+}
+
+fn __kai_std_search_count_sorted_u32(items: *Int, needle: Int) -> Int {
+    return __kai_std_search_upper_bound_u32(items, needle) - __kai_std_search_lower_bound_u32(items, needle)
+}
+
+fn __kai_std_search_equal_range_u32(items: *Int, needle: Int) -> *Int {
+    let start: Int = __kai_std_search_lower_bound_u32(items, needle)
+    let end: Int = __kai_std_search_upper_bound_u32(items, needle)
+    return items[start..end]
+}
+
+fn __kai_std_search_partition_point_u32(items: *Int, pivot: Int) -> Int {
+    return __kai_std_search_lower_bound_u32(items, pivot)
+}
+
+fn __kai_std_search_lower_bound_desc_u32(items: *Int, needle: Int) -> Int {
+    var low: Int = 0
+    var high: Int = strlen((items) as Str)
+    while low < high {
+        let mid: Int = low + (high - low) / 2
+        if items[mid] > needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __kai_std_search_upper_bound_desc_u32(items: *Int, needle: Int) -> Int {
+    var low: Int = 0
+    var high: Int = strlen((items) as Str)
+    while low < high {
+        let mid: Int = low + (high - low) / 2
+        if items[mid] >= needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __kai_std_search_binary_desc_u32(items: *Int, needle: Int) -> Int {
+    let index: Int = __kai_std_search_lower_bound_desc_u32(items, needle)
+    if index < strlen((items) as Str) && items[index] == needle {
+        return index
+    }
+    return strlen((items) as Str)
+}
+
+fn __kai_std_search_contains_sorted_desc_u32(items: *Int, needle: Int) -> Bool {
+    return __kai_std_search_binary_desc_u32(items, needle) < strlen((items) as Str)
+}
+
+fn __kai_std_search_count_sorted_desc_u32(items: *Int, needle: Int) -> Int {
+    return __kai_std_search_upper_bound_desc_u32(items, needle) - __kai_std_search_lower_bound_desc_u32(items, needle)
+}
+
+fn __kai_std_search_equal_range_desc_u32(items: *Int, needle: Int) -> *Int {
+    let start: Int = __kai_std_search_lower_bound_desc_u32(items, needle)
+    let end: Int = __kai_std_search_upper_bound_desc_u32(items, needle)
+    return items[start..end]
+}
+
+fn __kai_std_search_partition_point_desc_u32(items: *Int, pivot: Int) -> Int {
+    return __kai_std_search_lower_bound_desc_u32(items, pivot)
+}
+
+fn __kai_std_search_min_u32(items: *Int) -> ?Int {
+    if __kai_std_mem_is_empty(items) {
+        return none
+    }
+    var best: Int = items[0]
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] < best {
+            best = items[index]
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __kai_std_search_min_index_u32(items: *Int) -> Int {
+    if __kai_std_mem_is_empty(items) {
+        return strlen((items) as Str)
+    }
+    var best: Int = 0
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] < items[best] {
+            best = index
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __kai_std_search_max_u32(items: *Int) -> ?Int {
+    if __kai_std_mem_is_empty(items) {
+        return none
+    }
+    var best: Int = items[0]
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] > best {
+            best = items[index]
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __kai_std_search_max_index_u32(items: *Int) -> Int {
+    if __kai_std_mem_is_empty(items) {
+        return strlen((items) as Str)
+    }
+    var best: Int = 0
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] > items[best] {
+            best = index
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __kai_std_search_lower_bound_usize(items: *Int, needle: Int) -> Int {
+    var low: Int = 0
+    var high: Int = strlen((items) as Str)
+    while low < high {
+        let mid: Int = low + (high - low) / 2
+        if items[mid] < needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __kai_std_search_upper_bound_usize(items: *Int, needle: Int) -> Int {
+    var low: Int = 0
+    var high: Int = strlen((items) as Str)
+    while low < high {
+        let mid: Int = low + (high - low) / 2
+        if items[mid] <= needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __kai_std_search_binary_usize(items: *Int, needle: Int) -> Int {
+    let index: Int = __kai_std_search_lower_bound_usize(items, needle)
+    if index < strlen((items) as Str) && items[index] == needle {
+        return index
+    }
+    return strlen((items) as Str)
+}
+
+fn __kai_std_search_contains_sorted_usize(items: *Int, needle: Int) -> Bool {
+    return __kai_std_search_binary_usize(items, needle) < strlen((items) as Str)
+}
+
+fn __kai_std_search_count_sorted_usize(items: *Int, needle: Int) -> Int {
+    return __kai_std_search_upper_bound_usize(items, needle) - __kai_std_search_lower_bound_usize(items, needle)
+}
+
+fn __kai_std_search_equal_range_usize(items: *Int, needle: Int) -> *Int {
+    let start: Int = __kai_std_search_lower_bound_usize(items, needle)
+    let end: Int = __kai_std_search_upper_bound_usize(items, needle)
+    return items[start..end]
+}
+
+fn __kai_std_search_partition_point_usize(items: *Int, pivot: Int) -> Int {
+    return __kai_std_search_lower_bound_usize(items, pivot)
+}
+
+fn __kai_std_search_lower_bound_desc_usize(items: *Int, needle: Int) -> Int {
+    var low: Int = 0
+    var high: Int = strlen((items) as Str)
+    while low < high {
+        let mid: Int = low + (high - low) / 2
+        if items[mid] > needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __kai_std_search_upper_bound_desc_usize(items: *Int, needle: Int) -> Int {
+    var low: Int = 0
+    var high: Int = strlen((items) as Str)
+    while low < high {
+        let mid: Int = low + (high - low) / 2
+        if items[mid] >= needle {
+            low = mid + 1
+        } else {
+            high = mid
+        }
+    }
+    return low
+}
+
+fn __kai_std_search_binary_desc_usize(items: *Int, needle: Int) -> Int {
+    let index: Int = __kai_std_search_lower_bound_desc_usize(items, needle)
+    if index < strlen((items) as Str) && items[index] == needle {
+        return index
+    }
+    return strlen((items) as Str)
+}
+
+fn __kai_std_search_contains_sorted_desc_usize(items: *Int, needle: Int) -> Bool {
+    return __kai_std_search_binary_desc_usize(items, needle) < strlen((items) as Str)
+}
+
+fn __kai_std_search_count_sorted_desc_usize(items: *Int, needle: Int) -> Int {
+    return __kai_std_search_upper_bound_desc_usize(items, needle) - __kai_std_search_lower_bound_desc_usize(items, needle)
+}
+
+fn __kai_std_search_equal_range_desc_usize(items: *Int, needle: Int) -> *Int {
+    let start: Int = __kai_std_search_lower_bound_desc_usize(items, needle)
+    let end: Int = __kai_std_search_upper_bound_desc_usize(items, needle)
+    return items[start..end]
+}
+
+fn __kai_std_search_partition_point_desc_usize(items: *Int, pivot: Int) -> Int {
+    return __kai_std_search_lower_bound_desc_usize(items, pivot)
+}
+
+fn __kai_std_search_min_usize(items: *Int) -> ?Int {
+    if __kai_std_mem_is_empty(items) {
+        return none
+    }
+    var best: Int = items[0]
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] < best {
+            best = items[index]
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __kai_std_search_min_index_usize(items: *Int) -> Int {
+    if __kai_std_mem_is_empty(items) {
+        return strlen((items) as Str)
+    }
+    var best: Int = 0
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] < items[best] {
+            best = index
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __kai_std_search_max_usize(items: *Int) -> ?Int {
+    if __kai_std_mem_is_empty(items) {
+        return none
+    }
+    var best: Int = items[0]
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] > best {
+            best = items[index]
+        }
+        index = index + 1
+    }
+    return best
+}
+
+fn __kai_std_search_max_index_usize(items: *Int) -> Int {
+    if __kai_std_mem_is_empty(items) {
+        return strlen((items) as Str)
+    }
+    var best: Int = 0
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] > items[best] {
+            best = index
+        }
+        index = index + 1
+    }
+    return best
+}

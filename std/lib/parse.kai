@@ -1,0 +1,590 @@
+import std.lib.time
+
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_parse_is_ascii_digit(value: Str) -> Bool {
+    return strlen((value) as Str) > 0 && value[0] >= Char(48) && value[0] <= Char(57)
+}
+
+fn __kai_std_parse_is_ascii_alpha(value: Str) -> Bool {
+    if strlen((value) as Str) == 0 {
+        return false
+    }
+    let byte: Char = value[0]
+    return (byte >= Char(65) && byte <= Char(90)) || (byte >= Char(97) && byte <= Char(122))
+}
+
+fn __kai_std_parse_is_identifier_start(value: Str) -> Bool {
+    if strlen((value) as Str) == 0 {
+        return false
+    }
+    let byte: Char = value[0]
+    return __kai_std_parse_is_ascii_alpha(value) || byte == Char(95)
+}
+
+fn __kai_std_parse_is_whitespace(value: Str) -> Bool {
+    if strlen((value) as Str) == 0 {
+        return false
+    }
+    let byte: Char = value[0]
+    return byte == Char(32) || byte == Char(9) || byte == Char(10) || byte == Char(13)
+}
+
+fn __kai_std_parse_scan_digits(value: Str) -> Int {
+    var index: Int = 0
+    while index < strlen((value) as Str) && value[index] >= Char(48) && value[index] <= Char(57) {
+        index = index + 1
+    }
+    return index
+}
+
+fn __kai_std_parse_scan_whitespace(value: Str) -> Int {
+    var index: Int = 0
+    while index < strlen((value) as Str) && (value[index] == Char(32) || value[index] == Char(9) || value[index] == Char(10) || value[index] == Char(13)) {
+        index = index + 1
+    }
+    return index
+}
+
+fn __kai_std_parse_identifier_byte(byte: Char) -> Bool {
+    return (byte >= Char(65) && byte <= Char(90)) || (byte >= Char(97) && byte <= Char(122)) || (byte >= Char(48) && byte <= Char(57)) || byte == Char(95)
+}
+
+fn __kai_std_parse_scan_identifier(value: Str) -> Int {
+    if !__kai_std_parse_is_identifier_start(value) {
+        return 0
+    }
+    var index: Int = 1
+    while index < strlen((value) as Str) && __kai_std_parse_identifier_byte(value[index]) {
+        index = index + 1
+    }
+    return index
+}
+
+fn __kai_std_parse_scan_until_byte(value: Str, byte: Char) -> Int {
+    var index: Int = 0
+    while index < strlen((value) as Str) {
+        if value[index] == byte {
+            return index
+        }
+        index = index + 1
+    }
+    return strlen((value) as Str)
+}
+
+fn __kai_std_parse_token_ascii(value: Str) -> Str {
+    let start: Int = __kai_std_parse_scan_whitespace(value)
+    var end: Int = start
+    while end < strlen((value) as Str) && !(value[end] == Char(32) || value[end] == Char(9) || value[end] == Char(10) || value[end] == Char(13)) {
+        end = end + 1
+    }
+    return value[start..end]
+}
+
+fn __kai_std_parse_parse_u32_max(value: Str, max: Int) -> ?Int {
+    if strlen((value) as Str) == 0 {
+        return none
+    }
+    var index: Int = 0
+    var total: Int = 0
+    while index < strlen((value) as Str) {
+        let byte: Char = value[index]
+        if byte < Char(48) || byte > Char(57) {
+            return none
+        }
+        let digit: Int = (byte - Char(48)) as Int
+        if total > (max - digit) / 10 {
+            return none
+        }
+        total = total * 10 + digit
+        index = index + 1
+    }
+    return total
+}
+
+fn __kai_std_parse_digit_value(byte: Char) -> ?Int {
+    if byte >= Char(48) && byte <= Char(57) {
+        return (byte - Char(48)) as Int
+    }
+    if byte >= Char(65) && byte <= Char(90) {
+        return ((byte - Char(65)) as Int) + 10
+    }
+    if byte >= Char(97) && byte <= Char(122) {
+        return ((byte - Char(97)) as Int) + 10
+    }
+    return none
+}
+
+fn __kai_std_parse_parse_u32_base_max(value: Str, base: Int, max: Int) -> ?Int {
+    if strlen((value) as Str) == 0 || base < 2 || base > 36 {
+        return none
+    }
+    var index: Int = 0
+    var total: Int = 0
+    while index < strlen((value) as Str) {
+        let digit: ?Int = __kai_std_parse_digit_value(value[index])
+        if digit == none || (digit catch 0) >= base {
+            return none
+        }
+        if total > (max - (digit catch 0)) / base {
+            return none
+        }
+        total = total * base + (digit catch 0)
+        index = index + 1
+    }
+    return total
+}
+
+fn __kai_std_parse_parse_u64_base_max(value: Str, base: Int, max: Int) -> ?Int {
+    if strlen((value) as Str) == 0 || base < 2 || base > 36 {
+        return none
+    }
+    var index: Int = 0
+    var total: Int = 0
+    let u64_base: Int = base as Int
+    while index < strlen((value) as Str) {
+        let digit: ?Int = __kai_std_parse_digit_value(value[index])
+        if digit == none || (digit catch 0) >= base {
+            return none
+        }
+        let u64_digit: Int = (digit catch 0) as Int
+        if total > (max - u64_digit) / u64_base {
+            return none
+        }
+        total = total * u64_base + u64_digit
+        index = index + 1
+    }
+    return total
+}
+
+fn __kai_std_parse_parse_u32_base(value: Str, base: Int) -> ?Int {
+    return __kai_std_parse_parse_u32_base_max(value, base, 4294967295)
+}
+
+fn __kai_std_parse_parse_u64_base(value: Str, base: Int) -> ?Int {
+    return __kai_std_parse_parse_u64_base_max(value, base, (0 - 1))
+}
+
+fn __kai_std_parse_parse_usize_base(value: Str, base: Int) -> ?Int {
+    if strlen((value) as Str) == 0 || base < 2 || base > 36 {
+        return none
+    }
+    var index: Int = 0
+    var total: Int = 0
+    let max: Int = (0 - 1)
+    let usize_base: Int = base as Int
+    while index < strlen((value) as Str) {
+        let digit: ?Int = __kai_std_parse_digit_value(value[index])
+        if digit == none || (digit catch 0) >= base {
+            return none
+        }
+        let usize_digit: Int = (digit catch 0) as Int
+        if total > (max - usize_digit) / usize_base {
+            return none
+        }
+        total = total * usize_base + usize_digit
+        index = index + 1
+    }
+    return total
+}
+
+fn __kai_std_parse_parse_i64_base(value: Str, base: Int) -> ?Int {
+    if strlen((value) as Str) == 0 {
+        return none
+    }
+    var start: Int = 0
+    var negative: Bool = false
+    if value[0] == Char(45) {
+        negative = true
+        start = 1
+    } else if value[0] == Char(43) {
+        start = 1
+    }
+    if start == strlen((value) as Str) {
+        return none
+    }
+    let limit: Int = (0 - 9223372036854775807 - 1)
+    let parsed: ?Int = __kai_std_parse_parse_u64_base_max(value[start..], base, limit)
+    if parsed == none {
+        return none
+    }
+    if negative {
+        if (parsed catch 0) == limit {
+            return 0 - 9223372036854775807 - 1
+        }
+        return 0 - ((parsed catch 0) as Int)
+    }
+    if (parsed catch 0) > 9223372036854775807 {
+        return none
+    }
+    return (parsed catch 0) as Int
+}
+
+fn __kai_std_parse_parse_i32_base(value: Str, base: Int) -> ?Int {
+    if strlen((value) as Str) == 0 {
+        return none
+    }
+    var start: Int = 0
+    var negative: Bool = false
+    if value[0] == Char(45) {
+        negative = true
+        start = 1
+    } else if value[0] == Char(43) {
+        start = 1
+    }
+    if start == strlen((value) as Str) {
+        return none
+    }
+    let limit: Int = 2147483648
+    let parsed: ?Int = __kai_std_parse_parse_u32_base_max(value[start..], base, limit)
+    if parsed == none {
+        return none
+    }
+    if negative {
+        if (parsed catch 0) == limit {
+            return 0 - 2147483647 - 1
+        }
+        return 0 - ((parsed catch 0) as Int)
+    }
+    if (parsed catch 0) > 2147483647 {
+        return none
+    }
+    return (parsed catch 0) as Int
+}
+
+fn __kai_std_parse_prefixed_base(value: Str) -> Int {
+    if strlen((value) as Str) >= 2 && value[0] == Char(48) {
+        if value[1] == Char(120) || value[1] == Char(88) {
+            return 16
+        }
+        if value[1] == Char(98) || value[1] == Char(66) {
+            return 2
+        }
+        if value[1] == Char(111) || value[1] == Char(79) {
+            return 8
+        }
+    }
+    return 10
+}
+
+fn __kai_std_parse_prefixed_digits(value: Str) -> Str {
+    if strlen((value) as Str) >= 2 && value[0] == Char(48) {
+        if value[1] == Char(120) || value[1] == Char(88) || (value[1] == Char(98) || value[1] == Char(66)) || (value[1] == Char(111) || value[1] == Char(79)) {
+            return value[2..]
+        }
+    }
+    return value
+}
+
+fn __kai_std_parse_parse_u32_prefix(value: Str) -> ?Int {
+    let base: Int = __kai_std_parse_prefixed_base(value)
+    let digits: Str = __kai_std_parse_prefixed_digits(value)
+    return __kai_std_parse_parse_u32_base(digits, base)
+}
+
+fn __kai_std_parse_parse_u64_prefix(value: Str) -> ?Int {
+    let base: Int = __kai_std_parse_prefixed_base(value)
+    let digits: Str = __kai_std_parse_prefixed_digits(value)
+    return __kai_std_parse_parse_u64_base(digits, base)
+}
+
+fn __kai_std_parse_parse_usize_prefix(value: Str) -> ?Int {
+    let base: Int = __kai_std_parse_prefixed_base(value)
+    let digits: Str = __kai_std_parse_prefixed_digits(value)
+    return __kai_std_parse_parse_usize_base(digits, base)
+}
+
+fn __kai_std_parse_parse_i64_prefix(value: Str) -> ?Int {
+    if strlen((value) as Str) == 0 {
+        return none
+    }
+    var start: Int = 0
+    var negative: Bool = false
+    if value[0] == Char(45) || value[0] == Char(43) {
+        negative = value[0] == Char(45)
+        start = 1
+    }
+    if start == strlen((value) as Str) {
+        return none
+    }
+    let base: Int = __kai_std_parse_prefixed_base(value[start..])
+    let digits: Str = __kai_std_parse_prefixed_digits(value[start..])
+    let limit: Int = (0 - 9223372036854775807 - 1)
+    let parsed: ?Int = __kai_std_parse_parse_u64_base_max(digits, base, limit)
+    if parsed == none {
+        return none
+    }
+    if negative {
+        if (parsed catch 0) == limit {
+            return 0 - 9223372036854775807 - 1
+        }
+        return 0 - ((parsed catch 0) as Int)
+    }
+    if (parsed catch 0) > 9223372036854775807 {
+        return none
+    }
+    return (parsed catch 0) as Int
+}
+
+fn __kai_std_parse_parse_i32_prefix(value: Str) -> ?Int {
+    if strlen((value) as Str) == 0 {
+        return none
+    }
+    var start: Int = 0
+    var negative: Bool = false
+    if value[0] == Char(45) || value[0] == Char(43) {
+        negative = value[0] == Char(45)
+        start = 1
+    }
+    if start == strlen((value) as Str) {
+        return none
+    }
+    let base: Int = __kai_std_parse_prefixed_base(value[start..])
+    let digits: Str = __kai_std_parse_prefixed_digits(value[start..])
+    let limit: Int = 2147483648
+    let parsed: ?Int = __kai_std_parse_parse_u32_base_max(digits, base, limit)
+    if parsed == none {
+        return none
+    }
+    if negative {
+        if (parsed catch 0) == limit {
+            return 0 - 2147483647 - 1
+        }
+        return 0 - ((parsed catch 0) as Int)
+    }
+    if (parsed catch 0) > 2147483647 {
+        return none
+    }
+    return (parsed catch 0) as Int
+}
+
+fn __kai_std_parse_parse_u8(value: Str) -> ?Char {
+    let parsed: ?Int = __kai_std_parse_parse_u32_max(value, 255)
+    if parsed != none {
+        return (parsed catch 0) as Char
+    }
+    return none
+}
+
+fn __kai_std_parse_parse_u16(value: Str) -> ?Int {
+    let parsed: ?Int = __kai_std_parse_parse_u32_max(value, 65535)
+    if parsed != none {
+        return (parsed catch 0) as Int
+    }
+    return none
+}
+
+fn __kai_std_parse_parse_u32(value: Str) -> ?Int {
+    return __kai_std_parse_parse_u32_max(value, 4294967295)
+}
+
+fn __kai_std_parse_parse_u64(value: Str) -> ?Int {
+    return __kai_std_parse_parse_u64_base(value, 10)
+}
+
+fn __kai_std_parse_parse_usize(value: Str) -> ?Int {
+    if strlen((value) as Str) == 0 {
+        return none
+    }
+    var index: Int = 0
+    var total: Int = 0
+    let max: Int = (0 - 1)
+    while index < strlen((value) as Str) {
+        let byte: Char = value[index]
+        if byte < Char(48) || byte > Char(57) {
+            return none
+        }
+        let digit: Int = (byte - Char(48)) as Int
+        if total > (max - digit) / 10 {
+            return none
+        }
+        total = total * 10 + digit
+        index = index + 1
+    }
+    return total
+}
+
+fn __kai_std_parse_parse_i64(value: Str) -> ?Int {
+    return __kai_std_parse_parse_i64_base(value, 10)
+}
+
+fn __kai_std_parse_parse_i32(value: Str) -> ?Int {
+    if strlen((value) as Str) == 0 {
+        return none
+    }
+    var start: Int = 0
+    var negative: Bool = false
+    if value[0] == Char(45) {
+        negative = true
+        start = 1
+    } else if value[0] == Char(43) {
+        start = 1
+    }
+    if start == strlen((value) as Str) {
+        return none
+    }
+    let limit: Int = 2147483648
+    let parsed: ?Int = __kai_std_parse_parse_u32_max(value[start..], limit)
+    if parsed == none {
+        return none
+    }
+    if negative {
+        if (parsed catch 0) == limit {
+            return 0 - 2147483647 - 1
+        }
+        return 0 - ((parsed catch 0) as Int)
+    }
+    if (parsed catch 0) > 2147483647 {
+        return none
+    }
+    return (parsed catch 0) as Int
+}
+
+fn __kai_std_parse_parse_bool(value: Str) -> ?Bool {
+    if strcmp(value, "true") == 0 {
+        return true
+    }
+    if strcmp(value, "false") == 0 {
+        return false
+    }
+    return none
+}
+
+fn __kai_std_parse_duration_unit_ns(value: Str) -> ?Int {
+    if strcmp(value, "ns") == 0 {
+        return 1
+    }
+    if strcmp(value, "us") == 0 {
+        return 1000
+    }
+    if strcmp(value, "ms") == 0 {
+        return 1000000
+    }
+    if strcmp(value, "s") == 0 {
+        return 1000000000
+    }
+    if strcmp(value, "m") == 0 {
+        return 60000000000
+    }
+    if strcmp(value, "h") == 0 {
+        return 3600000000000
+    }
+    return none
+}
+
+fn __kai_std_parse_parse_duration(value: Str) -> ?Duration {
+    if strlen((value) as Str) == 0 {
+        return none
+    }
+    var index: Int = 0
+    var negative: Bool = false
+    if value[0] == Char(45) || value[0] == Char(43) {
+        negative = value[0] == Char(45)
+        index = 1
+    }
+    if index == strlen((value) as Str) {
+        return none
+    }
+    var max: Int = 9223372036854775807
+    if negative {
+        max = (0 - 9223372036854775807 - 1)
+    }
+    var total: Int = 0
+    var saw_component: Bool = false
+    while index < strlen((value) as Str) {
+        let digit_start: Int = index
+        while index < strlen((value) as Str) && (value[index] >= Char(48) && value[index] <= Char(57)) {
+            index = index + 1
+        }
+        if digit_start == index {
+            return none
+        }
+        let amount: ?Int = __kai_std_parse_parse_u64(value[digit_start..index])
+        if amount == none {
+            return none
+        }
+        let unit_start: Int = index
+        while index < strlen((value) as Str) && (value[index] < Char(48) || value[index] > Char(57)) {
+            index = index + 1
+        }
+        if unit_start == index {
+            return none
+        }
+        let multiplier: ?Int = __kai_std_parse_duration_unit_ns(value[unit_start..index])
+        if multiplier == none {
+            return none
+        }
+        if (amount catch 0) > (max - total) / (multiplier catch 0) {
+            return none
+        }
+        total = total + (amount catch 0) * (multiplier catch 0)
+        saw_component = true
+    }
+    if !saw_component {
+        return none
+    }
+    if negative {
+        if total == (0 - 9223372036854775807 - 1) {
+            return __kai_std_time_ns(0 - 9223372036854775807 - 1)
+        }
+        return __kai_std_time_ns(0 - (total as Int))
+    }
+    return __kai_std_time_ns(total as Int)
+}
+
+fn __kai_std_parse_byte_size_multiplier(unit: Str) -> ?Int {
+    if strlen((unit) as Str) == 0 || strcmp(unit, "B") == 0 {
+        return 1
+    }
+    if strcmp(unit, "KB") == 0 {
+        return 1000
+    }
+    if strcmp(unit, "MB") == 0 {
+        return 1000000
+    }
+    if strcmp(unit, "GB") == 0 {
+        return 1000000000
+    }
+    if strcmp(unit, "KiB") == 0 {
+        return 1024
+    }
+    if strcmp(unit, "MiB") == 0 {
+        return 1048576
+    }
+    if strcmp(unit, "GiB") == 0 {
+        return 1073741824
+    }
+    return none
+}
+
+fn __kai_std_parse_parse_byte_size(value: Str) -> ?Int {
+    if strlen((value) as Str) == 0 {
+        return none
+    }
+    var index: Int = 0
+    while index < strlen((value) as Str) && (value[index] >= Char(48) && value[index] <= Char(57)) {
+        index = index + 1
+    }
+    if index == 0 {
+        return none
+    }
+    let amount: ?Int = __kai_std_parse_parse_usize(value[..index])
+    if amount == none {
+        return none
+    }
+    let multiplier: ?Int = __kai_std_parse_byte_size_multiplier(value[index..])
+    if multiplier == none {
+        return none
+    }
+    let max: Int = (0 - 1)
+    if (amount catch 0) > max / (multiplier catch 0) {
+        return none
+    }
+    return (amount catch 0) * (multiplier catch 0)
+}

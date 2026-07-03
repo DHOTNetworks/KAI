@@ -1,0 +1,670 @@
+import std.lib.fmt
+
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_toml_validate(bytes: Str) -> Bool {
+    var index: Int = 0
+    while index < strlen((bytes) as Str) {
+        let line_end: Int = __kai_std_toml_line_end(bytes, index)
+        let content_end: Int = __kai_std_toml_comment_end(bytes, index, line_end)
+        let start: Int = __kai_std_toml_skip_ws(bytes, index, content_end)
+        if start < content_end {
+            if bytes[start] == Char(91) {
+                let table_end: ?Int = __kai_std_toml_table_end(bytes, start, content_end)
+                if table_end == none {
+                    return false
+                }
+            } else {
+                let equals: ?Int = __kai_std_toml_find_equals(bytes, start, content_end)
+                if equals == none {
+                    return false
+                }
+                let key_end: Int = __kai_std_toml_trim_end(bytes, start, (equals catch 0))
+                let value_start: Int = __kai_std_toml_skip_ws(bytes, (equals catch 0) + 1, content_end)
+                let value_end: Int = __kai_std_toml_trim_end(bytes, value_start, content_end)
+                if key_end == start || value_start == value_end || !__kai_std_toml_value_valid(bytes[value_start..value_end]) {
+                    return false
+                }
+            }
+        }
+        index = line_end
+        if index < strlen((bytes) as Str) && bytes[index] == Char(10) {
+            index = index + 1
+        }
+    }
+    return true
+}
+
+fn __kai_std_toml_validate_bytes(bytes: Str) -> Bool {
+    return __kai_std_toml_validate(bytes)
+}
+
+fn __kai_std_toml_field(bytes: Str, key: Str) -> ?Str {
+    var table_start: Int = 0
+    var table_end: Int = 0
+    var has_table: Bool = false
+    var index: Int = 0
+    while index < strlen((bytes) as Str) {
+        let line_end: Int = __kai_std_toml_line_end(bytes, index)
+        let content_end: Int = __kai_std_toml_comment_end(bytes, index, line_end)
+        let start: Int = __kai_std_toml_skip_ws(bytes, index, content_end)
+        if start < content_end {
+            if bytes[start] == Char(91) {
+                let next_table_end: ?Int = __kai_std_toml_table_end(bytes, start, content_end)
+                if next_table_end == none {
+                    return none
+                }
+                table_start = start + 1
+                table_end = (next_table_end catch 0)
+                has_table = true
+            } else {
+                let equals: ?Int = __kai_std_toml_find_equals(bytes, start, content_end)
+                if equals == none {
+                    return none
+                }
+                let field_key_end: Int = __kai_std_toml_trim_end(bytes, start, (equals catch 0))
+                let value_start: Int = __kai_std_toml_skip_ws(bytes, (equals catch 0) + 1, content_end)
+                let value_end: Int = __kai_std_toml_trim_end(bytes, value_start, content_end)
+                var table: Str = bytes[0..0]
+                if has_table {
+                    table = bytes[table_start..table_end]
+                }
+                if __kai_std_toml_key_matches(table, bytes[start..field_key_end], key) {
+                    return bytes[value_start..value_end]
+                }
+            }
+        }
+        index = line_end
+        if index < strlen((bytes) as Str) && bytes[index] == Char(10) {
+            index = index + 1
+        }
+    }
+    return none
+}
+
+fn __kai_std_toml_string_decode(buffer: *Char, value: Str) -> ?Str {
+    if strlen((value) as Str) < 2 || value[0] != Char(34) || value[strlen((value) as Str) - 1] != Char(34) {
+        return none
+    }
+    var input: Int = 1
+    var output: Int = 0
+    while input + 1 < strlen((value) as Str) {
+        var byte: Char = value[input]
+        if byte == Char(92) {
+            input = input + 1
+            if input + 1 >= strlen((value) as Str) {
+                return none
+            }
+            let escaped: Char = value[input]
+            if escaped == Char(34) {
+                byte = Char(34)
+            } else if escaped == Char(92) {
+                byte = Char(92)
+            } else if escaped == Char(110) {
+                byte = Char(10)
+            } else if escaped == Char(114) {
+                byte = Char(13)
+            } else if escaped == Char(116) {
+                byte = Char(9)
+            } else {
+                return none
+            }
+        }
+        if output >= strlen((buffer) as Str) {
+            return none
+        }
+        buffer[output] = byte
+        output = output + 1
+        input = input + 1
+    }
+    return buffer[..output]
+}
+
+fn __kai_std_toml_string(buffer: *Char, bytes: Str, key: Str) -> ?Str {
+    let raw: ?Str = __kai_std_toml_field(bytes, key)
+    if raw == none {
+        return none
+    }
+    return __kai_std_toml_string_decode(buffer, (raw catch ""))
+}
+
+fn __kai_std_toml_u32(bytes: Str, key: Str) -> ?Int {
+    let raw: ?Str = __kai_std_toml_field(bytes, key)
+    if raw == none {
+        return none
+    }
+    return atoll((raw catch ""))
+}
+
+fn __kai_std_toml_i32(bytes: Str, key: Str) -> ?Int {
+    let raw: ?Str = __kai_std_toml_field(bytes, key)
+    if raw == none {
+        return none
+    }
+    return __kai_std_parse_parse_i32((raw catch ""))
+}
+
+fn __kai_std_toml_bool(bytes: Str, key: Str) -> ?Bool {
+    let raw: ?Str = __kai_std_toml_field(bytes, key)
+    if raw == none {
+        return none
+    }
+    return __kai_std_parse_parse_bool((raw catch ""))
+}
+
+fn __kai_std_toml_array_count(value: Str) -> ?Int {
+    if !__kai_std_toml_array_valid(value) {
+        return none
+    }
+    var count: Int = 0
+    var index: Int = 1
+    let end: Int = strlen((value) as Str) - 1
+    while index < end {
+        index = __kai_std_toml_skip_ws(value, index, end)
+        if index == end {
+            return count
+        }
+        let item_end: ?Int = __kai_std_toml_array_item_end(value, index, end)
+        if item_end == none {
+            return none
+        }
+        count = count + 1
+        index = (item_end catch 0)
+        index = __kai_std_toml_skip_ws(value, index, end)
+        if index < end {
+            index = index + 1
+        }
+    }
+    return count
+}
+
+fn __kai_std_toml_array_value(value: Str, ordinal: Int) -> ?Str {
+    if !__kai_std_toml_array_valid(value) {
+        return none
+    }
+    var count: Int = 0
+    var index: Int = 1
+    let end: Int = strlen((value) as Str) - 1
+    while index < end {
+        index = __kai_std_toml_skip_ws(value, index, end)
+        if index == end {
+            return none
+        }
+        let item_end: ?Int = __kai_std_toml_array_item_end(value, index, end)
+        if item_end == none {
+            return none
+        }
+        if count == ordinal {
+            return value[index..(item_end catch 0)]
+        }
+        count = count + 1
+        index = (item_end catch 0)
+        index = __kai_std_toml_skip_ws(value, index, end)
+        if index < end {
+            index = index + 1
+        }
+    }
+    return none
+}
+
+fn __kai_std_toml_array_string(buffer: *Char, value: Str, ordinal: Int) -> ?Str {
+    let raw: ?Str = __kai_std_toml_array_value(value, ordinal)
+    if raw == none {
+        return none
+    }
+    return __kai_std_toml_string_decode(buffer, (raw catch ""))
+}
+
+fn __kai_std_toml_array_u32(value: Str, ordinal: Int) -> ?Int {
+    let raw: ?Str = __kai_std_toml_array_value(value, ordinal)
+    if raw == none {
+        return none
+    }
+    return atoll((raw catch ""))
+}
+
+fn __kai_std_toml_array_i32(value: Str, ordinal: Int) -> ?Int {
+    let raw: ?Str = __kai_std_toml_array_value(value, ordinal)
+    if raw == none {
+        return none
+    }
+    return __kai_std_parse_parse_i32((raw catch ""))
+}
+
+fn __kai_std_toml_array_bool(value: Str, ordinal: Int) -> ?Bool {
+    let raw: ?Str = __kai_std_toml_array_value(value, ordinal)
+    if raw == none {
+        return none
+    }
+    return __kai_std_parse_parse_bool((raw catch ""))
+}
+
+fn __kai_std_toml_key_byte_valid(byte: Char) -> Bool {
+    return (byte >= Char(65) && byte <= Char(90)) || (byte >= Char(97) && byte <= Char(122)) || (byte >= Char(48) && byte <= Char(57)) || byte == Char(45) || byte == Char(95)
+}
+
+fn __kai_std_toml_dotted_key_valid(key: Str) -> Bool {
+    if strlen((key) as Str) == 0 {
+        return false
+    }
+    var index: Int = 0
+    var segment_has_byte: Bool = false
+    while index < strlen((key) as Str) {
+        let byte: Char = key[index]
+        if byte == Char(46) {
+            if !segment_has_byte {
+                return false
+            }
+            segment_has_byte = false
+        } else if __kai_std_toml_key_byte_valid(byte) {
+            segment_has_byte = true
+        } else {
+            return false
+        }
+        index = index + 1
+    }
+    return segment_has_byte
+}
+
+fn __kai_std_toml_write_key_value_string(buffer: *Char, key: Str, value: Str) -> ?Str {
+    if !__kai_std_toml_dotted_key_valid(key) {
+        return none
+    }
+    var cursor: Int = 0
+    let key_end: ?Int = __kai_std_toml_write_span(buffer, cursor, key)
+    if key_end == none {
+        return none
+    }
+    cursor = (key_end catch 0)
+    let sep_end: ?Int = __kai_std_toml_write_span(buffer, cursor, " = ")
+    if sep_end == none {
+        return none
+    }
+    cursor = (sep_end catch 0)
+    let value_end: ?Int = __kai_std_toml_write_escaped_string(buffer, cursor, value)
+    if value_end == none {
+        return none
+    }
+    cursor = (value_end catch 0)
+    let line_end: ?Int = __kai_std_toml_write_span(buffer, cursor, "\n")
+    if line_end == none {
+        return none
+    }
+    return buffer[..(line_end catch 0)]
+}
+
+fn __kai_std_toml_write_key_value_u32(buffer: *Char, key: Str, value: Int) -> ?Str {
+    if !__kai_std_toml_dotted_key_valid(key) {
+        return none
+    }
+    var cursor: Int = 0
+    let key_end: ?Int = __kai_std_toml_write_span(buffer, cursor, key)
+    if key_end == none {
+        return none
+    }
+    cursor = (key_end catch 0)
+    let sep_end: ?Int = __kai_std_toml_write_span(buffer, cursor, " = ")
+    if sep_end == none {
+        return none
+    }
+    cursor = (sep_end catch 0)
+    let digits: ?Str = __kai_std_fmt_int(buffer[cursor..], value)
+    if digits == none {
+        return none
+    }
+    cursor = cursor + strlen(((digits catch "")) as Str)
+    let line_end: ?Int = __kai_std_toml_write_span(buffer, cursor, "\n")
+    if line_end == none {
+        return none
+    }
+    return buffer[..(line_end catch 0)]
+}
+
+fn __kai_std_toml_write_key_value_bool(buffer: *Char, key: Str, value: Bool) -> ?Str {
+    if !__kai_std_toml_dotted_key_valid(key) {
+        return none
+    }
+    var cursor: Int = 0
+    let key_end: ?Int = __kai_std_toml_write_span(buffer, cursor, key)
+    if key_end == none {
+        return none
+    }
+    cursor = (key_end catch 0)
+    let sep_end: ?Int = __kai_std_toml_write_span(buffer, cursor, " = ")
+    if sep_end == none {
+        return none
+    }
+    cursor = (sep_end catch 0)
+    var value_end: ?Int = none
+    if value {
+        value_end = __kai_std_toml_write_span(buffer, cursor, "true")
+    } else {
+        value_end = __kai_std_toml_write_span(buffer, cursor, "false")
+    }
+    if value_end == none {
+        return none
+    }
+    cursor = (value_end catch 0)
+    let line_end: ?Int = __kai_std_toml_write_span(buffer, cursor, "\n")
+    if line_end == none {
+        return none
+    }
+    return buffer[..(line_end catch 0)]
+}
+
+fn __kai_std_toml_write_table_header(buffer: *Char, table: Str) -> ?Str {
+    if !__kai_std_toml_dotted_key_valid(table) {
+        return none
+    }
+    var cursor: Int = 0
+    let open_end: ?Int = __kai_std_toml_write_span(buffer, cursor, "[")
+    if open_end == none {
+        return none
+    }
+    cursor = (open_end catch 0)
+    let table_end: ?Int = __kai_std_toml_write_span(buffer, cursor, table)
+    if table_end == none {
+        return none
+    }
+    cursor = (table_end catch 0)
+    let close_end: ?Int = __kai_std_toml_write_span(buffer, cursor, "]\n")
+    if close_end == none {
+        return none
+    }
+    return buffer[..(close_end catch 0)]
+}
+
+fn __kai_std_toml_line_end(bytes: Str, start: Int) -> Int {
+    var index: Int = start
+    while index < strlen((bytes) as Str) && bytes[index] != Char(10) {
+        index = index + 1
+    }
+    return index
+}
+
+fn __kai_std_toml_skip_ws(bytes: Str, start: Int, end: Int) -> Int {
+    var index: Int = start
+    while index < end && (bytes[index] == Char(32) || bytes[index] == Char(9) || bytes[index] == Char(13)) {
+        index = index + 1
+    }
+    return index
+}
+
+fn __kai_std_toml_trim_end(bytes: Str, start: Int, end: Int) -> Int {
+    var index: Int = end
+    while index > start && (bytes[index - 1] == Char(32) || bytes[index - 1] == Char(9) || bytes[index - 1] == Char(13)) {
+        index = index - 1
+    }
+    return index
+}
+
+fn __kai_std_toml_comment_end(bytes: Str, start: Int, end: Int) -> Int {
+    var index: Int = start
+    var in_string: Bool = false
+    var escaped: Bool = false
+    while index < end {
+        let byte: Char = bytes[index]
+        if escaped {
+            escaped = false
+        } else if in_string && byte == Char(92) {
+            escaped = true
+        } else if byte == Char(34) {
+            in_string = !in_string
+        } else if !in_string && byte == Char(35) {
+            return __kai_std_toml_trim_end(bytes, start, index)
+        }
+        index = index + 1
+    }
+    return end
+}
+
+fn __kai_std_toml_find_equals(bytes: Str, start: Int, end: Int) -> ?Int {
+    var index: Int = start
+    var in_string: Bool = false
+    var escaped: Bool = false
+    while index < end {
+        let byte: Char = bytes[index]
+        if escaped {
+            escaped = false
+        } else if in_string && byte == Char(92) {
+            escaped = true
+        } else if byte == Char(34) {
+            in_string = !in_string
+        } else if !in_string && byte == Char(61) {
+            return index
+        }
+        index = index + 1
+    }
+    return none
+}
+
+fn __kai_std_toml_table_end(bytes: Str, start: Int, end: Int) -> ?Int {
+    if start >= end || bytes[start] != Char(91) {
+        return none
+    }
+    var index: Int = start + 1
+    while index < end {
+        if bytes[index] == Char(93) {
+            let trailing: Int = __kai_std_toml_skip_ws(bytes, index + 1, end)
+            if trailing == end && index > start + 1 {
+                return index
+            }
+            return none
+        }
+        index = index + 1
+    }
+    return none
+}
+
+fn __kai_std_toml_string_value_end(value: Str) -> ?Int {
+    if strlen((value) as Str) == 0 || value[0] != Char(34) {
+        return none
+    }
+    var index: Int = 1
+    var escaped: Bool = false
+    while index < strlen((value) as Str) {
+        let byte: Char = value[index]
+        if escaped {
+            if !(byte == Char(34) || byte == Char(92) || byte == Char(110) || byte == Char(114) || byte == Char(116)) {
+                return none
+            }
+            escaped = false
+        } else if byte == Char(92) {
+            escaped = true
+        } else if byte == Char(34) {
+            return index + 1
+        }
+        index = index + 1
+    }
+    return none
+}
+
+fn __kai_std_toml_array_valid(value: Str) -> Bool {
+    if strlen((value) as Str) < 2 || value[0] != Char(91) || value[strlen((value) as Str) - 1] != Char(93) {
+        return false
+    }
+    var index: Int = 1
+    let end: Int = strlen((value) as Str) - 1
+    while index < end {
+        index = __kai_std_toml_skip_ws(value, index, end)
+        if index == end {
+            return true
+        }
+        let item_end: ?Int = __kai_std_toml_array_item_end(value, index, end)
+        if item_end == none {
+            return false
+        }
+        index = (item_end catch 0)
+        index = __kai_std_toml_skip_ws(value, index, end)
+        if index < end {
+            if value[index] != Char(44) {
+                return false
+            }
+            index = index + 1
+        }
+    }
+    return true
+}
+
+fn __kai_std_toml_array_item_end(value: Str, start: Int, end: Int) -> ?Int {
+    if start >= end {
+        return none
+    }
+    if value[start] == Char(34) {
+        let item_end: ?Int = __kai_std_toml_string_value_end(value[start..end])
+        if item_end == none {
+            return none
+        }
+        return start + (item_end catch 0)
+    }
+    var index: Int = start
+    while index < end && value[index] != Char(44) {
+        index = index + 1
+    }
+    let trimmed: Int = __kai_std_toml_trim_end(value, start, index)
+    if trimmed == start {
+        return none
+    }
+    if __kai_std_toml_value_valid(value[start..trimmed]) {
+        return trimmed
+    }
+    return none
+}
+
+fn __kai_std_toml_value_valid(value: Str) -> Bool {
+    if strlen((value) as Str) == 0 {
+        return false
+    }
+    if value[0] == Char(34) {
+        let end: ?Int = __kai_std_toml_string_value_end(value)
+        return end != none && (end catch 0) == strlen((value) as Str)
+    }
+    if value[0] == Char(91) {
+        return __kai_std_toml_array_valid(value)
+    }
+    if strcmp(value, "true") == 0 || strcmp(value, "false") == 0 {
+        return true
+    }
+    let signed: ?Int = __kai_std_parse_parse_i32(value)
+    if signed != none {
+        return true
+    }
+    let unsigned: ?Int = atoll(value)
+    return unsigned != none
+}
+
+fn __kai_std_toml_write_span(buffer: *Char, cursor: Int, bytes: Str) -> ?Int {
+    if cursor + strlen((bytes) as Str) > strlen((buffer) as Str) {
+        return none
+    }
+    var index: Int = 0
+    while index < strlen((bytes) as Str) {
+        buffer[cursor + index] = bytes[index]
+        index = index + 1
+    }
+    return cursor + strlen((bytes) as Str)
+}
+
+fn __kai_std_toml_write_escaped_string(buffer: *Char, cursor: Int, value: Str) -> ?Int {
+    var output: Int = cursor
+    let open_end: ?Int = __kai_std_toml_write_span(buffer, output, "\"")
+    if open_end == none {
+        return none
+    }
+    output = (open_end catch 0)
+    var index: Int = 0
+    while index < strlen((value) as Str) {
+        let byte: Char = value[index]
+        if byte == Char(34) {
+            let next: ?Int = __kai_std_toml_write_span(buffer, output, "\\\"")
+            if next == none {
+                return none
+            }
+            output = (next catch 0)
+        } else if byte == Char(92) {
+            let next: ?Int = __kai_std_toml_write_span(buffer, output, "\\\\")
+            if next == none {
+                return none
+            }
+            output = (next catch 0)
+        } else if byte == Char(10) {
+            let next: ?Int = __kai_std_toml_write_span(buffer, output, "\\n")
+            if next == none {
+                return none
+            }
+            output = (next catch 0)
+        } else if byte == Char(13) {
+            let next: ?Int = __kai_std_toml_write_span(buffer, output, "\\r")
+            if next == none {
+                return none
+            }
+            output = (next catch 0)
+        } else if byte == Char(9) {
+            let next: ?Int = __kai_std_toml_write_span(buffer, output, "\\t")
+            if next == none {
+                return none
+            }
+            output = (next catch 0)
+        } else {
+            if byte < Char(32) || output >= strlen((buffer) as Str) {
+                return none
+            }
+            buffer[output] = byte
+            output = output + 1
+        }
+        index = index + 1
+    }
+    return __kai_std_toml_write_span(buffer, output, "\"")
+}
+
+fn __kai_std_toml_span_eq(left: Str, right: Str) -> Bool {
+    if strlen((left) as Str) != strlen((right) as Str) {
+        return false
+    }
+    var index: Int = 0
+    while index < strlen((right) as Str) {
+        if left[index] != right[index] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_toml_key_matches(table: Str, field: Str, query: Str) -> Bool {
+    if __kai_std_toml_span_eq(field, query) {
+        return true
+    }
+    if strlen((table) as Str) == 0 {
+        return false
+    }
+    let table_len: Int = strlen((table) as Str)
+    let field_len: Int = strlen((field) as Str)
+    if strlen((query) as Str) != table_len + 1 + field_len {
+        return false
+    }
+    var index: Int = 0
+    while index < table_len {
+        if query[index] != table[index] {
+            return false
+        }
+        index = index + 1
+    }
+    if query[table_len] != Char(46) {
+        return false
+    }
+    var field_index: Int = 0
+    while field_index < field_len {
+        if query[table_len + 1 + field_index] != field[field_index] {
+            return false
+        }
+        field_index = field_index + 1
+    }
+    return true
+}

@@ -1,0 +1,1121 @@
+import std.lib.ascii
+import std.lib.text
+import std.lib.url
+
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_codec_crc32(s: Str) -> Int {
+    var crc = 4294967295
+    var i = 0
+    let len = strlen(s)
+    while i < len {
+        var byte = s[i] as Int
+        crc = crc ^ byte
+        var j = 0
+        while j < 8 {
+            if (crc & 1) != 0 {
+                crc = (crc >> 1) ^ 3988292384
+            } else {
+                crc = crc >> 1
+            }
+            j = j + 1
+        }
+        i = i + 1
+    }
+    return crc ^ 4294967295
+}
+
+fn __kai_std_codec_crc32_bytes(s: Str) -> Int {
+    return __kai_std_codec_crc32(s)
+}
+
+fn __kai_std_codec_hex_char(value: Char) -> Char {
+    if value < Char(10) {
+        return Char(48) + value
+    }
+    return Char(97) + value - Char(10)
+}
+
+fn __kai_std_codec_hex_encode(buffer: *Char, bytes: Str) -> ?Str {
+    let encoded_len: Int = strlen((bytes) as Str) * 2
+    if encoded_len > strlen((buffer) as Str) {
+        return none
+    }
+    var input: Int = 0
+    var output: Int = 0
+    while input < strlen((bytes) as Str) {
+        let byte: Char = bytes[input]
+        buffer[output] = __kai_std_codec_hex_char(byte / Char(16))
+        buffer[output + 1] = __kai_std_codec_hex_char(byte % Char(16))
+        input = input + 1
+        output = output + 2
+    }
+    return buffer[..output]
+}
+
+fn __kai_std_codec_hex_decoded_len(text: Str) -> ?Int {
+    if strlen((text) as Str) % 2 != 0 {
+        return none
+    }
+    var index: Int = 0
+    while index < strlen((text) as Str) {
+        let high: ?Char = __kai_std_ascii_hex_value(text[index])
+        let low: ?Char = __kai_std_ascii_hex_value(text[index + 1])
+        if high == none || low == none {
+            return none
+        }
+        index = index + 2
+    }
+    return strlen((text) as Str) / 2
+}
+
+fn __kai_std_codec_hex_decode(buffer: *Char, text: Str) -> ?Str {
+    let decoded_len: ?Int = __kai_std_codec_hex_decoded_len(text)
+    if decoded_len == none || (decoded_len catch 0) > strlen((buffer) as Str) {
+        return none
+    }
+    var input: Int = 0
+    var output: Int = 0
+    while input < strlen((text) as Str) {
+        let high: ?Char = __kai_std_ascii_hex_value(text[input])
+        let low: ?Char = __kai_std_ascii_hex_value(text[input + 1])
+        if high == none || low == none {
+            return none
+        }
+        buffer[output] = (high catch Char(0)) * Char(16) + (low catch Char(0))
+        input = input + 2
+        output = output + 1
+    }
+    return buffer[..output]
+}
+
+fn __kai_std_codec_base64_value(byte: Char) -> ?Char {
+    if byte >= Char(65) && byte <= Char(90) {
+        return byte - Char(65)
+    }
+    if byte >= Char(97) && byte <= Char(122) {
+        return byte - Char(71)
+    }
+    if byte >= Char(48) && byte <= Char(57) {
+        return byte + Char(4)
+    }
+    if byte == Char(43) {
+        return Char(62)
+    }
+    if byte == Char(47) {
+        return Char(63)
+    }
+    return none
+}
+
+fn __kai_std_codec_base64_char(value: Char) -> Char {
+    if value < Char(26) {
+        return Char(65) + value
+    }
+    if value < Char(52) {
+        return Char(97) + value - Char(26)
+    }
+    if value < Char(62) {
+        return Char(48) + value - Char(52)
+    }
+    if value == Char(62) {
+        return Char(43)
+    }
+    return Char(47)
+}
+
+fn __kai_std_codec_base64_encoded_len(len: Int) -> Int {
+    if len == 0 {
+        return 0
+    }
+    return ((len + 2) / 3) * 4
+}
+
+fn __kai_std_codec_base64_encode(buffer: *Char, bytes: Str) -> ?Str {
+    let encoded_len: Int = __kai_std_codec_base64_encoded_len(strlen((bytes) as Str))
+    if encoded_len > strlen((buffer) as Str) {
+        return none
+    }
+    var input: Int = 0
+    var output: Int = 0
+    while input < strlen((bytes) as Str) {
+        let b0: Char = bytes[input]
+        var b1: Char = Char(0)
+        var b2: Char = Char(0)
+        let has1: Bool = input + 1 < strlen((bytes) as Str)
+        let has2: Bool = input + 2 < strlen((bytes) as Str)
+        if has1 {
+            b1 = bytes[input + 1]
+        }
+        if has2 {
+            b2 = bytes[input + 2]
+        }
+        buffer[output] = __kai_std_codec_base64_char(b0 / Char(4))
+        buffer[output + 1] = __kai_std_codec_base64_char((b0 % Char(4)) * Char(16) + (b1 / Char(16)))
+        if has1 {
+            buffer[output + 2] = __kai_std_codec_base64_char((b1 % Char(16)) * Char(4) + (b2 / Char(64)))
+        } else {
+            buffer[output + 2] = Char(61)
+        }
+        if has2 {
+            buffer[output + 3] = __kai_std_codec_base64_char(b2 % Char(64))
+        } else {
+            buffer[output + 3] = Char(61)
+        }
+        input = input + 3
+        output = output + 4
+    }
+    return buffer[..output]
+}
+
+fn __kai_std_codec_utf8_valid(bytes: Str) -> Bool {
+    return __kai_std_text_utf8_valid(bytes)
+}
+
+fn __kai_std_codec_url_encode(buffer: *Char, text: Str) -> ?Str {
+    return __kai_std_url_percent_encode(buffer, text)
+}
+
+fn __kai_std_codec_base64_decoded_len(text: Str) -> ?Int {
+    let len: Int = strlen((text) as Str)
+    if len == 0 {
+        return 0
+    }
+    if len % 4 != 0 {
+        return none
+    }
+    var padding: Int = 0
+    if text[len - 1] == Char(61) {
+        padding = padding + 1
+    }
+    if text[len - 2] == Char(61) {
+        padding = padding + 1
+    }
+    var index: Int = 0
+    while index < len {
+        let byte: Char = text[index]
+        if byte == Char(61) {
+            if index < len - padding {
+                return none
+            }
+        } else {
+            let value: ?Char = __kai_std_codec_base64_value(byte)
+            if value == none {
+                return none
+            }
+        }
+        index = index + 1
+    }
+    if padding == 2 {
+        let c1: ?Char = __kai_std_codec_base64_value(text[len - 3])
+        if c1 == none || (c1 catch Char(0)) % Char(16) != Char(0) {
+            return none
+        }
+    } else if padding == 1 {
+        let c2: ?Char = __kai_std_codec_base64_value(text[len - 2])
+        if c2 == none || (c2 catch Char(0)) % Char(4) != Char(0) {
+            return none
+        }
+    }
+    return (len / 4) * 3 - padding
+}
+
+fn __kai_std_codec_base64_decode(buffer: *Char, text: Str) -> ?Str {
+    let decoded_len: ?Int = __kai_std_codec_base64_decoded_len(text)
+    if decoded_len == none || (decoded_len catch 0) > strlen((buffer) as Str) {
+        return none
+    }
+    var input: Int = 0
+    var output: Int = 0
+    while input < strlen((text) as Str) {
+        let c0: ?Char = __kai_std_codec_base64_value(text[input])
+        let c1: ?Char = __kai_std_codec_base64_value(text[input + 1])
+        if c0 == none || c1 == none {
+            return none
+        }
+        let pad2: Bool = text[input + 2] == Char(61)
+        let pad3: Bool = text[input + 3] == Char(61)
+        var value2: Char = Char(0)
+        var value3: Char = Char(0)
+        if !pad2 {
+            let c2: ?Char = __kai_std_codec_base64_value(text[input + 2])
+            if c2 == none {
+                return none
+            }
+            value2 = (c2 catch Char(0))
+        }
+        if !pad3 {
+            let c3: ?Char = __kai_std_codec_base64_value(text[input + 3])
+            if c3 == none {
+                return none
+            }
+            value3 = (c3 catch Char(0))
+        }
+        if pad2 && !pad3 {
+            return none
+        }
+        if output < (decoded_len catch 0) {
+            buffer[output] = (c0 catch Char(0)) * Char(4) + (c1 catch Char(0)) / Char(16)
+            output = output + 1
+        }
+        if output < (decoded_len catch 0) {
+            buffer[output] = ((c1 catch Char(0)) % Char(16)) * Char(16) + value2 / Char(4)
+            output = output + 1
+        }
+        if output < (decoded_len catch 0) {
+            buffer[output] = (value2 % Char(4)) * Char(64) + value3
+            output = output + 1
+        }
+        input = input + 4
+    }
+    return buffer[..output]
+}
+
+fn __kai_std_codec_base64_any_char(value: Char, url: Bool) -> Char {
+    if url && value == Char(62) {
+        return Char(45)
+    }
+    if url && value == Char(63) {
+        return Char(95)
+    }
+    return __kai_std_codec_base64_char(value)
+}
+
+fn __kai_std_codec_base64_any_value(byte: Char, url: Bool) -> ?Char {
+    if url {
+        if byte >= Char(65) && byte <= Char(90) {
+            return byte - Char(65)
+        }
+        if byte >= Char(97) && byte <= Char(122) {
+            return byte - Char(71)
+        }
+        if byte >= Char(48) && byte <= Char(57) {
+            return byte + Char(4)
+        }
+        if byte == Char(45) {
+            return Char(62)
+        }
+        if byte == Char(95) {
+            return Char(63)
+        }
+        return none
+    }
+    return __kai_std_codec_base64_value(byte)
+}
+
+fn __kai_std_codec_base64_raw_encoded_len(len: Int) -> Int {
+    let full: Int = (len / 3) * 4
+    let rem: Int = len % 3
+    if rem == 0 {
+        return full
+    }
+    if rem == 1 {
+        return full + 2
+    }
+    return full + 3
+}
+
+fn __kai_std_codec_base64_no_pad_encode(buffer: *Char, bytes: Str, url: Bool) -> ?Str {
+    let encoded_len: Int = __kai_std_codec_base64_raw_encoded_len(strlen((bytes) as Str))
+    if encoded_len > strlen((buffer) as Str) {
+        return none
+    }
+    var input: Int = 0
+    var output: Int = 0
+    while input < strlen((bytes) as Str) {
+        let b0: Char = bytes[input]
+        var b1: Char = Char(0)
+        var b2: Char = Char(0)
+        let has1: Bool = input + 1 < strlen((bytes) as Str)
+        let has2: Bool = input + 2 < strlen((bytes) as Str)
+        if has1 {
+            b1 = bytes[input + 1]
+        }
+        if has2 {
+            b2 = bytes[input + 2]
+        }
+        buffer[output] = __kai_std_codec_base64_any_char(b0 / Char(4), url)
+        buffer[output + 1] = __kai_std_codec_base64_any_char((b0 % Char(4)) * Char(16) + (b1 / Char(16)), url)
+        output = output + 2
+        if has1 {
+            buffer[output] = __kai_std_codec_base64_any_char((b1 % Char(16)) * Char(4) + (b2 / Char(64)), url)
+            output = output + 1
+        }
+        if has2 {
+            buffer[output] = __kai_std_codec_base64_any_char(b2 % Char(64), url)
+            output = output + 1
+        }
+        input = input + 3
+    }
+    return buffer[..output]
+}
+
+fn __kai_std_codec_base64_raw_encode(buffer: *Char, bytes: Str) -> ?Str {
+    return __kai_std_codec_base64_no_pad_encode(buffer, bytes, false)
+}
+
+fn __kai_std_codec_base64_url_encoded_len(len: Int) -> Int {
+    return __kai_std_codec_base64_raw_encoded_len(len)
+}
+
+fn __kai_std_codec_base64_url_encode(buffer: *Char, bytes: Str) -> ?Str {
+    return __kai_std_codec_base64_no_pad_encode(buffer, bytes, true)
+}
+
+fn __kai_std_codec_base64_no_pad_decoded_len(text: Str, url: Bool) -> ?Int {
+    let len: Int = strlen((text) as Str)
+    if len == 0 {
+        return 0
+    }
+    let rem: Int = len % 4
+    if rem == 1 {
+        return none
+    }
+    var index: Int = 0
+    while index < len {
+        let value: ?Char = __kai_std_codec_base64_any_value(text[index], url)
+        if value == none {
+            return none
+        }
+        index = index + 1
+    }
+    if rem == 2 {
+        let c1: ?Char = __kai_std_codec_base64_any_value(text[len - 1], url)
+        if c1 == none || (c1 catch Char(0)) % Char(16) != Char(0) {
+            return none
+        }
+        return (len / 4) * 3 + 1
+    }
+    if rem == 3 {
+        let c2: ?Char = __kai_std_codec_base64_any_value(text[len - 1], url)
+        if c2 == none || (c2 catch Char(0)) % Char(4) != Char(0) {
+            return none
+        }
+        return (len / 4) * 3 + 2
+    }
+    return (len / 4) * 3
+}
+
+fn __kai_std_codec_base64_raw_decoded_len(text: Str) -> ?Int {
+    return __kai_std_codec_base64_no_pad_decoded_len(text, false)
+}
+
+fn __kai_std_codec_base64_url_decoded_len(text: Str) -> ?Int {
+    return __kai_std_codec_base64_no_pad_decoded_len(text, true)
+}
+
+fn __kai_std_codec_base64_no_pad_decode(buffer: *Char, text: Str, url: Bool) -> ?Str {
+    let decoded_len: ?Int = __kai_std_codec_base64_no_pad_decoded_len(text, url)
+    if decoded_len == none || (decoded_len catch 0) > strlen((buffer) as Str) {
+        return none
+    }
+    var input: Int = 0
+    var output: Int = 0
+    while input < strlen((text) as Str) {
+        let remaining: Int = strlen((text) as Str) - input
+        if remaining < 2 {
+            return none
+        }
+        let c0: ?Char = __kai_std_codec_base64_any_value(text[input], url)
+        let c1: ?Char = __kai_std_codec_base64_any_value(text[input + 1], url)
+        if c0 == none || c1 == none {
+            return none
+        }
+        var value2: Char = Char(0)
+        var value3: Char = Char(0)
+        let has2: Bool = remaining > 2
+        let has3: Bool = remaining > 3
+        if has2 {
+            let c2: ?Char = __kai_std_codec_base64_any_value(text[input + 2], url)
+            if c2 == none {
+                return none
+            }
+            value2 = (c2 catch Char(0))
+        }
+        if has3 {
+            let c3: ?Char = __kai_std_codec_base64_any_value(text[input + 3], url)
+            if c3 == none {
+                return none
+            }
+            value3 = (c3 catch Char(0))
+        }
+        if output < (decoded_len catch 0) {
+            buffer[output] = (c0 catch Char(0)) * Char(4) + (c1 catch Char(0)) / Char(16)
+            output = output + 1
+        }
+        if has2 && output < (decoded_len catch 0) {
+            buffer[output] = ((c1 catch Char(0)) % Char(16)) * Char(16) + value2 / Char(4)
+            output = output + 1
+        }
+        if has3 && output < (decoded_len catch 0) {
+            buffer[output] = (value2 % Char(4)) * Char(64) + value3
+            output = output + 1
+        }
+        input = input + 4
+    }
+    return buffer[..output]
+}
+
+fn __kai_std_codec_base64_raw_decode(buffer: *Char, text: Str) -> ?Str {
+    return __kai_std_codec_base64_no_pad_decode(buffer, text, false)
+}
+
+fn __kai_std_codec_base64_url_decode(buffer: *Char, text: Str) -> ?Str {
+    return __kai_std_codec_base64_no_pad_decode(buffer, text, true)
+}
+
+fn __kai_std_codec_base32_char(value: Char) -> Char {
+    if value < Char(26) {
+        return Char(65) + value
+    }
+    return Char(50) + value - Char(26)
+}
+
+fn __kai_std_codec_base32_value(byte: Char) -> ?Char {
+    if byte >= Char(65) && byte <= Char(90) {
+        return byte - Char(65)
+    }
+    if byte >= Char(97) && byte <= Char(122) {
+        return byte - Char(97)
+    }
+    if byte >= Char(50) && byte <= Char(55) {
+        return byte - Char(24)
+    }
+    return none
+}
+
+fn __kai_std_codec_base32_encoded_len(len: Int) -> Int {
+    if len == 0 {
+        return 0
+    }
+    return ((len + 4) / 5) * 8
+}
+
+fn __kai_std_codec_base32_raw_encoded_len(len: Int) -> Int {
+    let full: Int = (len / 5) * 8
+    let rem: Int = len % 5
+    if rem == 0 {
+        return full
+    }
+    if rem == 1 {
+        return full + 2
+    }
+    if rem == 2 {
+        return full + 4
+    }
+    if rem == 3 {
+        return full + 5
+    }
+    return full + 7
+}
+
+fn __kai_std_codec_base32_encode_impl(buffer: *Char, bytes: Str, padding: Bool) -> ?Str {
+    var encoded_len: Int = __kai_std_codec_base32_raw_encoded_len(strlen((bytes) as Str))
+    if padding {
+        encoded_len = __kai_std_codec_base32_encoded_len(strlen((bytes) as Str))
+    }
+    if encoded_len > strlen((buffer) as Str) {
+        return none
+    }
+    var input: Int = 0
+    var output: Int = 0
+    while input < strlen((bytes) as Str) {
+        let b0: Char = bytes[input]
+        var b1: Char = Char(0)
+        var b2: Char = Char(0)
+        var b3: Char = Char(0)
+        var b4: Char = Char(0)
+        let has1: Bool = input + 1 < strlen((bytes) as Str)
+        let has2: Bool = input + 2 < strlen((bytes) as Str)
+        let has3: Bool = input + 3 < strlen((bytes) as Str)
+        let has4: Bool = input + 4 < strlen((bytes) as Str)
+        if has1 {
+            b1 = bytes[input + 1]
+        }
+        if has2 {
+            b2 = bytes[input + 2]
+        }
+        if has3 {
+            b3 = bytes[input + 3]
+        }
+        if has4 {
+            b4 = bytes[input + 4]
+        }
+        buffer[output] = __kai_std_codec_base32_char(b0 / Char(8))
+        buffer[output + 1] = __kai_std_codec_base32_char((b0 % Char(8)) * Char(4) + b1 / Char(64))
+        output = output + 2
+        if has1 {
+            buffer[output] = __kai_std_codec_base32_char((b1 / Char(2)) % Char(32))
+            buffer[output + 1] = __kai_std_codec_base32_char((b1 % Char(2)) * Char(16) + b2 / Char(16))
+            output = output + 2
+        } else if padding {
+            var pad: Int = 0
+            while pad < 6 {
+                buffer[output] = Char(61)
+                output = output + 1
+                pad = pad + 1
+            }
+        }
+        if has2 {
+            buffer[output] = __kai_std_codec_base32_char((b2 % Char(16)) * Char(2) + b3 / Char(128))
+            output = output + 1
+        } else if has1 && padding {
+            var pad2: Int = 0
+            while pad2 < 4 {
+                buffer[output] = Char(61)
+                output = output + 1
+                pad2 = pad2 + 1
+            }
+        }
+        if has3 {
+            buffer[output] = __kai_std_codec_base32_char((b3 / Char(4)) % Char(32))
+            buffer[output + 1] = __kai_std_codec_base32_char((b3 % Char(4)) * Char(8) + b4 / Char(32))
+            output = output + 2
+        } else if has2 && padding {
+            var pad3: Int = 0
+            while pad3 < 3 {
+                buffer[output] = Char(61)
+                output = output + 1
+                pad3 = pad3 + 1
+            }
+        }
+        if has4 {
+            buffer[output] = __kai_std_codec_base32_char(b4 % Char(32))
+            output = output + 1
+        } else if has3 && padding {
+            buffer[output] = Char(61)
+            output = output + 1
+        }
+        input = input + 5
+    }
+    return buffer[..output]
+}
+
+fn __kai_std_codec_base32_encode(buffer: *Char, bytes: Str) -> ?Str {
+    return __kai_std_codec_base32_encode_impl(buffer, bytes, true)
+}
+
+fn __kai_std_codec_base32_raw_encode(buffer: *Char, bytes: Str) -> ?Str {
+    return __kai_std_codec_base32_encode_impl(buffer, bytes, false)
+}
+
+fn __kai_std_codec_base32_decoded_len(text: Str) -> ?Int {
+    let len: Int = strlen((text) as Str)
+    if len == 0 {
+        return 0
+    }
+    if len % 8 != 0 {
+        return none
+    }
+    var padding: Int = 0
+    while padding < len && text[len - 1 - padding] == Char(61) {
+        padding = padding + 1
+    }
+    if padding != 0 && padding != 1 && padding != 3 && padding != 4 && padding != 6 {
+        return none
+    }
+    var index: Int = 0
+    while index < len {
+        let byte: Char = text[index]
+        if byte == Char(61) {
+            if index < len - padding {
+                return none
+            }
+        } else {
+            let value: ?Char = __kai_std_codec_base32_value(byte)
+            if value == none {
+                return none
+            }
+        }
+        index = index + 1
+    }
+    if padding == 6 {
+        let c1: ?Char = __kai_std_codec_base32_value(text[len - 7])
+        if c1 == none || (c1 catch Char(0)) % Char(4) != Char(0) {
+            return none
+        }
+        return (len / 8) * 5 - 4
+    }
+    if padding == 4 {
+        let c3: ?Char = __kai_std_codec_base32_value(text[len - 5])
+        if c3 == none || (c3 catch Char(0)) % Char(16) != Char(0) {
+            return none
+        }
+        return (len / 8) * 5 - 3
+    }
+    if padding == 3 {
+        let c4: ?Char = __kai_std_codec_base32_value(text[len - 4])
+        if c4 == none || (c4 catch Char(0)) % Char(2) != Char(0) {
+            return none
+        }
+        return (len / 8) * 5 - 2
+    }
+    if padding == 1 {
+        let c6: ?Char = __kai_std_codec_base32_value(text[len - 2])
+        if c6 == none || (c6 catch Char(0)) % Char(8) != Char(0) {
+            return none
+        }
+        return (len / 8) * 5 - 1
+    }
+    return (len / 8) * 5
+}
+
+fn __kai_std_codec_base32_raw_decoded_len(text: Str) -> ?Int {
+    let len: Int = strlen((text) as Str)
+    if len == 0 {
+        return 0
+    }
+    var index: Int = 0
+    while index < len {
+        let value: ?Char = __kai_std_codec_base32_value(text[index])
+        if value == none {
+            return none
+        }
+        index = index + 1
+    }
+    let rem: Int = len % 8
+    let full: Int = (len / 8) * 5
+    if rem == 0 {
+        return full
+    }
+    if rem == 2 {
+        let c1: ?Char = __kai_std_codec_base32_value(text[len - 1])
+        if c1 == none || (c1 catch Char(0)) % Char(4) != Char(0) {
+            return none
+        }
+        return full + 1
+    }
+    if rem == 4 {
+        let c3: ?Char = __kai_std_codec_base32_value(text[len - 1])
+        if c3 == none || (c3 catch Char(0)) % Char(16) != Char(0) {
+            return none
+        }
+        return full + 2
+    }
+    if rem == 5 {
+        let c4: ?Char = __kai_std_codec_base32_value(text[len - 1])
+        if c4 == none || (c4 catch Char(0)) % Char(2) != Char(0) {
+            return none
+        }
+        return full + 3
+    }
+    if rem == 7 {
+        let c6: ?Char = __kai_std_codec_base32_value(text[len - 1])
+        if c6 == none || (c6 catch Char(0)) % Char(8) != Char(0) {
+            return none
+        }
+        return full + 4
+    }
+    return none
+}
+
+fn __kai_std_codec_base32_decode_impl(buffer: *Char, text: Str, padding: Bool) -> ?Str {
+    var decoded_len: ?Int = __kai_std_codec_base32_raw_decoded_len(text)
+    if padding {
+        decoded_len = __kai_std_codec_base32_decoded_len(text)
+    }
+    if decoded_len == none || (decoded_len catch 0) > strlen((buffer) as Str) {
+        return none
+    }
+    var input: Int = 0
+    var output: Int = 0
+    while input < strlen((text) as Str) {
+        let remaining: Int = strlen((text) as Str) - input
+        var chunk: Int = remaining
+        if chunk > 8 {
+            chunk = 8
+        }
+        if chunk < 2 {
+            return none
+        }
+        let c0: ?Char = __kai_std_codec_base32_value(text[input])
+        let c1: ?Char = __kai_std_codec_base32_value(text[input + 1])
+        if c0 == none || c1 == none {
+            return none
+        }
+        var v2: Char = Char(0)
+        var v3: Char = Char(0)
+        var v4: Char = Char(0)
+        var v5: Char = Char(0)
+        var v6: Char = Char(0)
+        var v7: Char = Char(0)
+        if chunk > 2 && text[input + 2] != Char(61) {
+            let c2: ?Char = __kai_std_codec_base32_value(text[input + 2])
+            if c2 == none {
+                return none
+            }
+            v2 = (c2 catch Char(0))
+        }
+        if chunk > 3 && text[input + 3] != Char(61) {
+            let c3: ?Char = __kai_std_codec_base32_value(text[input + 3])
+            if c3 == none {
+                return none
+            }
+            v3 = (c3 catch Char(0))
+        }
+        if chunk > 4 && text[input + 4] != Char(61) {
+            let c4: ?Char = __kai_std_codec_base32_value(text[input + 4])
+            if c4 == none {
+                return none
+            }
+            v4 = (c4 catch Char(0))
+        }
+        if chunk > 5 && text[input + 5] != Char(61) {
+            let c5: ?Char = __kai_std_codec_base32_value(text[input + 5])
+            if c5 == none {
+                return none
+            }
+            v5 = (c5 catch Char(0))
+        }
+        if chunk > 6 && text[input + 6] != Char(61) {
+            let c6: ?Char = __kai_std_codec_base32_value(text[input + 6])
+            if c6 == none {
+                return none
+            }
+            v6 = (c6 catch Char(0))
+        }
+        if chunk > 7 && text[input + 7] != Char(61) {
+            let c7: ?Char = __kai_std_codec_base32_value(text[input + 7])
+            if c7 == none {
+                return none
+            }
+            v7 = (c7 catch Char(0))
+        }
+        if output < (decoded_len catch 0) {
+            buffer[output] = (c0 catch Char(0)) * Char(8) + (c1 catch Char(0)) / Char(4)
+            output = output + 1
+        }
+        if output < (decoded_len catch 0) {
+            buffer[output] = ((c1 catch Char(0)) % Char(4)) * Char(64) + v2 * Char(2) + v3 / Char(16)
+            output = output + 1
+        }
+        if output < (decoded_len catch 0) {
+            buffer[output] = (v3 % Char(16)) * Char(16) + v4 / Char(2)
+            output = output + 1
+        }
+        if output < (decoded_len catch 0) {
+            buffer[output] = (v4 % Char(2)) * Char(128) + v5 * Char(4) + v6 / Char(8)
+            output = output + 1
+        }
+        if output < (decoded_len catch 0) {
+            buffer[output] = (v6 % Char(8)) * Char(32) + v7
+            output = output + 1
+        }
+        input = input + 8
+    }
+    return buffer[..output]
+}
+
+fn __kai_std_codec_base32_decode(buffer: *Char, text: Str) -> ?Str {
+    return __kai_std_codec_base32_decode_impl(buffer, text, true)
+}
+
+fn __kai_std_codec_base32_raw_decode(buffer: *Char, text: Str) -> ?Str {
+    return __kai_std_codec_base32_decode_impl(buffer, text, false)
+}
+
+fn __kai_std_codec_read_u16_le(bytes: Str) -> ?Int {
+    if strlen((bytes) as Str) < 2 {
+        return none
+    }
+    return (bytes[0] as Int) + ((bytes[1] as Int) * 256)
+}
+
+fn __kai_std_codec_read_u16_be(bytes: Str) -> ?Int {
+    if strlen((bytes) as Str) < 2 {
+        return none
+    }
+    return ((bytes[0] as Int) * 256) + (bytes[1] as Int)
+}
+
+fn __kai_std_codec_read_u32_le(bytes: Str) -> ?Int {
+    if strlen((bytes) as Str) < 4 {
+        return none
+    }
+    return (bytes[0] as Int) + ((bytes[1] as Int) * 256) + ((bytes[2] as Int) * 65536) + ((bytes[3] as Int) * 16777216)
+}
+
+fn __kai_std_codec_read_u32_be(bytes: Str) -> ?Int {
+    if strlen((bytes) as Str) < 4 {
+        return none
+    }
+    return ((bytes[0] as Int) * 16777216) + ((bytes[1] as Int) * 65536) + ((bytes[2] as Int) * 256) + (bytes[3] as Int)
+}
+
+fn __kai_std_codec_write_u16_le(buffer: *Char, value: Int) -> ?Str {
+    if strlen((buffer) as Str) < 2 {
+        return none
+    }
+    buffer[0] = (value % 256) as Char
+    buffer[1] = (value / 256) as Char
+    return buffer[..2]
+}
+
+fn __kai_std_codec_write_u16_be(buffer: *Char, value: Int) -> ?Str {
+    if strlen((buffer) as Str) < 2 {
+        return none
+    }
+    buffer[0] = (value / 256) as Char
+    buffer[1] = (value % 256) as Char
+    return buffer[..2]
+}
+
+fn __kai_std_codec_write_u32_le(buffer: *Char, value: Int) -> ?Str {
+    if strlen((buffer) as Str) < 4 {
+        return none
+    }
+    buffer[0] = (value % 256) as Char
+    buffer[1] = ((value / 256) % 256) as Char
+    buffer[2] = ((value / 65536) % 256) as Char
+    buffer[3] = ((value / 16777216) % 256) as Char
+    return buffer[..4]
+}
+
+fn __kai_std_codec_write_u32_be(buffer: *Char, value: Int) -> ?Str {
+    if strlen((buffer) as Str) < 4 {
+        return none
+    }
+    buffer[0] = ((value / 16777216) % 256) as Char
+    buffer[1] = ((value / 65536) % 256) as Char
+    buffer[2] = ((value / 256) % 256) as Char
+    buffer[3] = (value % 256) as Char
+    return buffer[..4]
+}
+
+fn __kai_std_codec_read_u64_le(bytes: Str) -> ?Int {
+    if strlen((bytes) as Str) < 8 {
+        return none
+    }
+    var value: Int = 0
+    var scale: Int = 1
+    var index: Int = 0
+    while index < 8 {
+        value = value + (bytes[index] as Int) * scale
+        scale = scale * 256
+        index = index + 1
+    }
+    return value
+}
+
+fn __kai_std_codec_read_u64_be(bytes: Str) -> ?Int {
+    if strlen((bytes) as Str) < 8 {
+        return none
+    }
+    var value: Int = 0
+    var index: Int = 0
+    while index < 8 {
+        value = value * 256 + (bytes[index] as Int)
+        index = index + 1
+    }
+    return value
+}
+
+fn __kai_std_codec_write_u64_le(buffer: *Char, value: Int) -> ?Str {
+    if strlen((buffer) as Str) < 8 {
+        return none
+    }
+    var remaining: Int = value
+    var index: Int = 0
+    while index < 8 {
+        buffer[index] = (remaining % 256) as Char
+        remaining = remaining / 256
+        index = index + 1
+    }
+    return buffer[..8]
+}
+
+fn __kai_std_codec_write_u64_be(buffer: *Char, value: Int) -> ?Str {
+    if strlen((buffer) as Str) < 8 {
+        return none
+    }
+    var remaining: Int = value
+    var index: Int = 0
+    while index < 8 {
+        buffer[7 - index] = (remaining % 256) as Char
+        remaining = remaining / 256
+        index = index + 1
+    }
+    return buffer[..8]
+}
+
+fn __kai_std_codec_encoded_varint_len(value: Int) -> Int {
+    var remaining: Int = value
+    var len: Int = 1
+    while remaining >= 128 {
+        remaining = remaining / 128
+        len = len + 1
+    }
+    return len
+}
+
+fn __kai_std_codec_varint_encode(buffer: *Char, value: Int) -> ?Str {
+    var remaining: Int = value
+    var output: Int = 0
+    while remaining >= 128 {
+        if output >= strlen((buffer) as Str) {
+            return none
+        }
+        buffer[output] = ((remaining % 128) as Char) + Char(128)
+        remaining = remaining / 128
+        output = output + 1
+    }
+    if output >= strlen((buffer) as Str) {
+        return none
+    }
+    buffer[output] = remaining as Char
+    return buffer[..output + 1]
+}
+
+fn __kai_std_codec_varint_decode(bytes: Str) -> ?Int {
+    var index: Int = 0
+    var multiplier: Int = 1
+    var value: Int = 0
+    while index < strlen((bytes) as Str) && index < 5 {
+        let byte: Char = bytes[index]
+        let chunk: Int = (byte % Char(128)) as Int
+        if chunk > (4294967295 - value) / multiplier {
+            return none
+        }
+        value = value + chunk * multiplier
+        if byte < Char(128) {
+            if index + 1 != strlen((bytes) as Str) {
+                return none
+            }
+            return value
+        }
+        if multiplier > 268435456 {
+            return none
+        }
+        multiplier = multiplier * 128
+        index = index + 1
+    }
+    return none
+}
+
+fn __kai_std_codec_encoded_varint_len64(value: Int) -> Int {
+    var remaining: Int = value
+    var len: Int = 1
+    while remaining >= 128 {
+        remaining = remaining / 128
+        len = len + 1
+    }
+    return len
+}
+
+fn __kai_std_codec_varint_encode64(buffer: *Char, value: Int) -> ?Str {
+    var remaining: Int = value
+    var output: Int = 0
+    while remaining >= 128 {
+        if output >= strlen((buffer) as Str) {
+            return none
+        }
+        buffer[output] = ((remaining % 128) as Char) + Char(128)
+        remaining = remaining / 128
+        output = output + 1
+    }
+    if output >= strlen((buffer) as Str) {
+        return none
+    }
+    buffer[output] = remaining as Char
+    return buffer[..output + 1]
+}
+
+fn __kai_std_codec_varint_decode64(bytes: Str) -> ?Int {
+    var index: Int = 0
+    var multiplier: Int = 1
+    var value: Int = 0
+    while index < strlen((bytes) as Str) && index < 10 {
+        let byte: Char = bytes[index]
+        let chunk: Int = (byte % Char(128)) as Int
+        if chunk > ((0 - 1) - value) / multiplier {
+            return none
+        }
+        value = value + chunk * multiplier
+        if byte < Char(128) {
+            if index + 1 != strlen((bytes) as Str) {
+                return none
+            }
+            return value
+        }
+        if multiplier > 144115188075855872 {
+            return none
+        }
+        multiplier = multiplier * 128
+        index = index + 1
+    }
+    return none
+}
+
+fn __kai_std_codec_zigzag_i32(value: Int) -> Int {
+    if value < 0 {
+        return ((-(value + 1)) as Int) * 2 + 1
+    }
+    return (value as Int) * 2
+}
+
+fn __kai_std_codec_unzigzag_i32(value: Int) -> Int {
+    let half: Int = value / 2
+    if value % 2 == 0 {
+        return half as Int
+    }
+    if half == 2147483647 {
+        return -2147483647 - 1
+    }
+    return -((half as Int) + 1)
+}
+
+fn __kai_std_codec_zigzag_i64(value: Int) -> Int {
+    if value < 0 {
+        return ((-(value + 1)) as Int) * 2 + 1
+    }
+    return (value as Int) * 2
+}
+
+fn __kai_std_codec_unzigzag_i64(value: Int) -> Int {
+    let half: Int = value / 2
+    if value % 2 == 0 {
+        return half as Int
+    }
+    if half == 9223372036854775807 {
+        return -9223372036854775807 - 1
+    }
+    return -((half as Int) + 1)
+}
+
+fn __kai_std_codec_encoded_signed_varint_len(value: Int) -> Int {
+    return __kai_std_codec_encoded_varint_len(__kai_std_codec_zigzag_i32(value))
+}
+
+fn __kai_std_codec_encoded_signed_varint_len64(value: Int) -> Int {
+    return __kai_std_codec_encoded_varint_len64(__kai_std_codec_zigzag_i64(value))
+}
+
+fn __kai_std_codec_signed_varint_encode(buffer: *Char, value: Int) -> ?Str {
+    return __kai_std_codec_varint_encode(buffer, __kai_std_codec_zigzag_i32(value))
+}
+
+fn __kai_std_codec_signed_varint_decode(bytes: Str) -> ?Int {
+    let raw: ?Int = __kai_std_codec_varint_decode(bytes)
+    if raw != none {
+        return __kai_std_codec_unzigzag_i32((raw catch 0))
+    }
+    return none
+}
+
+fn __kai_std_codec_signed_varint_encode64(buffer: *Char, value: Int) -> ?Str {
+    return __kai_std_codec_varint_encode64(buffer, __kai_std_codec_zigzag_i64(value))
+}
+
+fn __kai_std_codec_signed_varint_decode64(bytes: Str) -> ?Int {
+    let raw: ?Int = __kai_std_codec_varint_decode64(bytes)
+    if raw != none {
+        return __kai_std_codec_unzigzag_i64((raw catch 0))
+    }
+    return none
+}

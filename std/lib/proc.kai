@@ -1,0 +1,27 @@
+import std.lib.proc
+
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_proc_succeeded(status: ProcStatus) -> Bool {
+    return __kai_std_proc_exit_code(status) == 0
+}
+
+fn __kai_std_proc_failed(status: ProcStatus) -> Bool {
+    return __kai_std_proc_exit_code(status) != 0
+}
+
+fn __kai_std_proc_run_ok(command: Str) -> Bool {
+    let status: ProcStatus = __kai_std_proc_spawn_inherit(command)
+    return __kai_std_proc_succeeded(status)
+}
+
+fn __kai_std_proc_run_code(command: Str) -> Int {
+    let status: ProcStatus = __kai_std_proc_spawn_inherit(command)
+    return __kai_std_proc_exit_code(status)
+}

@@ -1,0 +1,401 @@
+import std.lib.cli
+
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+var _kai_argc = 0
+var _kai_argv: **Char = 0 as **Char
+
+fn args_len() -> Int {
+    return _kai_argc
+}
+fn args_get(index: Int) -> ?Str {
+    if index < 0 || index >= _kai_argc {
+        return none
+    }
+    unsafe {
+        return _kai_argv[index] as Str
+    }
+}
+fn args_has(index: Int) -> Bool {
+    return index >= 0 && index < _kai_argc
+}
+
+fn __kai_std_cli_arg_equals(index: Int, expected: Str) -> Bool {
+    let value: ?Str = args_get(index)
+    return value != none && strcmp((value catch ""), expected) == 0
+}
+
+fn __kai_std_cli_has_flag(name: Str) -> Bool {
+    let index: ?Int = args.find(name)
+    return index != none
+}
+
+fn __kai_std_cli_option_value(name: Str) -> ?Str {
+    let value: ?Str = args.valueAfter(name)
+    return value
+}
+
+fn __kai_std_cli_option_value_or(name: Str, fallback: Str) -> Str {
+    let value: ?Str = args.valueAfter(name)
+    if value != none {
+        return (value catch "")
+    }
+    return fallback
+}
+
+fn __kai_std_cli_option_u32(name: Str) -> ?Int {
+    let value: ?Str = args.valueAfter(name)
+    if value != none {
+        return atoll((value catch ""))
+    }
+    return none
+}
+
+fn __kai_std_cli_option_bool(name: Str) -> ?Bool {
+    let value: ?Str = args.valueAfter(name)
+    if value != none {
+        return __kai_std_parse_parse_bool((value catch ""))
+    }
+    return none
+}
+
+fn __kai_std_cli_option_bool_or(name: Str, fallback: Bool) -> Bool {
+    let value: ?Bool = __kai_std_cli_option_bool(name)
+    if value != none {
+        return (value catch "")
+    }
+    return fallback
+}
+
+fn __kai_std_cli_option_i32(name: Str) -> ?Int {
+    let value: ?Str = args.valueAfter(name)
+    if value != none {
+        return __kai_std_parse_parse_i32((value catch ""))
+    }
+    return none
+}
+
+fn __kai_std_cli_option_i32_or(name: Str, fallback: Int) -> Int {
+    let value: ?Int = __kai_std_cli_option_i32(name)
+    if value != none {
+        return (value catch "")
+    }
+    return fallback
+}
+
+fn __kai_std_cli_option_u32_or(name: Str, fallback: Int) -> Int {
+    let value: ?Int = __kai_std_cli_option_u32(name)
+    if value != none {
+        return (value catch "")
+    }
+    return fallback
+}
+
+fn __kai_std_cli_option_usize(name: Str) -> ?Int {
+    let value: ?Str = args.valueAfter(name)
+    if value != none {
+        return __kai_std_parse_parse_usize((value catch ""))
+    }
+    return none
+}
+
+fn __kai_std_cli_option_usize_or(name: Str, fallback: Int) -> Int {
+    let value: ?Int = __kai_std_cli_option_usize(name)
+    if value != none {
+        return (value catch "")
+    }
+    return fallback
+}
+
+fn __kai_std_cli_success_exit_code() -> Int {
+    return 0
+}
+
+fn __kai_std_cli_usage_exit_code() -> Int {
+    return 2
+}
+
+fn __kai_std_cli_command() -> ?Str {
+    let command: ?Str = args_get(1)
+    return command
+}
+
+fn __kai_std_cli_command_or(fallback: Str) -> Str {
+    return args.getOr(1, fallback)
+}
+
+fn __kai_std_cli_command_equals(expected: Str) -> Bool {
+    return __kai_std_cli_arg_equals(1, expected)
+}
+
+fn __kai_std_cli_arg_or(index: Int, fallback: Str) -> Str {
+    return args.getOr(index, fallback)
+}
+
+fn __kai_std_cli_arg_u32_or(index: Int, fallback: Int) -> Int {
+    let value: ?Int = args.parseU32(index)
+    if value != none {
+        return (value catch "")
+    }
+    return fallback
+}
+
+fn __kai_std_cli_is_help(command: Str) -> Bool {
+    return strcmp(command, "help") == 0 || strcmp(command, "--help") == 0 || strcmp(command, "-h") == 0
+}
+
+fn __kai_std_cli_needs_help() -> Bool {
+    if !args_has(1) {
+        return true
+    }
+    return __kai_std_cli_arg_equals(1, "help") || __kai_std_cli_arg_equals(1, "--help") || __kai_std_cli_arg_equals(1, "-h")
+}
+
+fn __kai_std_cli_command_in2(command: Str, first: Str, second: Str) -> Bool {
+    return strcmp(command, first) == 0 || strcmp(command, second) == 0
+}
+
+fn __kai_std_cli_command_in3(command: Str, first: Str, second: Str, third: Str) -> Bool {
+    return strcmp(command, first) == 0 || strcmp(command, second) == 0 || strcmp(command, third) == 0
+}
+
+fn __kai_std_cli_write_span(buffer: *Char, offset: Int, bytes: Str) -> ?Int {
+    if offset > strlen((buffer) as Str) {
+        return none
+    }
+    if strlen((bytes) as Str) > strlen((buffer) as Str) - offset {
+        return none
+    }
+    var index: Int = 0
+    while index < strlen((bytes) as Str) {
+        buffer[offset + index] = bytes[index]
+        index = index + 1
+    }
+    return offset + strlen((bytes) as Str)
+}
+
+fn __kai_std_cli_format_usage(buffer: *Char, program: Str, syntax: Str) -> ?Str {
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_cli_write_span(buffer, offset, "usage: ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let wrote_program: ?Int = __kai_std_cli_write_span(buffer, offset, program)
+    if wrote_program == none {
+        return none
+    }
+    offset = (wrote_program catch 0)
+    let space: ?Int = __kai_std_cli_write_span(buffer, offset, " ")
+    if space == none {
+        return none
+    }
+    offset = (space catch 0)
+    let wrote_syntax: ?Int = __kai_std_cli_write_span(buffer, offset, syntax)
+    if wrote_syntax != none {
+        return buffer[..(wrote_syntax catch 0)]
+    }
+    return none
+}
+
+fn __kai_std_cli_format_command(buffer: *Char, name: Str, syntax: Str, summary: Str) -> ?Str {
+    var offset: Int = 0
+    let indent: ?Int = __kai_std_cli_write_span(buffer, offset, "  ")
+    if indent == none {
+        return none
+    }
+    offset = (indent catch 0)
+    let wrote_name: ?Int = __kai_std_cli_write_span(buffer, offset, name)
+    if wrote_name == none {
+        return none
+    }
+    offset = (wrote_name catch 0)
+    if strlen((syntax) as Str) > 0 {
+        let name_space: ?Int = __kai_std_cli_write_span(buffer, offset, " ")
+        if name_space == none {
+            return none
+        }
+        offset = (name_space catch 0)
+        let wrote_syntax: ?Int = __kai_std_cli_write_span(buffer, offset, syntax)
+        if wrote_syntax == none {
+            return none
+        }
+        offset = (wrote_syntax catch 0)
+    }
+    let gap: ?Int = __kai_std_cli_write_span(buffer, offset, "  ")
+    if gap == none {
+        return none
+    }
+    offset = (gap catch 0)
+    let wrote_summary: ?Int = __kai_std_cli_write_span(buffer, offset, summary)
+    if wrote_summary != none {
+        return buffer[..(wrote_summary catch 0)]
+    }
+    return none
+}
+
+fn __kai_std_cli_format_option(buffer: *Char, name: Str, value_name: Str, summary: Str) -> ?Str {
+    return __kai_std_cli_format_command(buffer, name, value_name, summary)
+}
+
+fn __kai_std_cli_format_error(buffer: *Char, message: Str) -> ?Str {
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_cli_write_span(buffer, offset, "error: ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let wrote_message: ?Int = __kai_std_cli_write_span(buffer, offset, message)
+    if wrote_message != none {
+        return buffer[..(wrote_message catch 0)]
+    }
+    return none
+}
+
+fn __kai_std_cli_format_unknown_command(buffer: *Char, command: Str) -> ?Str {
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_cli_write_span(buffer, offset, "error: unknown command: ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let wrote_command: ?Int = __kai_std_cli_write_span(buffer, offset, command)
+    if wrote_command != none {
+        return buffer[..(wrote_command catch 0)]
+    }
+    return none
+}
+
+fn __kai_std_cli_format_missing_operand(buffer: *Char, operand: Str) -> ?Str {
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_cli_write_span(buffer, offset, "error: missing operand: ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let wrote_operand: ?Int = __kai_std_cli_write_span(buffer, offset, operand)
+    if wrote_operand != none {
+        return buffer[..(wrote_operand catch 0)]
+    }
+    return none
+}
+
+fn __kai_std_cli_format_invalid_option(buffer: *Char, option: Str) -> ?Str {
+    var offset: Int = 0
+    let prefix: ?Int = __kai_std_cli_write_span(buffer, offset, "error: invalid option: ")
+    if prefix == none {
+        return none
+    }
+    offset = (prefix catch 0)
+    let wrote_option: ?Int = __kai_std_cli_write_span(buffer, offset, option)
+    if wrote_option != none {
+        return buffer[..(wrote_option catch 0)]
+    }
+    return none
+}
+
+fn __kai_std_cli_format_section(buffer: *Char, title: Str) -> ?Str {
+    var offset: Int = 0
+    let wrote_title: ?Int = __kai_std_cli_write_span(buffer, offset, title)
+    if wrote_title == none {
+        return none
+    }
+    offset = (wrote_title catch 0)
+    let colon: ?Int = __kai_std_cli_write_span(buffer, offset, ":\n")
+    if colon != none {
+        return buffer[..(colon catch 0)]
+    }
+    return none
+}
+
+fn __kai_std_cli_format_help_row_with_width(buffer: *Char, label: Str, summary: Str, width: Int) -> ?Str {
+    return __kai_std_cli_format_help_row_custom(buffer, label, summary, 2, width)
+}
+
+fn __kai_std_cli_format_help(buffer: *Char, usage: Str, description: Str) -> ?Str {
+    var offset: Int = 0
+    let usage_label: ?Int = __kai_std_cli_write_span(buffer, offset, "Usage: ")
+    if usage_label == none {
+        return none
+    }
+    offset = (usage_label catch 0)
+    let wrote_usage: ?Int = __kai_std_cli_write_span(buffer, offset, usage)
+    if wrote_usage == none {
+        return none
+    }
+    offset = (wrote_usage catch 0)
+    let usage_newline: ?Int = __kai_std_cli_write_span(buffer, offset, "\n")
+    if usage_newline == none {
+        return none
+    }
+    offset = (usage_newline catch 0)
+    if strlen((description) as Str) > 0 {
+        let description_gap: ?Int = __kai_std_cli_write_span(buffer, offset, "\n")
+        if description_gap == none {
+            return none
+        }
+        offset = (description_gap catch 0)
+        let wrote_description: ?Int = __kai_std_cli_write_span(buffer, offset, description)
+        if wrote_description == none {
+            return none
+        }
+        offset = (wrote_description catch 0)
+        let description_newline: ?Int = __kai_std_cli_write_span(buffer, offset, "\n")
+        if description_newline == none {
+            return none
+        }
+        offset = (description_newline catch 0)
+    }
+    return buffer[..offset]
+}
+
+fn __kai_std_cli_format_help_row(buffer: *Char, label: Str, summary: Str) -> ?Str {
+    return __kai_std_cli_format_help_row_custom(buffer, label, summary, 2, 17)
+}
+
+fn __kai_std_cli_format_help_row_custom(buffer: *Char, label: Str, summary: Str, indent: Int, width: Int) -> ?Str {
+    var offset: Int = 0
+    var indent_index: Int = 0
+    while indent_index < indent {
+        let indent_space: ?Int = __kai_std_cli_write_span(buffer, offset, " ")
+        if indent_space == none {
+            return none
+        }
+        offset = (indent_space catch 0)
+        indent_index = indent_index + 1
+    }
+    let wrote_label: ?Int = __kai_std_cli_write_span(buffer, offset, label)
+    if wrote_label == none {
+        return none
+    }
+    offset = (wrote_label catch 0)
+    var spaces: Int = 2
+    if strlen((label) as Str) < width {
+        spaces = spaces + (width - strlen((label) as Str))
+    }
+    var index: Int = 0
+    while index < spaces {
+        let space: ?Int = __kai_std_cli_write_span(buffer, offset, " ")
+        if space == none {
+            return none
+        }
+        offset = (space catch 0)
+        index = index + 1
+    }
+    let wrote_summary: ?Int = __kai_std_cli_write_span(buffer, offset, summary)
+    if wrote_summary == none {
+        return none
+    }
+    offset = (wrote_summary catch 0)
+    let newline: ?Int = __kai_std_cli_write_span(buffer, offset, "\n")
+    if newline != none {
+        return buffer[..(newline catch 0)]
+    }
+    return none
+}

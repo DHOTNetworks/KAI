@@ -1,0 +1,980 @@
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+struct FixedSet<T> {
+    items: *T
+    len: Int
+}
+
+struct FixedDeque<T> {
+    items: *T
+    len: Int
+}
+
+struct FixedRingBuffer<T> {
+    items: *T
+    head: Int
+    len: Int
+}
+
+struct FixedMap<K: Type, V> {
+    keys: *K
+    values: *V
+    len: Int
+}
+
+fn __kai_std_collections_fixed_set<T>(items: *T, len: Int) -> FixedSet<T> {
+    var live_len: Int = len
+    if live_len > strlen((items) as Str) {
+        live_len = strlen((items) as Str)
+    }
+    return FixedSet { items: items, len: live_len }
+}
+
+fn __kai_std_collections_fixed_set_len<T>(fixed_set: ref<FixedSet<T>>) -> Int {
+    return fixed_set.len
+}
+
+fn __kai_std_collections_fixed_set_view<T>(fixed_set: ref<FixedSet<T>>) -> *T {
+    var end: Int = fixed_set.len
+    if end > strlen((fixed_set.items) as Str) {
+        end = strlen((fixed_set.items) as Str)
+    }
+    return fixed_set.items[..end]
+}
+
+fn __kai_std_collections_fixed_set_contains<T>(fixed_set: ref<FixedSet<T>>, value: T) -> Bool {
+    let live: *T = __kai_std_collections_fixed_set_view(fixed_set)
+    var index: Int = 0
+    while index < strlen((live) as Str) {
+        if live[index] == value {
+            return true
+        }
+        index = index + 1
+    }
+    return false
+}
+
+fn __kai_std_collections_fixed_set_insert<T>(fixed_set: mutref<FixedSet<T>>, value: T) -> Bool {
+    let items: *T = fixed_set.items
+    let next_len: Int = __kai_std_collections_set_insert(items, fixed_set.len, value)
+    if next_len != fixed_set.len {
+        fixed_set.len = next_len
+        return true
+    }
+    return false
+}
+
+fn __kai_std_collections_fixed_set_remove<T>(fixed_set: mutref<FixedSet<T>>, value: T) -> Bool {
+    let items: *T = fixed_set.items
+    let next_len: Int = __kai_std_collections_set_remove(items, fixed_set.len, value)
+    if next_len != fixed_set.len {
+        fixed_set.len = next_len
+        return true
+    }
+    return false
+}
+
+fn __kai_std_collections_fixed_set_clear<T>(fixed_set: mutref<FixedSet<T>>) -> Int {
+    fixed_set.len = 0
+    return fixed_set.len
+}
+
+fn __kai_std_collections_fixed_set_truncate<T>(fixed_set: mutref<FixedSet<T>>, new_len: Int) -> Int {
+    var live_len: Int = fixed_set.len
+    if live_len > strlen((fixed_set.items) as Str) {
+        live_len = strlen((fixed_set.items) as Str)
+    }
+    if new_len < live_len {
+        live_len = new_len
+    }
+    fixed_set.len = live_len
+    return fixed_set.len
+}
+
+fn __kai_std_collections_fixed_set_remaining<T>(fixed_set: ref<FixedSet<T>>) -> Int {
+    let capacity: Int = strlen((fixed_set.items) as Str)
+    if fixed_set.len >= capacity {
+        return 0
+    }
+    return capacity - fixed_set.len
+}
+
+fn __kai_std_collections_fixed_set_is_full<T>(fixed_set: ref<FixedSet<T>>) -> Bool {
+    return __kai_std_collections_fixed_set_remaining(fixed_set) == 0
+}
+
+fn __kai_std_collections_fixed_deque<T>(items: *T, len: Int) -> FixedDeque<T> {
+    var live_len: Int = len
+    if live_len > strlen((items) as Str) {
+        live_len = strlen((items) as Str)
+    }
+    return FixedDeque { items: items, len: live_len }
+}
+
+fn __kai_std_collections_fixed_deque_len<T>(fixed_deque: ref<FixedDeque<T>>) -> Int {
+    return fixed_deque.len
+}
+
+fn __kai_std_collections_fixed_deque_view<T>(fixed_deque: ref<FixedDeque<T>>) -> *T {
+    var end: Int = fixed_deque.len
+    if end > strlen((fixed_deque.items) as Str) {
+        end = strlen((fixed_deque.items) as Str)
+    }
+    return fixed_deque.items[..end]
+}
+
+fn __kai_std_collections_fixed_deque_front<T>(fixed_deque: ref<FixedDeque<T>>) -> ?T {
+    let live: *T = __kai_std_collections_fixed_deque_view(fixed_deque)
+    if strlen((live) as Str) == 0 {
+        return none
+    }
+    return live[0]
+}
+
+fn __kai_std_collections_fixed_deque_back<T>(fixed_deque: ref<FixedDeque<T>>) -> ?T {
+    let live: *T = __kai_std_collections_fixed_deque_view(fixed_deque)
+    let live_len: Int = strlen((live) as Str)
+    if live_len == 0 {
+        return none
+    }
+    return live[live_len - 1]
+}
+
+fn __kai_std_collections_fixed_deque_push_back<T>(fixed_deque: mutref<FixedDeque<T>>, value: T) -> Bool {
+    let items: *T = fixed_deque.items
+    let next_len: Int = __kai_std_collections_deque_push_back(items, fixed_deque.len, value)
+    if next_len != fixed_deque.len {
+        fixed_deque.len = next_len
+        return true
+    }
+    return false
+}
+
+fn __kai_std_collections_fixed_deque_push_front<T>(fixed_deque: mutref<FixedDeque<T>>, value: T) -> Bool {
+    let items: *T = fixed_deque.items
+    let next_len: Int = __kai_std_collections_deque_push_front(items, fixed_deque.len, value)
+    if next_len != fixed_deque.len {
+        fixed_deque.len = next_len
+        return true
+    }
+    return false
+}
+
+fn __kai_std_collections_fixed_deque_pop_back<T>(fixed_deque: mutref<FixedDeque<T>>) -> ?T {
+    var live_len: Int = fixed_deque.len
+    if live_len > strlen((fixed_deque.items) as Str) {
+        live_len = strlen((fixed_deque.items) as Str)
+    }
+    if live_len == 0 {
+        return none
+    }
+    let result: T = fixed_deque.items[live_len - 1]
+    fixed_deque.len = live_len - 1
+    return result
+}
+
+fn __kai_std_collections_fixed_deque_pop_front<T>(fixed_deque: mutref<FixedDeque<T>>) -> ?T {
+    let items: *T = fixed_deque.items
+    var live_len: Int = fixed_deque.len
+    if live_len > strlen((items) as Str) {
+        live_len = strlen((items) as Str)
+    }
+    if live_len == 0 {
+        return none
+    }
+    let result: T = items[0]
+    fixed_deque.len = __kai_std_collections_deque_pop_front(items, live_len)
+    return result
+}
+
+fn __kai_std_collections_fixed_deque_clear<T>(fixed_deque: mutref<FixedDeque<T>>) -> Int {
+    fixed_deque.len = 0
+    return fixed_deque.len
+}
+
+fn __kai_std_collections_fixed_deque_truncate<T>(fixed_deque: mutref<FixedDeque<T>>, new_len: Int) -> Int {
+    var live_len: Int = fixed_deque.len
+    if live_len > strlen((fixed_deque.items) as Str) {
+        live_len = strlen((fixed_deque.items) as Str)
+    }
+    if new_len < live_len {
+        live_len = new_len
+    }
+    fixed_deque.len = live_len
+    return fixed_deque.len
+}
+
+fn __kai_std_collections_fixed_deque_remaining<T>(fixed_deque: ref<FixedDeque<T>>) -> Int {
+    let capacity: Int = strlen((fixed_deque.items) as Str)
+    if fixed_deque.len >= capacity {
+        return 0
+    }
+    return capacity - fixed_deque.len
+}
+
+fn __kai_std_collections_fixed_deque_is_full<T>(fixed_deque: ref<FixedDeque<T>>) -> Bool {
+    return __kai_std_collections_fixed_deque_remaining(fixed_deque) == 0
+}
+
+fn __kai_std_collections_fixed_ring_buffer<T>(items: *T, head: Int, len: Int) -> FixedRingBuffer<T> {
+    let capacity: Int = strlen((items) as Str)
+    var live_head: Int = 0
+    if capacity != 0 {
+        live_head = head % capacity
+    }
+    var live_len: Int = len
+    if live_len > capacity {
+        live_len = capacity
+    }
+    if live_len == 0 {
+        live_head = 0
+    }
+    return FixedRingBuffer { items: items, head: live_head, len: live_len }
+}
+
+fn __kai_std_collections_fixed_ring_buffer_len<T>(ring: ref<FixedRingBuffer<T>>) -> Int {
+    return ring.len
+}
+
+fn __kai_std_collections_fixed_ring_buffer_capacity<T>(ring: ref<FixedRingBuffer<T>>) -> Int {
+    return strlen((ring.items) as Str)
+}
+
+fn __kai_std_collections_fixed_ring_buffer_remaining<T>(ring: ref<FixedRingBuffer<T>>) -> Int {
+    let capacity: Int = strlen((ring.items) as Str)
+    if ring.len >= capacity {
+        return 0
+    }
+    return capacity - ring.len
+}
+
+fn __kai_std_collections_fixed_ring_buffer_is_full<T>(ring: ref<FixedRingBuffer<T>>) -> Bool {
+    return __kai_std_collections_fixed_ring_buffer_remaining(ring) == 0
+}
+
+fn __kai_std_collections_fixed_ring_buffer_index<T>(ring: ref<FixedRingBuffer<T>>, offset: Int) -> Int {
+    let capacity: Int = strlen((ring.items) as Str)
+    if capacity == 0 {
+        return 0
+    }
+    return (ring.head + offset) % capacity
+}
+
+fn __kai_std_collections_fixed_ring_buffer_get<T>(ring: ref<FixedRingBuffer<T>>, index: Int) -> ?T {
+    if index >= ring.len || ring.len > strlen((ring.items) as Str) {
+        return none
+    }
+    let storage_index: Int = __kai_std_collections_fixed_ring_buffer_index(ring, index)
+    return ring.items[storage_index]
+}
+
+fn __kai_std_collections_fixed_ring_buffer_front<T>(ring: ref<FixedRingBuffer<T>>) -> ?T {
+    return __kai_std_collections_fixed_ring_buffer_get(ring, 0)
+}
+
+fn __kai_std_collections_fixed_ring_buffer_back<T>(ring: ref<FixedRingBuffer<T>>) -> ?T {
+    if ring.len == 0 {
+        return none
+    }
+    return __kai_std_collections_fixed_ring_buffer_get(ring, ring.len - 1)
+}
+
+fn __kai_std_collections_fixed_ring_buffer_push_back<T>(ring: mutref<FixedRingBuffer<T>>, value: T) -> Bool {
+    let items: *T = ring.items
+    let capacity: Int = strlen((items) as Str)
+    if capacity == 0 || ring.len >= capacity {
+        return false
+    }
+    ring.head = ring.head % capacity
+    let storage_index: Int = (ring.head + ring.len) % capacity
+    items[storage_index] = value
+    ring.len = ring.len + 1
+    return true
+}
+
+fn __kai_std_collections_fixed_ring_buffer_push_front<T>(ring: mutref<FixedRingBuffer<T>>, value: T) -> Bool {
+    let items: *T = ring.items
+    let capacity: Int = strlen((items) as Str)
+    if capacity == 0 || ring.len >= capacity {
+        return false
+    }
+    ring.head = ring.head % capacity
+    if ring.head == 0 {
+        ring.head = capacity - 1
+    } else {
+        ring.head = ring.head - 1
+    }
+    items[ring.head] = value
+    ring.len = ring.len + 1
+    return true
+}
+
+fn __kai_std_collections_fixed_ring_buffer_pop_back<T>(ring: mutref<FixedRingBuffer<T>>) -> ?T {
+    let capacity: Int = strlen((ring.items) as Str)
+    if capacity == 0 || ring.len == 0 || ring.len > capacity {
+        return none
+    }
+    ring.head = ring.head % capacity
+    let storage_index: Int = (ring.head + ring.len - 1) % capacity
+    let result: T = ring.items[storage_index]
+    ring.len = ring.len - 1
+    if ring.len == 0 {
+        ring.head = 0
+    }
+    return result
+}
+
+fn __kai_std_collections_fixed_ring_buffer_pop_front<T>(ring: mutref<FixedRingBuffer<T>>) -> ?T {
+    let capacity: Int = strlen((ring.items) as Str)
+    if capacity == 0 || ring.len == 0 || ring.len > capacity {
+        return none
+    }
+    ring.head = ring.head % capacity
+    let result: T = ring.items[ring.head]
+    ring.len = ring.len - 1
+    if ring.len == 0 {
+        ring.head = 0
+    } else {
+        ring.head = (ring.head + 1) % capacity
+    }
+    return result
+}
+
+fn __kai_std_collections_fixed_ring_buffer_clear<T>(ring: mutref<FixedRingBuffer<T>>) -> Int {
+    ring.head = 0
+    ring.len = 0
+    return ring.len
+}
+
+fn __kai_std_collections_fixed_ring_buffer_truncate<T>(ring: mutref<FixedRingBuffer<T>>, new_len: Int) -> Int {
+    let capacity: Int = strlen((ring.items) as Str)
+    if capacity == 0 {
+        ring.head = 0
+    } else {
+        ring.head = ring.head % capacity
+    }
+    var live_len: Int = ring.len
+    if live_len > capacity {
+        live_len = capacity
+    }
+    if new_len < live_len {
+        live_len = new_len
+    }
+    ring.len = live_len
+    if ring.len == 0 {
+        ring.head = 0
+    }
+    return ring.len
+}
+
+fn __kai_std_collections_fixed_map<K: Type, V>(keys: *K, values: *V, len: Int) -> FixedMap<K, V> {
+    var live_len: Int = len
+    if live_len > strlen((keys) as Str) {
+        live_len = strlen((keys) as Str)
+    }
+    if live_len > strlen((values) as Str) {
+        live_len = strlen((values) as Str)
+    }
+    return FixedMap { keys: keys, values: values, len: live_len }
+}
+
+fn __kai_std_collections_fixed_map_len<K: Type, V>(fixed_map: ref<FixedMap<K, V>>) -> Int {
+    return fixed_map.len
+}
+
+fn __kai_std_collections_fixed_map_keys<K: Type, V>(fixed_map: ref<FixedMap<K, V>>) -> *K {
+    var end: Int = fixed_map.len
+    if end > strlen((fixed_map.keys) as Str) {
+        end = strlen((fixed_map.keys) as Str)
+    }
+    return fixed_map.keys[..end]
+}
+
+fn __kai_std_collections_fixed_map_values<K: Type, V>(fixed_map: ref<FixedMap<K, V>>) -> *V {
+    var end: Int = fixed_map.len
+    if end > strlen((fixed_map.keys) as Str) {
+        end = strlen((fixed_map.keys) as Str)
+    }
+    if end > strlen((fixed_map.values) as Str) {
+        end = strlen((fixed_map.values) as Str)
+    }
+    return fixed_map.values[..end]
+}
+
+fn __kai_std_collections_fixed_map_get<K: Type, V>(fixed_map: ref<FixedMap<K, V>>, key: K) -> ?V {
+    let keys: *K = __kai_std_collections_fixed_map_keys(fixed_map)
+    let values: *V = __kai_std_collections_fixed_map_values(fixed_map)
+    return __kai_std_collections_map_get(keys, values, strlen((keys) as Str), key)
+}
+
+fn __kai_std_collections_fixed_map_contains<K: Type, V>(fixed_map: ref<FixedMap<K, V>>, key: K) -> Bool {
+    let keys: *K = __kai_std_collections_fixed_map_keys(fixed_map)
+    return __kai_std_collections_map_contains(keys, strlen((keys) as Str), key)
+}
+
+fn __kai_std_collections_fixed_map_index<K: Type, V>(fixed_map: ref<FixedMap<K, V>>, key: K) -> Int {
+    let keys: *K = __kai_std_collections_fixed_map_keys(fixed_map)
+    return __kai_std_collections_map_index(keys, strlen((keys) as Str), key)
+}
+
+fn __kai_std_collections_fixed_map_put<K: Type, V>(fixed_map: mutref<FixedMap<K, V>>, key: K, value: V) -> Bool {
+    let keys: *K = fixed_map.keys
+    let values: *V = fixed_map.values
+    if fixed_map.len > strlen((keys) as Str) || fixed_map.len > strlen((values) as Str) {
+        return false
+    }
+    var index: Int = 0
+    while index < fixed_map.len {
+        if keys[index] == key {
+            values[index] = value
+            return true
+        }
+        index = index + 1
+    }
+    if fixed_map.len >= strlen((keys) as Str) || fixed_map.len >= strlen((values) as Str) {
+        return false
+    }
+    keys[fixed_map.len] = key
+    values[fixed_map.len] = value
+    fixed_map.len = fixed_map.len + 1
+    return true
+}
+
+fn __kai_std_collections_fixed_map_remove<K: Type, V>(fixed_map: mutref<FixedMap<K, V>>, key: K) -> Bool {
+    let keys: *K = fixed_map.keys
+    let values: *V = fixed_map.values
+    if fixed_map.len == 0 || fixed_map.len > strlen((keys) as Str) || fixed_map.len > strlen((values) as Str) {
+        return false
+    }
+    var index: Int = 0
+    while index < fixed_map.len {
+        if keys[index] == key {
+            break
+        }
+        index = index + 1
+    }
+    if index >= fixed_map.len {
+        return false
+    }
+    let next_len: Int = fixed_map.len - 1
+    if index != next_len {
+        keys[index] = keys[next_len]
+        values[index] = values[next_len]
+    }
+    fixed_map.len = next_len
+    return true
+}
+
+fn __kai_std_collections_fixed_map_clear<K: Type, V>(fixed_map: mutref<FixedMap<K, V>>) -> Int {
+    fixed_map.len = 0
+    return fixed_map.len
+}
+
+fn __kai_std_collections_fixed_map_truncate<K: Type, V>(fixed_map: mutref<FixedMap<K, V>>, new_len: Int) -> Int {
+    var capacity: Int = strlen((fixed_map.keys) as Str)
+    if capacity > strlen((fixed_map.values) as Str) {
+        capacity = strlen((fixed_map.values) as Str)
+    }
+    var live_len: Int = fixed_map.len
+    if live_len > capacity {
+        live_len = capacity
+    }
+    if new_len < live_len {
+        live_len = new_len
+    }
+    fixed_map.len = live_len
+    return fixed_map.len
+}
+
+fn __kai_std_collections_fixed_map_remaining<K: Type, V>(fixed_map: ref<FixedMap<K, V>>) -> Int {
+    var capacity: Int = strlen((fixed_map.keys) as Str)
+    if capacity > strlen((fixed_map.values) as Str) {
+        capacity = strlen((fixed_map.values) as Str)
+    }
+    if fixed_map.len >= capacity {
+        return 0
+    }
+    return capacity - fixed_map.len
+}
+
+fn __kai_std_collections_fixed_map_is_full<K: Type, V>(fixed_map: ref<FixedMap<K, V>>) -> Bool {
+    return __kai_std_collections_fixed_map_remaining(fixed_map) == 0
+}
+
+fn __kai_std_collections_push<T>(items: *T, len: Int, value: T) -> Int {
+    if len >= strlen((items) as Str) {
+        return len
+    }
+    items[len] = value
+    return len + 1
+}
+
+fn __kai_std_collections_append<T>(items: *T, len: Int, values: *T) -> Int {
+    let capacity: Int = strlen((items) as Str)
+    let value_count: Int = strlen((values) as Str)
+    if len > capacity || value_count > capacity - len {
+        return len
+    }
+    var index: Int = 0
+    while index < value_count {
+        items[len + index] = values[index]
+        index = index + 1
+    }
+    return len + value_count
+}
+
+fn __kai_std_collections_view<T>(items: *T, len: Int) -> *T {
+    var end: Int = len
+    if end > strlen((items) as Str) {
+        end = strlen((items) as Str)
+    }
+    return items[..end]
+}
+
+fn __kai_std_collections_contains<T>(items: *T, len: Int, needle: T) -> Bool {
+    let view: *T = __kai_std_collections_view(items, len)
+    var index: Int = 0
+    while index < strlen((view) as Str) {
+        if view[index] == needle {
+            return true
+        }
+        index = index + 1
+    }
+    return false
+}
+
+fn __kai_std_collections_count<T>(items: *T, len: Int, needle: T) -> Int {
+    let view: *T = __kai_std_collections_view(items, len)
+    var index: Int = 0
+    var total: Int = 0
+    while index < strlen((view) as Str) {
+        if view[index] == needle {
+            total = total + 1
+        }
+        index = index + 1
+    }
+    return total
+}
+
+fn __kai_std_collections_remove_swap<T>(items: *T, len: Int, index: Int) -> Int {
+    if len == 0 || len > strlen((items) as Str) || index >= len {
+        return len
+    }
+    let next_len: Int = len - 1
+    if index != next_len {
+        items[index] = items[next_len]
+    }
+    return next_len
+}
+
+fn __kai_std_collections_move_to_front<T>(items: *T, len: Int, index: Int) -> Int {
+    if len > strlen((items) as Str) || index == 0 || index >= len {
+        return len
+    }
+    let chosen: T = items[index]
+    var cursor: Int = index
+    while cursor > 0 {
+        items[cursor] = items[cursor - 1]
+        cursor = cursor - 1
+    }
+    items[0] = chosen
+    return len
+}
+
+fn __kai_std_collections_remaining<T>(items: *T, len: Int) -> Int {
+    let capacity: Int = strlen((items) as Str)
+    if len >= capacity {
+        return 0
+    }
+    return capacity - len
+}
+
+fn __kai_std_collections_is_full<T>(items: *T, len: Int) -> Bool {
+    return __kai_std_collections_remaining(items, len) == 0
+}
+
+fn __kai_std_collections_insert_unique<T>(items: *T, len: Int, value: T) -> Int {
+    if len > strlen((items) as Str) {
+        return len
+    }
+    var index: Int = 0
+    while index < len {
+        if items[index] == value {
+            return len
+        }
+        index = index + 1
+    }
+    if len >= strlen((items) as Str) {
+        return len
+    }
+    items[len] = value
+    return len + 1
+}
+
+fn __kai_std_collections_remove_value<T>(items: *T, len: Int, value: T) -> Int {
+    if len > strlen((items) as Str) {
+        return len
+    }
+    var index: Int = 0
+    while index < len {
+        if items[index] == value {
+            return __kai_std_collections_remove_swap(items, len, index)
+        }
+        index = index + 1
+    }
+    return len
+}
+
+fn __kai_std_collections_map_index<K>(keys: *K, len: Int, key: K) -> Int {
+    let live: *K = __kai_std_collections_view(keys, len)
+    var index: Int = 0
+    while index < strlen((live) as Str) {
+        if live[index] == key {
+            return index
+        }
+        index = index + 1
+    }
+    return strlen((live) as Str)
+}
+
+fn __kai_std_collections_map_get<K: Type, V>(keys: *K, values: *V, len: Int, key: K) -> ?V {
+    var live_len: Int = len
+    if live_len > strlen((keys) as Str) {
+        live_len = strlen((keys) as Str)
+    }
+    if live_len > strlen((values) as Str) {
+        live_len = strlen((values) as Str)
+    }
+    let index: Int = __kai_std_collections_map_index(keys, live_len, key)
+    if index < live_len {
+        return values[index]
+    }
+    return none
+}
+
+fn __kai_std_collections_map_remove<K: Type, V>(keys: *K, values: *V, len: Int, key: K) -> Int {
+    if len == 0 || len > strlen((keys) as Str) || len > strlen((values) as Str) {
+        return len
+    }
+    var index: Int = 0
+    while index < len {
+        if keys[index] == key {
+            break
+        }
+        index = index + 1
+    }
+    if index >= len {
+        return len
+    }
+    let next_len: Int = len - 1
+    if index != next_len {
+        keys[index] = keys[next_len]
+        values[index] = values[next_len]
+    }
+    return next_len
+}
+
+fn __kai_std_collections_map_put<K: Type, V>(keys: *K, values: *V, len: Int, key: K, value: V) -> Int {
+    if len > strlen((keys) as Str) || len > strlen((values) as Str) {
+        return len
+    }
+    var index: Int = 0
+    while index < len {
+        if keys[index] == key {
+            break
+        }
+        index = index + 1
+    }
+    if index < len {
+        values[index] = value
+        return len
+    }
+    if len >= strlen((keys) as Str) || len >= strlen((values) as Str) {
+        return len
+    }
+    keys[len] = key
+    values[len] = value
+    return len + 1
+}
+
+fn __kai_std_collections_map_contains<K>(keys: *K, len: Int, key: K) -> Bool {
+    let live: *K = __kai_std_collections_view(keys, len)
+    let index: Int = __kai_std_collections_map_index(live, strlen((live) as Str), key)
+    return index < strlen((live) as Str)
+}
+
+fn __kai_std_collections_set_contains<T>(items: *T, len: Int, value: T) -> Bool {
+    return __kai_std_collections_contains(items, len, value)
+}
+
+fn __kai_std_collections_set_insert<T>(items: *T, len: Int, value: T) -> Int {
+    return __kai_std_collections_insert_unique(items, len, value)
+}
+
+fn __kai_std_collections_set_remove<T>(items: *T, len: Int, value: T) -> Int {
+    return __kai_std_collections_remove_value(items, len, value)
+}
+
+fn __kai_std_collections_clear<T>(items: *T, len: Int) -> Int {
+    return 0
+}
+
+fn __kai_std_collections_truncate<T>(items: *T, len: Int, new_len: Int) -> Int {
+    let live: *T = __kai_std_collections_view(items, len)
+    let live_len: Int = strlen((live) as Str)
+    if new_len < live_len {
+        return new_len
+    }
+    return live_len
+}
+
+fn __kai_std_collections_first<T>(items: *T, len: Int) -> ?T {
+    let live: *T = __kai_std_collections_view(items, len)
+    if strlen((live) as Str) == 0 {
+        return none
+    }
+    return live[0]
+}
+
+fn __kai_std_collections_last<T>(items: *T, len: Int) -> ?T {
+    let live: *T = __kai_std_collections_view(items, len)
+    let live_len: Int = strlen((live) as Str)
+    if live_len == 0 {
+        return none
+    }
+    return live[live_len - 1]
+}
+
+fn __kai_std_collections_pop<T>(items: *T, len: Int) -> Int {
+    let live: *T = __kai_std_collections_view(items, len)
+    let live_len: Int = strlen((live) as Str)
+    if live_len == 0 {
+        return 0
+    }
+    return live_len - 1
+}
+
+fn __kai_std_collections_insert_at<T>(items: *T, len: Int, index: Int, value: T) -> Int {
+    let capacity: Int = strlen((items) as Str)
+    if len >= capacity || index > len {
+        return len
+    }
+    var cursor: Int = len
+    while cursor > index {
+        items[cursor] = items[cursor - 1]
+        cursor = cursor - 1
+    }
+    items[index] = value
+    return len + 1
+}
+
+fn __kai_std_collections_remove_at<T>(items: *T, len: Int, index: Int) -> Int {
+    if len == 0 || len > strlen((items) as Str) || index >= len {
+        return len
+    }
+    let next_len: Int = len - 1
+    var cursor: Int = index
+    while cursor < next_len {
+        items[cursor] = items[cursor + 1]
+        cursor = cursor + 1
+    }
+    return next_len
+}
+
+fn __kai_std_collections_set_view<T>(items: *T, len: Int) -> *T {
+    return __kai_std_collections_view(items, len)
+}
+
+fn __kai_std_collections_map_keys<K>(keys: *K, len: Int) -> *K {
+    return __kai_std_collections_view(keys, len)
+}
+
+fn __kai_std_collections_map_values<K: Type, V>(keys: *K, values: *V, len: Int) -> *V {
+    var live_len: Int = len
+    if live_len > strlen((keys) as Str) {
+        live_len = strlen((keys) as Str)
+    }
+    if live_len > strlen((values) as Str) {
+        live_len = strlen((values) as Str)
+    }
+    return values[..live_len]
+}
+
+fn __kai_std_collections_set_clear<T>(items: *T, len: Int) -> Int {
+    return __kai_std_collections_clear(items, len)
+}
+
+fn __kai_std_collections_set_truncate<T>(items: *T, len: Int, new_len: Int) -> Int {
+    return __kai_std_collections_truncate(items, len, new_len)
+}
+
+fn __kai_std_collections_set_remaining<T>(items: *T, len: Int) -> Int {
+    return __kai_std_collections_remaining(items, len)
+}
+
+fn __kai_std_collections_set_is_full<T>(items: *T, len: Int) -> Bool {
+    return __kai_std_collections_is_full(items, len)
+}
+
+fn __kai_std_collections_map_clear<K: Type, V>(keys: *K, values: *V, len: Int) -> Int {
+    return 0
+}
+
+fn __kai_std_collections_map_truncate<K: Type, V>(keys: *K, values: *V, len: Int, new_len: Int) -> Int {
+    var live_len: Int = len
+    if live_len > strlen((keys) as Str) {
+        live_len = strlen((keys) as Str)
+    }
+    if live_len > strlen((values) as Str) {
+        live_len = strlen((values) as Str)
+    }
+    if new_len < live_len {
+        return new_len
+    }
+    return live_len
+}
+
+fn __kai_std_collections_map_remaining<K: Type, V>(keys: *K, values: *V, len: Int) -> Int {
+    var capacity: Int = strlen((keys) as Str)
+    if strlen((values) as Str) < capacity {
+        capacity = strlen((values) as Str)
+    }
+    if len >= capacity {
+        return 0
+    }
+    return capacity - len
+}
+
+fn __kai_std_collections_map_is_full<K: Type, V>(keys: *K, values: *V, len: Int) -> Bool {
+    return __kai_std_collections_map_remaining(keys, values, len) == 0
+}
+
+fn __kai_std_collections_deque_push_back<T>(items: *T, len: Int, value: T) -> Int {
+    return __kai_std_collections_push(items, len, value)
+}
+
+fn __kai_std_collections_deque_push_front<T>(items: *T, len: Int, value: T) -> Int {
+    return __kai_std_collections_insert_at(items, len, 0, value)
+}
+
+fn __kai_std_collections_deque_pop_back<T>(items: *T, len: Int) -> Int {
+    return __kai_std_collections_pop(items, len)
+}
+
+fn __kai_std_collections_deque_pop_front<T>(items: *T, len: Int) -> Int {
+    return __kai_std_collections_remove_at(items, len, 0)
+}
+
+fn __kai_std_collections_deque_front<T>(items: *T, len: Int) -> ?T {
+    return __kai_std_collections_first(items, len)
+}
+
+fn __kai_std_collections_deque_back<T>(items: *T, len: Int) -> ?T {
+    return __kai_std_collections_last(items, len)
+}
+
+fn __kai_std_collections_replace_at<T>(items: *T, len: Int, index: Int, value: T) -> Bool {
+    if len > strlen((items) as Str) || index >= len {
+        return false
+    }
+    items[index] = value
+    return true
+}
+
+fn __kai_std_collections_swap_at<T>(items: *T, len: Int, left: Int, right: Int) -> Bool {
+    if len > strlen((items) as Str) || left >= len || right >= len {
+        return false
+    }
+    if left != right {
+        let temporary: T = items[left]
+        items[left] = items[right]
+        items[right] = temporary
+    }
+    return true
+}
+
+fn __kai_std_collections_fill<T>(items: *T, len: Int, value: T) -> Bool {
+    if len > strlen((items) as Str) {
+        return false
+    }
+    var index: Int = 0
+    while index < len {
+        items[index] = value
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_collections_reverse<T>(items: *T, len: Int) -> Bool {
+    if len > strlen((items) as Str) {
+        return false
+    }
+    var left: Int = 0
+    var right: Int = len
+    while left < right {
+        right = right - 1
+        if left < right {
+            let temporary: T = items[left]
+            items[left] = items[right]
+            items[right] = temporary
+            left = left + 1
+        }
+    }
+    return true
+}
+
+fn __kai_std_collections_rotate_left<T>(items: *T, len: Int, count: Int) -> Bool {
+    if len > strlen((items) as Str) {
+        return false
+    }
+    if len == 0 || len == 1 {
+        return true
+    }
+    var steps: Int = count
+    while steps >= len {
+        steps = steps - len
+    }
+    while steps > 0 {
+        let first: T = items[0]
+        let last_index: Int = len - 1
+        var index: Int = 0
+        while index < last_index {
+            items[index] = items[index + 1]
+            index = index + 1
+        }
+        items[last_index] = first
+        steps = steps - 1
+    }
+    return true
+}
+
+fn __kai_std_collections_rotate_right<T>(items: *T, len: Int, count: Int) -> Bool {
+    if len > strlen((items) as Str) {
+        return false
+    }
+    if len == 0 || len == 1 {
+        return true
+    }
+    var steps: Int = count
+    while steps >= len {
+        steps = steps - len
+    }
+    while steps > 0 {
+        let last_index: Int = len - 1
+        let last: T = items[last_index]
+        var index: Int = last_index
+        while index > 0 {
+            items[index] = items[index - 1]
+            index = index - 1
+        }
+        items[0] = last
+        steps = steps - 1
+    }
+    return true
+}

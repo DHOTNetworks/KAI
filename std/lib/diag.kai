@@ -1,0 +1,149 @@
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn diag_clamp_offset(bytes: Str, offset: Int) -> Int {
+    if offset > strlen((bytes) as Str) {
+        return strlen((bytes) as Str)
+    }
+    return offset
+}
+
+fn diag_line_start(bytes: Str, offset: Int) -> Int {
+    let cursor: Int = diag_clamp_offset(bytes, offset)
+    var start: Int = cursor
+    while start > 0 && bytes[start - 1] != Char(10) {
+        start = start - 1
+    }
+    return start
+}
+
+fn diag_line_end(bytes: Str, offset: Int) -> Int {
+    var end: Int = diag_clamp_offset(bytes, offset)
+    while end < strlen((bytes) as Str) && bytes[end] != Char(10) {
+        end = end + 1
+    }
+    if end > 0 && bytes[end - 1] == Char(13) {
+        return end - 1
+    }
+    return end
+}
+
+fn diag_line(bytes: Str, offset: Int) -> Int {
+    let cursor: Int = diag_clamp_offset(bytes, offset)
+    var line: Int = 1
+    var index: Int = 0
+    while index < cursor {
+        if bytes[index] == Char(10) {
+            line = line + 1
+        }
+        index = index + 1
+    }
+    return line
+}
+
+fn diag_column(bytes: Str, offset: Int) -> Int {
+    let cursor: Int = diag_clamp_offset(bytes, offset)
+    let start: Int = diag_line_start(bytes, cursor)
+    return (cursor - start) + 1
+}
+
+fn diag_line_text(bytes: Str, offset: Int) -> Str {
+    let start: Int = diag_line_start(bytes, offset)
+    let end: Int = diag_line_end(bytes, offset)
+    return bytes[start..end]
+}
+
+fn diag_range_len(bytes: Str, start: Int, end: Int) -> Int {
+    let first: Int = diag_clamp_offset(bytes, start)
+    let last: Int = diag_clamp_offset(bytes, end)
+    if last < first {
+        return 0
+    }
+    return last - first
+}
+
+fn diag_range_text(bytes: Str, start: Int, end: Int) -> Str {
+    let first: Int = diag_clamp_offset(bytes, start)
+    let last: Int = diag_clamp_offset(bytes, end)
+    if last < first {
+        return bytes[first..first]
+    }
+    return bytes[first..last]
+}
+
+fn diag_write_span(buffer: *Char, offset: Int, bytes: Str) -> ?Int {
+    if offset > strlen((buffer) as Str) {
+        return none
+    }
+    if strlen((bytes) as Str) > strlen((buffer) as Str) - offset {
+        return none
+    }
+    var index: Int = 0
+    while index < strlen((bytes) as Str) {
+        buffer[offset + index] = bytes[index]
+        index = index + 1
+    }
+    return offset + strlen((bytes) as Str)
+}
+
+fn diag_write_usize(buffer: *Char, offset: Int, value: Int) -> ?Int {
+    if offset > strlen((buffer) as Str) {
+        return none
+    }
+    var digits: Int = 1
+    var scan: Int = value
+    while scan >= 10 {
+        digits = digits + 1
+        scan = scan / 10
+    }
+    if offset + digits > strlen((buffer) as Str) {
+        return none
+    }
+    var cursor: Int = offset + digits
+    var current: Int = value
+    while cursor > offset {
+        cursor = cursor - 1
+        let digit: Char = (current % 10) as Char
+        buffer[cursor] = Char(48) + digit
+        current = current / 10
+    }
+    return offset + digits
+}
+
+fn diag_format_location(buffer: *Char, path: Str, line: Int, column: Int) -> ?Str {
+    var offset: Int = 0
+    let wrote_path: ?Int = diag_write_span(buffer, offset, path)
+    if wrote_path == none {
+        return none
+    }
+    offset = (wrote_path catch 0)
+    let first_colon: ?Int = diag_write_span(buffer, offset, ":")
+    if first_colon == none {
+        return none
+    }
+    offset = (first_colon catch 0)
+    let wrote_line: ?Int = diag_write_usize(buffer, offset, line)
+    if wrote_line == none {
+        return none
+    }
+    offset = (wrote_line catch 0)
+    let second_colon: ?Int = diag_write_span(buffer, offset, ":")
+    if second_colon == none {
+        return none
+    }
+    offset = (second_colon catch 0)
+    let wrote_column: ?Int = diag_write_usize(buffer, offset, column)
+    if wrote_column != none {
+        return buffer[..(wrote_column catch 0)]
+    }
+    return none
+}
+
+fn diag_format_offset_location(buffer: *Char, path: Str, bytes: Str, offset: Int) -> ?Str {
+    return diag_format_location(buffer, path, diag_line(bytes, offset), diag_column(bytes, offset))
+}

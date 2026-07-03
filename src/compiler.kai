@@ -248,7 +248,7 @@ fn main(argc: Int, argv: **Char) -> Int {
                 return 1
             }
         } else {
-            let main_content = "// " + project_path + "\n// Entry point\n\nfn main() Int {\n    printf(\"hello from " + project_path + "\\n\")\n    return 0\n}\n"
+            let main_content = "// " + project_path + "\n// Imports\nimport std.io.print\n\n// Entry point\n\nfn main() Int {\n    printf(\"Hello! from " + project_path + "\\n\")\n    return 0\n}\n"
             let write_res = write_string(src_dir + "/main.kai", main_content)
             if write_res.tag != 0 {
                 printf("Error: Could not write main.kai\n")

@@ -1,0 +1,1015 @@
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_sort_insertion_i32(items: *Int) -> Void {
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        let value: Int = items[index]
+        var cursor: Int = index
+        while cursor > 0 && items[cursor - 1] > value {
+            items[cursor] = items[cursor - 1]
+            cursor = cursor - 1
+        }
+        items[cursor] = value
+        index = index + 1
+    }
+}
+
+fn __kai_std_sort_stable_i32(items: *Int) -> Void {
+    __kai_std_sort_insertion_i32(items)
+}
+
+fn __kai_std_sort_unstable_i32(items: *Int) -> Void {
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        var best: Int = index
+        var scan: Int = index + 1
+        while scan < strlen((items) as Str) {
+            if items[scan] < items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: Int = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+}
+
+fn __kai_std_sort_reverse_i32(items: *Int) -> Void {
+    var left: Int = 0
+    var right: Int = strlen((items) as Str)
+    while left < right {
+        right = right - 1
+        if left < right {
+            let value: Int = items[left]
+            items[left] = items[right]
+            items[right] = value
+            left = left + 1
+        }
+    }
+}
+
+fn __kai_std_sort_swap_i32(items: *Int, left: Int, right: Int) -> Bool {
+    if left >= strlen((items) as Str) || right >= strlen((items) as Str) {
+        return false
+    }
+    let value: Int = items[left]
+    items[left] = items[right]
+    items[right] = value
+    return true
+}
+
+fn __kai_std_sort_rotate_left_i32(items: *Int, amount: Int) -> Void {
+    let len: Int = strlen((items) as Str)
+    if len == 0 {
+        return
+    }
+    let shift: Int = amount % len
+    var step: Int = 0
+    while step < shift {
+        let first: Int = items[0]
+        var index: Int = 1
+        while index < len {
+            items[index - 1] = items[index]
+            index = index + 1
+        }
+        items[len - 1] = first
+        step = step + 1
+    }
+}
+
+fn __kai_std_sort_rotate_right_i32(items: *Int, amount: Int) -> Void {
+    let len: Int = strlen((items) as Str)
+    if len == 0 {
+        return
+    }
+    let shift: Int = amount % len
+    if shift > 0 {
+        __kai_std_sort_rotate_left_i32(items, len - shift)
+    }
+}
+
+fn __kai_std_sort_is_sorted_i32(items: *Int) -> Bool {
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] < items[index - 1] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_insertion_desc_i32(items: *Int) -> Void {
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        let value: Int = items[index]
+        var cursor: Int = index
+        while cursor > 0 && items[cursor - 1] < value {
+            items[cursor] = items[cursor - 1]
+            cursor = cursor - 1
+        }
+        items[cursor] = value
+        index = index + 1
+    }
+}
+
+fn __kai_std_sort_stable_desc_i32(items: *Int) -> Void {
+    __kai_std_sort_insertion_desc_i32(items)
+}
+
+fn __kai_std_sort_unstable_desc_i32(items: *Int) -> Void {
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        var best: Int = index
+        var scan: Int = index + 1
+        while scan < strlen((items) as Str) {
+            if items[scan] > items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: Int = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+}
+
+fn __kai_std_sort_is_sorted_desc_i32(items: *Int) -> Bool {
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] > items[index - 1] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_partition_i32(items: *Int, pivot: Int) -> Int {
+    var write: Int = 0
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] < pivot {
+            let value: Int = items[index]
+            items[index] = items[write]
+            items[write] = value
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __kai_std_sort_is_partitioned_i32(items: *Int, pivot: Int) -> Bool {
+    var seen_tail: Bool = false
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] < pivot {
+            if seen_tail {
+                return false
+            }
+        } else {
+            seen_tail = true
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_partition_desc_i32(items: *Int, pivot: Int) -> Int {
+    var write: Int = 0
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] > pivot {
+            let value: Int = items[index]
+            items[index] = items[write]
+            items[write] = value
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __kai_std_sort_is_partitioned_desc_i32(items: *Int, pivot: Int) -> Bool {
+    var seen_tail: Bool = false
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] > pivot {
+            if seen_tail {
+                return false
+            }
+        } else {
+            seen_tail = true
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_dedupe_sorted_i32(items: *Int) -> Int {
+    if strlen((items) as Str) == 0 {
+        return 0
+    }
+    var write: Int = 1
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] != items[write - 1] {
+            items[write] = items[index]
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __kai_std_sort_select_nth_i32(items: *Int, nth: Int) -> Bool {
+    let len: Int = strlen((items) as Str)
+    if nth >= len {
+        return false
+    }
+    var index: Int = 0
+    while index <= nth {
+        var best: Int = index
+        var scan: Int = index + 1
+        while scan < len {
+            if items[scan] < items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: Int = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_select_nth_desc_i32(items: *Int, nth: Int) -> Bool {
+    let len: Int = strlen((items) as Str)
+    if nth >= len {
+        return false
+    }
+    var index: Int = 0
+    while index <= nth {
+        var best: Int = index
+        var scan: Int = index + 1
+        while scan < len {
+            if items[scan] > items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: Int = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_merge_sorted_i32(dst: *Int, left: *Int, right: *Int) -> Int {
+    var written: Int = 0
+    var left_index: Int = 0
+    var right_index: Int = 0
+    let capacity: Int = strlen((dst) as Str)
+    while written < capacity && left_index < strlen((left) as Str) && right_index < strlen((right) as Str) {
+        if left[left_index] <= right[right_index] {
+            dst[written] = left[left_index]
+            left_index = left_index + 1
+        } else {
+            dst[written] = right[right_index]
+            right_index = right_index + 1
+        }
+        written = written + 1
+    }
+    while written < capacity && left_index < strlen((left) as Str) {
+        dst[written] = left[left_index]
+        left_index = left_index + 1
+        written = written + 1
+    }
+    while written < capacity && right_index < strlen((right) as Str) {
+        dst[written] = right[right_index]
+        right_index = right_index + 1
+        written = written + 1
+    }
+    return written
+}
+
+fn __kai_std_sort_merge_sorted_desc_i32(dst: *Int, left: *Int, right: *Int) -> Int {
+    var written: Int = 0
+    var left_index: Int = 0
+    var right_index: Int = 0
+    let capacity: Int = strlen((dst) as Str)
+    while written < capacity && left_index < strlen((left) as Str) && right_index < strlen((right) as Str) {
+        if left[left_index] >= right[right_index] {
+            dst[written] = left[left_index]
+            left_index = left_index + 1
+        } else {
+            dst[written] = right[right_index]
+            right_index = right_index + 1
+        }
+        written = written + 1
+    }
+    while written < capacity && left_index < strlen((left) as Str) {
+        dst[written] = left[left_index]
+        left_index = left_index + 1
+        written = written + 1
+    }
+    while written < capacity && right_index < strlen((right) as Str) {
+        dst[written] = right[right_index]
+        right_index = right_index + 1
+        written = written + 1
+    }
+    return written
+}
+
+fn __kai_std_sort_insertion_u32(items: *Int) -> Void {
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        let value: Int = items[index]
+        var cursor: Int = index
+        while cursor > 0 && items[cursor - 1] > value {
+            items[cursor] = items[cursor - 1]
+            cursor = cursor - 1
+        }
+        items[cursor] = value
+        index = index + 1
+    }
+}
+
+fn __kai_std_sort_stable_u32(items: *Int) -> Void {
+    __kai_std_sort_insertion_u32(items)
+}
+
+fn __kai_std_sort_unstable_u32(items: *Int) -> Void {
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        var best: Int = index
+        var scan: Int = index + 1
+        while scan < strlen((items) as Str) {
+            if items[scan] < items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: Int = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+}
+
+fn __kai_std_sort_reverse_u32(items: *Int) -> Void {
+    var left: Int = 0
+    var right: Int = strlen((items) as Str)
+    while left < right {
+        right = right - 1
+        if left < right {
+            let value: Int = items[left]
+            items[left] = items[right]
+            items[right] = value
+            left = left + 1
+        }
+    }
+}
+
+fn __kai_std_sort_swap_u32(items: *Int, left: Int, right: Int) -> Bool {
+    if left >= strlen((items) as Str) || right >= strlen((items) as Str) {
+        return false
+    }
+    let value: Int = items[left]
+    items[left] = items[right]
+    items[right] = value
+    return true
+}
+
+fn __kai_std_sort_rotate_left_u32(items: *Int, amount: Int) -> Void {
+    let len: Int = strlen((items) as Str)
+    if len == 0 {
+        return
+    }
+    let shift: Int = amount % len
+    var step: Int = 0
+    while step < shift {
+        let first: Int = items[0]
+        var index: Int = 1
+        while index < len {
+            items[index - 1] = items[index]
+            index = index + 1
+        }
+        items[len - 1] = first
+        step = step + 1
+    }
+}
+
+fn __kai_std_sort_rotate_right_u32(items: *Int, amount: Int) -> Void {
+    let len: Int = strlen((items) as Str)
+    if len == 0 {
+        return
+    }
+    let shift: Int = amount % len
+    if shift > 0 {
+        __kai_std_sort_rotate_left_u32(items, len - shift)
+    }
+}
+
+fn __kai_std_sort_is_sorted_u32(items: *Int) -> Bool {
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] < items[index - 1] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_insertion_desc_u32(items: *Int) -> Void {
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        let value: Int = items[index]
+        var cursor: Int = index
+        while cursor > 0 && items[cursor - 1] < value {
+            items[cursor] = items[cursor - 1]
+            cursor = cursor - 1
+        }
+        items[cursor] = value
+        index = index + 1
+    }
+}
+
+fn __kai_std_sort_stable_desc_u32(items: *Int) -> Void {
+    __kai_std_sort_insertion_desc_u32(items)
+}
+
+fn __kai_std_sort_unstable_desc_u32(items: *Int) -> Void {
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        var best: Int = index
+        var scan: Int = index + 1
+        while scan < strlen((items) as Str) {
+            if items[scan] > items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: Int = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+}
+
+fn __kai_std_sort_is_sorted_desc_u32(items: *Int) -> Bool {
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] > items[index - 1] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_partition_u32(items: *Int, pivot: Int) -> Int {
+    var write: Int = 0
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] < pivot {
+            let value: Int = items[index]
+            items[index] = items[write]
+            items[write] = value
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __kai_std_sort_is_partitioned_u32(items: *Int, pivot: Int) -> Bool {
+    var seen_tail: Bool = false
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] < pivot {
+            if seen_tail {
+                return false
+            }
+        } else {
+            seen_tail = true
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_partition_desc_u32(items: *Int, pivot: Int) -> Int {
+    var write: Int = 0
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] > pivot {
+            let value: Int = items[index]
+            items[index] = items[write]
+            items[write] = value
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __kai_std_sort_is_partitioned_desc_u32(items: *Int, pivot: Int) -> Bool {
+    var seen_tail: Bool = false
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] > pivot {
+            if seen_tail {
+                return false
+            }
+        } else {
+            seen_tail = true
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_dedupe_sorted_u32(items: *Int) -> Int {
+    if strlen((items) as Str) == 0 {
+        return 0
+    }
+    var write: Int = 1
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] != items[write - 1] {
+            items[write] = items[index]
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __kai_std_sort_select_nth_u32(items: *Int, nth: Int) -> Bool {
+    let len: Int = strlen((items) as Str)
+    if nth >= len {
+        return false
+    }
+    var index: Int = 0
+    while index <= nth {
+        var best: Int = index
+        var scan: Int = index + 1
+        while scan < len {
+            if items[scan] < items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: Int = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_select_nth_desc_u32(items: *Int, nth: Int) -> Bool {
+    let len: Int = strlen((items) as Str)
+    if nth >= len {
+        return false
+    }
+    var index: Int = 0
+    while index <= nth {
+        var best: Int = index
+        var scan: Int = index + 1
+        while scan < len {
+            if items[scan] > items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: Int = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_merge_sorted_u32(dst: *Int, left: *Int, right: *Int) -> Int {
+    var written: Int = 0
+    var left_index: Int = 0
+    var right_index: Int = 0
+    let capacity: Int = strlen((dst) as Str)
+    while written < capacity && left_index < strlen((left) as Str) && right_index < strlen((right) as Str) {
+        if left[left_index] <= right[right_index] {
+            dst[written] = left[left_index]
+            left_index = left_index + 1
+        } else {
+            dst[written] = right[right_index]
+            right_index = right_index + 1
+        }
+        written = written + 1
+    }
+    while written < capacity && left_index < strlen((left) as Str) {
+        dst[written] = left[left_index]
+        left_index = left_index + 1
+        written = written + 1
+    }
+    while written < capacity && right_index < strlen((right) as Str) {
+        dst[written] = right[right_index]
+        right_index = right_index + 1
+        written = written + 1
+    }
+    return written
+}
+
+fn __kai_std_sort_merge_sorted_desc_u32(dst: *Int, left: *Int, right: *Int) -> Int {
+    var written: Int = 0
+    var left_index: Int = 0
+    var right_index: Int = 0
+    let capacity: Int = strlen((dst) as Str)
+    while written < capacity && left_index < strlen((left) as Str) && right_index < strlen((right) as Str) {
+        if left[left_index] >= right[right_index] {
+            dst[written] = left[left_index]
+            left_index = left_index + 1
+        } else {
+            dst[written] = right[right_index]
+            right_index = right_index + 1
+        }
+        written = written + 1
+    }
+    while written < capacity && left_index < strlen((left) as Str) {
+        dst[written] = left[left_index]
+        left_index = left_index + 1
+        written = written + 1
+    }
+    while written < capacity && right_index < strlen((right) as Str) {
+        dst[written] = right[right_index]
+        right_index = right_index + 1
+        written = written + 1
+    }
+    return written
+}
+
+fn __kai_std_sort_insertion_usize(items: *Int) -> Void {
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        let value: Int = items[index]
+        var cursor: Int = index
+        while cursor > 0 && items[cursor - 1] > value {
+            items[cursor] = items[cursor - 1]
+            cursor = cursor - 1
+        }
+        items[cursor] = value
+        index = index + 1
+    }
+}
+
+fn __kai_std_sort_stable_usize(items: *Int) -> Void {
+    __kai_std_sort_insertion_usize(items)
+}
+
+fn __kai_std_sort_unstable_usize(items: *Int) -> Void {
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        var best: Int = index
+        var scan: Int = index + 1
+        while scan < strlen((items) as Str) {
+            if items[scan] < items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: Int = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+}
+
+fn __kai_std_sort_reverse_usize(items: *Int) -> Void {
+    var left: Int = 0
+    var right: Int = strlen((items) as Str)
+    while left < right {
+        right = right - 1
+        if left < right {
+            let value: Int = items[left]
+            items[left] = items[right]
+            items[right] = value
+            left = left + 1
+        }
+    }
+}
+
+fn __kai_std_sort_swap_usize(items: *Int, left: Int, right: Int) -> Bool {
+    if left >= strlen((items) as Str) || right >= strlen((items) as Str) {
+        return false
+    }
+    let value: Int = items[left]
+    items[left] = items[right]
+    items[right] = value
+    return true
+}
+
+fn __kai_std_sort_rotate_left_usize(items: *Int, amount: Int) -> Void {
+    let len: Int = strlen((items) as Str)
+    if len == 0 {
+        return
+    }
+    let shift: Int = amount % len
+    var step: Int = 0
+    while step < shift {
+        let first: Int = items[0]
+        var index: Int = 1
+        while index < len {
+            items[index - 1] = items[index]
+            index = index + 1
+        }
+        items[len - 1] = first
+        step = step + 1
+    }
+}
+
+fn __kai_std_sort_rotate_right_usize(items: *Int, amount: Int) -> Void {
+    let len: Int = strlen((items) as Str)
+    if len == 0 {
+        return
+    }
+    let shift: Int = amount % len
+    if shift > 0 {
+        __kai_std_sort_rotate_left_usize(items, len - shift)
+    }
+}
+
+fn __kai_std_sort_is_sorted_usize(items: *Int) -> Bool {
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] < items[index - 1] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_insertion_desc_usize(items: *Int) -> Void {
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        let value: Int = items[index]
+        var cursor: Int = index
+        while cursor > 0 && items[cursor - 1] < value {
+            items[cursor] = items[cursor - 1]
+            cursor = cursor - 1
+        }
+        items[cursor] = value
+        index = index + 1
+    }
+}
+
+fn __kai_std_sort_stable_desc_usize(items: *Int) -> Void {
+    __kai_std_sort_insertion_desc_usize(items)
+}
+
+fn __kai_std_sort_unstable_desc_usize(items: *Int) -> Void {
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        var best: Int = index
+        var scan: Int = index + 1
+        while scan < strlen((items) as Str) {
+            if items[scan] > items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: Int = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+}
+
+fn __kai_std_sort_is_sorted_desc_usize(items: *Int) -> Bool {
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] > items[index - 1] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_partition_usize(items: *Int, pivot: Int) -> Int {
+    var write: Int = 0
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] < pivot {
+            let value: Int = items[index]
+            items[index] = items[write]
+            items[write] = value
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __kai_std_sort_is_partitioned_usize(items: *Int, pivot: Int) -> Bool {
+    var seen_tail: Bool = false
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] < pivot {
+            if seen_tail {
+                return false
+            }
+        } else {
+            seen_tail = true
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_partition_desc_usize(items: *Int, pivot: Int) -> Int {
+    var write: Int = 0
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] > pivot {
+            let value: Int = items[index]
+            items[index] = items[write]
+            items[write] = value
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __kai_std_sort_is_partitioned_desc_usize(items: *Int, pivot: Int) -> Bool {
+    var seen_tail: Bool = false
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] > pivot {
+            if seen_tail {
+                return false
+            }
+        } else {
+            seen_tail = true
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_dedupe_sorted_usize(items: *Int) -> Int {
+    if strlen((items) as Str) == 0 {
+        return 0
+    }
+    var write: Int = 1
+    var index: Int = 1
+    while index < strlen((items) as Str) {
+        if items[index] != items[write - 1] {
+            items[write] = items[index]
+            write = write + 1
+        }
+        index = index + 1
+    }
+    return write
+}
+
+fn __kai_std_sort_select_nth_usize(items: *Int, nth: Int) -> Bool {
+    let len: Int = strlen((items) as Str)
+    if nth >= len {
+        return false
+    }
+    var index: Int = 0
+    while index <= nth {
+        var best: Int = index
+        var scan: Int = index + 1
+        while scan < len {
+            if items[scan] < items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: Int = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_select_nth_desc_usize(items: *Int, nth: Int) -> Bool {
+    let len: Int = strlen((items) as Str)
+    if nth >= len {
+        return false
+    }
+    var index: Int = 0
+    while index <= nth {
+        var best: Int = index
+        var scan: Int = index + 1
+        while scan < len {
+            if items[scan] > items[best] {
+                best = scan
+            }
+            scan = scan + 1
+        }
+        if best != index {
+            let value: Int = items[index]
+            items[index] = items[best]
+            items[best] = value
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_sort_merge_sorted_usize(dst: *Int, left: *Int, right: *Int) -> Int {
+    var written: Int = 0
+    var left_index: Int = 0
+    var right_index: Int = 0
+    let capacity: Int = strlen((dst) as Str)
+    while written < capacity && left_index < strlen((left) as Str) && right_index < strlen((right) as Str) {
+        if left[left_index] <= right[right_index] {
+            dst[written] = left[left_index]
+            left_index = left_index + 1
+        } else {
+            dst[written] = right[right_index]
+            right_index = right_index + 1
+        }
+        written = written + 1
+    }
+    while written < capacity && left_index < strlen((left) as Str) {
+        dst[written] = left[left_index]
+        left_index = left_index + 1
+        written = written + 1
+    }
+    while written < capacity && right_index < strlen((right) as Str) {
+        dst[written] = right[right_index]
+        right_index = right_index + 1
+        written = written + 1
+    }
+    return written
+}
+
+fn __kai_std_sort_merge_sorted_desc_usize(dst: *Int, left: *Int, right: *Int) -> Int {
+    var written: Int = 0
+    var left_index: Int = 0
+    var right_index: Int = 0
+    let capacity: Int = strlen((dst) as Str)
+    while written < capacity && left_index < strlen((left) as Str) && right_index < strlen((right) as Str) {
+        if left[left_index] >= right[right_index] {
+            dst[written] = left[left_index]
+            left_index = left_index + 1
+        } else {
+            dst[written] = right[right_index]
+            right_index = right_index + 1
+        }
+        written = written + 1
+    }
+    while written < capacity && left_index < strlen((left) as Str) {
+        dst[written] = left[left_index]
+        left_index = left_index + 1
+        written = written + 1
+    }
+    while written < capacity && right_index < strlen((right) as Str) {
+        dst[written] = right[right_index]
+        right_index = right_index + 1
+        written = written + 1
+    }
+    return written
+}

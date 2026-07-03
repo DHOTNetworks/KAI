@@ -1,0 +1,84 @@
+import std.lib.fmt
+
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn term_empty(buffer: *Char) -> Str {
+    return buffer[..0]
+}
+
+fn term_cursor_count(buffer: *Char, count: Int, suffix: Str) -> ?Str {
+    if count == 0 {
+        return term_empty(buffer)
+    }
+    var digits_storage: [20]Char = [Char(0); 20]
+    let digits: ?Str = __kai_std_fmt_int(digits_storage, count)
+    if digits == none {
+        return none
+    }
+    let start: ?Int = __kai_std_io_write_span(buffer, 0, "\x1b[")
+    if start == none {
+        return none
+    }
+    let wrote_count: ?Int = __kai_std_io_write_span(buffer, (start catch 0), (digits catch ""))
+    if wrote_count == none {
+        return none
+    }
+    let wrote_suffix: ?Int = __kai_std_io_write_span(buffer, (wrote_count catch 0), suffix)
+    if wrote_suffix == none {
+        return none
+    }
+    return __kai_std_io_written(buffer, (wrote_suffix catch 0))
+}
+
+fn term_cursor_to(buffer: *Char, row: Int, column: Int) -> ?Str {
+    var row_storage: [20]Char = [Char(0); 20]
+    var column_storage: [20]Char = [Char(0); 20]
+    let row_text: ?Str = __kai_std_fmt_int(row_storage, row)
+    let column_text: ?Str = __kai_std_fmt_int(column_storage, column)
+    if row_text == none || column_text == none {
+        return none
+    }
+    let start: ?Int = __kai_std_io_write_span(buffer, 0, "\x1b[")
+    if start == none {
+        return none
+    }
+    let wrote_row: ?Int = __kai_std_io_write_span(buffer, (start catch 0), (row_text catch ""))
+    if wrote_row == none {
+        return none
+    }
+    let wrote_separator: ?Int = __kai_std_io_write_span(buffer, (wrote_row catch 0), ";")
+    if wrote_separator == none {
+        return none
+    }
+    let wrote_column: ?Int = __kai_std_io_write_span(buffer, (wrote_separator catch 0), (column_text catch ""))
+    if wrote_column == none {
+        return none
+    }
+    let finish: ?Int = __kai_std_io_write_span(buffer, (wrote_column catch 0), "H")
+    if finish == none {
+        return none
+    }
+    return __kai_std_io_written(buffer, (finish catch 0))
+}
+
+fn term_cursor_up(buffer: *Char, count: Int) -> ?Str {
+    return term_cursor_count(buffer, count, "A")
+}
+
+fn term_cursor_down(buffer: *Char, count: Int) -> ?Str {
+    return term_cursor_count(buffer, count, "B")
+}
+
+fn term_cursor_right(buffer: *Char, count: Int) -> ?Str {
+    return term_cursor_count(buffer, count, "C")
+}
+
+fn term_cursor_left(buffer: *Char, count: Int) -> ?Str {
+    return term_cursor_count(buffer, count, "D")
+}

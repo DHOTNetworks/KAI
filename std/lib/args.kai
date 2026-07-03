@@ -1,0 +1,70 @@
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+var _kai_argc = 0
+var _kai_argv: **Char = 0 as **Char
+
+fn args_len() -> Int {
+    return _kai_argc
+}
+fn args_get(index: Int) -> ?Str {
+    if index < 0 || index >= _kai_argc {
+        return none
+    }
+    unsafe {
+        return _kai_argv[index] as Str
+    }
+}
+fn args_has(index: Int) -> Bool {
+    return index >= 0 && index < _kai_argc
+}
+
+fn __kai_std_args_has(index: Int) -> Bool {
+    let value: ?Str = args_get(index)
+    return value != none
+}
+
+fn __kai_std_args_get_or(index: Int, fallback: Str) -> Str {
+    let value: ?Str = args_get(index)
+    if value != none {
+        return (value catch "")
+    }
+    return fallback
+}
+
+fn __kai_std_args_find(name: Str) -> ?Int {
+    var index: Int = 1
+    while index < args_len() {
+        let value: ?Str = args_get(index)
+        if value != none && strcmp((value catch ""), name) == 0 {
+            return index
+        }
+        index = index + 1
+    }
+    return none
+}
+
+fn __kai_std_args_value_after(name: Str) -> ?Str {
+    let index: ?Int = __kai_std_args_find(name)
+    if index != none {
+        let value: ?Str = args_get((index catch 0) + 1)
+        if value != none {
+            return (value catch "")
+        }
+        return none
+    }
+    return none
+}
+
+fn __kai_std_args_parse_u32(index: Int) -> ?Int {
+    let value: ?Str = args_get(index)
+    if value != none {
+        return atoll((value catch ""))
+    }
+    return none
+}

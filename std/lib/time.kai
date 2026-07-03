@@ -1,0 +1,371 @@
+import std.lib.fmt
+import std.lib.time
+
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_time_zero() -> Duration {
+    return __kai_std_time_ns(0)
+}
+
+fn __kai_std_time_minutes(value: Int) -> Duration {
+    return __kai_std_time_ns((value as Int) * 60000000000)
+}
+
+fn __kai_std_time_hours(value: Int) -> Duration {
+    return __kai_std_time_ns((value as Int) * 3600000000000)
+}
+
+fn __kai_std_time_min(left: Duration, right: Duration) -> Duration {
+    if __kai_std_time_less_than(left, right) {
+        return left
+    }
+    return right
+}
+
+fn __kai_std_time_max(left: Duration, right: Duration) -> Duration {
+    if __kai_std_time_less_than(left, right) {
+        return right
+    }
+    return left
+}
+
+fn __kai_std_time_clamp(value: Duration, low: Duration, high: Duration) -> Duration {
+    let lower: Duration = __kai_std_time_min(low, high)
+    let upper: Duration = __kai_std_time_max(low, high)
+    if __kai_std_time_less_than(value, lower) {
+        return lower
+    }
+    if __kai_std_time_less_than(upper, value) {
+        return upper
+    }
+    return value
+}
+
+fn __kai_std_time_as_us_floor(value: Duration) -> Int {
+    let ns: Int = __kai_std_time_as_ns(value)
+    let quotient: Int = ns / 1000
+    let remainder: Int = ns % 1000
+    if ns < 0 && remainder != 0 {
+        return quotient - 1
+    }
+    return quotient
+}
+
+fn __kai_std_time_as_ms_floor(value: Duration) -> Int {
+    let ns: Int = __kai_std_time_as_ns(value)
+    let quotient: Int = ns / 1000000
+    let remainder: Int = ns % 1000000
+    if ns < 0 && remainder != 0 {
+        return (quotient - 1) as Int
+    }
+    return quotient as Int
+}
+
+fn __kai_std_time_as_seconds_floor(value: Duration) -> Int {
+    let ns: Int = __kai_std_time_as_ns(value)
+    let quotient: Int = ns / 1000000000
+    let remainder: Int = ns % 1000000000
+    if ns < 0 && remainder != 0 {
+        return quotient - 1
+    }
+    return quotient
+}
+
+fn __kai_std_time_is_zero(value: Duration) -> Bool {
+    return __kai_std_time_as_ns(value) == 0
+}
+
+fn __kai_std_time_abs(value: Duration) -> Duration {
+    if __kai_std_time_less_than(value, __kai_std_time_zero()) {
+        return __kai_std_time_sub(__kai_std_time_zero(), value)
+    }
+    return value
+}
+
+fn __kai_std_time_between(start: Duration, end: Duration) -> Duration {
+    if __kai_std_time_less_than(end, start) {
+        return __kai_std_time_sub(start, end)
+    }
+    return __kai_std_time_sub(end, start)
+}
+
+fn __kai_std_time_has_elapsed(start: Duration, now: Duration, timeout: Duration) -> Bool {
+    if __kai_std_time_less_than(now, start) {
+        return false
+    }
+    let elapsed: Duration = __kai_std_time_sub(now, start)
+    return !__kai_std_time_less_than(elapsed, timeout)
+}
+
+fn __kai_std_time_deadline_after(start: Duration, timeout: Duration) -> Duration {
+    return __kai_std_time_add(start, timeout)
+}
+
+fn __kai_std_time_remaining_until(deadline: Duration, now: Duration) -> Duration {
+    if !__kai_std_time_less_than(now, deadline) {
+        return __kai_std_time_zero()
+    }
+    return __kai_std_time_sub(deadline, now)
+}
+
+fn __kai_std_time_deadline_expired(deadline: Duration, now: Duration) -> Bool {
+    return !__kai_std_time_less_than(now, deadline)
+}
+
+fn __kai_std_time_rfc_is_digit(byte: Char) -> Bool {
+    return byte >= Char(48) && byte <= Char(57)
+}
+
+fn __kai_std_time_rfc_digit(byte: Char) -> Int {
+    return (byte - Char(48)) as Int
+}
+
+fn __kai_std_time_is_leap_year(year: Int) -> Bool {
+    if year % 4 != 0 {
+        return false
+    }
+    if year % 100 != 0 {
+        return true
+    }
+    return year % 400 == 0
+}
+
+fn __kai_std_time_days_in_month(year: Int, month: Int) -> Int {
+    if month < 1 || month > 12 {
+        return 0
+    }
+    if month == 2 {
+        if __kai_std_time_is_leap_year(year) {
+            return 29
+        }
+        return 28
+    }
+    if month == 4 || month == 6 || (month == 9 || month == 11) {
+        return 30
+    }
+    return 31
+}
+
+fn __kai_std_time_rfc_date_core(text: Str) -> Int {
+    if strlen((text) as Str) != 10 {
+        return 0
+    }
+    if text[4] != Char(45) || text[7] != Char(45) {
+        return 0
+    }
+    var index: Int = 0
+    while index < 10 {
+        if index != 4 && index != 7 {
+            if !__kai_std_time_rfc_is_digit(text[index]) {
+                return 0
+            }
+        }
+        index = index + 1
+    }
+    let year: Int = __kai_std_time_rfc_digit(text[0]) * 1000 + __kai_std_time_rfc_digit(text[1]) * 100 + __kai_std_time_rfc_digit(text[2]) * 10 + __kai_std_time_rfc_digit(text[3])
+    let month: Int = __kai_std_time_rfc_digit(text[5]) * 10 + __kai_std_time_rfc_digit(text[6])
+    let day: Int = __kai_std_time_rfc_digit(text[8]) * 10 + __kai_std_time_rfc_digit(text[9])
+    let max_day: Int = __kai_std_time_days_in_month(year, month)
+    if max_day == 0 || (day < 1 || day > max_day) {
+        return 0
+    }
+    return 4294967296 + (year as Int) * 65536 + (month as Int) * 256 + (day as Int)
+}
+
+fn __kai_std_time_rfc_time_core(text: Str) -> Int {
+    let len: Int = strlen((text) as Str)
+    if len < 9 {
+        return 0
+    }
+    if text[2] != Char(58) || text[5] != Char(58) {
+        return 0
+    }
+    var index: Int = 0
+    while index < 8 {
+        if index != 2 && index != 5 {
+            if !__kai_std_time_rfc_is_digit(text[index]) {
+                return 0
+            }
+        }
+        index = index + 1
+    }
+    let hh: Int = __kai_std_time_rfc_digit(text[0]) * 10 + __kai_std_time_rfc_digit(text[1])
+    let mm: Int = __kai_std_time_rfc_digit(text[3]) * 10 + __kai_std_time_rfc_digit(text[4])
+    let ss: Int = __kai_std_time_rfc_digit(text[6]) * 10 + __kai_std_time_rfc_digit(text[7])
+    if hh > 23 || (mm > 59 || ss > 60) {
+        return 0
+    }
+    var pos: Int = 8
+    if text[pos] == Char(46) {
+        pos = pos + 1
+        var fraction_digits: Int = 0
+        while pos < len && __kai_std_time_rfc_is_digit(text[pos]) {
+            fraction_digits = fraction_digits + 1
+            pos = pos + 1
+        }
+        if fraction_digits == 0 {
+            return 0
+        }
+    }
+    if pos >= len {
+        return 0
+    }
+    var offset_minutes: Int = 0
+    let marker: Char = text[pos]
+    if marker == Char(90) || marker == Char(122) {
+        if pos + 1 != len {
+            return 0
+        }
+    } else if marker == Char(43) || marker == Char(45) {
+        if pos + 6 != len {
+            return 0
+        }
+        if text[pos + 3] != Char(58) {
+            return 0
+        }
+        if !__kai_std_time_rfc_is_digit(text[pos + 1]) || (!__kai_std_time_rfc_is_digit(text[pos + 2]) || (!__kai_std_time_rfc_is_digit(text[pos + 4]) || !__kai_std_time_rfc_is_digit(text[pos + 5]))) {
+            return 0
+        }
+        let oh: Int = __kai_std_time_rfc_digit(text[pos + 1]) * 10 + __kai_std_time_rfc_digit(text[pos + 2])
+        let om: Int = __kai_std_time_rfc_digit(text[pos + 4]) * 10 + __kai_std_time_rfc_digit(text[pos + 5])
+        if oh > 23 || om > 59 {
+            return 0
+        }
+        offset_minutes = (oh as Int) * 60 + (om as Int)
+        if marker == Char(45) {
+            offset_minutes = 0 - offset_minutes
+        }
+    } else {
+        return 0
+    }
+    if ss == 60 {
+        var normalized: Int = (hh as Int) * 60 + (mm as Int) - offset_minutes
+        normalized = normalized % 1440
+        if normalized < 0 {
+            normalized = normalized + 1440
+        }
+        if normalized != 1439 {
+            return 0
+        }
+    }
+    return 1099511627776 + (hh as Int) * 4294967296 + (mm as Int) * 16777216 + (ss as Int) * 65536 + ((offset_minutes + 1440) as Int)
+}
+
+fn __kai_std_time_is_rfc3339_date(text: Str) -> Bool {
+    return __kai_std_time_rfc_date_core(text) != 0
+}
+
+fn __kai_std_time_is_rfc3339_time(text: Str) -> Bool {
+    return __kai_std_time_rfc_time_core(text) != 0
+}
+
+fn __kai_std_time_rfc_datetime_split(text: Str) -> Int {
+    let len: Int = strlen((text) as Str)
+    if len < 11 {
+        return 0
+    }
+    if text[10] == Char(84) || text[10] == Char(116) {
+        return 10
+    }
+    return 0
+}
+
+fn __kai_std_time_is_rfc3339_datetime(text: Str) -> Bool {
+    let split: Int = __kai_std_time_rfc_datetime_split(text)
+    if split == 0 {
+        return false
+    }
+    if __kai_std_time_rfc_date_core(text[..split]) == 0 {
+        return false
+    }
+    return __kai_std_time_rfc_time_core(text[split + 1..]) != 0
+}
+
+fn __kai_std_time_days_from_civil(year: Int, month: Int, day: Int) -> Int {
+    var y: Int = year
+    if month <= 2 {
+        y = y - 1
+    }
+    var era: Int = y
+    if era < 0 {
+        era = era - 399
+    }
+    era = era / 400
+    let yoe: Int = y - era * 400
+    var mp: Int = month + 9
+    if month > 2 {
+        mp = month - 3
+    }
+    let doy: Int = (153 * mp + 2) / 5 + day - 1
+    let doe: Int = yoe * 365 + yoe / 4 - yoe / 100 + doy
+    return era * 146097 + doe - 719468
+}
+
+fn __kai_std_time_parse_rfc3339_datetime_or(text: Str, fallback: Int) -> Int {
+    let split: Int = __kai_std_time_rfc_datetime_split(text)
+    if split == 0 {
+        return fallback
+    }
+    let date: Int = __kai_std_time_rfc_date_core(text[..split])
+    if date == 0 {
+        return fallback
+    }
+    let clock: Int = __kai_std_time_rfc_time_core(text[split + 1..])
+    if clock == 0 {
+        return fallback
+    }
+    let year: Int = ((date / 65536) % 65536) as Int
+    let month: Int = ((date / 256) % 256) as Int
+    let day: Int = (date % 256) as Int
+    let hh: Int = ((clock / 4294967296) % 256) as Int
+    let mm: Int = ((clock / 16777216) % 256) as Int
+    var ss: Int = ((clock / 65536) % 256) as Int
+    if ss == 60 {
+        ss = 59
+    }
+    let offset_minutes: Int = ((clock % 65536) as Int) - 1440
+    let days: Int = __kai_std_time_days_from_civil(year, month, day)
+    return days * 86400 + hh * 3600 + mm * 60 + ss - offset_minutes * 60
+}
+
+fn __kai_std_time_write_i64_unit(buffer: *Char, value: Int, unit: Str) -> ?Str {
+    var digits_storage: [24]Char = [Char(0); 24]
+    let digits: ?Str = __kai_std_fmt_int(digits_storage, value)
+    if digits == none {
+        return none
+    }
+    let wrote_digits: ?Int = __kai_std_io_write_span(buffer, 0, (digits catch ""))
+    if wrote_digits == none {
+        return none
+    }
+    let wrote_unit: ?Int = __kai_std_io_write_span(buffer, (wrote_digits catch 0), unit)
+    if wrote_unit == none {
+        return none
+    }
+    return buffer[..(wrote_unit catch 0)]
+}
+
+fn __kai_std_time_write_duration_ns(buffer: *Char, value: Duration) -> ?Str {
+    return __kai_std_time_write_i64_unit(buffer, __kai_std_time_as_ns(value), "ns")
+}
+
+fn __kai_std_time_write_duration_ms(buffer: *Char, value: Duration) -> ?Str {
+    let ns: Int = __kai_std_time_as_ns(value)
+    let quotient: Int = ns / 1000000
+    let remainder: Int = ns % 1000000
+    var milliseconds: Int = quotient
+    if ns < 0 && remainder != 0 {
+        milliseconds = quotient - 1
+    }
+    return __kai_std_time_write_i64_unit(buffer, milliseconds, "ms")
+}
+
+fn __kai_std_time_write_duration_seconds(buffer: *Char, value: Duration) -> ?Str {
+    return __kai_std_time_write_i64_unit(buffer, __kai_std_time_as_seconds_floor(value), "s")
+}
