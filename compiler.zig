@@ -1,5 +1,54 @@
 const std = @import("std");
 //const builtin = @import("builtin");
+const builtin_mod = @import("builtin");
+
+// Automatically export custom mmap/munmap compatibility layers if targeting Windows
+comptime {
+    if (builtin_mod.os.tag == .windows) {
+        @export(&windows_mmap, .{ .name = "mmap", .linkage = .strong });
+        @export(&windows_munmap, .{ .name = "munmap", .linkage = .strong });
+    }
+}
+
+// Windows native memory definitions
+const MEM_COMMIT = 0x00001000;
+const MEM_RESERVE = 0x00002000;
+const PAGE_READWRITE = 0x04;
+const MEM_RELEASE = 0x00008000;
+
+fn windows_mmap(addr: ?*anyopaque, alloc_length: usize, prot: c_int, flags: c_int, fd: c_int, offset: i64) callconv(.c) ?*anyopaque {
+    _ = addr;
+    _ = prot;
+    _ = flags;
+    _ = fd;
+    _ = offset;
+
+    const result = std.os.windows.kernel32.VirtualAlloc(
+        null,
+        alloc_length,
+        MEM_COMMIT | MEM_RESERVE,
+        PAGE_READWRITE,
+    );
+
+    // Windows VirtualAlloc returns null on failure, not a Zig error union
+    if (result == null) return null;
+    return result;
+}
+
+fn windows_munmap(addr: ?*anyopaque, alloc_length: usize) callconv(.c) c_int {
+    _ = alloc_length;
+    if (addr == null) return 0;
+
+    const result = std.os.windows.kernel32.VirtualFree(
+        addr.?,
+        0,
+        MEM_RELEASE,
+    );
+
+    // Windows VirtualFree returns 0 (FALSE) on failure
+    if (result == 0) return -1;
+    return 0;
+}
 
 //
 pub const __builtin_bswap16 = @import("std").zig.c_builtins.__builtin_bswap16;
@@ -1074,21 +1123,34 @@ pub fn isascii(arg__c: c_int) callconv(.c) c_int {
     _ = &_c;
     return @intFromBool((_c & ~@as(c_int, 127)) == @as(c_int, 0));
 }
-pub extern fn __maskrune(__darwin_ct_rune_t, c_ulong) c_int;
-pub fn __istype(arg__c: __darwin_ct_rune_t, arg__f: c_ulong) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    var _f = arg__f;
-    _ = &_f;
-    return if (isascii(_c) != 0) @intFromBool(!!((@as(c_ulong, @bitCast(@as(c_ulong, _DefaultRuneLocale.__runetype[@as(c_uint, @intCast(_c))]))) & _f) != 0)) else @intFromBool(!!(__maskrune(_c, _f) != 0));
+// 1. REMOVE the "pub extern fn __maskrune" line entirely.
+
+// 2. PASTE this platform-agnostic replacement for __istype:
+pub fn __istype(arg__c: c_int, arg__f: c_ulong) callconv(.c) c_int {
+    if (arg__c < 0 or arg__c > 127) return 0;
+    const u_c: u8 = @intCast(arg__c);
+
+    // We removed the local 'const' definitions here.
+    // The function now safely uses the global _CTYPE_* constants.
+    var matched = false;
+    if ((arg__f & _CTYPE_A) != 0) matched = matched or std.ascii.isAlphabetic(u_c);
+    if ((arg__f & _CTYPE_C) != 0) matched = matched or std.ascii.isControl(u_c);
+    if ((arg__f & _CTYPE_D) != 0) matched = matched or std.ascii.isDigit(u_c);
+    if ((arg__f & _CTYPE_G) != 0) matched = matched or (std.ascii.isPrint(u_c) and u_c != ' ');
+    if ((arg__f & _CTYPE_L) != 0) matched = matched or std.ascii.isLower(u_c);
+    if ((arg__f & _CTYPE_P) != 0) matched = matched or (std.ascii.isPrint(u_c) and !std.ascii.isAlphanumeric(u_c) and u_c != ' ');
+    if ((arg__f & _CTYPE_S) != 0) matched = matched or std.ascii.isWhitespace(u_c);
+    if ((arg__f & _CTYPE_U) != 0) matched = matched or std.ascii.isUpper(u_c);
+    if ((arg__f & _CTYPE_X) != 0) matched = matched or std.ascii.isHex(u_c);
+    if ((arg__f & _CTYPE_B) != 0) matched = matched or (u_c == ' ' or u_c == '\t');
+
+    return if (matched) 1 else 0;
 }
-pub fn __isctype(arg__c: __darwin_ct_rune_t, arg__f: c_ulong) callconv(.c) __darwin_ct_rune_t {
-    var _c = arg__c;
-    _ = &_c;
-    var _f = arg__f;
-    _ = &_f;
-    return if ((_c < @as(c_int, 0)) or (_c >= (@as(c_int, 1) << @intCast(8)))) @as(c_int, 0) else @intFromBool(!!((@as(c_ulong, @bitCast(@as(c_ulong, _DefaultRuneLocale.__runetype[@as(c_uint, @intCast(_c))]))) & _f) != 0));
+
+pub fn __isctype(arg__c: c_int, arg__f: c_ulong) callconv(.c) c_int {
+    return __istype(arg__c, arg__f);
 }
+
 pub extern fn __toupper(__darwin_ct_rune_t) __darwin_ct_rune_t;
 pub extern fn __tolower(__darwin_ct_rune_t) __darwin_ct_rune_t;
 pub fn __wcwidth(arg__c: __darwin_ct_rune_t) callconv(.c) c_int {
@@ -1097,7 +1159,7 @@ pub fn __wcwidth(arg__c: __darwin_ct_rune_t) callconv(.c) c_int {
     var _x: c_uint = undefined;
     _ = &_x;
     if (_c == @as(c_int, 0)) return @as(c_int, 0);
-    _x = @as(c_uint, @bitCast(__maskrune(_c, @as(c_ulong, @bitCast(@as(c_long, 3758096384) | @as(c_long, 262144))))));
+    _x = @as(c_uint, @intCast(__istype(_c, @as(c_ulong, 3758096384 | 262144))));
     if ((@as(c_long, @bitCast(@as(c_ulong, _x))) & @as(c_long, 3758096384)) != @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) return @as(c_int, @bitCast(@as(c_int, @truncate((@as(c_long, @bitCast(@as(c_ulong, _x))) & @as(c_long, 3758096384)) >> @intCast(30)))));
     return if ((@as(c_long, @bitCast(@as(c_ulong, _x))) & @as(c_long, 262144)) != @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, 1) else -@as(c_int, 1);
 }
@@ -1167,19 +1229,23 @@ pub fn toascii(arg__c: c_int) callconv(.c) c_int {
     return _c & @as(c_int, 127);
 }
 pub fn tolower(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __tolower(_c);
+    if (arg__c >= 0 and arg__c <= 127) {
+        return @as(c_int, std.ascii.toLower(@intCast(arg__c)));
+    }
+    return arg__c;
 }
+
 pub fn toupper(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __toupper(_c);
+    if (arg__c >= 0 and arg__c <= 127) {
+        return @as(c_int, std.ascii.toUpper(@intCast(arg__c)));
+    }
+    return arg__c;
 }
+
 pub fn digittoint(arg__c: c_int) callconv(.c) c_int {
     var _c = arg__c;
     _ = &_c;
-    return __maskrune(_c, @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 15)))));
+    return __istype(_c, @as(c_ulong, 15));
 }
 pub fn ishexnumber(arg__c: c_int) callconv(.c) c_int {
     var _c = arg__c;
@@ -3630,7 +3696,7 @@ pub export fn KaiAllocator_init() KaiAllocator {
     };
     _ = &self;
     {
-        var ptr: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(mmap(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrFromInt(@as(c_int, 0))))), @as(usize, @bitCast(@as(c_long, @as(c_int, 4096)))), @as(c_int, 3), @as(c_int, 4098), -@as(c_int, 1), @as(off_t, @bitCast(@as(c_longlong, @as(c_int, 0))))))));
+        var ptr: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(mmap(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrFromInt(@as(usize, 0))))), @as(usize, 4096), @as(c_int, 3), @as(c_int, 4098), -@as(c_int, 1), @as(off_t, 0)))));
         _ = &ptr;
         self.heads = ptr;
         self.used = 0;
@@ -3673,7 +3739,7 @@ pub export fn KaiAllocator_allocate_slab(arg_self: [*c]KaiAllocator, arg_idx: i6
     var idx = arg_idx;
     _ = &idx;
     {
-        var raw: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(mmap(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrFromInt(@as(c_int, 0))))), @as(usize, @bitCast(@as(c_long, @as(c_int, 131072)))), @as(c_int, 3), @as(c_int, 4098), -@as(c_int, 1), @as(off_t, @bitCast(@as(c_longlong, @as(c_int, 0))))))));
+        var raw: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(mmap(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrFromInt(@as(usize, 0))))), @as(usize, 131072), @as(c_int, 3), @as(c_int, 4098), -@as(c_int, 1), @as(off_t, 0)))));
         _ = &raw;
         if (@as(i64, @intCast(@intFromPtr(raw))) == @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))))) {
             return @as([*c]u8, @ptrFromInt(@as(c_int, 0)));
@@ -3685,14 +3751,14 @@ pub export fn KaiAllocator_allocate_slab(arg_self: [*c]KaiAllocator, arg_idx: i6
         var before: i64 = aligned_addr - @as(i64, @intCast(@intFromPtr(raw)));
         _ = &before;
         if (before > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-            _ = munmap(@as(?*anyopaque, @ptrCast(raw)), @as(usize, @bitCast(@as(c_long, @truncate(before)))));
+            _ = munmap(@as(?*anyopaque, @ptrCast(raw)), @as(usize, @intCast(before)));
         }
         var after_start: i64 = aligned_addr + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 65536))));
         _ = &after_start;
         var after_len: i64 = (@as(i64, @intCast(@intFromPtr(raw))) + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 131072))))) - after_start;
         _ = &after_len;
         if (after_len > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-            _ = munmap(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrFromInt(@as(usize, @intCast(after_start)))))), @as(usize, @bitCast(@as(c_long, @truncate(after_len)))));
+            _ = munmap(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrFromInt(@as(usize, @intCast(after_start)))))), @as(usize, @intCast(after_len)));
         }
         var objsz: i64 = class_obj_size(idx);
         _ = &objsz;
@@ -3720,7 +3786,7 @@ pub export fn KaiAllocator_alloc_large(arg_self: [*c]KaiAllocator, arg_size: i64
         _ = &total;
         var page_aligned: i64 = page_align_up(total);
         _ = &page_aligned;
-        var raw: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(mmap(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrFromInt(@as(c_int, 0))))), @as(usize, @bitCast(@as(c_long, @truncate(page_aligned + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 65536)))))))), @as(c_int, 3), @as(c_int, 4098), -@as(c_int, 1), @as(off_t, @bitCast(@as(c_longlong, @as(c_int, 0))))))));
+        var raw: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(mmap(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrFromInt(@as(usize, 0))))), @as(usize, @intCast(page_aligned + 65536)), @as(c_int, 3), @as(c_int, 4098), -@as(c_int, 1), @as(off_t, 0)))));
         _ = &raw;
         if (@as(i64, @intCast(@intFromPtr(raw))) == @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))))) {
             return @as([*c]u8, @ptrFromInt(@as(c_int, 0)));
@@ -3750,7 +3816,7 @@ pub export fn KaiAllocator_free_large(arg_self: [*c]KaiAllocator, arg_ptr: [*c]u
         var mmap_size: i64 = page_align_up(orig_size + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 16))))) + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 65536))));
         _ = &mmap_size;
         self.*.used = self.*.used - orig_size;
-        _ = munmap(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrFromInt(@as(usize, @intCast(raw_ptr)))))), @as(usize, @bitCast(@as(c_long, @truncate(mmap_size)))));
+        _ = munmap(@ptrFromInt(@as(usize, @intCast(raw_ptr))), @as(usize, @intCast(mmap_size)));
     }
 }
 pub export fn KaiAllocator_alloc(arg_self: [*c]KaiAllocator, arg_size: i64, arg_align: i64) [*c]u8 {
@@ -3909,14 +3975,14 @@ pub export fn KaiAllocator_deinit(arg_self: [*c]KaiAllocator) void {
             while (slab != @as([*c]u8, @ptrFromInt(@as(c_int, 0)))) {
                 var next: [*c]u8 = @as([*c]SlabHeader, @ptrCast(@alignCast(slab))).*.next;
                 _ = &next;
-                _ = munmap(@as(?*anyopaque, @ptrCast(slab)), @as(usize, @bitCast(@as(c_long, @as(c_int, 65536)))));
+                _ = munmap(@as(?*anyopaque, @ptrCast(slab)), @as(usize, 65536));
                 slab = next;
             }
         }
         i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
     }
     {
-        _ = munmap(@as(?*anyopaque, @ptrCast(self.*.heads)), @as(usize, @bitCast(@as(c_long, @truncate(page_align_up(@as(i64, @bitCast(@as(c_longlong, @as(c_int, 96))))))))));
+        _ = munmap(@as(?*anyopaque, @ptrCast(self.*.heads)), @as(usize, @intCast(page_align_up(96))));
     }
 }
 pub export fn read_to_string(arg_allocator: [*c]KaiAllocator, arg_path: [*c]const u8) Result_Str_IoError {
