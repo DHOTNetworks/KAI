@@ -1,0 +1,306 @@
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_mem_copy_items<T>(dst: *T, src: *T) -> Int {
+    var count: Int = strlen((src) as Str)
+    let capacity: Int = strlen((dst) as Str)
+    if count > capacity {
+        count = capacity
+    }
+    var index: Int = 0
+    while index < count {
+        dst[index] = src[index]
+        index = index + 1
+    }
+    return count
+}
+
+fn __kai_std_mem_fill_items<T>(dst: *T, value: T) -> Int {
+    var index: Int = 0
+    let len: Int = strlen((dst) as Str)
+    while index < len {
+        dst[index] = value
+        index = index + 1
+    }
+    return len
+}
+
+fn __kai_std_mem_contains<T>(items: *T, needle: T) -> Bool {
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] == needle {
+            return true
+        }
+        index = index + 1
+    }
+    return false
+}
+
+fn __kai_std_mem_compare_i32(left: *Int, right: *Int) -> Int {
+    var index: Int = 0
+    let left_len: Int = strlen((left) as Str)
+    let right_len: Int = strlen((right) as Str)
+    while index < left_len && index < right_len {
+        if left[index] < right[index] {
+            return -1
+        }
+        if left[index] > right[index] {
+            return 1
+        }
+        index = index + 1
+    }
+    if left_len < right_len {
+        return -1
+    }
+    if left_len > right_len {
+        return 1
+    }
+    return 0
+}
+
+fn __kai_std_mem_compare_u32(left: *Int, right: *Int) -> Int {
+    var index: Int = 0
+    let left_len: Int = strlen((left) as Str)
+    let right_len: Int = strlen((right) as Str)
+    while index < left_len && index < right_len {
+        if left[index] < right[index] {
+            return -1
+        }
+        if left[index] > right[index] {
+            return 1
+        }
+        index = index + 1
+    }
+    if left_len < right_len {
+        return -1
+    }
+    if left_len > right_len {
+        return 1
+    }
+    return 0
+}
+
+fn __kai_std_mem_compare_usize(left: *Int, right: *Int) -> Int {
+    var index: Int = 0
+    let left_len: Int = strlen((left) as Str)
+    let right_len: Int = strlen((right) as Str)
+    while index < left_len && index < right_len {
+        if left[index] < right[index] {
+            return -1
+        }
+        if left[index] > right[index] {
+            return 1
+        }
+        index = index + 1
+    }
+    if left_len < right_len {
+        return -1
+    }
+    if left_len > right_len {
+        return 1
+    }
+    return 0
+}
+
+fn __kai_std_mem_compare_u8(left: Str, right: Str) -> Int {
+    var index: Int = 0
+    let left_len: Int = strlen((left) as Str)
+    let right_len: Int = strlen((right) as Str)
+    while index < left_len && index < right_len {
+        if left[index] < right[index] {
+            return -1
+        }
+        if left[index] > right[index] {
+            return 1
+        }
+        index = index + 1
+    }
+    if left_len < right_len {
+        return -1
+    }
+    if left_len > right_len {
+        return 1
+    }
+    return 0
+}
+
+fn __kai_std_mem_compare_bytes(left: Str, right: Str) -> Int {
+    return __kai_std_mem_compare_u8(left, right)
+}
+
+fn __kai_std_mem_starts_with<T>(items: *T, prefix_items: *T) -> Bool {
+    let prefix_len: Int = strlen((prefix_items) as Str)
+    if prefix_len > strlen((items) as Str) {
+        return false
+    }
+    var index: Int = 0
+    while index < prefix_len {
+        if items[index] != prefix_items[index] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_mem_ends_with<T>(items: *T, suffix_items: *T) -> Bool {
+    let suffix_len: Int = strlen((suffix_items) as Str)
+    let item_len: Int = strlen((items) as Str)
+    if suffix_len > item_len {
+        return false
+    }
+    let offset: Int = item_len - suffix_len
+    var index: Int = 0
+    while index < suffix_len {
+        if items[offset + index] != suffix_items[index] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_mem_split_before<T>(items: *T, delimiter: T) -> *T {
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] == delimiter {
+            return items[..index]
+        }
+        index = index + 1
+    }
+    return items
+}
+
+fn __kai_std_mem_split_after<T>(items: *T, delimiter: T) -> *T {
+    var index: Int = 0
+    while index < strlen((items) as Str) {
+        if items[index] == delimiter {
+            return items[index + 1..]
+        }
+        index = index + 1
+    }
+    return items[strlen((items) as Str)..]
+}
+
+fn __kai_std_mem_is_empty<T>(items: *T) -> Bool {
+    return strlen((items) as Str) == 0
+}
+
+fn __kai_std_mem_prefix<T>(items: *T, count: Int) -> *T {
+    var end: Int = count
+    if end > strlen((items) as Str) {
+        end = strlen((items) as Str)
+    }
+    return items[..end]
+}
+
+fn __kai_std_mem_drop_prefix<T>(items: *T, count: Int) -> *T {
+    var start: Int = count
+    if start > strlen((items) as Str) {
+        start = strlen((items) as Str)
+    }
+    return items[start..]
+}
+
+fn __kai_std_mem_suffix<T>(items: *T, count: Int) -> *T {
+    let length: Int = strlen((items) as Str)
+    var start: Int = 0
+    if count < length {
+        start = length - count
+    }
+    return items[start..]
+}
+
+fn __kai_std_mem_drop_suffix<T>(items: *T, count: Int) -> *T {
+    var end: Int = strlen((items) as Str)
+    if count < end {
+        end = end - count
+    } else {
+        end = 0
+    }
+    return items[..end]
+}
+
+fn __kai_std_mem_slice<T>(items: *T, start: Int, count: Int) -> *T {
+    let length: Int = strlen((items) as Str)
+    var begin: Int = start
+    if begin > length {
+        begin = length
+    }
+    var end: Int = begin + count
+    if end < begin || end > length {
+        end = length
+    }
+    return items[begin..end]
+}
+
+fn __kai_std_mem_chunk_count<T>(items: *T, chunk_size: Int) -> Int {
+    if chunk_size == 0 {
+        return 0
+    }
+    let length: Int = strlen((items) as Str)
+    let full: Int = length / chunk_size
+    if length % chunk_size == 0 {
+        return full
+    }
+    return full + 1
+}
+
+fn __kai_std_mem_chunk<T>(items: *T, chunk_index: Int, chunk_size: Int) -> *T {
+    let count: Int = __kai_std_mem_chunk_count(items, chunk_size)
+    let length: Int = strlen((items) as Str)
+    if chunk_index >= count {
+        return items[length..]
+    }
+    let start: Int = chunk_index * chunk_size
+    return __kai_std_mem_slice(items, start, chunk_size)
+}
+
+fn __kai_std_mem_window_count<T>(items: *T, window_size: Int) -> Int {
+    if window_size == 0 {
+        return 0
+    }
+    let length: Int = strlen((items) as Str)
+    if window_size > length {
+        return 0
+    }
+    return length - window_size + 1
+}
+
+fn __kai_std_mem_window<T>(items: *T, window_index: Int, window_size: Int) -> *T {
+    let count: Int = __kai_std_mem_window_count(items, window_size)
+    let length: Int = strlen((items) as Str)
+    if window_index >= count {
+        return items[length..]
+    }
+    return __kai_std_mem_slice(items, window_index, window_size)
+}
+
+fn __kai_std_mem_advance<T>(items: *T, cursor: Int, count: Int) -> Int {
+    let length: Int = strlen((items) as Str)
+    if cursor >= length {
+        return length
+    }
+    let next: Int = cursor + count
+    if next < cursor || next > length {
+        return length
+    }
+    return next
+}
+
+fn __kai_std_mem_cursor_done<T>(items: *T, cursor: Int) -> Bool {
+    return cursor >= strlen((items) as Str)
+}
+
+fn __kai_std_mem_remaining<T>(items: *T, cursor: Int) -> *T {
+    return __kai_std_mem_drop_prefix(items, cursor)
+}
+
+fn __kai_std_mem_cursor_chunk<T>(items: *T, cursor: Int, count: Int) -> *T {
+    return __kai_std_mem_slice(items, cursor, count)
+}

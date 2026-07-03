@@ -60,7 +60,6 @@ int64_t get_exe_dir(char* out_buf, int64_t max_len) {
 /* C FFI Imports */
 #include "std/fs/fs.h"
 
-static inline void print_int(int64_t i) { printf("%lld\n", (long long)i); }
 __thread void* _kai_current_allocator = NULL;
 void _kai_set_current_allocator(void* allocator);
 char* _kai_str_concat(const char* l, const char* r);
@@ -1114,12 +1113,7 @@ char* _kai_str_concat(const char* l, const char* r) {
     size_t l1 = strlen(l);
     size_t l2 = strlen(r);
     size_t total = l1 + l2 + 1;
-    char* buf = NULL;
-    if (_kai_current_allocator) {
-        buf = KaiAllocator_alloc((KaiAllocator*)_kai_current_allocator, total, 1);
-    } else {
-        buf = malloc(total);
-    }
+    char* buf = malloc(total);
     if (buf) { strcpy(buf, l); strcat(buf, r); }
     return buf;
 }
@@ -9578,7 +9572,7 @@ int main(int argc, char** argv) {
     return 1;
 }
 } else {
-    const char* main_content = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("// ", project_path), "\n// Entry point\n\nfn main() Int {\n    printf(\"hello from "), project_path), "\\n\")\n    return 0\n}\n");
+    const char* main_content = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("// ", project_path), "\n// Imports\nimport std.io.print\n\n// Entry point\n\nfn main() Int {\n    printf(\"Hello! from "), project_path), "\\n\")\n    return 0\n}\n");
     Result_Bool_IoError write_res = write_string(_kai_str_concat(src_dir, "/main.kai"), main_content);
     if (write_res.tag != 0) {
     printf("Error: Could not write main.kai\n");

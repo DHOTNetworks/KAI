@@ -1,0 +1,120 @@
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_text_is_ascii(text: Str) -> Bool {
+    var index: Int = 0
+    while index < strlen((text) as Str) {
+        if text[index] >= Char(128) {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_text_utf8_sequence_len(first: Char) -> Int {
+    if first < Char(128) {
+        return 1
+    }
+    if first >= Char(194) && first <= Char(223) {
+        return 2
+    }
+    if first >= Char(224) && first <= Char(239) {
+        return 3
+    }
+    if first >= Char(240) && first <= Char(244) {
+        return 4
+    }
+    return 0
+}
+
+fn __kai_std_text_is_cont(byte: Char) -> Bool {
+    return byte >= Char(128) && byte <= Char(191)
+}
+
+fn __kai_std_text_utf8_valid(text: Str) -> Bool {
+    var index: Int = 0
+    while index < strlen((text) as Str) {
+        let first: Char = text[index]
+        let width: Int = __kai_std_text_utf8_sequence_len(first)
+        if width == 0 || index + width > strlen((text) as Str) {
+            return false
+        }
+        if width == 2 {
+            if !__kai_std_text_is_cont(text[index + 1]) {
+                return false
+            }
+        } else if width == 3 {
+            let second: Char = text[index + 1]
+            if !__kai_std_text_is_cont(second) || !__kai_std_text_is_cont(text[index + 2]) {
+                return false
+            }
+            if first == Char(224) && second < Char(160) {
+                return false
+            }
+            if first == Char(237) && second > Char(159) {
+                return false
+            }
+        } else if width == 4 {
+            let second: Char = text[index + 1]
+            if !__kai_std_text_is_cont(second) || !__kai_std_text_is_cont(text[index + 2]) || !__kai_std_text_is_cont(text[index + 3]) {
+                return false
+            }
+            if first == Char(240) && second < Char(144) {
+                return false
+            }
+            if first == Char(244) && second > Char(143) {
+                return false
+            }
+        }
+        index = index + width
+    }
+    return true
+}
+
+fn __kai_std_text_utf8_len(text: Str) -> ?Int {
+    var index: Int = 0
+    var count: Int = 0
+    while index < strlen((text) as Str) {
+        let first: Char = text[index]
+        let width: Int = __kai_std_text_utf8_sequence_len(first)
+        if width == 0 || index + width > strlen((text) as Str) {
+            return none
+        }
+        if width == 2 {
+            if !__kai_std_text_is_cont(text[index + 1]) {
+                return none
+            }
+        } else if width == 3 {
+            let second: Char = text[index + 1]
+            if !__kai_std_text_is_cont(second) || !__kai_std_text_is_cont(text[index + 2]) {
+                return none
+            }
+            if first == Char(224) && second < Char(160) {
+                return none
+            }
+            if first == Char(237) && second > Char(159) {
+                return none
+            }
+        } else if width == 4 {
+            let second: Char = text[index + 1]
+            if !__kai_std_text_is_cont(second) || !__kai_std_text_is_cont(text[index + 2]) || !__kai_std_text_is_cont(text[index + 3]) {
+                return none
+            }
+            if first == Char(240) && second < Char(144) {
+                return none
+            }
+            if first == Char(244) && second > Char(143) {
+                return none
+            }
+        }
+        index = index + width
+        count = count + 1
+    }
+    return count
+}

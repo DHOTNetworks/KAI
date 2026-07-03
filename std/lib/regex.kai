@@ -1,0 +1,1732 @@
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_regex_pow2_u8(exp: Int) -> Char {
+    var value: Char = 1
+    var index: Int = 0
+    while index < exp {
+        value = value * Char(2)
+        index = index + 1
+    }
+    return value
+}
+
+fn __kai_std_regex_bit_get(bits: Str, index: Int) -> Bool {
+    let slot: Int = index / 8
+    if slot >= strlen((bits) as Str) {
+        return false
+    }
+    let unit: Char = __kai_std_regex_pow2_u8(index % 8)
+    return (bits[slot] / unit) % Char(2) == Char(1)
+}
+
+fn __kai_std_regex_bit_set(bits: *Char, index: Int) -> Bool {
+    let slot: Int = index / 8
+    if slot >= strlen((bits) as Str) {
+        return false
+    }
+    let unit: Char = __kai_std_regex_pow2_u8(index % 8)
+    if (bits[slot] / unit) % Char(2) == Char(1) {
+        return false
+    }
+    bits[slot] = bits[slot] + unit
+    return true
+}
+
+fn __kai_std_regex_bit_mark(bits: *Char, index: Int) -> Void {
+    let changed: Bool = __kai_std_regex_bit_set(bits, index)
+    if changed {
+        return
+    }
+}
+
+fn __kai_std_regex_decode(text: Str, index: Int) -> Int {
+    let len: Int = strlen((text) as Str)
+    if index >= len {
+        return 0
+    }
+    let first: Char = text[index]
+    if first < Char(128) {
+        return 4294967296 + (first as Int)
+    }
+    if first >= Char(194) && first <= Char(223) {
+        if index + 2 > len {
+            return 0
+        }
+        let second: Char = text[index + 1]
+        if second < Char(128) || second > Char(191) {
+            return 0
+        }
+        let cp: Int = ((first as Int) - 192) * 64 + ((second as Int) - 128)
+        return 2 * 4294967296 + cp
+    }
+    if first >= Char(224) && first <= Char(239) {
+        if index + 3 > len {
+            return 0
+        }
+        let second: Char = text[index + 1]
+        let third: Char = text[index + 2]
+        if second < Char(128) || second > Char(191) || (third < Char(128) || third > Char(191)) {
+            return 0
+        }
+        if first == Char(224) && second < Char(160) {
+            return 0
+        }
+        if first == Char(237) && second > Char(159) {
+            return 0
+        }
+        let cp: Int = ((first as Int) - 224) * 4096 + ((second as Int) - 128) * 64 + ((third as Int) - 128)
+        return 3 * 4294967296 + cp
+    }
+    if first >= Char(240) && first <= Char(244) {
+        if index + 4 > len {
+            return 0
+        }
+        let second: Char = text[index + 1]
+        let third: Char = text[index + 2]
+        let fourth: Char = text[index + 3]
+        if second < Char(128) || second > Char(191) {
+            return 0
+        }
+        if third < Char(128) || third > Char(191) || (fourth < Char(128) || fourth > Char(191)) {
+            return 0
+        }
+        if first == Char(240) && second < Char(144) {
+            return 0
+        }
+        if first == Char(244) && second > Char(143) {
+            return 0
+        }
+        let cp: Int = ((first as Int) - 240) * 262144 + ((second as Int) - 128) * 4096 + ((third as Int) - 128) * 64 + ((fourth as Int) - 128)
+        return 4 * 4294967296 + cp
+    }
+    return 0
+}
+
+fn __kai_std_regex_decode_width(joined: Int) -> Int {
+    return (joined / 4294967296) as Int
+}
+
+fn __kai_std_regex_decode_cp(joined: Int) -> Int {
+    return (joined % 4294967296) as Int
+}
+
+fn __kai_std_regex_emit_byte(buffer: *Char, bpos: Int, limit: Int, value: Char) -> Int {
+    if bpos == 16777215 || bpos >= limit {
+        return 16777215
+    }
+    buffer[bpos] = value
+    return bpos + 1
+}
+
+fn __kai_std_regex_emit_u16(buffer: *Char, bpos: Int, limit: Int, value: Int) -> Int {
+    if bpos == 16777215 || bpos + 2 > limit {
+        return 16777215
+    }
+    buffer[bpos] = (value % 256) as Char
+    buffer[bpos + 1] = ((value / 256) % 256) as Char
+    return bpos + 2
+}
+
+fn __kai_std_regex_emit_u32(buffer: *Char, bpos: Int, limit: Int, value: Int) -> Int {
+    if bpos == 16777215 || bpos + 4 > limit {
+        return 16777215
+    }
+    buffer[bpos] = (value % 256) as Char
+    buffer[bpos + 1] = ((value / 256) % 256) as Char
+    buffer[bpos + 2] = ((value / 65536) % 256) as Char
+    buffer[bpos + 3] = ((value / 16777216) % 256) as Char
+    return bpos + 4
+}
+
+fn __kai_std_regex_write_u16_at(buffer: *Char, at: Int, value: Int) -> Void {
+    if at + 2 > strlen((buffer) as Str) {
+        return
+    }
+    buffer[at] = (value % 256) as Char
+    buffer[at + 1] = ((value / 256) % 256) as Char
+}
+
+fn __kai_std_regex_read_u16(program: Str, at: Int) -> Int {
+    if at + 2 > strlen((program) as Str) {
+        return 16777215
+    }
+    return (program[at] as Int) + (program[at + 1] as Int) * 256
+}
+
+fn __kai_std_regex_read_u32(program: Str, at: Int) -> Int {
+    if at + 4 > strlen((program) as Str) {
+        return 4294967295
+    }
+    return (program[at] as Int) + (program[at + 1] as Int) * 256 + (program[at + 2] as Int) * 65536 + (program[at + 3] as Int) * 16777216
+}
+
+fn __kai_std_regex_instr_len(program: Str, pc: Int) -> Int {
+    let len: Int = strlen((program) as Str)
+    if pc >= len {
+        return 0
+    }
+    let op: Char = program[pc]
+    if op == Char(1) {
+        if pc + 5 > len {
+            return 0
+        }
+        return 5
+    }
+    if op == Char(2) || op == Char(4) || (op == Char(7) || op == Char(8)) || (op == Char(9) || op == Char(10)) {
+        return 1
+    }
+    if op == Char(3) {
+        if pc + 4 > len {
+            return 0
+        }
+        let count: Int = program[pc + 3] as Int
+        if pc + 4 + count * 8 > len {
+            return 0
+        }
+        return 4 + count * 8
+    }
+    if op == Char(5) {
+        if pc + 3 > len {
+            return 0
+        }
+        return 3
+    }
+    if op == Char(6) {
+        if pc + 5 > len {
+            return 0
+        }
+        return 5
+    }
+    return 0
+}
+
+fn __kai_std_regex_shift_right(buffer: *Char, start: Int, end: Int, delta: Int, limit: Int) -> Bool {
+    if end + delta > limit {
+        return false
+    }
+    var index: Int = end
+    while index > start {
+        index = index - 1
+        buffer[index + delta] = buffer[index]
+    }
+    return true
+}
+
+fn __kai_std_regex_fix_targets(buffer: *Char, scan_start: Int, scan_end: Int, frag_start: Int, frag_end: Int, delta: Int) -> Bool {
+    var pc: Int = scan_start
+    while pc < scan_end {
+        let il: Int = __kai_std_regex_instr_len(buffer[..scan_end], pc)
+        if il == 0 {
+            return false
+        }
+        let op: Char = buffer[pc]
+        if op == Char(5) || op == Char(6) {
+            let t1: Int = (buffer[pc + 1] as Int) + (buffer[pc + 2] as Int) * 256
+            if t1 != 65535 && (t1 >= frag_start && t1 <= frag_end) {
+                __kai_std_regex_write_u16_at(buffer, pc + 1, t1 + delta)
+            }
+        }
+        if op == Char(6) {
+            let t2: Int = (buffer[pc + 3] as Int) + (buffer[pc + 4] as Int) * 256
+            if t2 != 65535 && (t2 >= frag_start && t2 <= frag_end) {
+                __kai_std_regex_write_u16_at(buffer, pc + 3, t2 + delta)
+            }
+        }
+        pc = pc + il
+    }
+    return true
+}
+
+fn __kai_std_regex_copy_fragment(buffer: *Char, src_start: Int, src_end: Int, dst: Int, limit: Int) -> Int {
+    let frag_len: Int = src_end - src_start
+    if dst + frag_len > limit {
+        return 16777215
+    }
+    var index: Int = 0
+    while index < frag_len {
+        buffer[dst + index] = buffer[src_start + index]
+        index = index + 1
+    }
+    if !__kai_std_regex_fix_targets(buffer, dst, dst + frag_len, src_start, src_end, dst - src_start) {
+        return 16777215
+    }
+    return dst + frag_len
+}
+
+fn __kai_std_regex_esc_pack(err: Int, kind: Int, ppos: Int, value: Int) -> Int {
+    return (err as Int) * 281474976710656 + (kind as Int) * 1099511627776 + (ppos as Int) * 16777216 + (value as Int)
+}
+
+fn __kai_std_regex_esc_err(joined: Int) -> Int {
+    return (joined / 281474976710656) as Int
+}
+
+fn __kai_std_regex_esc_kind(joined: Int) -> Int {
+    return ((joined / 1099511627776) % 256) as Int
+}
+
+fn __kai_std_regex_esc_ppos(joined: Int) -> Int {
+    return ((joined / 16777216) % 65536) as Int
+}
+
+fn __kai_std_regex_esc_value(joined: Int) -> Int {
+    return (joined % 16777216) as Int
+}
+
+fn __kai_std_regex_hex_digit(byte: Char) -> Int {
+    if byte >= Char(48) && byte <= Char(57) {
+        return (byte - Char(48)) as Int
+    }
+    if byte >= Char(97) && byte <= Char(102) {
+        return (byte - Char(87)) as Int
+    }
+    if byte >= Char(65) && byte <= Char(70) {
+        return (byte - Char(55)) as Int
+    }
+    return 4294967295
+}
+
+fn __kai_std_regex_parse_escape(pattern: Str, ppos: Int, in_class: Bool) -> Int {
+    let plen: Int = strlen((pattern) as Str)
+    if ppos >= plen {
+        return __kai_std_regex_esc_pack(8, 0, ppos, 0)
+    }
+    let byte: Char = pattern[ppos]
+    if byte == Char(100) {
+        return __kai_std_regex_esc_pack(0, 1, ppos + 1, 0)
+    }
+    if byte == Char(68) {
+        return __kai_std_regex_esc_pack(0, 2, ppos + 1, 0)
+    }
+    if byte == Char(119) {
+        return __kai_std_regex_esc_pack(0, 3, ppos + 1, 0)
+    }
+    if byte == Char(87) {
+        return __kai_std_regex_esc_pack(0, 4, ppos + 1, 0)
+    }
+    if byte == Char(115) {
+        return __kai_std_regex_esc_pack(0, 5, ppos + 1, 0)
+    }
+    if byte == Char(83) {
+        return __kai_std_regex_esc_pack(0, 6, ppos + 1, 0)
+    }
+    if byte == Char(98) {
+        if in_class {
+            return __kai_std_regex_esc_pack(0, 0, ppos + 1, 8)
+        }
+        return __kai_std_regex_esc_pack(0, 7, ppos + 1, 0)
+    }
+    if byte == Char(66) {
+        if in_class {
+            return __kai_std_regex_esc_pack(8, 0, ppos, 0)
+        }
+        return __kai_std_regex_esc_pack(0, 8, ppos + 1, 0)
+    }
+    if byte == Char(110) {
+        return __kai_std_regex_esc_pack(0, 0, ppos + 1, 10)
+    }
+    if byte == Char(114) {
+        return __kai_std_regex_esc_pack(0, 0, ppos + 1, 13)
+    }
+    if byte == Char(116) {
+        return __kai_std_regex_esc_pack(0, 0, ppos + 1, 9)
+    }
+    if byte == Char(102) {
+        return __kai_std_regex_esc_pack(0, 0, ppos + 1, 12)
+    }
+    if byte == Char(118) {
+        return __kai_std_regex_esc_pack(0, 0, ppos + 1, 11)
+    }
+    if byte == Char(48) {
+        if ppos + 1 < plen && (pattern[ppos + 1] >= Char(48) && pattern[ppos + 1] <= Char(57)) {
+            return __kai_std_regex_esc_pack(8, 0, ppos, 0)
+        }
+        return __kai_std_regex_esc_pack(0, 0, ppos + 1, 0)
+    }
+    if byte >= Char(49) && byte <= Char(57) {
+        if in_class {
+            return __kai_std_regex_esc_pack(8, 0, ppos, 0)
+        }
+        return __kai_std_regex_esc_pack(1, 0, ppos, 0)
+    }
+    if byte == Char(107) {
+        if in_class {
+            return __kai_std_regex_esc_pack(8, 0, ppos, 0)
+        }
+        return __kai_std_regex_esc_pack(4, 0, ppos, 0)
+    }
+    if byte == Char(112) || byte == Char(80) {
+        return __kai_std_regex_esc_pack(7, 0, ppos, 0)
+    }
+    if byte == Char(120) {
+        if ppos + 3 > plen {
+            return __kai_std_regex_esc_pack(8, 0, ppos, 0)
+        }
+        let high: Int = __kai_std_regex_hex_digit(pattern[ppos + 1])
+        let low: Int = __kai_std_regex_hex_digit(pattern[ppos + 2])
+        if high == 4294967295 || low == 4294967295 {
+            return __kai_std_regex_esc_pack(8, 0, ppos, 0)
+        }
+        return __kai_std_regex_esc_pack(0, 0, ppos + 3, high * 16 + low)
+    }
+    if byte == Char(117) {
+        if ppos + 5 > plen {
+            return __kai_std_regex_esc_pack(8, 0, ppos, 0)
+        }
+        var value: Int = 0
+        var index: Int = 1
+        while index <= 4 {
+            let digit: Int = __kai_std_regex_hex_digit(pattern[ppos + index])
+            if digit == 4294967295 {
+                return __kai_std_regex_esc_pack(8, 0, ppos, 0)
+            }
+            value = value * 16 + digit
+            index = index + 1
+        }
+        return __kai_std_regex_esc_pack(0, 0, ppos + 5, value)
+    }
+    if byte == Char(99) {
+        if ppos + 1 < plen {
+            let control: Char = pattern[ppos + 1]
+            if control >= Char(65) && control <= Char(90) {
+                return __kai_std_regex_esc_pack(0, 0, ppos + 2, ((control - Char(64)) as Int))
+            }
+            if control >= Char(97) && control <= Char(122) {
+                return __kai_std_regex_esc_pack(0, 0, ppos + 2, ((control - Char(96)) as Int))
+            }
+        }
+        return __kai_std_regex_esc_pack(8, 0, ppos, 0)
+    }
+    let dec: Int = __kai_std_regex_decode(pattern, ppos)
+    if dec == 0 {
+        return __kai_std_regex_esc_pack(11, 0, ppos, 0)
+    }
+    let cp: Int = __kai_std_regex_decode_cp(dec)
+    if (cp >= 48 && cp <= 57) || ((cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122)) {
+        return __kai_std_regex_esc_pack(8, 0, ppos, 0)
+    }
+    return __kai_std_regex_esc_pack(0, 0, ppos + __kai_std_regex_decode_width(dec), cp)
+}
+
+fn __kai_std_regex_res_pack(err: Int, ppos: Int, bpos: Int) -> Int {
+    return (err as Int) * 281474976710656 + (ppos as Int) * 16777216 + (bpos as Int)
+}
+
+fn __kai_std_regex_res_err(joined: Int) -> Int {
+    return (joined / 281474976710656) as Int
+}
+
+fn __kai_std_regex_res_ppos(joined: Int) -> Int {
+    return ((joined / 16777216) % 16777216) as Int
+}
+
+fn __kai_std_regex_res_bpos(joined: Int) -> Int {
+    return (joined % 16777216) as Int
+}
+
+fn __kai_std_regex_parse_class(pattern: Str, start: Int, buffer: *Char, bstart: Int, limit: Int) -> Int {
+    let plen: Int = strlen((pattern) as Str)
+    var ppos: Int = start
+    var negate: Char = 0
+    if ppos < plen && pattern[ppos] == Char(94) {
+        negate = 1
+        ppos = ppos + 1
+    }
+    var builtins: Char = 0
+    var count: Int = 0
+    var bpos: Int = __kai_std_regex_emit_byte(buffer, bstart, limit, 3)
+    bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, negate)
+    bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 0)
+    bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 0)
+    var first: Bool = true
+    while true {
+        if ppos >= plen {
+            return __kai_std_regex_res_pack(8, ppos, bpos)
+        }
+        if pattern[ppos] == Char(93) && !first {
+            ppos = ppos + 1
+            break
+        }
+        if pattern[ppos] == Char(93) && first {
+            ppos = ppos + 1
+            break
+        }
+        first = false
+        var lo: Int = 0
+        var is_builtin: Bool = false
+        var builtin_bit: Char = 0
+        if pattern[ppos] == Char(92) {
+            let esc: Int = __kai_std_regex_parse_escape(pattern, ppos + 1, true)
+            if __kai_std_regex_esc_err(esc) != 0 {
+                return __kai_std_regex_res_pack(__kai_std_regex_esc_err(esc), ppos, bpos)
+            }
+            let kind: Int = __kai_std_regex_esc_kind(esc)
+            if kind == 0 {
+                lo = __kai_std_regex_esc_value(esc)
+            } else {
+                is_builtin = true
+                if kind == 1 {
+                    builtin_bit = 1
+                } else if kind == 2 {
+                    builtin_bit = 2
+                } else if kind == 3 {
+                    builtin_bit = 4
+                } else if kind == 4 {
+                    builtin_bit = 8
+                } else if kind == 5 {
+                    builtin_bit = 16
+                } else {
+                    builtin_bit = 32
+                }
+            }
+            ppos = __kai_std_regex_esc_ppos(esc)
+        } else {
+            let dec: Int = __kai_std_regex_decode(pattern, ppos)
+            if dec == 0 {
+                return __kai_std_regex_res_pack(11, ppos, bpos)
+            }
+            lo = __kai_std_regex_decode_cp(dec)
+            ppos = ppos + __kai_std_regex_decode_width(dec)
+        }
+        if is_builtin {
+            if ppos + 1 < plen && (pattern[ppos] == Char(45) && pattern[ppos + 1] != Char(93)) {
+                return __kai_std_regex_res_pack(8, ppos, bpos)
+            }
+            if (builtins / builtin_bit) % Char(2) == Char(0) {
+                builtins = builtins + builtin_bit
+            }
+            continue
+        }
+        var hi: Int = lo
+        if ppos + 1 < plen && (pattern[ppos] == Char(45) && pattern[ppos + 1] != Char(93)) {
+            ppos = ppos + 1
+            if pattern[ppos] == Char(92) {
+                let esc: Int = __kai_std_regex_parse_escape(pattern, ppos + 1, true)
+                if __kai_std_regex_esc_err(esc) != 0 {
+                    return __kai_std_regex_res_pack(__kai_std_regex_esc_err(esc), ppos, bpos)
+                }
+                if __kai_std_regex_esc_kind(esc) != 0 {
+                    return __kai_std_regex_res_pack(8, ppos, bpos)
+                }
+                hi = __kai_std_regex_esc_value(esc)
+                ppos = __kai_std_regex_esc_ppos(esc)
+            } else {
+                let dec: Int = __kai_std_regex_decode(pattern, ppos)
+                if dec == 0 {
+                    return __kai_std_regex_res_pack(11, ppos, bpos)
+                }
+                hi = __kai_std_regex_decode_cp(dec)
+                ppos = ppos + __kai_std_regex_decode_width(dec)
+            }
+            if hi < lo {
+                return __kai_std_regex_res_pack(8, ppos, bpos)
+            }
+        }
+        if count >= 255 {
+            return __kai_std_regex_res_pack(10, ppos, bpos)
+        }
+        bpos = __kai_std_regex_emit_u32(buffer, bpos, limit, lo)
+        bpos = __kai_std_regex_emit_u32(buffer, bpos, limit, hi)
+        if bpos == 16777215 {
+            return __kai_std_regex_res_pack(10, ppos, bpos)
+        }
+        count = count + 1
+    }
+    if bpos == 16777215 {
+        return __kai_std_regex_res_pack(10, ppos, bpos)
+    }
+    buffer[bstart + 2] = builtins
+    buffer[bstart + 3] = count as Char
+    return __kai_std_regex_res_pack(0, ppos, bpos)
+}
+
+fn __kai_std_regex_parse_braces(pattern: Str, start: Int) -> Int {
+    let plen: Int = strlen((pattern) as Str)
+    var ppos: Int = start
+    var low: Int = 0
+    var low_digits: Int = 0
+    while ppos < plen && (pattern[ppos] >= Char(48) && pattern[ppos] <= Char(57)) {
+        if low < 1000000 {
+            low = low * 10 + ((pattern[ppos] - Char(48)) as Int)
+        }
+        low_digits = low_digits + 1
+        ppos = ppos + 1
+    }
+    if low_digits == 0 || ppos >= plen {
+        return 200 * 281474976710656
+    }
+    if pattern[ppos] == Char(125) {
+        return (((ppos + 1) as Int) * 4294967296) + low * 65536 + low
+    }
+    if pattern[ppos] != Char(44) {
+        return 200 * 281474976710656
+    }
+    ppos = ppos + 1
+    if ppos < plen && pattern[ppos] == Char(125) {
+        return (((ppos + 1) as Int) * 4294967296) + low * 65536 + 65535
+    }
+    var high: Int = 0
+    var high_digits: Int = 0
+    while ppos < plen && (pattern[ppos] >= Char(48) && pattern[ppos] <= Char(57)) {
+        if high < 1000000 {
+            high = high * 10 + ((pattern[ppos] - Char(48)) as Int)
+        }
+        high_digits = high_digits + 1
+        ppos = ppos + 1
+    }
+    if high_digits == 0 || (ppos >= plen || pattern[ppos] != Char(125)) {
+        return 200 * 281474976710656
+    }
+    return (((ppos + 1) as Int) * 4294967296) + low * 65536 + high
+}
+
+fn __kai_std_regex_braces_err(joined: Int) -> Int {
+    return (joined / 281474976710656) as Int
+}
+
+fn __kai_std_regex_braces_ppos(joined: Int) -> Int {
+    return ((joined / 4294967296) % 65536) as Int
+}
+
+fn __kai_std_regex_braces_low(joined: Int) -> Int {
+    return ((joined / 65536) % 65536) as Int
+}
+
+fn __kai_std_regex_braces_high(joined: Int) -> Int {
+    return (joined % 65536) as Int
+}
+
+fn __kai_std_regex_compile_core(buffer: *Char, pattern: Str) -> Int {
+    let plen: Int = strlen((pattern) as Str)
+    var limit: Int = strlen((buffer) as Str)
+    if limit > 2048 {
+        limit = 2048
+    }
+    var lv_alt: [33]Int = [0; 33]
+    var lv_atom: [33]Int = [0; 33]
+    var lv_patch: [33]Int = [0; 33]
+    var patches: [512]Int = [0; 512]
+    var patch_count: Int = 0
+    var depth: Int = 0
+    var bpos: Int = __kai_std_regex_emit_byte(buffer, 0, limit, 90)
+    bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 82)
+    bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 88)
+    bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 49)
+    if bpos == 16777215 {
+        return __kai_std_regex_res_pack(10, 0, 0)
+    }
+    lv_alt[0] = 4
+    lv_atom[0] = 16777215
+    lv_patch[0] = 0
+    var ppos: Int = 0
+    while ppos < plen {
+        let byte: Char = pattern[ppos]
+        if byte == Char(40) {
+            var consumed: Int = 1
+            if ppos + 1 < plen && pattern[ppos + 1] == Char(63) {
+                if ppos + 2 >= plen {
+                    return __kai_std_regex_res_pack(8, ppos, bpos)
+                }
+                let kind_byte: Char = pattern[ppos + 2]
+                if kind_byte == Char(58) {
+                    consumed = 3
+                } else if kind_byte == Char(61) || kind_byte == Char(33) {
+                    return __kai_std_regex_res_pack(2, ppos, bpos)
+                } else if kind_byte == Char(60) {
+                    if ppos + 3 < plen && (pattern[ppos + 3] == Char(61) || pattern[ppos + 3] == Char(33)) {
+                        return __kai_std_regex_res_pack(3, ppos, bpos)
+                    }
+                    return __kai_std_regex_res_pack(4, ppos, bpos)
+                } else if kind_byte == Char(80) {
+                    return __kai_std_regex_res_pack(4, ppos, bpos)
+                } else {
+                    return __kai_std_regex_res_pack(6, ppos, bpos)
+                }
+            }
+            if depth + 1 > 32 {
+                return __kai_std_regex_res_pack(12, ppos, bpos)
+            }
+            depth = depth + 1
+            lv_alt[depth] = bpos as Int
+            lv_atom[depth] = 16777215
+            lv_patch[depth] = patch_count as Int
+            ppos = ppos + consumed
+        } else if byte == Char(41) {
+            if depth == 0 {
+                return __kai_std_regex_res_pack(8, ppos, bpos)
+            }
+            var index: Int = lv_patch[depth] as Int
+            while index < patch_count {
+                __kai_std_regex_write_u16_at(buffer, patches[index] as Int, bpos)
+                index = index + 1
+            }
+            patch_count = lv_patch[depth] as Int
+            let gstart: Int = lv_alt[depth]
+            depth = depth - 1
+            lv_atom[depth] = gstart
+            ppos = ppos + 1
+        } else if byte == Char(124) {
+            let alt_start: Int = lv_alt[depth] as Int
+            if !__kai_std_regex_shift_right(buffer, alt_start, bpos, 5, limit) {
+                return __kai_std_regex_res_pack(10, ppos, bpos)
+            }
+            if !__kai_std_regex_fix_targets(buffer, alt_start + 5, bpos + 5, alt_start, bpos, 5) {
+                return __kai_std_regex_res_pack(8, ppos, bpos)
+            }
+            var index: Int = lv_patch[depth] as Int
+            while index < patch_count {
+                if (patches[index] as Int) >= alt_start {
+                    patches[index] = patches[index] + 5
+                }
+                index = index + 1
+            }
+            buffer[alt_start] = 6
+            __kai_std_regex_write_u16_at(buffer, alt_start + 1, alt_start + 5)
+            __kai_std_regex_write_u16_at(buffer, alt_start + 3, bpos + 8)
+            bpos = bpos + 5
+            bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 5)
+            if bpos == 16777215 {
+                return __kai_std_regex_res_pack(10, ppos, bpos)
+            }
+            if patch_count >= 512 {
+                return __kai_std_regex_res_pack(10, ppos, bpos)
+            }
+            patches[patch_count] = bpos as Int
+            patch_count = patch_count + 1
+            bpos = __kai_std_regex_emit_u16(buffer, bpos, limit, 65535)
+            if bpos == 16777215 {
+                return __kai_std_regex_res_pack(10, ppos, bpos)
+            }
+            lv_atom[depth] = 16777215
+            ppos = ppos + 1
+        } else if byte == Char(42) || byte == Char(43) || byte == Char(63) {
+            if lv_atom[depth] == 16777215 {
+                return __kai_std_regex_res_pack(8, ppos, bpos)
+            }
+            if ppos + 1 < plen && (pattern[ppos + 1] == Char(63) || pattern[ppos + 1] == Char(43)) {
+                if pattern[ppos + 1] == Char(63) {
+                    return __kai_std_regex_res_pack(5, ppos, bpos)
+                }
+                return __kai_std_regex_res_pack(8, ppos, bpos)
+            }
+            let atom_start: Int = lv_atom[depth] as Int
+            let frag_end: Int = bpos
+            if byte == Char(43) {
+                bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 6)
+                bpos = __kai_std_regex_emit_u16(buffer, bpos, limit, atom_start)
+                bpos = __kai_std_regex_emit_u16(buffer, bpos, limit, frag_end + 5)
+                if bpos == 16777215 {
+                    return __kai_std_regex_res_pack(10, ppos, bpos)
+                }
+            } else {
+                if !__kai_std_regex_shift_right(buffer, atom_start, frag_end, 5, limit) {
+                    return __kai_std_regex_res_pack(10, ppos, bpos)
+                }
+                if !__kai_std_regex_fix_targets(buffer, atom_start + 5, frag_end + 5, atom_start, frag_end, 5) {
+                    return __kai_std_regex_res_pack(8, ppos, bpos)
+                }
+                buffer[atom_start] = 6
+                __kai_std_regex_write_u16_at(buffer, atom_start + 1, atom_start + 5)
+                bpos = frag_end + 5
+                if byte == Char(42) {
+                    __kai_std_regex_write_u16_at(buffer, atom_start + 3, frag_end + 8)
+                    bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 5)
+                    bpos = __kai_std_regex_emit_u16(buffer, bpos, limit, atom_start)
+                    if bpos == 16777215 {
+                        return __kai_std_regex_res_pack(10, ppos, bpos)
+                    }
+                } else {
+                    __kai_std_regex_write_u16_at(buffer, atom_start + 3, frag_end + 5)
+                }
+            }
+            lv_atom[depth] = 16777215
+            ppos = ppos + 1
+        } else if byte == Char(123) {
+            let braces: Int = __kai_std_regex_parse_braces(pattern, ppos + 1)
+            if __kai_std_regex_braces_err(braces) == 200 {
+                let atom_start: Int = bpos
+                bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 1)
+                bpos = __kai_std_regex_emit_u32(buffer, bpos, limit, 123)
+                if bpos == 16777215 {
+                    return __kai_std_regex_res_pack(10, ppos, bpos)
+                }
+                lv_atom[depth] = atom_start as Int
+                ppos = ppos + 1
+            } else {
+                if lv_atom[depth] == 16777215 {
+                    return __kai_std_regex_res_pack(8, ppos, bpos)
+                }
+                var next_ppos: Int = __kai_std_regex_braces_ppos(braces)
+                if next_ppos < plen && pattern[next_ppos] == Char(63) {
+                    return __kai_std_regex_res_pack(5, ppos, bpos)
+                }
+                let low: Int = __kai_std_regex_braces_low(braces)
+                let high: Int = __kai_std_regex_braces_high(braces)
+                if low > 255 || (high != 65535 && (high > 255 || high < low)) {
+                    return __kai_std_regex_res_pack(9, ppos, bpos)
+                }
+                let atom_start: Int = lv_atom[depth] as Int
+                let frag_end: Int = bpos
+                let frag_len: Int = frag_end - atom_start
+                var qpatches: [256]Int = [0; 256]
+                var qcount: Int = 0
+                if high == 65535 {
+                    if low == 0 {
+                        if !__kai_std_regex_shift_right(buffer, atom_start, frag_end, 5, limit) {
+                            return __kai_std_regex_res_pack(10, ppos, bpos)
+                        }
+                        if !__kai_std_regex_fix_targets(buffer, atom_start + 5, frag_end + 5, atom_start, frag_end, 5) {
+                            return __kai_std_regex_res_pack(8, ppos, bpos)
+                        }
+                        buffer[atom_start] = 6
+                        __kai_std_regex_write_u16_at(buffer, atom_start + 1, atom_start + 5)
+                        __kai_std_regex_write_u16_at(buffer, atom_start + 3, frag_end + 8)
+                        bpos = frag_end + 5
+                        bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 5)
+                        bpos = __kai_std_regex_emit_u16(buffer, bpos, limit, atom_start)
+                        if bpos == 16777215 {
+                            return __kai_std_regex_res_pack(10, ppos, bpos)
+                        }
+                    } else {
+                        var copy: Int = 1
+                        var last_start: Int = atom_start
+                        while copy < low {
+                            last_start = bpos
+                            bpos = __kai_std_regex_copy_fragment(buffer, atom_start, frag_end, bpos, limit)
+                            if bpos == 16777215 {
+                                return __kai_std_regex_res_pack(10, ppos, bpos)
+                            }
+                            copy = copy + 1
+                        }
+                        bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 6)
+                        bpos = __kai_std_regex_emit_u16(buffer, bpos, limit, last_start)
+                        bpos = __kai_std_regex_emit_u16(buffer, bpos, limit, bpos + 2)
+                        if bpos == 16777215 {
+                            return __kai_std_regex_res_pack(10, ppos, bpos)
+                        }
+                    }
+                } else if high == 0 {
+                    bpos = atom_start
+                } else {
+                    var copy: Int = 1
+                    while copy < low {
+                        bpos = __kai_std_regex_copy_fragment(buffer, atom_start, frag_end, bpos, limit)
+                        if bpos == 16777215 {
+                            return __kai_std_regex_res_pack(10, ppos, bpos)
+                        }
+                        copy = copy + 1
+                    }
+                    var optional: Int = low
+                    var src_start: Int = atom_start
+                    var src_end: Int = frag_end
+                    if low == 0 {
+                        if !__kai_std_regex_shift_right(buffer, atom_start, frag_end, 5, limit) {
+                            return __kai_std_regex_res_pack(10, ppos, bpos)
+                        }
+                        if !__kai_std_regex_fix_targets(buffer, atom_start + 5, frag_end + 5, atom_start, frag_end, 5) {
+                            return __kai_std_regex_res_pack(8, ppos, bpos)
+                        }
+                        buffer[atom_start] = 6
+                        __kai_std_regex_write_u16_at(buffer, atom_start + 1, atom_start + 5)
+                        __kai_std_regex_write_u16_at(buffer, atom_start + 3, 65535)
+                        qpatches[qcount] = (atom_start + 3) as Int
+                        qcount = qcount + 1
+                        bpos = frag_end + 5
+                        src_start = atom_start + 5
+                        src_end = frag_end + 5
+                        optional = 1
+                    }
+                    while optional < high {
+                        bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 6)
+                        bpos = __kai_std_regex_emit_u16(buffer, bpos, limit, bpos + 4)
+                        if bpos == 16777215 || qcount >= 256 {
+                            return __kai_std_regex_res_pack(10, ppos, bpos)
+                        }
+                        qpatches[qcount] = bpos as Int
+                        qcount = qcount + 1
+                        bpos = __kai_std_regex_emit_u16(buffer, bpos, limit, 65535)
+                        bpos = __kai_std_regex_copy_fragment(buffer, src_start, src_end, bpos, limit)
+                        if bpos == 16777215 {
+                            return __kai_std_regex_res_pack(10, ppos, bpos)
+                        }
+                        optional = optional + 1
+                    }
+                    var qindex: Int = 0
+                    while qindex < qcount {
+                        __kai_std_regex_write_u16_at(buffer, qpatches[qindex] as Int, bpos)
+                        qindex = qindex + 1
+                    }
+                }
+                lv_atom[depth] = 16777215
+                ppos = next_ppos
+            }
+        } else if byte == Char(91) {
+            let atom_start: Int = bpos
+            let res: Int = __kai_std_regex_parse_class(pattern, ppos + 1, buffer, bpos, limit)
+            if __kai_std_regex_res_err(res) != 0 {
+                return __kai_std_regex_res_pack(__kai_std_regex_res_err(res), ppos, bpos)
+            }
+            bpos = __kai_std_regex_res_bpos(res)
+            ppos = __kai_std_regex_res_ppos(res)
+            lv_atom[depth] = atom_start as Int
+        } else if byte == Char(94) {
+            let atom_start: Int = bpos
+            bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 7)
+            if bpos == 16777215 {
+                return __kai_std_regex_res_pack(10, ppos, bpos)
+            }
+            lv_atom[depth] = atom_start as Int
+            ppos = ppos + 1
+        } else if byte == Char(36) {
+            let atom_start: Int = bpos
+            bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 8)
+            if bpos == 16777215 {
+                return __kai_std_regex_res_pack(10, ppos, bpos)
+            }
+            lv_atom[depth] = atom_start as Int
+            ppos = ppos + 1
+        } else if byte == Char(46) {
+            let atom_start: Int = bpos
+            bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 2)
+            if bpos == 16777215 {
+                return __kai_std_regex_res_pack(10, ppos, bpos)
+            }
+            lv_atom[depth] = atom_start as Int
+            ppos = ppos + 1
+        } else if byte == Char(92) {
+            let esc: Int = __kai_std_regex_parse_escape(pattern, ppos + 1, false)
+            if __kai_std_regex_esc_err(esc) != 0 {
+                return __kai_std_regex_res_pack(__kai_std_regex_esc_err(esc), ppos, bpos)
+            }
+            let kind: Int = __kai_std_regex_esc_kind(esc)
+            let atom_start: Int = bpos
+            if kind == 0 {
+                var cp: Int = __kai_std_regex_esc_value(esc)
+                var next_ppos: Int = __kai_std_regex_esc_ppos(esc)
+                if cp >= 55296 && cp <= 56319 {
+                    if next_ppos < plen && pattern[next_ppos] == Char(92) {
+                        let pair: Int = __kai_std_regex_parse_escape(pattern, next_ppos + 1, false)
+                        if __kai_std_regex_esc_err(pair) == 0 && __kai_std_regex_esc_kind(pair) == 0 {
+                            let low_cp: Int = __kai_std_regex_esc_value(pair)
+                            if low_cp >= 56320 && low_cp <= 57343 {
+                                cp = 65536 + (cp - 55296) * 1024 + (low_cp - 56320)
+                                next_ppos = __kai_std_regex_esc_ppos(pair)
+                            }
+                        }
+                    }
+                }
+                bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 1)
+                bpos = __kai_std_regex_emit_u32(buffer, bpos, limit, cp)
+                ppos = next_ppos
+            } else if kind >= 1 && kind <= 6 {
+                bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 3)
+                bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 0)
+                bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, __kai_std_regex_pow2_u8((kind - 1) as Int))
+                bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 0)
+                ppos = __kai_std_regex_esc_ppos(esc)
+            } else {
+                if kind == 7 {
+                    bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 9)
+                } else {
+                    bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 10)
+                }
+                ppos = __kai_std_regex_esc_ppos(esc)
+            }
+            if bpos == 16777215 {
+                return __kai_std_regex_res_pack(10, ppos, bpos)
+            }
+            lv_atom[depth] = atom_start as Int
+        } else {
+            let dec: Int = __kai_std_regex_decode(pattern, ppos)
+            if dec == 0 {
+                return __kai_std_regex_res_pack(11, ppos, bpos)
+            }
+            let atom_start: Int = bpos
+            bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 1)
+            bpos = __kai_std_regex_emit_u32(buffer, bpos, limit, __kai_std_regex_decode_cp(dec))
+            if bpos == 16777215 {
+                return __kai_std_regex_res_pack(10, ppos, bpos)
+            }
+            lv_atom[depth] = atom_start as Int
+            ppos = ppos + __kai_std_regex_decode_width(dec)
+        }
+    }
+    if depth != 0 {
+        return __kai_std_regex_res_pack(8, ppos, bpos)
+    }
+    var index: Int = 0
+    while index < patch_count {
+        __kai_std_regex_write_u16_at(buffer, patches[index] as Int, bpos)
+        index = index + 1
+    }
+    bpos = __kai_std_regex_emit_byte(buffer, bpos, limit, 4)
+    if bpos == 16777215 {
+        return __kai_std_regex_res_pack(10, ppos, bpos)
+    }
+    return __kai_std_regex_res_pack(0, ppos, bpos)
+}
+
+fn __kai_std_regex_is_digit(cp: Int) -> Bool {
+    return cp >= 48 && cp <= 57
+}
+
+fn __kai_std_regex_is_word(cp: Int) -> Bool {
+    if cp == 4294967295 {
+        return false
+    }
+    return (cp >= 48 && cp <= 57) || ((cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || cp == 95)
+}
+
+fn __kai_std_regex_is_space(cp: Int) -> Bool {
+    if cp == 9 || cp == 10 || (cp == 11 || cp == 12) || (cp == 13 || cp == 32) {
+        return true
+    }
+    if cp == 160 || cp == 5760 || (cp == 8232 || cp == 8233) {
+        return true
+    }
+    if cp >= 8192 && cp <= 8202 {
+        return true
+    }
+    return cp == 8239 || cp == 8287 || (cp == 12288 || cp == 65279)
+}
+
+fn __kai_std_regex_is_line_term(cp: Int) -> Bool {
+    return cp == 10 || cp == 13 || (cp == 8232 || cp == 8233)
+}
+
+fn __kai_std_regex_class_matches(program: Str, pc: Int, cp: Int) -> Bool {
+    if cp == 4294967295 {
+        return false
+    }
+    let negate: Bool = program[pc + 1] == Char(1)
+    let builtins: Char = program[pc + 2]
+    let count: Int = program[pc + 3] as Int
+    var matched: Bool = false
+    if (builtins / Char(1)) % Char(2) == Char(1) && __kai_std_regex_is_digit(cp) {
+        matched = true
+    }
+    if (builtins / Char(2)) % Char(2) == Char(1) && !__kai_std_regex_is_digit(cp) {
+        matched = true
+    }
+    if (builtins / Char(4)) % Char(2) == Char(1) && __kai_std_regex_is_word(cp) {
+        matched = true
+    }
+    if (builtins / Char(8)) % Char(2) == Char(1) && !__kai_std_regex_is_word(cp) {
+        matched = true
+    }
+    if (builtins / Char(16)) % Char(2) == Char(1) && __kai_std_regex_is_space(cp) {
+        matched = true
+    }
+    if (builtins / Char(32)) % Char(2) == Char(1) && !__kai_std_regex_is_space(cp) {
+        matched = true
+    }
+    var index: Int = 0
+    while !matched && index < count {
+        let lo: Int = __kai_std_regex_read_u32(program, pc + 4 + index * 8)
+        let hi: Int = __kai_std_regex_read_u32(program, pc + 4 + index * 8 + 4)
+        if cp >= lo && cp <= hi {
+            matched = true
+        }
+        index = index + 1
+    }
+    if negate {
+        return !matched
+    }
+    return matched
+}
+
+fn __kai_std_regex_closure(program: Str, bits: *Char, at_start: Bool, at_end: Bool, prev_cp: Int, cur_cp: Int) -> Bool {
+    let len: Int = strlen((program) as Str)
+    var matched: Bool = false
+    var changed: Bool = true
+    while changed {
+        changed = false
+        var pc: Int = 4
+        while pc < len {
+            let il: Int = __kai_std_regex_instr_len(program, pc)
+            if il == 0 {
+                return matched
+            }
+            if __kai_std_regex_bit_get(bits, pc) {
+                let op: Char = program[pc]
+                if op == Char(4) {
+                    matched = true
+                } else if op == Char(5) {
+                    let target: Int = __kai_std_regex_read_u16(program, pc + 1)
+                    if target < len && __kai_std_regex_bit_set(bits, target) {
+                        changed = true
+                    }
+                } else if op == Char(6) {
+                    let target1: Int = __kai_std_regex_read_u16(program, pc + 1)
+                    let target2: Int = __kai_std_regex_read_u16(program, pc + 3)
+                    if target1 < len && __kai_std_regex_bit_set(bits, target1) {
+                        changed = true
+                    }
+                    if target2 < len && __kai_std_regex_bit_set(bits, target2) {
+                        changed = true
+                    }
+                } else if op == Char(7) {
+                    if at_start && __kai_std_regex_bit_set(bits, pc + 1) {
+                        changed = true
+                    }
+                } else if op == Char(8) {
+                    if at_end && __kai_std_regex_bit_set(bits, pc + 1) {
+                        changed = true
+                    }
+                } else if op == Char(9) {
+                    if __kai_std_regex_is_word(prev_cp) != __kai_std_regex_is_word(cur_cp) && __kai_std_regex_bit_set(bits, pc + 1) {
+                        changed = true
+                    }
+                } else if op == Char(10) {
+                    if __kai_std_regex_is_word(prev_cp) == __kai_std_regex_is_word(cur_cp) && __kai_std_regex_bit_set(bits, pc + 1) {
+                        changed = true
+                    }
+                }
+            }
+            pc = pc + il
+        }
+    }
+    return matched
+}
+
+fn __kai_std_regex_is_match(program: Str, text: Str) -> Bool {
+    let len: Int = strlen((program) as Str)
+    if len < 5 || len > 2048 {
+        return false
+    }
+    if program[0] != Char(90) || program[1] != Char(82) || (program[2] != Char(88) || program[3] != Char(49)) {
+        return false
+    }
+    var cur: [256]Char = [0; 256]
+    var nxt: [256]Char = [0; 256]
+    let tlen: Int = strlen((text) as Str)
+    var pos: Int = 0
+    var prev_cp: Int = 4294967295
+    while true {
+        var cur_cp: Int = 4294967295
+        var width: Int = 0
+        if pos < tlen {
+            let dec: Int = __kai_std_regex_decode(text, pos)
+            if dec == 0 {
+                return false
+            }
+            cur_cp = __kai_std_regex_decode_cp(dec)
+            width = __kai_std_regex_decode_width(dec)
+        }
+        let injected: Bool = __kai_std_regex_bit_set(cur, 4)
+        let reached: Bool = __kai_std_regex_closure(program, cur, pos == 0, pos >= tlen, prev_cp, cur_cp)
+        if reached || (injected && reached) {
+            return true
+        }
+        if pos >= tlen {
+            return false
+        }
+        var slot: Int = 0
+        while slot < 256 {
+            nxt[slot] = 0
+            slot = slot + 1
+        }
+        var pc: Int = 4
+        while pc < len {
+            let il: Int = __kai_std_regex_instr_len(program, pc)
+            if il == 0 {
+                return false
+            }
+            if __kai_std_regex_bit_get(cur, pc) {
+                let op: Char = program[pc]
+                if op == Char(1) {
+                    if cur_cp == __kai_std_regex_read_u32(program, pc + 1) {
+                        __kai_std_regex_bit_mark(nxt, pc + il)
+                    }
+                } else if op == Char(2) {
+                    if !__kai_std_regex_is_line_term(cur_cp) {
+                        __kai_std_regex_bit_mark(nxt, pc + il)
+                    }
+                } else if op == Char(3) {
+                    if __kai_std_regex_class_matches(program, pc, cur_cp) {
+                        __kai_std_regex_bit_mark(nxt, pc + il)
+                    }
+                }
+            }
+            pc = pc + il
+        }
+        var copy_slot: Int = 0
+        while copy_slot < 256 {
+            cur[copy_slot] = nxt[copy_slot]
+            copy_slot = copy_slot + 1
+        }
+        prev_cp = cur_cp
+        pos = pos + width
+    }
+    return false
+}
+
+fn __kai_std_regex_match_end_at(program: Str, text: Str, at_text_start: Bool, initial_prev_cp: Int) -> Int {
+    let len: Int = strlen((program) as Str)
+    let no_match: Int = strlen((text) as Str) + 1
+    if len < 5 || len > 2048 {
+        return no_match
+    }
+    if program[0] != Char(90) || program[1] != Char(82) || (program[2] != Char(88) || program[3] != Char(49)) {
+        return no_match
+    }
+    var cur: [256]Char = [0; 256]
+    var nxt: [256]Char = [0; 256]
+    let tlen: Int = strlen((text) as Str)
+    var pos: Int = 0
+    var prev_cp: Int = initial_prev_cp
+    var best_end: Int = no_match
+    let injected: Bool = __kai_std_regex_bit_set(cur, 4)
+    if !injected {
+        return no_match
+    }
+    while true {
+        var cur_cp: Int = 4294967295
+        var width: Int = 0
+        if pos < tlen {
+            let dec: Int = __kai_std_regex_decode(text, pos)
+            if dec == 0 {
+                return no_match
+            }
+            cur_cp = __kai_std_regex_decode_cp(dec)
+            width = __kai_std_regex_decode_width(dec)
+        }
+        let reached: Bool = __kai_std_regex_closure(program, cur, at_text_start && pos == 0, pos >= tlen, prev_cp, cur_cp)
+        if reached {
+            best_end = pos
+        }
+        if pos >= tlen {
+            if best_end != no_match {
+                return best_end
+            }
+            return no_match
+        }
+        var slot: Int = 0
+        while slot < 256 {
+            nxt[slot] = 0
+            slot = slot + 1
+        }
+        var pc: Int = 4
+        while pc < len {
+            let il: Int = __kai_std_regex_instr_len(program, pc)
+            if il == 0 {
+                return no_match
+            }
+            if __kai_std_regex_bit_get(cur, pc) {
+                let op: Char = program[pc]
+                if op == Char(1) {
+                    if cur_cp == __kai_std_regex_read_u32(program, pc + 1) {
+                        __kai_std_regex_bit_mark(nxt, pc + il)
+                    }
+                } else if op == Char(2) {
+                    if !__kai_std_regex_is_line_term(cur_cp) {
+                        __kai_std_regex_bit_mark(nxt, pc + il)
+                    }
+                } else if op == Char(3) {
+                    if __kai_std_regex_class_matches(program, pc, cur_cp) {
+                        __kai_std_regex_bit_mark(nxt, pc + il)
+                    }
+                }
+            }
+            pc = pc + il
+        }
+        var active: Bool = false
+        var active_slot: Int = 0
+        while active_slot < 256 {
+            if nxt[active_slot] != Char(0) {
+                active = true
+            }
+            active_slot = active_slot + 1
+        }
+        if !active {
+            if best_end != no_match {
+                return best_end
+            }
+            return no_match
+        }
+        var copy_slot: Int = 0
+        while copy_slot < 256 {
+            cur[copy_slot] = nxt[copy_slot]
+            copy_slot = copy_slot + 1
+        }
+        prev_cp = cur_cp
+        pos = pos + width
+    }
+    return no_match
+}
+
+fn __kai_std_regex_prev_cp_before(text: Str, target: Int) -> Int {
+    var pos: Int = 0
+    var prev: Int = 4294967295
+    while pos < target && pos < strlen((text) as Str) {
+        let dec: Int = __kai_std_regex_decode(text, pos)
+        if dec == 0 {
+            return 4294967295
+        }
+        prev = __kai_std_regex_decode_cp(dec)
+        pos = pos + __kai_std_regex_decode_width(dec)
+    }
+    return prev
+}
+
+fn __kai_std_regex_find_index_program(program: Str, text: Str) -> Int {
+    let tlen: Int = strlen((text) as Str)
+    var pos: Int = 0
+    var prev_cp: Int = 4294967295
+    while pos <= tlen {
+        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos {
+            return pos
+        }
+        if pos == tlen {
+            return tlen
+        }
+        let dec: Int = __kai_std_regex_decode(text, pos)
+        if dec == 0 {
+            return tlen
+        }
+        prev_cp = __kai_std_regex_decode_cp(dec)
+        pos = pos + __kai_std_regex_decode_width(dec)
+    }
+    return tlen
+}
+
+fn __kai_std_regex_find_program(program: Str, text: Str) -> ?Str {
+    let tlen: Int = strlen((text) as Str)
+    var pos: Int = 0
+    var prev_cp: Int = 4294967295
+    while pos <= tlen {
+        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos {
+            return text[pos..pos + end]
+        }
+        if pos == tlen {
+            return none
+        }
+        let dec: Int = __kai_std_regex_decode(text, pos)
+        if dec == 0 {
+            return none
+        }
+        prev_cp = __kai_std_regex_decode_cp(dec)
+        pos = pos + __kai_std_regex_decode_width(dec)
+    }
+    return none
+}
+
+fn __kai_std_regex_find_count_program(program: Str, text: Str) -> Int {
+    let tlen: Int = strlen((text) as Str)
+    var count: Int = 0
+    var pos: Int = 0
+    var prev_cp: Int = 4294967295
+    while pos <= tlen {
+        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos {
+            count = count + 1
+            if end == 0 {
+                if pos == tlen {
+                    return count
+                }
+                let empty_dec: Int = __kai_std_regex_decode(text, pos)
+                if empty_dec == 0 {
+                    return count
+                }
+                prev_cp = __kai_std_regex_decode_cp(empty_dec)
+                pos = pos + __kai_std_regex_decode_width(empty_dec)
+            } else {
+                pos = pos + end
+                prev_cp = __kai_std_regex_prev_cp_before(text, pos)
+            }
+        } else {
+            if pos == tlen {
+                return count
+            }
+            let dec: Int = __kai_std_regex_decode(text, pos)
+            if dec == 0 {
+                return count
+            }
+            prev_cp = __kai_std_regex_decode_cp(dec)
+            pos = pos + __kai_std_regex_decode_width(dec)
+        }
+    }
+    return count
+}
+
+fn __kai_std_regex_find_nth_index_program(program: Str, text: Str, match_index: Int) -> Int {
+    let tlen: Int = strlen((text) as Str)
+    var found_index: Int = 0
+    var pos: Int = 0
+    var prev_cp: Int = 4294967295
+    while pos <= tlen {
+        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos {
+            if found_index == match_index {
+                return pos
+            }
+            found_index = found_index + 1
+            if end == 0 {
+                if pos == tlen {
+                    return tlen
+                }
+                let empty_dec: Int = __kai_std_regex_decode(text, pos)
+                if empty_dec == 0 {
+                    return tlen
+                }
+                prev_cp = __kai_std_regex_decode_cp(empty_dec)
+                pos = pos + __kai_std_regex_decode_width(empty_dec)
+            } else {
+                pos = pos + end
+                prev_cp = __kai_std_regex_prev_cp_before(text, pos)
+            }
+        } else {
+            if pos == tlen {
+                return tlen
+            }
+            let dec: Int = __kai_std_regex_decode(text, pos)
+            if dec == 0 {
+                return tlen
+            }
+            prev_cp = __kai_std_regex_decode_cp(dec)
+            pos = pos + __kai_std_regex_decode_width(dec)
+        }
+    }
+    return tlen
+}
+
+fn __kai_std_regex_find_nth_program(program: Str, text: Str, match_index: Int) -> ?Str {
+    let tlen: Int = strlen((text) as Str)
+    var found_index: Int = 0
+    var pos: Int = 0
+    var prev_cp: Int = 4294967295
+    while pos <= tlen {
+        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos {
+            if found_index == match_index {
+                return text[pos..pos + end]
+            }
+            found_index = found_index + 1
+            if end == 0 {
+                if pos == tlen {
+                    return none
+                }
+                let empty_dec: Int = __kai_std_regex_decode(text, pos)
+                if empty_dec == 0 {
+                    return none
+                }
+                prev_cp = __kai_std_regex_decode_cp(empty_dec)
+                pos = pos + __kai_std_regex_decode_width(empty_dec)
+            } else {
+                pos = pos + end
+                prev_cp = __kai_std_regex_prev_cp_before(text, pos)
+            }
+        } else {
+            if pos == tlen {
+                return none
+            }
+            let dec: Int = __kai_std_regex_decode(text, pos)
+            if dec == 0 {
+                return none
+            }
+            prev_cp = __kai_std_regex_decode_cp(dec)
+            pos = pos + __kai_std_regex_decode_width(dec)
+        }
+    }
+    return none
+}
+
+fn __kai_std_regex_replace_program(buffer: *Char, program: Str, text: Str, replacement: Str) -> ?Str {
+    let tlen: Int = strlen((text) as Str)
+    var pos: Int = 0
+    var write: Int = 0
+    var prev_cp: Int = 4294967295
+    while pos <= tlen {
+        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos {
+            if strlen((replacement) as Str) > strlen((buffer) as Str) - write {
+                return none
+            }
+            var rep_index: Int = 0
+            while rep_index < strlen((replacement) as Str) {
+                buffer[write] = replacement[rep_index]
+                write = write + 1
+                rep_index = rep_index + 1
+            }
+            if end == 0 {
+                if pos == tlen {
+                    return buffer[..write]
+                }
+                let empty_dec: Int = __kai_std_regex_decode(text, pos)
+                if empty_dec == 0 {
+                    return none
+                }
+                let width: Int = __kai_std_regex_decode_width(empty_dec)
+                if width > strlen((buffer) as Str) - write {
+                    return none
+                }
+                var byte_index: Int = 0
+                while byte_index < width {
+                    buffer[write] = text[pos + byte_index]
+                    write = write + 1
+                    byte_index = byte_index + 1
+                }
+                prev_cp = __kai_std_regex_decode_cp(empty_dec)
+                pos = pos + width
+            } else {
+                pos = pos + end
+                prev_cp = __kai_std_regex_prev_cp_before(text, pos)
+            }
+        } else {
+            if pos == tlen {
+                return buffer[..write]
+            }
+            let dec: Int = __kai_std_regex_decode(text, pos)
+            if dec == 0 {
+                return none
+            }
+            let width: Int = __kai_std_regex_decode_width(dec)
+            if width > strlen((buffer) as Str) - write {
+                return none
+            }
+            var byte_index: Int = 0
+            while byte_index < width {
+                buffer[write] = text[pos + byte_index]
+                write = write + 1
+                byte_index = byte_index + 1
+            }
+            prev_cp = __kai_std_regex_decode_cp(dec)
+            pos = pos + width
+        }
+    }
+    return buffer[..write]
+}
+
+fn __kai_std_regex_split_count_program(program: Str, text: Str) -> Int {
+    let tlen: Int = strlen((text) as Str)
+    var count: Int = 1
+    var pos: Int = 0
+    var prev_cp: Int = 4294967295
+    while pos <= tlen {
+        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos && end > 0 {
+            count = count + 1
+            pos = pos + end
+            prev_cp = __kai_std_regex_prev_cp_before(text, pos)
+        } else {
+            if pos == tlen {
+                return count
+            }
+            let dec: Int = __kai_std_regex_decode(text, pos)
+            if dec == 0 {
+                return count
+            }
+            prev_cp = __kai_std_regex_decode_cp(dec)
+            pos = pos + __kai_std_regex_decode_width(dec)
+        }
+    }
+    return count
+}
+
+fn __kai_std_regex_split_program(program: Str, text: Str, split_index: Int) -> ?Str {
+    let tlen: Int = strlen((text) as Str)
+    var field_index: Int = 0
+    var field_start: Int = 0
+    var pos: Int = 0
+    var prev_cp: Int = 4294967295
+    while pos <= tlen {
+        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        if end <= tlen - pos && end > 0 {
+            if field_index == split_index {
+                return text[field_start..pos]
+            }
+            field_index = field_index + 1
+            pos = pos + end
+            field_start = pos
+            prev_cp = __kai_std_regex_prev_cp_before(text, pos)
+        } else {
+            if pos == tlen {
+                if field_index == split_index {
+                    return text[field_start..tlen]
+                }
+                return none
+            }
+            let dec: Int = __kai_std_regex_decode(text, pos)
+            if dec == 0 {
+                return none
+            }
+            prev_cp = __kai_std_regex_decode_cp(dec)
+            pos = pos + __kai_std_regex_decode_width(dec)
+        }
+    }
+    return none
+}
+
+fn __kai_std_regex_compile(buffer: *Char, pattern: Str) -> ?Str {
+    let res: Int = __kai_std_regex_compile_core(buffer, pattern)
+    if __kai_std_regex_res_err(res) != 0 {
+        return none
+    }
+    return buffer[..__kai_std_regex_res_bpos(res)]
+}
+
+fn __kai_std_regex_compile_status(buffer: *Char, pattern: Str) -> Int {
+    return __kai_std_regex_res_err(__kai_std_regex_compile_core(buffer, pattern))
+}
+
+fn __kai_std_regex_compile_error_offset(buffer: *Char, pattern: Str) -> ?Int {
+    let res: Int = __kai_std_regex_compile_core(buffer, pattern)
+    if __kai_std_regex_res_err(res) == 0 {
+        return none
+    }
+    return __kai_std_regex_res_ppos(res)
+}
+
+fn __kai_std_regex_status_name(status: Int) -> Str {
+    if status == 0 {
+        return "ok"
+    }
+    if status == 1 {
+        return "unsupported backreference"
+    }
+    if status == 2 {
+        return "unsupported lookahead"
+    }
+    if status == 3 {
+        return "unsupported lookbehind"
+    }
+    if status == 4 {
+        return "unsupported named group"
+    }
+    if status == 5 {
+        return "unsupported lazy quantifier"
+    }
+    if status == 6 {
+        return "unsupported group modifier"
+    }
+    if status == 7 {
+        return "unsupported unicode property escape"
+    }
+    if status == 8 {
+        return "invalid pattern syntax"
+    }
+    if status == 9 {
+        return "invalid quantifier range"
+    }
+    if status == 10 {
+        return "compiled pattern exceeds buffer or 2048-byte program limit"
+    }
+    if status == 11 {
+        return "pattern is not valid utf-8"
+    }
+    if status == 12 {
+        return "group nesting exceeds depth 32"
+    }
+    return "unknown status"
+}
+
+fn __kai_std_regex_matches(pattern: Str, text: Str) -> ?Bool {
+    var storage: [1024]Char = [0; 1024]
+    let buffer: *Char = storage
+    let res: Int = __kai_std_regex_compile_core(buffer, pattern)
+    if __kai_std_regex_res_err(res) != 0 {
+        return none
+    }
+    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    return __kai_std_regex_is_match(program, text)
+}
+
+fn __kai_std_regex_contains(pattern: Str, text: Str) -> ?Bool {
+    return __kai_std_regex_matches(pattern, text)
+}
+
+fn __kai_std_regex_find_index(pattern: Str, text: Str) -> ?Int {
+    var storage: [1024]Char = [0; 1024]
+    let buffer: *Char = storage
+    let res: Int = __kai_std_regex_compile_core(buffer, pattern)
+    if __kai_std_regex_res_err(res) != 0 {
+        return none
+    }
+    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    return __kai_std_regex_find_index_program(program, text)
+}
+
+fn __kai_std_regex_find(pattern: Str, text: Str) -> ?Str {
+    var storage: [1024]Char = [0; 1024]
+    let buffer: *Char = storage
+    let res: Int = __kai_std_regex_compile_core(buffer, pattern)
+    if __kai_std_regex_res_err(res) != 0 {
+        return none
+    }
+    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    return __kai_std_regex_find_program(program, text)
+}
+
+fn __kai_std_regex_find_count(pattern: Str, text: Str) -> ?Int {
+    var storage: [1024]Char = [0; 1024]
+    let buffer: *Char = storage
+    let res: Int = __kai_std_regex_compile_core(buffer, pattern)
+    if __kai_std_regex_res_err(res) != 0 {
+        return none
+    }
+    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    return __kai_std_regex_find_count_program(program, text)
+}
+
+fn __kai_std_regex_find_nth_index(pattern: Str, text: Str, match_index: Int) -> ?Int {
+    var storage: [1024]Char = [0; 1024]
+    let buffer: *Char = storage
+    let res: Int = __kai_std_regex_compile_core(buffer, pattern)
+    if __kai_std_regex_res_err(res) != 0 {
+        return none
+    }
+    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    return __kai_std_regex_find_nth_index_program(program, text, match_index)
+}
+
+fn __kai_std_regex_find_nth(pattern: Str, text: Str, match_index: Int) -> ?Str {
+    var storage: [1024]Char = [0; 1024]
+    let buffer: *Char = storage
+    let res: Int = __kai_std_regex_compile_core(buffer, pattern)
+    if __kai_std_regex_res_err(res) != 0 {
+        return none
+    }
+    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    return __kai_std_regex_find_nth_program(program, text, match_index)
+}
+
+fn __kai_std_regex_replace(buffer: *Char, pattern: Str, text: Str, replacement: Str) -> ?Str {
+    var storage: [1024]Char = [0; 1024]
+    let program_buffer: *Char = storage
+    let res: Int = __kai_std_regex_compile_core(program_buffer, pattern)
+    if __kai_std_regex_res_err(res) != 0 {
+        return none
+    }
+    let program: Str = program_buffer[..__kai_std_regex_res_bpos(res)]
+    return __kai_std_regex_replace_program(buffer, program, text, replacement)
+}
+
+fn __kai_std_regex_split_count(pattern: Str, text: Str) -> ?Int {
+    var storage: [1024]Char = [0; 1024]
+    let buffer: *Char = storage
+    let res: Int = __kai_std_regex_compile_core(buffer, pattern)
+    if __kai_std_regex_res_err(res) != 0 {
+        return none
+    }
+    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    return __kai_std_regex_split_count_program(program, text)
+}
+
+fn __kai_std_regex_split(pattern: Str, text: Str, split_index: Int) -> ?Str {
+    var storage: [1024]Char = [0; 1024]
+    let buffer: *Char = storage
+    let res: Int = __kai_std_regex_compile_core(buffer, pattern)
+    if __kai_std_regex_res_err(res) != 0 {
+        return none
+    }
+    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    return __kai_std_regex_split_program(program, text, split_index)
+}

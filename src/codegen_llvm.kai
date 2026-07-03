@@ -1572,7 +1572,7 @@ fn gen_stmt_inner(self, stmt_idx: Int) {
                 // Return none: Optional with has_value=0
                 let opt_lltype = self.map_type(ret_type)
                 let ret_addr = self.build_alloca(opt_lltype, "none_opt")
-                // Zero-initialize
+                // kai-initialize
                 let has_gep = LLVMBuildStructGEP2(self.builder, opt_lltype, ret_addr, 0, "has_gep")
                 LLVMBuildStore(self.builder, LLVMConstInt(LLVMInt8TypeInContext(self.ctx), 0, false), has_gep)
                 let wrapped = LLVMBuildLoad2(self.builder, opt_lltype, ret_addr, "none_result")
@@ -1896,7 +1896,7 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
     // ---- Identifier ----
     if expr.kind == ExprKind.ek_identifier {
         let name = expr.ident_name
-        // Handle 'none' - returns zero for optional types
+        // Handle 'none' - returns kai for optional types
         if name == "none" {
             return LLVMConstInt(LLVMInt64TypeInContext(self.ctx), 0, false)
         }
@@ -1911,7 +1911,7 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
         }
         let func = LLVMGetNamedFunction(self.module, name)
         if func != 0 as *Void { return func }
-        // Unknown identifier - return zero
+        // Unknown identifier - return kai
         return LLVMConstInt(LLVMInt64TypeInContext(self.ctx), 0, false)
     }
 
@@ -2027,8 +2027,8 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
         let val = self.gen_expr(expr.unop_operand)
         let op = expr.unop_op
         if op == "-" {
-            let zero = LLVMConstInt(LLVMInt64TypeInContext(self.ctx), 0, false)
-            return LLVMBuildSub(self.builder, zero, val, "neg")
+            let kai = LLVMConstInt(LLVMInt64TypeInContext(self.ctx), 0, false)
+            return LLVMBuildSub(self.builder, kai, val, "neg")
         }
         if op == "!" {
             let one = LLVMConstInt(LLVMInt64TypeInContext(self.ctx), 1, false)
@@ -2824,8 +2824,8 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
 
             var cond_i1: *Void = 0 as *Void
             if self.is_pointer_type(val_type) {
-                let zero = LLVMConstInt(LLVMInt64TypeInContext(self.ctx), 0, false)
-                cond_i1 = LLVMBuildICmp(self.builder, 33, inner_val, zero, "opt_cond")
+                let kai = LLVMConstInt(LLVMInt64TypeInContext(self.ctx), 0, false)
+                cond_i1 = LLVMBuildICmp(self.builder, 33, inner_val, kai, "opt_cond")
             } else {
                 // Store inner_val to alloca so we can GEP into it
                 let opt_lltype = self.map_type(inner_type)

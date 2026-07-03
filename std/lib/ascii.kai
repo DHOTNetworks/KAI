@@ -1,0 +1,69 @@
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_ascii_is_digit(byte: Char) -> Bool {
+    return byte >= Char(48) && byte <= Char(57)
+}
+
+fn __kai_std_ascii_is_lower(byte: Char) -> Bool {
+    return byte >= Char(97) && byte <= Char(122)
+}
+
+fn __kai_std_ascii_is_upper(byte: Char) -> Bool {
+    return byte >= Char(65) && byte <= Char(90)
+}
+
+fn __kai_std_ascii_is_alpha(byte: Char) -> Bool {
+    return __kai_std_ascii_is_lower(byte) || __kai_std_ascii_is_upper(byte)
+}
+
+fn __kai_std_ascii_is_alnum(byte: Char) -> Bool {
+    return __kai_std_ascii_is_alpha(byte) || __kai_std_ascii_is_digit(byte)
+}
+
+fn __kai_std_ascii_is_whitespace(byte: Char) -> Bool {
+    return byte == Char(32) || byte == Char(9) || byte == Char(10) || byte == Char(13)
+}
+
+fn __kai_std_ascii_is_hex_digit(byte: Char) -> Bool {
+    return __kai_std_ascii_is_digit(byte) || (byte >= Char(65) && byte <= Char(70)) || (byte >= Char(97) && byte <= Char(102))
+}
+
+fn __kai_std_ascii_to_lower(byte: Char) -> Char {
+    if __kai_std_ascii_is_upper(byte) {
+        return byte + Char(32)
+    }
+    return byte
+}
+
+fn __kai_std_ascii_to_upper(byte: Char) -> Char {
+    if __kai_std_ascii_is_lower(byte) {
+        return byte - Char(32)
+    }
+    return byte
+}
+
+fn __kai_std_ascii_digit_value(byte: Char) -> ?Char {
+    if __kai_std_ascii_is_digit(byte) {
+        return byte - Char(48)
+    }
+    return none
+}
+
+fn __kai_std_ascii_hex_value(byte: Char) -> ?Char {
+    if __kai_std_ascii_is_digit(byte) {
+        return byte - Char(48)
+    }
+    if byte >= Char(65) && byte <= Char(70) {
+        return byte - Char(55)
+    }
+    if byte >= Char(97) && byte <= Char(102) {
+        return byte - Char(87)
+    }
+    return none
+}

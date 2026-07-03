@@ -1,0 +1,32 @@
+import std.lib.rand
+
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn rand_fixed_hex32(buffer: *Char, value: Int) -> ?Str {
+    if strlen((buffer) as Str) < 8 {
+        return none
+    }
+    var place: Int = 268435456
+    var index: Int = 0
+    while index < 8 {
+        let digit: Char = ((value / place) % 16) as Char
+        if digit < Char(10) {
+            buffer[index] = Char(48) + digit
+        } else {
+            buffer[index] = Char(87) + digit
+        }
+        place = place / 16
+        index = index + 1
+    }
+    return buffer[..8]
+}
+
+fn rand_entropy_hex32(buffer: *Char) -> ?Str {
+    return rand_fixed_hex32(buffer, __kai_std_rand_entropy_u32())
+}

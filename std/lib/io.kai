@@ -1,0 +1,547 @@
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+struct FixedReader {
+    bytes: Str
+    cursor: Int
+}
+
+struct FixedWriter {
+    buffer: *Char
+    cursor: Int
+}
+
+fn __kai_std_io_write_byte(buffer: *Char, offset: Int, byte: Char) -> ?Int {
+    if offset >= strlen((buffer) as Str) {
+        return none
+    }
+    buffer[offset] = byte
+    return offset + 1
+}
+
+fn __kai_std_io_write_span(buffer: *Char, offset: Int, bytes: Str) -> ?Int {
+    if offset > strlen((buffer) as Str) {
+        return none
+    }
+    if strlen((bytes) as Str) > strlen((buffer) as Str) - offset {
+        return none
+    }
+    var index: Int = 0
+    while index < strlen((bytes) as Str) {
+        buffer[offset + index] = bytes[index]
+        index = index + 1
+    }
+    return offset + strlen((bytes) as Str)
+}
+
+fn __kai_std_io_write_all(buffer: *Char, offset: Int, bytes: Str) -> ?Int {
+    return __kai_std_io_write_span(buffer, offset, bytes)
+}
+
+fn __kai_std_io_write_at(buffer: *Char, offset: Int, bytes: Str) -> ?Int {
+    return __kai_std_io_write_span(buffer, offset, bytes)
+}
+
+fn __kai_std_io_read(bytes: Str, offset: Int, buffer: *Char) -> ?Int {
+    if offset > strlen((bytes) as Str) {
+        return none
+    }
+    let available: Int = strlen((bytes) as Str) - offset
+    var count: Int = strlen((buffer) as Str)
+    if available < count {
+        count = available
+    }
+    var index: Int = 0
+    while index < count {
+        buffer[index] = bytes[offset + index]
+        index = index + 1
+    }
+    return offset + count
+}
+
+fn __kai_std_io_read_exact(bytes: Str, offset: Int, buffer: *Char) -> ?Int {
+    if offset > strlen((bytes) as Str) {
+        return none
+    }
+    if strlen((buffer) as Str) > strlen((bytes) as Str) - offset {
+        return none
+    }
+    var index: Int = 0
+    while index < strlen((buffer) as Str) {
+        buffer[index] = bytes[offset + index]
+        index = index + 1
+    }
+    return offset + strlen((buffer) as Str)
+}
+
+fn __kai_std_io_read_at(bytes: Str, offset: Int, buffer: *Char) -> ?Int {
+    return __kai_std_io_read(bytes, offset, buffer)
+}
+
+fn __kai_std_io_read_all(bytes: Str, buffer: *Char) -> ?Str {
+    let count: Int = strlen((bytes) as Str)
+    let copied: ?Int = __kai_std_io_copy_n(buffer, bytes, count)
+    if copied != none {
+        return __kai_std_io_written(buffer, (copied catch 0))
+    }
+    return none
+}
+
+fn __kai_std_io_copy(buffer: *Char, bytes: Str) -> Int {
+    var count: Int = strlen((bytes) as Str)
+    if strlen((buffer) as Str) < count {
+        count = strlen((buffer) as Str)
+    }
+    var index: Int = 0
+    while index < count {
+        buffer[index] = bytes[index]
+        index = index + 1
+    }
+    return count
+}
+
+fn __kai_std_io_read_byte(bytes: Str, offset: Int) -> ?Char {
+    if offset >= strlen((bytes) as Str) {
+        return none
+    }
+    return bytes[offset]
+}
+
+fn __kai_std_io_copy_n(buffer: *Char, bytes: Str, count: Int) -> ?Int {
+    if count > strlen((buffer) as Str) {
+        return none
+    }
+    if count > strlen((bytes) as Str) {
+        return none
+    }
+    var index: Int = 0
+    while index < count {
+        buffer[index] = bytes[index]
+        index = index + 1
+    }
+    return count
+}
+
+fn __kai_std_io_written(buffer: Str, len: Int) -> Str {
+    if len > strlen((buffer) as Str) {
+        return buffer
+    }
+    return buffer[..len]
+}
+
+fn __kai_std_io_remaining(buffer: Str, offset: Int) -> Int {
+    if offset >= strlen((buffer) as Str) {
+        return 0
+    }
+    return strlen((buffer) as Str) - offset
+}
+
+fn __kai_std_io_next_line(bytes: Str, start: Int) -> ?Str {
+    if start >= strlen((bytes) as Str) {
+        return none
+    }
+    var end: Int = start
+    while end < strlen((bytes) as Str) && bytes[end] != Char(10) {
+        end = end + 1
+    }
+    if end > start && bytes[end - 1] == Char(13) {
+        return bytes[start..end - 1]
+    }
+    return bytes[start..end]
+}
+
+fn __kai_std_io_read_line(bytes: Str, start: Int) -> ?Str {
+    return __kai_std_io_next_line(bytes, start)
+}
+
+fn __kai_std_io_next_line_start(bytes: Str, start: Int) -> Int {
+    if start >= strlen((bytes) as Str) {
+        return strlen((bytes) as Str)
+    }
+    var end: Int = start
+    while end < strlen((bytes) as Str) && bytes[end] != Char(10) {
+        end = end + 1
+    }
+    if end < strlen((bytes) as Str) {
+        return end + 1
+    }
+    return strlen((bytes) as Str)
+}
+
+fn __kai_std_io_read_line_start(bytes: Str, start: Int) -> Int {
+    return __kai_std_io_next_line_start(bytes, start)
+}
+
+fn __kai_std_io_read_until_delimiter(bytes: Str, start: Int, delimiter: Char) -> ?Str {
+    if start >= strlen((bytes) as Str) {
+        return none
+    }
+    var end: Int = start
+    while end < strlen((bytes) as Str) && bytes[end] != delimiter {
+        end = end + 1
+    }
+    return bytes[start..end]
+}
+
+fn __kai_std_io_read_until_delimiter_start(bytes: Str, start: Int, delimiter: Char) -> Int {
+    if start >= strlen((bytes) as Str) {
+        return strlen((bytes) as Str)
+    }
+    var end: Int = start
+    while end < strlen((bytes) as Str) && bytes[end] != delimiter {
+        end = end + 1
+    }
+    if end < strlen((bytes) as Str) {
+        return end + 1
+    }
+    return strlen((bytes) as Str)
+}
+
+fn __kai_std_io_fixed_reader(bytes: Str, cursor: Int) -> FixedReader {
+    var start: Int = cursor
+    if start > strlen((bytes) as Str) {
+        start = strlen((bytes) as Str)
+    }
+    return FixedReader { bytes: bytes, cursor: start }
+}
+
+fn __kai_std_io_fixed_reader_cursor(reader: ref<FixedReader>) -> Int {
+    return reader.cursor
+}
+
+fn __kai_std_io_fixed_reader_len(reader: ref<FixedReader>) -> Int {
+    return strlen((reader.bytes) as Str)
+}
+
+fn __kai_std_io_fixed_reader_remaining(reader: ref<FixedReader>) -> Int {
+    return __kai_std_io_remaining(reader.bytes, reader.cursor)
+}
+
+fn __kai_std_io_fixed_reader_done(reader: ref<FixedReader>) -> Bool {
+    return reader.cursor >= strlen((reader.bytes) as Str)
+}
+
+fn __kai_std_io_fixed_reader_seek(reader: mutref<FixedReader>, cursor: Int) -> Bool {
+    if cursor > strlen((reader.bytes) as Str) {
+        return false
+    }
+    reader.cursor = cursor
+    return true
+}
+
+fn __kai_std_io_fixed_reader_limit(reader: ref<FixedReader>, count: Int) -> FixedReader {
+    let bytes: Str = __kai_std_mem_cursor_chunk(reader.bytes, reader.cursor, count)
+    return FixedReader { bytes: bytes, cursor: 0 }
+}
+
+fn __kai_std_io_fixed_reader_read(reader: mutref<FixedReader>, buffer: *Char) -> Int {
+    let before: Int = reader.cursor
+    let next: ?Int = __kai_std_io_read(reader.bytes, before, buffer)
+    if next != none {
+        reader.cursor = (next catch 0)
+        return (next catch 0) - before
+    }
+    return 0
+}
+
+fn __kai_std_io_fixed_reader_read_exact(reader: mutref<FixedReader>, buffer: *Char) -> Bool {
+    let next: ?Int = __kai_std_io_read_exact(reader.bytes, reader.cursor, buffer)
+    if next != none {
+        reader.cursor = (next catch 0)
+        return true
+    }
+    return false
+}
+
+fn __kai_std_io_fixed_reader_read_at(reader: ref<FixedReader>, offset: Int, buffer: *Char) -> ?Int {
+    return __kai_std_io_read(reader.bytes, offset, buffer)
+}
+
+fn __kai_std_io_fixed_reader_read_byte(reader: mutref<FixedReader>) -> ?Char {
+    let byte: ?Char = __kai_std_io_read_byte(reader.bytes, reader.cursor)
+    if byte != none {
+        reader.cursor = reader.cursor + 1
+    }
+    return byte
+}
+
+fn __kai_std_io_fixed_reader_read_line(reader: mutref<FixedReader>) -> ?Str {
+    let line: ?Str = __kai_std_io_next_line(reader.bytes, reader.cursor)
+    if line != none {
+        reader.cursor = __kai_std_io_next_line_start(reader.bytes, reader.cursor)
+    }
+    return line
+}
+
+fn __kai_std_io_fixed_reader_read_until_delimiter(reader: mutref<FixedReader>, delimiter: Char) -> ?Str {
+    let chunk: ?Str = __kai_std_io_read_until_delimiter(reader.bytes, reader.cursor, delimiter)
+    if chunk != none {
+        reader.cursor = __kai_std_io_read_until_delimiter_start(reader.bytes, reader.cursor, delimiter)
+    }
+    return chunk
+}
+
+fn __kai_std_io_fixed_reader_read_all(reader: mutref<FixedReader>, buffer: *Char) -> ?Str {
+    let remaining: Int = __kai_std_io_fixed_reader_remaining(reader)
+    if remaining > strlen((buffer) as Str) {
+        return none
+    }
+    let copied: ?Int = __kai_std_io_copy_n(buffer, reader.bytes[reader.cursor..], remaining)
+    if copied != none {
+        reader.cursor = strlen((reader.bytes) as Str)
+        return __kai_std_io_written(buffer, (copied catch 0))
+    }
+    return none
+}
+
+fn __kai_std_io_fixed_writer(buffer: *Char, cursor: Int) -> FixedWriter {
+    var start: Int = cursor
+    if start > strlen((buffer) as Str) {
+        start = strlen((buffer) as Str)
+    }
+    return FixedWriter { buffer: buffer, cursor: start }
+}
+
+fn __kai_std_io_fixed_writer_cursor(writer: ref<FixedWriter>) -> Int {
+    return writer.cursor
+}
+
+fn __kai_std_io_fixed_writer_capacity(writer: ref<FixedWriter>) -> Int {
+    return strlen((writer.buffer) as Str)
+}
+
+fn __kai_std_io_fixed_writer_remaining(writer: ref<FixedWriter>) -> Int {
+    return __kai_std_io_remaining(writer.buffer, writer.cursor)
+}
+
+fn __kai_std_io_fixed_writer_view(writer: ref<FixedWriter>) -> Str {
+    return __kai_std_io_written(writer.buffer, writer.cursor)
+}
+
+fn __kai_std_io_fixed_writer_clear(writer: mutref<FixedWriter>) -> Int {
+    writer.cursor = 0
+    return writer.cursor
+}
+
+fn __kai_std_io_fixed_writer_truncate(writer: mutref<FixedWriter>, len: Int) -> Int {
+    if len < writer.cursor {
+        writer.cursor = len
+    }
+    return writer.cursor
+}
+
+fn __kai_std_io_fixed_writer_seek(writer: mutref<FixedWriter>, cursor: Int) -> Bool {
+    if cursor > strlen((writer.buffer) as Str) {
+        return false
+    }
+    writer.cursor = cursor
+    return true
+}
+
+fn __kai_std_io_fixed_writer_write_byte(writer: mutref<FixedWriter>, byte: Char) -> Bool {
+    let next: ?Int = __kai_std_io_write_byte(writer.buffer, writer.cursor, byte)
+    if next != none {
+        writer.cursor = (next catch 0)
+        return true
+    }
+    return false
+}
+
+fn __kai_std_io_fixed_writer_write(writer: mutref<FixedWriter>, bytes: Str) -> Bool {
+    let next: ?Int = __kai_std_io_write_all(writer.buffer, writer.cursor, bytes)
+    if next != none {
+        writer.cursor = (next catch 0)
+        return true
+    }
+    return false
+}
+
+fn __kai_std_io_fixed_writer_write_all(writer: mutref<FixedWriter>, bytes: Str) -> Bool {
+    return __kai_std_io_fixed_writer_write(writer, bytes)
+}
+
+fn __kai_std_io_fixed_writer_write_at(writer: mutref<FixedWriter>, offset: Int, bytes: Str) -> Bool {
+    let next: ?Int = __kai_std_io_write_at(writer.buffer, offset, bytes)
+    return next != none
+}
+
+fn __kai_std_io_copy_buffer(reader: mutref<FixedReader>, writer: mutref<FixedWriter>, scratch: *Char) -> Int {
+    if strlen((scratch) as Str) == 0 {
+        return 0
+    }
+    var total: Int = 0
+    while true {
+        let writable: Int = __kai_std_io_fixed_writer_remaining(writer)
+        if writable == 0 {
+            return total
+        }
+        var chunk_len: Int = strlen((scratch) as Str)
+        if writable < chunk_len {
+            chunk_len = writable
+        }
+        let chunk_buffer: *Char = scratch[..chunk_len]
+        let before: Int = reader.cursor
+        let count: Int = __kai_std_io_fixed_reader_read(reader, chunk_buffer)
+        if count == 0 {
+            return total
+        }
+        let chunk: Str = __kai_std_io_written(chunk_buffer, count)
+        if !__kai_std_io_fixed_writer_write_all(writer, chunk) {
+            reader.cursor = before
+            return total
+        }
+        total = total + count
+    }
+    return total
+}
+
+fn __kai_std_io_copy_reader_n(reader: mutref<FixedReader>, writer: mutref<FixedWriter>, count: Int, scratch: *Char) -> ?Int {
+    if count == 0 {
+        return 0
+    }
+    if strlen((scratch) as Str) == 0 {
+        return none
+    }
+    let reader_start: Int = reader.cursor
+    let writer_start: Int = writer.cursor
+    if count > __kai_std_io_fixed_reader_remaining(reader) {
+        return none
+    }
+    if count > __kai_std_io_fixed_writer_remaining(writer) {
+        return none
+    }
+    var copied: Int = 0
+    while copied < count {
+        var chunk_len: Int = count - copied
+        if chunk_len > strlen((scratch) as Str) {
+            chunk_len = strlen((scratch) as Str)
+        }
+        let chunk_buffer: *Char = scratch[..chunk_len]
+        if !__kai_std_io_fixed_reader_read_exact(reader, chunk_buffer) {
+            reader.cursor = reader_start
+            writer.cursor = writer_start
+            return none
+        }
+        let chunk: Str = __kai_std_io_written(chunk_buffer, chunk_len)
+        if !__kai_std_io_fixed_writer_write_all(writer, chunk) {
+            reader.cursor = reader_start
+            writer.cursor = writer_start
+            return none
+        }
+        copied = copied + chunk_len
+    }
+    return copied
+}
+
+fn __kai_std_io_discard(reader: mutref<FixedReader>, scratch: *Char) -> Int {
+    if strlen((scratch) as Str) == 0 {
+        return 0
+    }
+    var total: Int = 0
+    while true {
+        let count: Int = __kai_std_io_fixed_reader_read(reader, scratch)
+        if count == 0 {
+            return total
+        }
+        total = total + count
+    }
+    return total
+}
+
+fn __kai_std_io_tee_read(reader: mutref<FixedReader>, writer: mutref<FixedWriter>, buffer: *Char) -> ?Int {
+    let before: Int = reader.cursor
+    let count: Int = __kai_std_io_fixed_reader_read(reader, buffer)
+    if count == 0 {
+        return 0
+    }
+    let chunk: Str = __kai_std_io_written(buffer, count)
+    if __kai_std_io_fixed_writer_write_all(writer, chunk) {
+        return count
+    }
+    reader.cursor = before
+    return none
+}
+
+fn __kai_std_io_multi_read(first: mutref<FixedReader>, second: mutref<FixedReader>, buffer: *Char) -> Int {
+    let first_count: Int = __kai_std_io_fixed_reader_read(first, buffer)
+    if first_count >= strlen((buffer) as Str) {
+        return first_count
+    }
+    let second_count: Int = __kai_std_io_fixed_reader_read(second, buffer[first_count..])
+    return first_count + second_count
+}
+
+fn __kai_std_io_error_none() -> Int {
+    return 0
+}
+
+fn __kai_std_io_error_eof() -> Int {
+    return 1
+}
+
+fn __kai_std_io_error_short_read() -> Int {
+    return 2
+}
+
+fn __kai_std_io_error_short_write() -> Int {
+    return 3
+}
+
+fn __kai_std_io_error_capacity() -> Int {
+    return 4
+}
+
+fn __kai_std_io_error_permission() -> Int {
+    return 5
+}
+
+fn __kai_std_io_error_timeout() -> Int {
+    return 6
+}
+
+fn __kai_std_io_error_io() -> Int {
+    return 7
+}
+
+fn __kai_std_io_error_name(code: Int) -> Str {
+    if code == 0 {
+        return "none"
+    }
+    if code == 1 {
+        return "eof"
+    }
+    if code == 2 {
+        return "short_read"
+    }
+    if code == 3 {
+        return "short_write"
+    }
+    if code == 4 {
+        return "capacity"
+    }
+    if code == 5 {
+        return "permission"
+    }
+    if code == 6 {
+        return "timeout"
+    }
+    if code == 7 {
+        return "io"
+    }
+    return "unknown"
+}
+
+fn __kai_std_io_count_lines(bytes: Str) -> Int {
+    var start: Int = 0
+    var count: Int = 0
+    while start < strlen((bytes) as Str) {
+        count = count + 1
+        start = __kai_std_io_next_line_start(bytes, start)
+    }
+    return count
+}

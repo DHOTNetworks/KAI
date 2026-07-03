@@ -1,0 +1,17 @@
+import std.lib.net
+
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_net_localhost(port: Int) -> Address {
+    return __kai_std_net_address("localhost", port)
+}
+
+fn __kai_std_net_loopback(port: Int) -> Address {
+    return __kai_std_net_address("127.0.0.1", port)
+}

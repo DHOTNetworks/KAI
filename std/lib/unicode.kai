@@ -1,0 +1,280 @@
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_unicode_decode_raw(text: Str, index: Int) -> Int {
+    let len: Int = strlen((text) as Str)
+    if index >= len {
+        return 0
+    }
+    let first: Char = text[index]
+    if first < Char(128) {
+        return 4294967296 + (first as Int)
+    }
+    if first >= Char(194) && first <= Char(223) {
+        if index + 2 > len {
+            return 0
+        }
+        let second: Char = text[index + 1]
+        if second < Char(128) || second > Char(191) {
+            return 0
+        }
+        let cp: Int = ((first as Int) - 192) * 64 + ((second as Int) - 128)
+        return 2 * 4294967296 + cp
+    }
+    if first >= Char(224) && first <= Char(239) {
+        if index + 3 > len {
+            return 0
+        }
+        let second: Char = text[index + 1]
+        let third: Char = text[index + 2]
+        if second < Char(128) || second > Char(191) || (third < Char(128) || third > Char(191)) {
+            return 0
+        }
+        if first == Char(224) && second < Char(160) {
+            return 0
+        }
+        if first == Char(237) && second > Char(159) {
+            return 0
+        }
+        let cp: Int = ((first as Int) - 224) * 4096 + ((second as Int) - 128) * 64 + ((third as Int) - 128)
+        return 3 * 4294967296 + cp
+    }
+    if first >= Char(240) && first <= Char(244) {
+        if index + 4 > len {
+            return 0
+        }
+        let second: Char = text[index + 1]
+        let third: Char = text[index + 2]
+        let fourth: Char = text[index + 3]
+        if second < Char(128) || second > Char(191) {
+            return 0
+        }
+        if third < Char(128) || third > Char(191) || (fourth < Char(128) || fourth > Char(191)) {
+            return 0
+        }
+        if first == Char(240) && second < Char(144) {
+            return 0
+        }
+        if first == Char(244) && second > Char(143) {
+            return 0
+        }
+        let cp: Int = ((first as Int) - 240) * 262144 + ((second as Int) - 128) * 4096 + ((third as Int) - 128) * 64 + ((fourth as Int) - 128)
+        return 4 * 4294967296 + cp
+    }
+    return 0
+}
+
+fn __kai_std_unicode_decode_at(text: Str, index: Int) -> ?Int {
+    let raw: Int = __kai_std_unicode_decode_raw(text, index)
+    if raw == 0 {
+        return none
+    }
+    return (raw % 4294967296) as Int
+}
+
+fn __kai_std_unicode_decode_status_at(text: Str, index: Int) -> Int {
+    let len: Int = strlen((text) as Str)
+    if index >= len {
+        return 1
+    }
+    let first: Char = text[index]
+    if first < Char(128) {
+        return 0
+    }
+    if first >= Char(128) && first <= Char(191) {
+        return 2
+    }
+    if first == Char(192) || first == Char(193) {
+        return 6
+    }
+    if first >= Char(194) && first <= Char(223) {
+        if index + 2 > len {
+            return 4
+        }
+        let second: Char = text[index + 1]
+        if second < Char(128) || second > Char(191) {
+            return 5
+        }
+        return 0
+    }
+    if first >= Char(224) && first <= Char(239) {
+        if index + 3 > len {
+            return 4
+        }
+        let second: Char = text[index + 1]
+        let third: Char = text[index + 2]
+        if second < Char(128) || second > Char(191) {
+            return 5
+        }
+        if third < Char(128) || third > Char(191) {
+            return 5
+        }
+        if first == Char(224) && second < Char(160) {
+            return 6
+        }
+        if first == Char(237) && second > Char(159) {
+            return 7
+        }
+        return 0
+    }
+    if first >= Char(240) && first <= Char(244) {
+        if index + 4 > len {
+            return 4
+        }
+        let second: Char = text[index + 1]
+        let third: Char = text[index + 2]
+        let fourth: Char = text[index + 3]
+        if second < Char(128) || second > Char(191) {
+            return 5
+        }
+        if third < Char(128) || third > Char(191) {
+            return 5
+        }
+        if fourth < Char(128) || fourth > Char(191) {
+            return 5
+        }
+        if first == Char(240) && second < Char(144) {
+            return 6
+        }
+        if first == Char(244) && second > Char(143) {
+            return 8
+        }
+        return 0
+    }
+    return 3
+}
+
+fn __kai_std_unicode_status_name(status: Int) -> Str {
+    if status == 0 {
+        return "ok"
+    }
+    if status == 1 {
+        return "out of range"
+    }
+    if status == 2 {
+        return "unexpected continuation byte"
+    }
+    if status == 3 {
+        return "invalid leading byte"
+    }
+    if status == 4 {
+        return "truncated sequence"
+    }
+    if status == 5 {
+        return "invalid continuation byte"
+    }
+    if status == 6 {
+        return "overlong encoding"
+    }
+    if status == 7 {
+        return "surrogate codepoint"
+    }
+    if status == 8 {
+        return "codepoint above U+10FFFF"
+    }
+    return "unknown status"
+}
+
+fn __kai_std_unicode_next_index(text: Str, index: Int) -> ?Int {
+    let width: ?Int = __kai_std_unicode_width_at(text, index)
+    if width != none {
+        return index + (width catch 0)
+    }
+    return none
+}
+
+fn __kai_std_unicode_invalid_index(text: Str) -> Int {
+    var index: Int = 0
+    while index < strlen((text) as Str) {
+        let next: ?Int = __kai_std_unicode_next_index(text, index)
+        if next == none {
+            return index
+        }
+        index = (next catch 0)
+    }
+    return strlen((text) as Str)
+}
+
+fn __kai_std_unicode_width_at(text: Str, index: Int) -> ?Int {
+    let raw: Int = __kai_std_unicode_decode_raw(text, index)
+    if raw == 0 {
+        return none
+    }
+    return (raw / 4294967296) as Int
+}
+
+fn __kai_std_unicode_encoded_width(cp: Int) -> ?Int {
+    if cp >= 55296 && cp <= 57343 {
+        return none
+    }
+    if cp > 1114111 {
+        return none
+    }
+    if cp < 128 {
+        return 1
+    }
+    if cp < 2048 {
+        return 2
+    }
+    if cp < 65536 {
+        return 3
+    }
+    return 4
+}
+
+fn __kai_std_unicode_encode(buffer: *Char, cp: Int) -> ?Str {
+    let width: ?Int = __kai_std_unicode_encoded_width(cp)
+    if width == none {
+        return none
+    }
+    let needed: Int = (width catch 0)
+    if needed > strlen((buffer) as Str) {
+        return none
+    }
+    if needed == 1 {
+        buffer[0] = cp as Char
+        return buffer[..1]
+    }
+    if needed == 2 {
+        buffer[0] = (192 + cp / 64) as Char
+        buffer[1] = (128 + cp % 64) as Char
+        return buffer[..2]
+    }
+    if needed == 3 {
+        buffer[0] = (224 + cp / 4096) as Char
+        buffer[1] = (128 + (cp / 64) % 64) as Char
+        buffer[2] = (128 + cp % 64) as Char
+        return buffer[..3]
+    }
+    buffer[0] = (240 + cp / 262144) as Char
+    buffer[1] = (128 + (cp / 4096) % 64) as Char
+    buffer[2] = (128 + (cp / 64) % 64) as Char
+    buffer[3] = (128 + cp % 64) as Char
+    return buffer[..4]
+}
+
+fn __kai_std_unicode_is_digit(cp: Int) -> Bool {
+    return cp >= 48 && cp <= 57
+}
+
+fn __kai_std_unicode_is_word(cp: Int) -> Bool {
+    return (cp >= 48 && cp <= 57) || ((cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || cp == 95)
+}
+
+fn __kai_std_unicode_is_space(cp: Int) -> Bool {
+    if cp == 9 || cp == 10 || (cp == 11 || cp == 12) || (cp == 13 || cp == 32) {
+        return true
+    }
+    if cp == 160 || cp == 5760 || (cp == 8232 || cp == 8233) {
+        return true
+    }
+    if cp >= 8192 && cp <= 8202 {
+        return true
+    }
+    return cp == 8239 || cp == 8287 || (cp == 12288 || cp == 65279)
+}

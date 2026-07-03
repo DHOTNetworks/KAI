@@ -2,6 +2,7 @@
 *.bak
 .DS_Store
 SCRATCH.md
+__pycache__
 
 #Files
 

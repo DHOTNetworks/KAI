@@ -1,0 +1,452 @@
+cimport "stdio.h"
+cimport "stdlib.h"
+cimport "string.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn atoll(s: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+fn __kai_std_str_is_ascii_space(byte: Char) -> Bool {
+    return byte == Char(32) || byte == Char(9) || (byte == Char(10) || byte == Char(13))
+}
+
+fn __kai_std_str_to_lower_byte(byte: Char) -> Char {
+    if byte >= Char(65) && byte <= Char(90) {
+        return byte + Char(32)
+    }
+    return byte
+}
+
+fn __kai_std_str_to_upper_byte(byte: Char) -> Char {
+    if byte >= Char(97) && byte <= Char(122) {
+        return byte - Char(32)
+    }
+    return byte
+}
+
+fn __kai_std_str_copy(buffer: *Char, text: Str) -> ?Str {
+    let len: Int = strlen((text) as Str)
+    if len > strlen((buffer) as Str) {
+        return none
+    }
+    var index: Int = 0
+    while index < len {
+        buffer[index] = text[index]
+        index = index + 1
+    }
+    return buffer[..len]
+}
+
+fn __kai_std_str_concat(buffer: *Char, left: Str, right: Str) -> ?Str {
+    let left_len: Int = strlen((left) as Str)
+    let right_len: Int = strlen((right) as Str)
+    if left_len > strlen((buffer) as Str) || right_len > strlen((buffer) as Str) - left_len {
+        return none
+    }
+    var index: Int = 0
+    while index < left_len {
+        buffer[index] = left[index]
+        index = index + 1
+    }
+    var right_index: Int = 0
+    while right_index < right_len {
+        buffer[left_len + right_index] = right[right_index]
+        right_index = right_index + 1
+    }
+    return buffer[..left_len + right_len]
+}
+
+fn __kai_std_str_repeat(buffer: *Char, text: Str, count: Int) -> ?Str {
+    let len: Int = strlen((text) as Str)
+    if count > 0 && len > strlen((buffer) as Str) / count {
+        return none
+    }
+    var out: Int = 0
+    var repetition: Int = 0
+    while repetition < count {
+        var index: Int = 0
+        while index < len {
+            buffer[out] = text[index]
+            out = out + 1
+            index = index + 1
+        }
+        repetition = repetition + 1
+    }
+    return buffer[..out]
+}
+
+fn __kai_std_str_replace(buffer: *Char, text: Str, old: Str, replacement: Str) -> ?Str {
+    let old_len: Int = strlen((old) as Str)
+    if old_len == 0 {
+        return none
+    }
+    let text_len: Int = strlen((text) as Str)
+    var read: Int = 0
+    var write: Int = 0
+    while read < text_len {
+        if old_len <= text_len - read && __kai_std_str_starts_with(text[read..], old) {
+            if strlen((replacement) as Str) > strlen((buffer) as Str) - write {
+                return none
+            }
+            var new_index: Int = 0
+            while new_index < strlen((replacement) as Str) {
+                buffer[write] = replacement[new_index]
+                write = write + 1
+                new_index = new_index + 1
+            }
+            read = read + old_len
+        } else {
+            if write >= strlen((buffer) as Str) {
+                return none
+            }
+            buffer[write] = text[read]
+            write = write + 1
+            read = read + 1
+        }
+    }
+    return buffer[..write]
+}
+
+fn __kai_std_str_to_lower_ascii(buffer: *Char, text: Str) -> ?Str {
+    let len: Int = strlen((text) as Str)
+    if len > strlen((buffer) as Str) {
+        return none
+    }
+    var index: Int = 0
+    while index < len {
+        buffer[index] = __kai_std_str_to_lower_byte(text[index])
+        index = index + 1
+    }
+    return buffer[..len]
+}
+
+fn __kai_std_str_to_upper_ascii(buffer: *Char, text: Str) -> ?Str {
+    let len: Int = strlen((text) as Str)
+    if len > strlen((buffer) as Str) {
+        return none
+    }
+    var index: Int = 0
+    while index < len {
+        buffer[index] = __kai_std_str_to_upper_byte(text[index])
+        index = index + 1
+    }
+    return buffer[..len]
+}
+
+fn __kai_std_str_reverse(buffer: *Char, text: Str) -> ?Str {
+    let len: Int = strlen((text) as Str)
+    if len > strlen((buffer) as Str) {
+        return none
+    }
+    var index: Int = 0
+    while index < len {
+        buffer[index] = text[len - 1 - index]
+        index = index + 1
+    }
+    return buffer[..len]
+}
+
+fn __kai_std_str_count_byte(text: Str, byte: Char) -> Int {
+    var index: Int = 0
+    var count: Int = 0
+    while index < strlen((text) as Str) {
+        if text[index] == byte {
+            count = count + 1
+        }
+        index = index + 1
+    }
+    return count
+}
+
+fn __kai_std_str_starts_with(text: Str, prefix: Str) -> Bool {
+    let prefix_len: Int = strlen((prefix) as Str)
+    if prefix_len > strlen((text) as Str) {
+        return false
+    }
+    var index: Int = 0
+    while index < prefix_len {
+        if text[index] != prefix[index] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_str_ends_with(text: Str, suffix: Str) -> Bool {
+    let text_len: Int = strlen((text) as Str)
+    let suffix_len: Int = strlen((suffix) as Str)
+    if suffix_len > text_len {
+        return false
+    }
+    let start: Int = text_len - suffix_len
+    var index: Int = 0
+    while index < suffix_len {
+        if text[start + index] != suffix[index] {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_str_contains(text: Str, needle: Str) -> Bool {
+    let needle_len: Int = strlen((needle) as Str)
+    if needle_len == 0 {
+        return true
+    }
+    let text_len: Int = strlen((text) as Str)
+    if needle_len > text_len {
+        return false
+    }
+    let last_start: Int = text_len - needle_len
+    var start: Int = 0
+    while start <= last_start {
+        var offset: Int = 0
+        var same: Bool = true
+        while same && offset < needle_len {
+            if text[start + offset] != needle[offset] {
+                same = false
+            } else {
+                offset = offset + 1
+            }
+        }
+        if same {
+            return true
+        }
+        start = start + 1
+    }
+    return false
+}
+
+fn __kai_std_str_index_of(text: Str, needle: Str) -> Int {
+    let needle_len: Int = strlen((needle) as Str)
+    if needle_len == 0 {
+        return 0
+    }
+    let text_len: Int = strlen((text) as Str)
+    if needle_len > text_len {
+        return text_len
+    }
+    let last_start: Int = text_len - needle_len
+    var start: Int = 0
+    while start <= last_start {
+        var offset: Int = 0
+        var same: Bool = true
+        while same && offset < needle_len {
+            if text[start + offset] != needle[offset] {
+                same = false
+            } else {
+                offset = offset + 1
+            }
+        }
+        if same {
+            return start
+        }
+        start = start + 1
+    }
+    return text_len
+}
+
+fn __kai_std_str_last_index_of(text: Str, needle: Str) -> Int {
+    let needle_len: Int = strlen((needle) as Str)
+    let text_len: Int = strlen((text) as Str)
+    if needle_len == 0 {
+        return text_len
+    }
+    if needle_len > text_len {
+        return text_len
+    }
+    var start: Int = text_len - needle_len + 1
+    while start > 0 {
+        start = start - 1
+        var offset: Int = 0
+        var same: Bool = true
+        while same && offset < needle_len {
+            if text[start + offset] != needle[offset] {
+                same = false
+            } else {
+                offset = offset + 1
+            }
+        }
+        if same {
+            return start
+        }
+    }
+    return text_len
+}
+
+fn __kai_std_str_count(text: Str, needle: Str) -> Int {
+    let needle_len: Int = strlen((needle) as Str)
+    if needle_len == 0 {
+        return strlen((text) as Str) + 1
+    }
+    var index: Int = 0
+    var count: Int = 0
+    while index <= strlen((text) as Str) {
+        let rest: Str = text[index..]
+        let found: Int = __kai_std_str_index_of(rest, needle)
+        if found == strlen((rest) as Str) {
+            return count
+        }
+        count = count + 1
+        index = index + found + needle_len
+    }
+    return count
+}
+
+fn __kai_std_str_split_count(text: Str, sep: Str) -> Int {
+    if strlen((sep) as Str) == 0 {
+        return 0
+    }
+    return __kai_std_str_count(text, sep) + 1
+}
+
+fn __kai_std_str_split(text: Str, sep: Str, part_index: Int) -> ?Str {
+    let sep_len: Int = strlen((sep) as Str)
+    if sep_len == 0 {
+        return none
+    }
+    var current: Int = 0
+    var start: Int = 0
+    while start <= strlen((text) as Str) {
+        let rest: Str = text[start..]
+        let found: Int = __kai_std_str_index_of(rest, sep)
+        let end: Int = start + found
+        if current == part_index {
+            return text[start..end]
+        }
+        if found == strlen((rest) as Str) {
+            return none
+        }
+        current = current + 1
+        start = end + sep_len
+    }
+    return none
+}
+
+fn __kai_std_str_eql_ignore_ascii_case(left: Str, right: Str) -> Bool {
+    if strlen((left) as Str) != strlen((right) as Str) {
+        return false
+    }
+    var index: Int = 0
+    while index < strlen((left) as Str) {
+        if __kai_std_str_to_lower_byte(left[index]) != __kai_std_str_to_lower_byte(right[index]) {
+            return false
+        }
+        index = index + 1
+    }
+    return true
+}
+
+fn __kai_std_str_trim_ascii(text: Str) -> Str {
+    var start: Int = 0
+    var end: Int = strlen((text) as Str)
+    while start < end && __kai_std_str_is_ascii_space(text[start]) {
+        start = start + 1
+    }
+    while end > start && __kai_std_str_is_ascii_space(text[end - 1]) {
+        end = end - 1
+    }
+    return text[start..end]
+}
+
+fn __kai_std_str_trim_start_ascii(text: Str) -> Str {
+    var start: Int = 0
+    while start < strlen((text) as Str) && __kai_std_str_is_ascii_space(text[start]) {
+        start = start + 1
+    }
+    return text[start..]
+}
+
+fn __kai_std_str_trim_end_ascii(text: Str) -> Str {
+    var end: Int = strlen((text) as Str)
+    while end > 0 && __kai_std_str_is_ascii_space(text[end - 1]) {
+        end = end - 1
+    }
+    return text[..end]
+}
+
+fn __kai_std_str_field_count_ascii(text: Str) -> Int {
+    return __kai_std_str_word_count_ascii(text)
+}
+
+fn __kai_std_str_field_ascii(text: Str, field_index: Int) -> ?Str {
+    var index: Int = 0
+    var current: Int = 0
+    while index < strlen((text) as Str) {
+        while index < strlen((text) as Str) && __kai_std_str_is_ascii_space(text[index]) {
+            index = index + 1
+        }
+        if index >= strlen((text) as Str) {
+            return none
+        }
+        let start: Int = index
+        while index < strlen((text) as Str) && !__kai_std_str_is_ascii_space(text[index]) {
+            index = index + 1
+        }
+        if current == field_index {
+            return text[start..index]
+        }
+        current = current + 1
+    }
+    return none
+}
+
+fn __kai_std_str_line_count(text: Str) -> Int {
+    if strlen((text) as Str) == 0 {
+        return 0
+    }
+    var count: Int = 1
+    var index: Int = 0
+    while index < strlen((text) as Str) {
+        if text[index] == Char(10) && index + 1 < strlen((text) as Str) {
+            count = count + 1
+        }
+        index = index + 1
+    }
+    return count
+}
+
+fn __kai_std_str_line(text: Str, line_index: Int) -> ?Str {
+    if strlen((text) as Str) == 0 {
+        return none
+    }
+    var current: Int = 0
+    var start: Int = 0
+    var index: Int = 0
+    while index <= strlen((text) as Str) {
+        if index == strlen((text) as Str) || text[index] == Char(10) {
+            if index == strlen((text) as Str) && start == strlen((text) as Str) {
+                return none
+            }
+            var end: Int = index
+            if end > start && text[end - 1] == Char(13) {
+                end = end - 1
+            }
+            if current == line_index {
+                return text[start..end]
+            }
+            current = current + 1
+            start = index + 1
+        }
+        index = index + 1
+    }
+    return none
+}
+
+fn __kai_std_str_word_count_ascii(text: Str) -> Int {
+    var index: Int = 0
+    var count: Int = 0
+    var in_word: Bool = false
+    while index < strlen((text) as Str) {
+        if __kai_std_str_is_ascii_space(text[index]) {
+            in_word = false
+        } else if !in_word {
+            count = count + 1
+            in_word = true
+        }
+        index = index + 1
+    }
+    return count
+}
