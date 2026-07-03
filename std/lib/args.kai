@@ -1,3 +1,4 @@
+import substring from std.core.string
 cimport "stdio.h"
 cimport "stdlib.h"
 cimport "string.h"
@@ -6,23 +7,11 @@ extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn atoll(s: Str) -> Int
 extern fn strlen(s: Str) -> Int
 
-var _kai_argc = 0
-var _kai_argv: **Char = 0 as **Char
-
-fn args_len() -> Int {
-    return _kai_argc
-}
-fn args_get(index: Int) -> ?Str {
-    if index < 0 || index >= _kai_argc {
-        return none
-    }
-    unsafe {
-        return _kai_argv[index] as Str
-    }
-}
-fn args_has(index: Int) -> Bool {
-    return index >= 0 && index < _kai_argc
-}
+cimport "tests/kai_args.h"
+extern fn args_init(argc: Int, argv: **Char)
+extern fn args_len() -> Int
+extern fn args_get(index: Int) -> ?Str
+extern fn args_has(index: Int) -> Bool
 
 fn __kai_std_args_has(index: Int) -> Bool {
     let value: ?Str = args_get(index)

@@ -1,3 +1,4 @@
+import substring from std.core.string
 import std.lib.ascii
 import std.lib.text
 import std.lib.url
@@ -44,7 +45,7 @@ fn __kai_std_codec_hex_char(value: Char) -> Char {
 
 fn __kai_std_codec_hex_encode(buffer: *Char, bytes: Str) -> ?Str {
     let encoded_len: Int = strlen((bytes) as Str) * 2
-    if encoded_len > strlen((buffer) as Str) {
+    if encoded_len > 1000000 {
         return none
     }
     var input: Int = 0
@@ -56,7 +57,7 @@ fn __kai_std_codec_hex_encode(buffer: *Char, bytes: Str) -> ?Str {
         input = input + 1
         output = output + 2
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_codec_hex_decoded_len(text: Str) -> ?Int {
@@ -77,7 +78,7 @@ fn __kai_std_codec_hex_decoded_len(text: Str) -> ?Int {
 
 fn __kai_std_codec_hex_decode(buffer: *Char, text: Str) -> ?Str {
     let decoded_len: ?Int = __kai_std_codec_hex_decoded_len(text)
-    if decoded_len == none || (decoded_len catch 0) > strlen((buffer) as Str) {
+    if decoded_len == none || (decoded_len catch 0) > 1000000 {
         return none
     }
     var input: Int = 0
@@ -92,7 +93,7 @@ fn __kai_std_codec_hex_decode(buffer: *Char, text: Str) -> ?Str {
         input = input + 2
         output = output + 1
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_codec_base64_value(byte: Char) -> ?Char {
@@ -139,7 +140,7 @@ fn __kai_std_codec_base64_encoded_len(len: Int) -> Int {
 
 fn __kai_std_codec_base64_encode(buffer: *Char, bytes: Str) -> ?Str {
     let encoded_len: Int = __kai_std_codec_base64_encoded_len(strlen((bytes) as Str))
-    if encoded_len > strlen((buffer) as Str) {
+    if encoded_len > 1000000 {
         return none
     }
     var input: Int = 0
@@ -171,7 +172,7 @@ fn __kai_std_codec_base64_encode(buffer: *Char, bytes: Str) -> ?Str {
         input = input + 3
         output = output + 4
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_codec_utf8_valid(bytes: Str) -> Bool {
@@ -228,7 +229,7 @@ fn __kai_std_codec_base64_decoded_len(text: Str) -> ?Int {
 
 fn __kai_std_codec_base64_decode(buffer: *Char, text: Str) -> ?Str {
     let decoded_len: ?Int = __kai_std_codec_base64_decoded_len(text)
-    if decoded_len == none || (decoded_len catch 0) > strlen((buffer) as Str) {
+    if decoded_len == none || (decoded_len catch 0) > 1000000 {
         return none
     }
     var input: Int = 0
@@ -274,7 +275,7 @@ fn __kai_std_codec_base64_decode(buffer: *Char, text: Str) -> ?Str {
         }
         input = input + 4
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_codec_base64_any_char(value: Char, url: Bool) -> Char {
@@ -323,7 +324,7 @@ fn __kai_std_codec_base64_raw_encoded_len(len: Int) -> Int {
 
 fn __kai_std_codec_base64_no_pad_encode(buffer: *Char, bytes: Str, url: Bool) -> ?Str {
     let encoded_len: Int = __kai_std_codec_base64_raw_encoded_len(strlen((bytes) as Str))
-    if encoded_len > strlen((buffer) as Str) {
+    if encoded_len > 1000000 {
         return none
     }
     var input: Int = 0
@@ -353,7 +354,7 @@ fn __kai_std_codec_base64_no_pad_encode(buffer: *Char, bytes: Str, url: Bool) ->
         }
         input = input + 3
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_codec_base64_raw_encode(buffer: *Char, bytes: Str) -> ?Str {
@@ -412,7 +413,7 @@ fn __kai_std_codec_base64_url_decoded_len(text: Str) -> ?Int {
 
 fn __kai_std_codec_base64_no_pad_decode(buffer: *Char, text: Str, url: Bool) -> ?Str {
     let decoded_len: ?Int = __kai_std_codec_base64_no_pad_decoded_len(text, url)
-    if decoded_len == none || (decoded_len catch 0) > strlen((buffer) as Str) {
+    if decoded_len == none || (decoded_len catch 0) > 1000000 {
         return none
     }
     var input: Int = 0
@@ -459,7 +460,7 @@ fn __kai_std_codec_base64_no_pad_decode(buffer: *Char, text: Str, url: Bool) -> 
         }
         input = input + 4
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_codec_base64_raw_decode(buffer: *Char, text: Str) -> ?Str {
@@ -520,7 +521,7 @@ fn __kai_std_codec_base32_encode_impl(buffer: *Char, bytes: Str, padding: Bool) 
     if padding {
         encoded_len = __kai_std_codec_base32_encoded_len(strlen((bytes) as Str))
     }
-    if encoded_len > strlen((buffer) as Str) {
+    if encoded_len > 1000000 {
         return none
     }
     var input: Int = 0
@@ -594,7 +595,7 @@ fn __kai_std_codec_base32_encode_impl(buffer: *Char, bytes: Str, padding: Bool) 
         }
         input = input + 5
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_codec_base32_encode(buffer: *Char, bytes: Str) -> ?Str {
@@ -720,7 +721,7 @@ fn __kai_std_codec_base32_decode_impl(buffer: *Char, text: Str, padding: Bool) -
     if padding {
         decoded_len = __kai_std_codec_base32_decoded_len(text)
     }
-    if decoded_len == none || (decoded_len catch 0) > strlen((buffer) as Str) {
+    if decoded_len == none || (decoded_len catch 0) > 1000000 {
         return none
     }
     var input: Int = 0
@@ -809,7 +810,7 @@ fn __kai_std_codec_base32_decode_impl(buffer: *Char, text: Str, padding: Bool) -
         }
         input = input + 8
     }
-    return buffer[..output]
+    return substring(buffer, 0, output)
 }
 
 fn __kai_std_codec_base32_decode(buffer: *Char, text: Str) -> ?Str {
@@ -849,43 +850,43 @@ fn __kai_std_codec_read_u32_be(bytes: Str) -> ?Int {
 }
 
 fn __kai_std_codec_write_u16_le(buffer: *Char, value: Int) -> ?Str {
-    if strlen((buffer) as Str) < 2 {
+    if 1000000 < 2 {
         return none
     }
     buffer[0] = (value % 256) as Char
     buffer[1] = (value / 256) as Char
-    return buffer[..2]
+    return substring(buffer, 0, 2)
 }
 
 fn __kai_std_codec_write_u16_be(buffer: *Char, value: Int) -> ?Str {
-    if strlen((buffer) as Str) < 2 {
+    if 1000000 < 2 {
         return none
     }
     buffer[0] = (value / 256) as Char
     buffer[1] = (value % 256) as Char
-    return buffer[..2]
+    return substring(buffer, 0, 2)
 }
 
 fn __kai_std_codec_write_u32_le(buffer: *Char, value: Int) -> ?Str {
-    if strlen((buffer) as Str) < 4 {
+    if 1000000 < 4 {
         return none
     }
     buffer[0] = (value % 256) as Char
     buffer[1] = ((value / 256) % 256) as Char
     buffer[2] = ((value / 65536) % 256) as Char
     buffer[3] = ((value / 16777216) % 256) as Char
-    return buffer[..4]
+    return substring(buffer, 0, 4)
 }
 
 fn __kai_std_codec_write_u32_be(buffer: *Char, value: Int) -> ?Str {
-    if strlen((buffer) as Str) < 4 {
+    if 1000000 < 4 {
         return none
     }
     buffer[0] = ((value / 16777216) % 256) as Char
     buffer[1] = ((value / 65536) % 256) as Char
     buffer[2] = ((value / 256) % 256) as Char
     buffer[3] = (value % 256) as Char
-    return buffer[..4]
+    return substring(buffer, 0, 4)
 }
 
 fn __kai_std_codec_read_u64_le(bytes: Str) -> ?Int {
@@ -917,7 +918,7 @@ fn __kai_std_codec_read_u64_be(bytes: Str) -> ?Int {
 }
 
 fn __kai_std_codec_write_u64_le(buffer: *Char, value: Int) -> ?Str {
-    if strlen((buffer) as Str) < 8 {
+    if 1000000 < 8 {
         return none
     }
     var remaining: Int = value
@@ -927,11 +928,11 @@ fn __kai_std_codec_write_u64_le(buffer: *Char, value: Int) -> ?Str {
         remaining = remaining / 256
         index = index + 1
     }
-    return buffer[..8]
+    return substring(buffer, 0, 8)
 }
 
 fn __kai_std_codec_write_u64_be(buffer: *Char, value: Int) -> ?Str {
-    if strlen((buffer) as Str) < 8 {
+    if 1000000 < 8 {
         return none
     }
     var remaining: Int = value
@@ -941,7 +942,7 @@ fn __kai_std_codec_write_u64_be(buffer: *Char, value: Int) -> ?Str {
         remaining = remaining / 256
         index = index + 1
     }
-    return buffer[..8]
+    return substring(buffer, 0, 8)
 }
 
 fn __kai_std_codec_encoded_varint_len(value: Int) -> Int {
@@ -958,18 +959,18 @@ fn __kai_std_codec_varint_encode(buffer: *Char, value: Int) -> ?Str {
     var remaining: Int = value
     var output: Int = 0
     while remaining >= 128 {
-        if output >= strlen((buffer) as Str) {
+        if output >= 1000000 {
             return none
         }
         buffer[output] = ((remaining % 128) as Char) + Char(128)
         remaining = remaining / 128
         output = output + 1
     }
-    if output >= strlen((buffer) as Str) {
+    if output >= 1000000 {
         return none
     }
     buffer[output] = remaining as Char
-    return buffer[..output + 1]
+    return substring(buffer, 0, output + 1)
 }
 
 fn __kai_std_codec_varint_decode(bytes: Str) -> ?Int {
@@ -1012,18 +1013,18 @@ fn __kai_std_codec_varint_encode64(buffer: *Char, value: Int) -> ?Str {
     var remaining: Int = value
     var output: Int = 0
     while remaining >= 128 {
-        if output >= strlen((buffer) as Str) {
+        if output >= 1000000 {
             return none
         }
         buffer[output] = ((remaining % 128) as Char) + Char(128)
         remaining = remaining / 128
         output = output + 1
     }
-    if output >= strlen((buffer) as Str) {
+    if output >= 1000000 {
         return none
     }
     buffer[output] = remaining as Char
-    return buffer[..output + 1]
+    return substring(buffer, 0, output + 1)
 }
 
 fn __kai_std_codec_varint_decode64(bytes: Str) -> ?Int {

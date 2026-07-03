@@ -1,3 +1,4 @@
+import substring from std.core.string
 cimport "stdio.h"
 cimport "stdlib.h"
 cimport "string.h"
@@ -145,7 +146,7 @@ fn __kai_std_regex_emit_u32(buffer: *Char, bpos: Int, limit: Int, value: Int) ->
 }
 
 fn __kai_std_regex_write_u16_at(buffer: *Char, at: Int, value: Int) -> Void {
-    if at + 2 > strlen((buffer) as Str) {
+    if at + 2 > 1000000 {
         return
     }
     buffer[at] = (value % 256) as Char
@@ -221,7 +222,7 @@ fn __kai_std_regex_shift_right(buffer: *Char, start: Int, end: Int, delta: Int, 
 fn __kai_std_regex_fix_targets(buffer: *Char, scan_start: Int, scan_end: Int, frag_start: Int, frag_end: Int, delta: Int) -> Bool {
     var pc: Int = scan_start
     while pc < scan_end {
-        let il: Int = __kai_std_regex_instr_len(buffer[..scan_end], pc)
+        let il: Int = __kai_std_regex_instr_len(substring(buffer, 0, scan_end), pc)
         if il == 0 {
             return false
         }
@@ -604,7 +605,7 @@ fn __kai_std_regex_braces_high(joined: Int) -> Int {
 
 fn __kai_std_regex_compile_core(buffer: *Char, pattern: Str) -> Int {
     let plen: Int = strlen((pattern) as Str)
-    var limit: Int = strlen((buffer) as Str)
+    var limit: Int = 1000000
     if limit > 2048 {
         limit = 2048
     }
@@ -1280,7 +1281,7 @@ fn __kai_std_regex_find_index_program(program: Str, text: Str) -> Int {
     var pos: Int = 0
     var prev_cp: Int = 4294967295
     while pos <= tlen {
-        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        let end: Int = __kai_std_regex_match_end_at(program, substring(text, pos, strlen((text) as Str)), pos == 0, prev_cp)
         if end <= tlen - pos {
             return pos
         }
@@ -1302,9 +1303,9 @@ fn __kai_std_regex_find_program(program: Str, text: Str) -> ?Str {
     var pos: Int = 0
     var prev_cp: Int = 4294967295
     while pos <= tlen {
-        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        let end: Int = __kai_std_regex_match_end_at(program, substring(text, pos, strlen((text) as Str)), pos == 0, prev_cp)
         if end <= tlen - pos {
-            return text[pos..pos + end]
+            return substring(text, pos, pos + end)
         }
         if pos == tlen {
             return none
@@ -1325,7 +1326,7 @@ fn __kai_std_regex_find_count_program(program: Str, text: Str) -> Int {
     var pos: Int = 0
     var prev_cp: Int = 4294967295
     while pos <= tlen {
-        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        let end: Int = __kai_std_regex_match_end_at(program, substring(text, pos, strlen((text) as Str)), pos == 0, prev_cp)
         if end <= tlen - pos {
             count = count + 1
             if end == 0 {
@@ -1363,7 +1364,7 @@ fn __kai_std_regex_find_nth_index_program(program: Str, text: Str, match_index: 
     var pos: Int = 0
     var prev_cp: Int = 4294967295
     while pos <= tlen {
-        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        let end: Int = __kai_std_regex_match_end_at(program, substring(text, pos, strlen((text) as Str)), pos == 0, prev_cp)
         if end <= tlen - pos {
             if found_index == match_index {
                 return pos
@@ -1404,10 +1405,10 @@ fn __kai_std_regex_find_nth_program(program: Str, text: Str, match_index: Int) -
     var pos: Int = 0
     var prev_cp: Int = 4294967295
     while pos <= tlen {
-        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        let end: Int = __kai_std_regex_match_end_at(program, substring(text, pos, strlen((text) as Str)), pos == 0, prev_cp)
         if end <= tlen - pos {
             if found_index == match_index {
-                return text[pos..pos + end]
+                return substring(text, pos, pos + end)
             }
             found_index = found_index + 1
             if end == 0 {
@@ -1445,9 +1446,9 @@ fn __kai_std_regex_replace_program(buffer: *Char, program: Str, text: Str, repla
     var write: Int = 0
     var prev_cp: Int = 4294967295
     while pos <= tlen {
-        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        let end: Int = __kai_std_regex_match_end_at(program, substring(text, pos, strlen((text) as Str)), pos == 0, prev_cp)
         if end <= tlen - pos {
-            if strlen((replacement) as Str) > strlen((buffer) as Str) - write {
+            if strlen((replacement) as Str) > 1000000 - write {
                 return none
             }
             var rep_index: Int = 0
@@ -1458,14 +1459,14 @@ fn __kai_std_regex_replace_program(buffer: *Char, program: Str, text: Str, repla
             }
             if end == 0 {
                 if pos == tlen {
-                    return buffer[..write]
+                    return substring(buffer, 0, write)
                 }
                 let empty_dec: Int = __kai_std_regex_decode(text, pos)
                 if empty_dec == 0 {
                     return none
                 }
                 let width: Int = __kai_std_regex_decode_width(empty_dec)
-                if width > strlen((buffer) as Str) - write {
+                if width > 1000000 - write {
                     return none
                 }
                 var byte_index: Int = 0
@@ -1482,14 +1483,14 @@ fn __kai_std_regex_replace_program(buffer: *Char, program: Str, text: Str, repla
             }
         } else {
             if pos == tlen {
-                return buffer[..write]
+                return substring(buffer, 0, write)
             }
             let dec: Int = __kai_std_regex_decode(text, pos)
             if dec == 0 {
                 return none
             }
             let width: Int = __kai_std_regex_decode_width(dec)
-            if width > strlen((buffer) as Str) - write {
+            if width > 1000000 - write {
                 return none
             }
             var byte_index: Int = 0
@@ -1502,7 +1503,7 @@ fn __kai_std_regex_replace_program(buffer: *Char, program: Str, text: Str, repla
             pos = pos + width
         }
     }
-    return buffer[..write]
+    return substring(buffer, 0, write)
 }
 
 fn __kai_std_regex_split_count_program(program: Str, text: Str) -> Int {
@@ -1511,7 +1512,7 @@ fn __kai_std_regex_split_count_program(program: Str, text: Str) -> Int {
     var pos: Int = 0
     var prev_cp: Int = 4294967295
     while pos <= tlen {
-        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        let end: Int = __kai_std_regex_match_end_at(program, substring(text, pos, strlen((text) as Str)), pos == 0, prev_cp)
         if end <= tlen - pos && end > 0 {
             count = count + 1
             pos = pos + end
@@ -1538,10 +1539,10 @@ fn __kai_std_regex_split_program(program: Str, text: Str, split_index: Int) -> ?
     var pos: Int = 0
     var prev_cp: Int = 4294967295
     while pos <= tlen {
-        let end: Int = __kai_std_regex_match_end_at(program, text[pos..], pos == 0, prev_cp)
+        let end: Int = __kai_std_regex_match_end_at(program, substring(text, pos, strlen((text) as Str)), pos == 0, prev_cp)
         if end <= tlen - pos && end > 0 {
             if field_index == split_index {
-                return text[field_start..pos]
+                return substring(text, field_start, pos)
             }
             field_index = field_index + 1
             pos = pos + end
@@ -1550,7 +1551,7 @@ fn __kai_std_regex_split_program(program: Str, text: Str, split_index: Int) -> ?
         } else {
             if pos == tlen {
                 if field_index == split_index {
-                    return text[field_start..tlen]
+                    return substring(text, field_start, tlen)
                 }
                 return none
             }
@@ -1570,7 +1571,7 @@ fn __kai_std_regex_compile(buffer: *Char, pattern: Str) -> ?Str {
     if __kai_std_regex_res_err(res) != 0 {
         return none
     }
-    return buffer[..__kai_std_regex_res_bpos(res)]
+    return substring(buffer, 0, __kai_std_regex_res_bpos(res))
 }
 
 fn __kai_std_regex_compile_status(buffer: *Char, pattern: Str) -> Int {
@@ -1635,7 +1636,7 @@ fn __kai_std_regex_matches(pattern: Str, text: Str) -> ?Bool {
     if __kai_std_regex_res_err(res) != 0 {
         return none
     }
-    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    let program: Str = substring(buffer, 0, __kai_std_regex_res_bpos(res))
     return __kai_std_regex_is_match(program, text)
 }
 
@@ -1650,7 +1651,7 @@ fn __kai_std_regex_find_index(pattern: Str, text: Str) -> ?Int {
     if __kai_std_regex_res_err(res) != 0 {
         return none
     }
-    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    let program: Str = substring(buffer, 0, __kai_std_regex_res_bpos(res))
     return __kai_std_regex_find_index_program(program, text)
 }
 
@@ -1661,7 +1662,7 @@ fn __kai_std_regex_find(pattern: Str, text: Str) -> ?Str {
     if __kai_std_regex_res_err(res) != 0 {
         return none
     }
-    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    let program: Str = substring(buffer, 0, __kai_std_regex_res_bpos(res))
     return __kai_std_regex_find_program(program, text)
 }
 
@@ -1672,7 +1673,7 @@ fn __kai_std_regex_find_count(pattern: Str, text: Str) -> ?Int {
     if __kai_std_regex_res_err(res) != 0 {
         return none
     }
-    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    let program: Str = substring(buffer, 0, __kai_std_regex_res_bpos(res))
     return __kai_std_regex_find_count_program(program, text)
 }
 
@@ -1683,7 +1684,7 @@ fn __kai_std_regex_find_nth_index(pattern: Str, text: Str, match_index: Int) -> 
     if __kai_std_regex_res_err(res) != 0 {
         return none
     }
-    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    let program: Str = substring(buffer, 0, __kai_std_regex_res_bpos(res))
     return __kai_std_regex_find_nth_index_program(program, text, match_index)
 }
 
@@ -1694,7 +1695,7 @@ fn __kai_std_regex_find_nth(pattern: Str, text: Str, match_index: Int) -> ?Str {
     if __kai_std_regex_res_err(res) != 0 {
         return none
     }
-    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    let program: Str = substring(buffer, 0, __kai_std_regex_res_bpos(res))
     return __kai_std_regex_find_nth_program(program, text, match_index)
 }
 
@@ -1705,7 +1706,7 @@ fn __kai_std_regex_replace(buffer: *Char, pattern: Str, text: Str, replacement: 
     if __kai_std_regex_res_err(res) != 0 {
         return none
     }
-    let program: Str = program_buffer[..__kai_std_regex_res_bpos(res)]
+    let program: Str = substring(program_buffer, 0, __kai_std_regex_res_bpos(res))
     return __kai_std_regex_replace_program(buffer, program, text, replacement)
 }
 
@@ -1716,7 +1717,7 @@ fn __kai_std_regex_split_count(pattern: Str, text: Str) -> ?Int {
     if __kai_std_regex_res_err(res) != 0 {
         return none
     }
-    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    let program: Str = substring(buffer, 0, __kai_std_regex_res_bpos(res))
     return __kai_std_regex_split_count_program(program, text)
 }
 
@@ -1727,6 +1728,6 @@ fn __kai_std_regex_split(pattern: Str, text: Str, split_index: Int) -> ?Str {
     if __kai_std_regex_res_err(res) != 0 {
         return none
     }
-    let program: Str = buffer[..__kai_std_regex_res_bpos(res)]
+    let program: Str = substring(buffer, 0, __kai_std_regex_res_bpos(res))
     return __kai_std_regex_split_program(program, text, split_index)
 }

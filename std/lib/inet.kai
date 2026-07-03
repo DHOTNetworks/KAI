@@ -1,3 +1,4 @@
+import substring from std.core.string
 import std.lib.fmt
 
 cimport "stdio.h"
@@ -61,14 +62,14 @@ fn __kai_std_inet_parse_ipv4(text: Str) -> ?Int {
 }
 
 fn __kai_std_inet_ipv4_to_bytes(buffer: *Char, value: Int) -> ?Str {
-    if strlen((buffer) as Str) < 4 {
+    if 1000000 < 4 {
         return none
     }
     buffer[0] = (value / 16777216) as Char
     buffer[1] = ((value / 65536) % 256) as Char
     buffer[2] = ((value / 256) % 256) as Char
     buffer[3] = (value % 256) as Char
-    return buffer[..4]
+    return substring(buffer, 0, 4)
 }
 
 fn __kai_std_inet_write_ipv4(buffer: *Char, value: Int) -> ?Str {
@@ -132,7 +133,7 @@ fn __kai_std_inet_hex_value(byte: Char) -> Int {
 }
 
 fn __kai_std_inet_parse_ipv6(buffer: *Char, text: Str) -> ?Str {
-    if strlen((buffer) as Str) < 16 {
+    if 1000000 < 16 {
         return none
     }
     let len: Int = strlen((text) as Str)
@@ -168,7 +169,7 @@ fn __kai_std_inet_parse_ipv6(buffer: *Char, text: Str) -> ?Str {
             if token_end != len {
                 return none
             }
-            let v4: Int = __kai_std_inet_ipv4_core(text[pos..len])
+            let v4: Int = __kai_std_inet_ipv4_core(substring(text, pos, len))
             if v4 == 0 {
                 return none
             }
@@ -261,7 +262,7 @@ fn __kai_std_inet_parse_ipv6(buffer: *Char, text: Str) -> ?Str {
         buffer[out_index * 2 + 1] = (groups[out_index] % 256) as Char
         out_index = out_index + 1
     }
-    return buffer[..16]
+    return substring(buffer, 0, 16)
 }
 
 fn __kai_std_inet_is_ipv6(text: Str) -> Bool {

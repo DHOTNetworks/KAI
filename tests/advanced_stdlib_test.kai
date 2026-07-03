@@ -1,0 +1,82 @@
+import std.lib.args
+import std.lib.codec
+import std.lib.url
+import std.lib.ascii
+import std.lib.math
+
+cimport "stdio.h"
+cimport "stdlib.h"
+extern fn printf(format: Str, value: Str) -> Int
+extern fn exit(code: Int)
+extern fn malloc(size: Int) -> *Char
+extern fn free(ptr: *Char)
+
+fn assert(cond: Bool, msg: Str) {
+    if !cond {
+        printf("ASSERTION FAILED: %s\n", msg)
+        exit(1)
+    }
+}
+
+fn main(argc: Int, argv: **Char) -> Int {
+    args_init(argc, argv)
+
+    printf("[1/5] Testing Command Line Arguments...\n", "")
+    assert(args_len() == argc, "argc mismatch")
+    if argc > 0 {
+        let first_arg: ?Str = args_get(0)
+        assert(first_arg != none, "first arg none")
+    }
+
+    printf("[2/5] Testing Math Library...\n", "")
+    assert(__kai_std_math_min_i32(10, 20) == 10, "min_i32 failed")
+    assert(__kai_std_math_max_i32(10, 20) == 20, "max_i32 failed")
+    assert(__kai_std_math_clamp_i32(15, 10, 20) == 15, "clamp_i32 middle failed")
+    assert(__kai_std_math_clamp_i32(5, 10, 20) == 10, "clamp_i32 low failed")
+    assert(__kai_std_math_clamp_i32(25, 10, 20) == 20, "clamp_i32 high failed")
+
+    printf("[3/5] Testing Ascii Library...\n", "")
+    assert(__kai_std_ascii_is_digit(Char(53)), "is_digit('5') failed") // '5'
+    assert(!__kai_std_ascii_is_digit(Char(65)), "is_digit('A') failed") // 'A'
+    assert(__kai_std_ascii_to_lower(Char(65)) == Char(97), "to_lower failed")
+    assert(__kai_std_ascii_to_upper(Char(97)) == Char(65), "to_upper failed")
+
+    printf("[4/5] Testing URL Parsing...\n", "")
+    let test_url = "https://user:pass@example.com:443/path/to/resource?query=1#fragment"
+    
+    let scheme: ?Str = __kai_std_url_scheme(test_url)
+    assert(scheme != none, "url scheme none")
+    assert(strcmp((scheme catch ""), "https") == 0, "url scheme mismatch")
+
+    let host: ?Str = __kai_std_url_host(test_url)
+    assert(host != none, "url host none")
+    assert(strcmp((host catch ""), "example.com") == 0, "url host mismatch")
+
+    let path = __kai_std_url_path(test_url)
+    assert(strcmp(path, "/path/to/resource") == 0, "url path mismatch")
+
+    let fragment: ?Str = __kai_std_url_fragment(test_url)
+    assert(fragment != none, "url fragment none")
+    assert(strcmp((fragment catch ""), "fragment") == 0, "url fragment mismatch")
+
+    printf("[5/5] Testing Codec Library (Hex & CRC-32)...\n", "")
+    
+    // Hex decode test
+    let dec_ptr = malloc(128)
+    let hex_encoded = "7a65726f" // "zero" in hex
+    let dec_res: ?Str = __kai_std_codec_hex_decode(dec_ptr, hex_encoded)
+    assert(dec_res != none, "hex decode none")
+    assert(strcmp((dec_res catch ""), "zero") == 0, "hex decode mismatch")
+    free(dec_ptr)
+
+    // Varint encoding/decoding test
+    let varint_len = __kai_std_codec_encoded_varint_len(300)
+    assert(varint_len == 2, "varint len mismatch")
+
+    // CRC-32 test
+    let checksum = __kai_std_codec_crc32("zero benchmark payload")
+    assert(checksum > 0, "crc32 failed")
+
+    printf("ALL CRITICAL STDLIB COMPONENT TESTS PASSED SUCCESSFULLY!\n", "")
+    return 0
+}

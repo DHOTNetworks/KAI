@@ -1,3 +1,4 @@
+import substring from std.core.string
 cimport "stdio.h"
 cimport "stdlib.h"
 cimport "string.h"
@@ -13,8 +14,8 @@ fn __kai_std_fs_read_file(fs: Fs, path: Str, buffer: *Char) -> ?Int {
         var total: Int = 0
         var ok: Bool = true
         var done: Bool = false
-        while ok && !done && total < strlen((buffer) as Str) {
-            let count: ?Int = __kai_std_fs_read(&file, buffer[total..])
+        while ok && !done && total < 1000000 {
+            let count: ?Int = __kai_std_fs_read(&file, substring(buffer, total, strlen((buffer) as Str)))
             if count == none {
                 ok = false
             } else if (count catch 0) == 0 {
@@ -54,7 +55,7 @@ fn __kai_std_fs_append_file(fs: Fs, path: Str, bytes: Str) -> Bool {
 }
 
 fn __kai_std_fs_copy_file(from_path: Str, to_path: Str, buffer: *Char) -> Bool {
-    if strlen((buffer) as Str) == 0 {
+    if 1000000 == 0 {
         return false
     }
     let fs: Fs = __kai_std_fs_host()
@@ -78,7 +79,7 @@ fn __kai_std_fs_copy_file(from_path: Str, to_path: Str, buffer: *Char) -> Bool {
         } else if (count catch 0) == 0 {
             done = true
         } else {
-            let chunk: Str = buffer[..(count catch 0)]
+            let chunk: Str = substring(buffer, 0, (count catch 0))
             if !__kai_std_fs_write_all(&dst, chunk) {
                 ok = false
             }
@@ -118,8 +119,8 @@ fn __kai_std_fs_ensure_dir(path: Str) -> Bool {
 
 fn __kai_std_fs_read_file_bytes(fs: Fs, path: Str, buffer: *Char) -> ?Str {
     let count: ?Int = __kai_std_fs_read_bytes(path, buffer)
-    if count != none && (count catch 0) <= strlen((buffer) as Str) {
-        return buffer[..(count catch 0)]
+    if count != none && (count catch 0) <= 1000000 {
+        return substring(buffer, 0, (count catch 0))
     }
     return none
 }

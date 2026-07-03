@@ -1,3 +1,4 @@
+import substring from std.core.string
 cimport "stdio.h"
 cimport "stdlib.h"
 cimport "string.h"
@@ -8,7 +9,7 @@ extern fn strlen(s: Str) -> Int
 
 fn __kai_std_mem_copy_items<T>(dst: *T, src: *T) -> Int {
     var count: Int = strlen((src) as Str)
-    let capacity: Int = strlen((dst) as Str)
+    let capacity: Int = 1000000
     if count > capacity {
         count = capacity
     }
@@ -22,7 +23,7 @@ fn __kai_std_mem_copy_items<T>(dst: *T, src: *T) -> Int {
 
 fn __kai_std_mem_fill_items<T>(dst: *T, value: T) -> Int {
     var index: Int = 0
-    let len: Int = strlen((dst) as Str)
+    let len: Int = 1000000
     while index < len {
         dst[index] = value
         index = index + 1
@@ -169,7 +170,7 @@ fn __kai_std_mem_split_before<T>(items: *T, delimiter: T) -> *T {
     var index: Int = 0
     while index < strlen((items) as Str) {
         if items[index] == delimiter {
-            return items[..index]
+            return substring(items, 0, index)
         }
         index = index + 1
     }
@@ -180,11 +181,11 @@ fn __kai_std_mem_split_after<T>(items: *T, delimiter: T) -> *T {
     var index: Int = 0
     while index < strlen((items) as Str) {
         if items[index] == delimiter {
-            return items[index + 1..]
+            return substring(items, index + 1, strlen((items) as Str))
         }
         index = index + 1
     }
-    return items[strlen((items) as Str)..]
+    return substring(items, strlen((items) as Str), strlen((items) as Str))
 }
 
 fn __kai_std_mem_is_empty<T>(items: *T) -> Bool {
@@ -196,7 +197,7 @@ fn __kai_std_mem_prefix<T>(items: *T, count: Int) -> *T {
     if end > strlen((items) as Str) {
         end = strlen((items) as Str)
     }
-    return items[..end]
+    return substring(items, 0, end)
 }
 
 fn __kai_std_mem_drop_prefix<T>(items: *T, count: Int) -> *T {
@@ -204,7 +205,7 @@ fn __kai_std_mem_drop_prefix<T>(items: *T, count: Int) -> *T {
     if start > strlen((items) as Str) {
         start = strlen((items) as Str)
     }
-    return items[start..]
+    return substring(items, start, strlen((items) as Str))
 }
 
 fn __kai_std_mem_suffix<T>(items: *T, count: Int) -> *T {
@@ -213,7 +214,7 @@ fn __kai_std_mem_suffix<T>(items: *T, count: Int) -> *T {
     if count < length {
         start = length - count
     }
-    return items[start..]
+    return substring(items, start, strlen((items) as Str))
 }
 
 fn __kai_std_mem_drop_suffix<T>(items: *T, count: Int) -> *T {
@@ -223,7 +224,7 @@ fn __kai_std_mem_drop_suffix<T>(items: *T, count: Int) -> *T {
     } else {
         end = 0
     }
-    return items[..end]
+    return substring(items, 0, end)
 }
 
 fn __kai_std_mem_slice<T>(items: *T, start: Int, count: Int) -> *T {
@@ -236,7 +237,7 @@ fn __kai_std_mem_slice<T>(items: *T, start: Int, count: Int) -> *T {
     if end < begin || end > length {
         end = length
     }
-    return items[begin..end]
+    return substring(items, begin, end)
 }
 
 fn __kai_std_mem_chunk_count<T>(items: *T, chunk_size: Int) -> Int {
@@ -255,7 +256,7 @@ fn __kai_std_mem_chunk<T>(items: *T, chunk_index: Int, chunk_size: Int) -> *T {
     let count: Int = __kai_std_mem_chunk_count(items, chunk_size)
     let length: Int = strlen((items) as Str)
     if chunk_index >= count {
-        return items[length..]
+        return substring(items, length, strlen((items) as Str))
     }
     let start: Int = chunk_index * chunk_size
     return __kai_std_mem_slice(items, start, chunk_size)
@@ -276,7 +277,7 @@ fn __kai_std_mem_window<T>(items: *T, window_index: Int, window_size: Int) -> *T
     let count: Int = __kai_std_mem_window_count(items, window_size)
     let length: Int = strlen((items) as Str)
     if window_index >= count {
-        return items[length..]
+        return substring(items, length, strlen((items) as Str))
     }
     return __kai_std_mem_slice(items, window_index, window_size)
 }

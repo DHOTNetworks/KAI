@@ -1,3 +1,4 @@
+import substring from std.core.string
 import std.lib.net
 
 cimport "stdio.h"

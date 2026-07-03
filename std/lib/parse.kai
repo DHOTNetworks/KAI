@@ -1,3 +1,4 @@
+import substring from std.core.string
 import std.lib.time
 
 cimport "stdio.h"
@@ -84,7 +85,7 @@ fn __kai_std_parse_token_ascii(value: Str) -> Str {
     while end < strlen((value) as Str) && !(value[end] == Char(32) || value[end] == Char(9) || value[end] == Char(10) || value[end] == Char(13)) {
         end = end + 1
     }
-    return value[start..end]
+    return substring(value, start, end)
 }
 
 fn __kai_std_parse_parse_u32_max(value: Str, max: Int) -> ?Int {
@@ -210,7 +211,7 @@ fn __kai_std_parse_parse_i64_base(value: Str, base: Int) -> ?Int {
         return none
     }
     let limit: Int = (0 - 9223372036854775807 - 1)
-    let parsed: ?Int = __kai_std_parse_parse_u64_base_max(value[start..], base, limit)
+    let parsed: ?Int = __kai_std_parse_parse_u64_base_max(substring(value, start, strlen((value) as Str)), base, limit)
     if parsed == none {
         return none
     }
@@ -242,7 +243,7 @@ fn __kai_std_parse_parse_i32_base(value: Str, base: Int) -> ?Int {
         return none
     }
     let limit: Int = 2147483648
-    let parsed: ?Int = __kai_std_parse_parse_u32_base_max(value[start..], base, limit)
+    let parsed: ?Int = __kai_std_parse_parse_u32_base_max(substring(value, start, strlen((value) as Str)), base, limit)
     if parsed == none {
         return none
     }
@@ -276,7 +277,7 @@ fn __kai_std_parse_prefixed_base(value: Str) -> Int {
 fn __kai_std_parse_prefixed_digits(value: Str) -> Str {
     if strlen((value) as Str) >= 2 && value[0] == Char(48) {
         if value[1] == Char(120) || value[1] == Char(88) || (value[1] == Char(98) || value[1] == Char(66)) || (value[1] == Char(111) || value[1] == Char(79)) {
-            return value[2..]
+            return substring(value, 2, strlen((value) as Str))
         }
     }
     return value
@@ -313,8 +314,8 @@ fn __kai_std_parse_parse_i64_prefix(value: Str) -> ?Int {
     if start == strlen((value) as Str) {
         return none
     }
-    let base: Int = __kai_std_parse_prefixed_base(value[start..])
-    let digits: Str = __kai_std_parse_prefixed_digits(value[start..])
+    let base: Int = __kai_std_parse_prefixed_base(substring(value, start, strlen((value) as Str)))
+    let digits: Str = __kai_std_parse_prefixed_digits(substring(value, start, strlen((value) as Str)))
     let limit: Int = (0 - 9223372036854775807 - 1)
     let parsed: ?Int = __kai_std_parse_parse_u64_base_max(digits, base, limit)
     if parsed == none {
@@ -345,8 +346,8 @@ fn __kai_std_parse_parse_i32_prefix(value: Str) -> ?Int {
     if start == strlen((value) as Str) {
         return none
     }
-    let base: Int = __kai_std_parse_prefixed_base(value[start..])
-    let digits: Str = __kai_std_parse_prefixed_digits(value[start..])
+    let base: Int = __kai_std_parse_prefixed_base(substring(value, start, strlen((value) as Str)))
+    let digits: Str = __kai_std_parse_prefixed_digits(substring(value, start, strlen((value) as Str)))
     let limit: Int = 2147483648
     let parsed: ?Int = __kai_std_parse_parse_u32_base_max(digits, base, limit)
     if parsed == none {
@@ -430,7 +431,7 @@ fn __kai_std_parse_parse_i32(value: Str) -> ?Int {
         return none
     }
     let limit: Int = 2147483648
-    let parsed: ?Int = __kai_std_parse_parse_u32_max(value[start..], limit)
+    let parsed: ?Int = __kai_std_parse_parse_u32_max(substring(value, start, strlen((value) as Str)), limit)
     if parsed == none {
         return none
     }
@@ -505,7 +506,7 @@ fn __kai_std_parse_parse_duration(value: Str) -> ?Duration {
         if digit_start == index {
             return none
         }
-        let amount: ?Int = __kai_std_parse_parse_u64(value[digit_start..index])
+        let amount: ?Int = __kai_std_parse_parse_u64(substring(value, digit_start, index))
         if amount == none {
             return none
         }
@@ -516,7 +517,7 @@ fn __kai_std_parse_parse_duration(value: Str) -> ?Duration {
         if unit_start == index {
             return none
         }
-        let multiplier: ?Int = __kai_std_parse_duration_unit_ns(value[unit_start..index])
+        let multiplier: ?Int = __kai_std_parse_duration_unit_ns(substring(value, unit_start, index))
         if multiplier == none {
             return none
         }
@@ -574,11 +575,11 @@ fn __kai_std_parse_parse_byte_size(value: Str) -> ?Int {
     if index == 0 {
         return none
     }
-    let amount: ?Int = __kai_std_parse_parse_usize(value[..index])
+    let amount: ?Int = __kai_std_parse_parse_usize(substring(value, 0, index))
     if amount == none {
         return none
     }
-    let multiplier: ?Int = __kai_std_parse_byte_size_multiplier(value[index..])
+    let multiplier: ?Int = __kai_std_parse_byte_size_multiplier(substring(value, index, strlen((value) as Str)))
     if multiplier == none {
         return none
     }

@@ -1,3 +1,4 @@
+import substring from std.core.string
 import std.lib.cli
 
 cimport "stdio.h"
@@ -8,23 +9,11 @@ extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn atoll(s: Str) -> Int
 extern fn strlen(s: Str) -> Int
 
-var _kai_argc = 0
-var _kai_argv: **Char = 0 as **Char
-
-fn args_len() -> Int {
-    return _kai_argc
-}
-fn args_get(index: Int) -> ?Str {
-    if index < 0 || index >= _kai_argc {
-        return none
-    }
-    unsafe {
-        return _kai_argv[index] as Str
-    }
-}
-fn args_has(index: Int) -> Bool {
-    return index >= 0 && index < _kai_argc
-}
+cimport "tests/kai_args.h"
+extern fn args_init(argc: Int, argv: **Char)
+extern fn args_len() -> Int
+extern fn args_get(index: Int) -> ?Str
+extern fn args_has(index: Int) -> Bool
 
 fn __kai_std_cli_arg_equals(index: Int, expected: Str) -> Bool {
     let value: ?Str = args_get(index)
@@ -166,10 +155,10 @@ fn __kai_std_cli_command_in3(command: Str, first: Str, second: Str, third: Str) 
 }
 
 fn __kai_std_cli_write_span(buffer: *Char, offset: Int, bytes: Str) -> ?Int {
-    if offset > strlen((buffer) as Str) {
+    if offset > 1000000 {
         return none
     }
-    if strlen((bytes) as Str) > strlen((buffer) as Str) - offset {
+    if strlen((bytes) as Str) > 1000000 - offset {
         return none
     }
     var index: Int = 0
@@ -199,7 +188,7 @@ fn __kai_std_cli_format_usage(buffer: *Char, program: Str, syntax: Str) -> ?Str 
     offset = (space catch 0)
     let wrote_syntax: ?Int = __kai_std_cli_write_span(buffer, offset, syntax)
     if wrote_syntax != none {
-        return buffer[..(wrote_syntax catch 0)]
+        return substring(buffer, 0, (wrote_syntax catch 0))
     }
     return none
 }
@@ -235,7 +224,7 @@ fn __kai_std_cli_format_command(buffer: *Char, name: Str, syntax: Str, summary: 
     offset = (gap catch 0)
     let wrote_summary: ?Int = __kai_std_cli_write_span(buffer, offset, summary)
     if wrote_summary != none {
-        return buffer[..(wrote_summary catch 0)]
+        return substring(buffer, 0, (wrote_summary catch 0))
     }
     return none
 }
@@ -253,7 +242,7 @@ fn __kai_std_cli_format_error(buffer: *Char, message: Str) -> ?Str {
     offset = (prefix catch 0)
     let wrote_message: ?Int = __kai_std_cli_write_span(buffer, offset, message)
     if wrote_message != none {
-        return buffer[..(wrote_message catch 0)]
+        return substring(buffer, 0, (wrote_message catch 0))
     }
     return none
 }
@@ -267,7 +256,7 @@ fn __kai_std_cli_format_unknown_command(buffer: *Char, command: Str) -> ?Str {
     offset = (prefix catch 0)
     let wrote_command: ?Int = __kai_std_cli_write_span(buffer, offset, command)
     if wrote_command != none {
-        return buffer[..(wrote_command catch 0)]
+        return substring(buffer, 0, (wrote_command catch 0))
     }
     return none
 }
@@ -281,7 +270,7 @@ fn __kai_std_cli_format_missing_operand(buffer: *Char, operand: Str) -> ?Str {
     offset = (prefix catch 0)
     let wrote_operand: ?Int = __kai_std_cli_write_span(buffer, offset, operand)
     if wrote_operand != none {
-        return buffer[..(wrote_operand catch 0)]
+        return substring(buffer, 0, (wrote_operand catch 0))
     }
     return none
 }
@@ -295,7 +284,7 @@ fn __kai_std_cli_format_invalid_option(buffer: *Char, option: Str) -> ?Str {
     offset = (prefix catch 0)
     let wrote_option: ?Int = __kai_std_cli_write_span(buffer, offset, option)
     if wrote_option != none {
-        return buffer[..(wrote_option catch 0)]
+        return substring(buffer, 0, (wrote_option catch 0))
     }
     return none
 }
@@ -309,7 +298,7 @@ fn __kai_std_cli_format_section(buffer: *Char, title: Str) -> ?Str {
     offset = (wrote_title catch 0)
     let colon: ?Int = __kai_std_cli_write_span(buffer, offset, ":\n")
     if colon != none {
-        return buffer[..(colon catch 0)]
+        return substring(buffer, 0, (colon catch 0))
     }
     return none
 }
@@ -352,7 +341,7 @@ fn __kai_std_cli_format_help(buffer: *Char, usage: Str, description: Str) -> ?St
         }
         offset = (description_newline catch 0)
     }
-    return buffer[..offset]
+    return substring(buffer, 0, offset)
 }
 
 fn __kai_std_cli_format_help_row(buffer: *Char, label: Str, summary: Str) -> ?Str {
@@ -395,7 +384,7 @@ fn __kai_std_cli_format_help_row_custom(buffer: *Char, label: Str, summary: Str,
     offset = (wrote_summary catch 0)
     let newline: ?Int = __kai_std_cli_write_span(buffer, offset, "\n")
     if newline != none {
-        return buffer[..(newline catch 0)]
+        return substring(buffer, 0, (newline catch 0))
     }
     return none
 }

@@ -1,3 +1,4 @@
+import substring from std.core.string
 import std.lib.str
 
 cimport "stdio.h"
@@ -34,7 +35,7 @@ fn __kai_std_path_basename(path: Str) -> Str {
     while start > 0 && !__kai_std_path_is_sep(path[start - 1]) {
         start = start - 1
     }
-    return path[start..end]
+    return substring(path, start, end)
 }
 
 fn __kai_std_path_dirname(path: Str) -> Str {
@@ -44,7 +45,7 @@ fn __kai_std_path_dirname(path: Str) -> Str {
         root_len = 1
     }
     if root_len > 0 && end == 0 {
-        return path[..root_len]
+        return substring(path, 0, root_len)
     }
     var split: Int = end
     while split > 0 && !__kai_std_path_is_sep(path[split - 1]) {
@@ -53,7 +54,7 @@ fn __kai_std_path_dirname(path: Str) -> Str {
     while split > root_len && __kai_std_path_is_sep(path[split - 1]) {
         split = split - 1
     }
-    return path[..split]
+    return substring(path, 0, split)
 }
 
 fn __kai_std_path_extension(path: Str) -> Str {
@@ -72,12 +73,12 @@ fn __kai_std_path_extension(path: Str) -> Str {
         }
     }
     if dot == end {
-        return path[end..end]
+        return substring(path, end, end)
     }
     if dot == start {
-        return path[end..end]
+        return substring(path, end, end)
     }
-    return path[dot + 1..end]
+    return substring(path, dot + 1, end)
 }
 
 fn __kai_std_path_stem(path: Str) -> Str {
@@ -96,15 +97,15 @@ fn __kai_std_path_stem(path: Str) -> Str {
         }
     }
     if dot == end {
-        return path[start..end]
+        return substring(path, start, end)
     }
     if dot == start {
-        return path[start..end]
+        return substring(path, start, end)
     }
     if end - start == 2 && path[start] == Char(46) && path[start + 1] == Char(46) {
-        return path[start..end]
+        return substring(path, start, end)
     }
-    return path[start..dot]
+    return substring(path, start, dot)
 }
 
 fn __kai_std_path_split_dir(path: Str) -> Str {
@@ -145,7 +146,7 @@ fn __kai_std_path_component(path: Str, component_index: Int) -> ?Str {
                 index = index + 1
             }
             if count == component_index {
-                return path[start..index]
+                return substring(path, start, index)
             }
             count = count + 1
         }
@@ -167,7 +168,7 @@ fn __kai_std_path_abs(buffer: *Char, base: Str, target: Str) -> ?Str {
     if base_end > 0 && target_len > 0 && !base_is_root {
         total = total + 1
     }
-    if total > strlen((buffer) as Str) {
+    if total > 1000000 {
         return none
     }
     var out: Int = 0
@@ -189,12 +190,12 @@ fn __kai_std_path_abs(buffer: *Char, base: Str, target: Str) -> ?Str {
         out = out + 1
         read = read + 1
     }
-    return buffer[..out]
+    return substring(buffer, 0, out)
 }
 
 fn __kai_std_path_copy(buffer: *Char, source: Str) -> ?Str {
     let len: Int = strlen((source) as Str)
-    if len > strlen((buffer) as Str) {
+    if len > 1000000 {
         return none
     }
     var index: Int = 0
@@ -202,7 +203,7 @@ fn __kai_std_path_copy(buffer: *Char, source: Str) -> ?Str {
         buffer[index] = source[index]
         index = index + 1
     }
-    return buffer[..len]
+    return substring(buffer, 0, len)
 }
 
 fn __kai_std_path_join(buffer: *Char, left: Str, right: Str) -> ?Str {
@@ -224,7 +225,7 @@ fn __kai_std_path_join(buffer: *Char, left: Str, right: Str) -> ?Str {
     if left_end > 0 && right_len > 0 && !left_is_root {
         total = total + 1
     }
-    if total > strlen((buffer) as Str) {
+    if total > 1000000 {
         return none
     }
     var out: Int = 0
@@ -250,7 +251,7 @@ fn __kai_std_path_join(buffer: *Char, left: Str, right: Str) -> ?Str {
         out = out + 1
         read = read + 1
     }
-    return buffer[..out]
+    return substring(buffer, 0, out)
 }
 
 fn __kai_std_path_output_ends_parent(buffer: *Char, out: Int, root_len: Int) -> Bool {
@@ -273,7 +274,7 @@ fn __kai_std_path_normalize(buffer: *Char, path: Str) -> ?Str {
     var out: Int = 0
     var root_len: Int = 0
     if strlen((path) as Str) > 0 && __kai_std_path_is_sep(path[0]) {
-        if strlen((buffer) as Str) == 0 {
+        if 1000000 == 0 {
             return none
         }
         buffer[0] = Char(47)
@@ -309,7 +310,7 @@ fn __kai_std_path_normalize(buffer: *Char, path: Str) -> ?Str {
                     if out > root_len {
                         needed = needed + 1
                     }
-                    if out + needed > strlen((buffer) as Str) {
+                    if out + needed > 1000000 {
                         return none
                     }
                     if out > root_len {
@@ -328,7 +329,7 @@ fn __kai_std_path_normalize(buffer: *Char, path: Str) -> ?Str {
                 if out > root_len {
                     needed = needed + 1
                 }
-                if out + needed > strlen((buffer) as Str) {
+                if out + needed > 1000000 {
                     return none
                 }
                 if out > root_len {
@@ -344,23 +345,23 @@ fn __kai_std_path_normalize(buffer: *Char, path: Str) -> ?Str {
             }
         }
     }
-    return buffer[..out]
+    return substring(buffer, 0, out)
 }
 
 fn __kai_std_path_relative(buffer: *Char, base: Str, target: Str) -> ?Str {
     let base_end: Int = __kai_std_path_trim_end(base)
     let target_len: Int = strlen((target) as Str)
-    let base_prefix: Str = base[..base_end]
+    let base_prefix: Str = substring(base, 0, base_end)
     let base_matches: Bool = __kai_std_str_starts_with(target, base_prefix)
     if base_matches && base_end == target_len {
-        return buffer[..0]
+        return substring(buffer, 0, 0)
     }
     if base_matches && base_end < target_len {
         if __kai_std_path_is_sep(target[base_end]) {
             var out: Int = 0
             var read: Int = base_end + 1
             let rel_len: Int = target_len - read
-            if rel_len > strlen((buffer) as Str) {
+            if rel_len > 1000000 {
                 return none
             }
             while read < target_len {
@@ -368,7 +369,7 @@ fn __kai_std_path_relative(buffer: *Char, base: Str, target: Str) -> ?Str {
                 out = out + 1
                 read = read + 1
             }
-            return buffer[..out]
+            return substring(buffer, 0, out)
         }
     }
     return __kai_std_path_copy(buffer, target)

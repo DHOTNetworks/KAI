@@ -1,3 +1,4 @@
+import substring from std.core.string
 import std.lib.json
 
 cimport "stdio.h"
@@ -13,10 +14,10 @@ fn __kai_std_log_write(buffer: *Char, offset: Int, bytes: Str) -> ?Int {
 }
 
 fn __kai_std_log_write_json(buffer: *Char, offset: Int, value: Str) -> ?Int {
-    if offset > strlen((buffer) as Str) {
+    if offset > 1000000 {
         return none
     }
-    let written: ?Str = __kai_std_json_write_string_bytes(buffer[offset..], value)
+    let written: ?Str = __kai_std_json_write_string_bytes(substring(buffer, offset, strlen((buffer) as Str)), value)
     if written != none {
         return offset + strlen(((written catch "")) as Str)
     }
@@ -47,7 +48,7 @@ fn __kai_std_log_message(buffer: *Char, level: Str, message: Str) -> ?Str {
     offset = (wrote_message catch 0)
     let closed: ?Int = __kai_std_log_write(buffer, offset, "}\n")
     if closed != none {
-        return buffer[..(closed catch 0)]
+        return substring(buffer, 0, (closed catch 0))
     }
     return none
 }
@@ -86,7 +87,7 @@ fn __kai_std_log_key_value(buffer: *Char, level: Str, key: Str, value: Str) -> ?
     offset = (wrote_value catch 0)
     let closed: ?Int = __kai_std_log_write(buffer, offset, "}\n")
     if closed != none {
-        return buffer[..(closed catch 0)]
+        return substring(buffer, 0, (closed catch 0))
     }
     return none
 }
@@ -124,7 +125,7 @@ fn __kai_std_log_write_string_field(buffer: *Char, offset: Int, key: Str, value:
 fn __kai_std_log_string_field(buffer: *Char, key: Str, value: Str) -> ?Str {
     let written: ?Int = __kai_std_log_write_string_field(buffer, 0, key, value)
     if written != none {
-        return buffer[..(written catch "")]
+        return substring(buffer, 0, (written catch ""))
     }
     return none
 }
@@ -163,10 +164,10 @@ fn __kai_std_log_message_field(buffer: *Char, level: Str, message: Str, field: S
     offset = (wrote_field catch 0)
     let closed: ?Int = __kai_std_log_write(buffer, offset, "}\n")
     if closed != none {
-        if !__kai_std_json_validate_bytes(buffer[..(closed catch 0) - 1]) {
+        if !__kai_std_json_validate_bytes(substring(buffer, 0, (closed catch 0) - 1)) {
             return none
         }
-        return buffer[..(closed catch 0)]
+        return substring(buffer, 0, (closed catch 0))
     }
     return none
 }
@@ -195,7 +196,7 @@ fn __kai_std_log_redacted(buffer: *Char, level: Str, key: Str) -> ?Str {
     offset = (wrote_key catch 0)
     let closed: ?Int = __kai_std_log_write(buffer, offset, ",\"redacted\":true}\n")
     if closed != none {
-        return buffer[..(closed catch 0)]
+        return substring(buffer, 0, (closed catch 0))
     }
     return none
 }

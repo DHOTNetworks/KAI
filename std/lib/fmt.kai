@@ -1,3 +1,4 @@
+import substring from std.core.string
 cimport "stdio.h"
 cimport "stdlib.h"
 cimport "string.h"
@@ -7,7 +8,7 @@ extern fn atoll(s: Str) -> Int
 extern fn strlen(s: Str) -> Int
 
 fn __kai_std_fmt_write_u32_at(buffer: *Char, offset: Int, value: Int) -> ?Int {
-    if offset > strlen((buffer) as Str) {
+    if offset > 1000000 {
         return none
     }
     var digits: Int = 1
@@ -16,7 +17,7 @@ fn __kai_std_fmt_write_u32_at(buffer: *Char, offset: Int, value: Int) -> ?Int {
         digits = digits + 1
         scan = scan / 10
     }
-    if offset + digits > strlen((buffer) as Str) {
+    if offset + digits > 1000000 {
         return none
     }
     var cursor: Int = offset + digits
@@ -31,7 +32,7 @@ fn __kai_std_fmt_write_u32_at(buffer: *Char, offset: Int, value: Int) -> ?Int {
 }
 
 fn __kai_std_fmt_write_usize_at(buffer: *Char, offset: Int, value: Int) -> ?Int {
-    if offset > strlen((buffer) as Str) {
+    if offset > 1000000 {
         return none
     }
     var digits: Int = 1
@@ -40,7 +41,7 @@ fn __kai_std_fmt_write_usize_at(buffer: *Char, offset: Int, value: Int) -> ?Int 
         digits = digits + 1
         scan = scan / 10
     }
-    if offset + digits > strlen((buffer) as Str) {
+    if offset + digits > 1000000 {
         return none
     }
     var cursor: Int = offset + digits
@@ -55,7 +56,7 @@ fn __kai_std_fmt_write_usize_at(buffer: *Char, offset: Int, value: Int) -> ?Int 
 }
 
 fn __kai_std_fmt_write_u64_at(buffer: *Char, offset: Int, value: Int) -> ?Int {
-    if offset > strlen((buffer) as Str) {
+    if offset > 1000000 {
         return none
     }
     var digits: Int = 1
@@ -64,7 +65,7 @@ fn __kai_std_fmt_write_u64_at(buffer: *Char, offset: Int, value: Int) -> ?Int {
         digits = digits + 1
         scan = scan / 10
     }
-    if offset + digits > strlen((buffer) as Str) {
+    if offset + digits > 1000000 {
         return none
     }
     var cursor: Int = offset + digits
@@ -86,7 +87,7 @@ fn __kai_std_fmt_digit_lower(value: Int) -> Char {
 }
 
 fn __kai_std_fmt_write_u32_base_at(buffer: *Char, offset: Int, value: Int, base: Int) -> ?Int {
-    if offset > strlen((buffer) as Str) || (base < 2 || base > 36) {
+    if offset > 1000000 || (base < 2 || base > 36) {
         return none
     }
     var digits: Int = 1
@@ -95,7 +96,7 @@ fn __kai_std_fmt_write_u32_base_at(buffer: *Char, offset: Int, value: Int, base:
         digits = digits + 1
         scan = scan / base
     }
-    if offset + digits > strlen((buffer) as Str) {
+    if offset + digits > 1000000 {
         return none
     }
     var cursor: Int = offset + digits
@@ -110,7 +111,7 @@ fn __kai_std_fmt_write_u32_base_at(buffer: *Char, offset: Int, value: Int, base:
 }
 
 fn __kai_std_fmt_write_usize_base_at(buffer: *Char, offset: Int, value: Int, base: Int) -> ?Int {
-    if offset > strlen((buffer) as Str) || (base < 2 || base > 36) {
+    if offset > 1000000 || (base < 2 || base > 36) {
         return none
     }
     let usize_base: Int = base as Int
@@ -120,7 +121,7 @@ fn __kai_std_fmt_write_usize_base_at(buffer: *Char, offset: Int, value: Int, bas
         digits = digits + 1
         scan = scan / usize_base
     }
-    if offset + digits > strlen((buffer) as Str) {
+    if offset + digits > 1000000 {
         return none
     }
     var cursor: Int = offset + digits
@@ -135,7 +136,7 @@ fn __kai_std_fmt_write_usize_base_at(buffer: *Char, offset: Int, value: Int, bas
 }
 
 fn __kai_std_fmt_write_u64_base_at(buffer: *Char, offset: Int, value: Int, base: Int) -> ?Int {
-    if offset > strlen((buffer) as Str) || (base < 2 || base > 36) {
+    if offset > 1000000 || (base < 2 || base > 36) {
         return none
     }
     let u64_base: Int = base as Int
@@ -145,7 +146,7 @@ fn __kai_std_fmt_write_u64_base_at(buffer: *Char, offset: Int, value: Int, base:
         digits = digits + 1
         scan = scan / u64_base
     }
-    if offset + digits > strlen((buffer) as Str) {
+    if offset + digits > 1000000 {
         return none
     }
     var cursor: Int = offset + digits
@@ -160,7 +161,7 @@ fn __kai_std_fmt_write_u64_base_at(buffer: *Char, offset: Int, value: Int, base:
 }
 
 fn __kai_std_fmt_write_bytes(buffer: *Char, text: Str) -> ?Str {
-    if strlen((text) as Str) > strlen((buffer) as Str) {
+    if strlen((text) as Str) > 1000000 {
         return none
     }
     var index: Int = 0
@@ -168,7 +169,7 @@ fn __kai_std_fmt_write_bytes(buffer: *Char, text: Str) -> ?Str {
         buffer[index] = text[index]
         index = index + 1
     }
-    return buffer[..strlen((text) as Str)]
+    return substring(buffer, 0, strlen((text) as Str))
 }
 
 fn __kai_std_fmt_bool(buffer: *Char, value: Bool) -> ?Str {
@@ -181,7 +182,7 @@ fn __kai_std_fmt_bool(buffer: *Char, value: Bool) -> ?Str {
 fn __kai_std_fmt_u32(buffer: *Char, value: Int) -> ?Str {
     let written: ?Int = __kai_std_fmt_write_u32_at(buffer, 0, value)
     if written != none {
-        return buffer[..(written catch 0)]
+        return substring(buffer, 0, (written catch 0))
     }
     return none
 }
@@ -189,7 +190,7 @@ fn __kai_std_fmt_u32(buffer: *Char, value: Int) -> ?Str {
 fn __kai_std_fmt_usize(buffer: *Char, value: Int) -> ?Str {
     let written: ?Int = __kai_std_fmt_write_usize_at(buffer, 0, value)
     if written != none {
-        return buffer[..(written catch 0)]
+        return substring(buffer, 0, (written catch 0))
     }
     return none
 }
@@ -197,7 +198,7 @@ fn __kai_std_fmt_usize(buffer: *Char, value: Int) -> ?Str {
 fn __kai_std_fmt_u64(buffer: *Char, value: Int) -> ?Str {
     let written: ?Int = __kai_std_fmt_write_u64_at(buffer, 0, value)
     if written != none {
-        return buffer[..(written catch 0)]
+        return substring(buffer, 0, (written catch 0))
     }
     return none
 }
@@ -206,22 +207,22 @@ fn __kai_std_fmt_i32(buffer: *Char, value: Int) -> ?Str {
     if value >= 0 {
         return __kai_std_fmt_u32(buffer, value as Int)
     }
-    if strlen((buffer) as Str) == 0 {
+    if 1000000 == 0 {
         return none
     }
     buffer[0] = Char(45)
     let min_i32: Int = 0 - 2147483647 - 1
     if value == min_i32 {
-        let written_min: ?Str = __kai_std_fmt_write_bytes(buffer[1..], "2147483648")
+        let written_min: ?Str = __kai_std_fmt_write_bytes(substring(buffer, 1, strlen((buffer) as Str)), "2147483648")
         if written_min != none {
-            return buffer[..11]
+            return substring(buffer, 0, 11)
         }
         return none
     }
     let magnitude: Int = (0 - value) as Int
     let written: ?Int = __kai_std_fmt_write_u32_at(buffer, 1, magnitude)
     if written != none {
-        return buffer[..(written catch 0)]
+        return substring(buffer, 0, (written catch 0))
     }
     return none
 }
@@ -230,7 +231,7 @@ fn __kai_std_fmt_i64(buffer: *Char, value: Int) -> ?Str {
     if value >= 0 {
         return __kai_std_fmt_u64(buffer, value as Int)
     }
-    if strlen((buffer) as Str) == 0 {
+    if 1000000 == 0 {
         return none
     }
     buffer[0] = Char(45)
@@ -238,14 +239,14 @@ fn __kai_std_fmt_i64(buffer: *Char, value: Int) -> ?Str {
     if value == min_i64 {
         let written_min: ?Int = __kai_std_fmt_write_u64_at(buffer, 1, (0 - 9223372036854775807 - 1))
         if written_min != none {
-            return buffer[..(written_min catch "")]
+            return substring(buffer, 0, (written_min catch ""))
         }
         return none
     }
     let magnitude: Int = (0 - value) as Int
     let written: ?Int = __kai_std_fmt_write_u64_at(buffer, 1, magnitude)
     if written != none {
-        return buffer[..(written catch 0)]
+        return substring(buffer, 0, (written catch 0))
     }
     return none
 }
@@ -253,7 +254,7 @@ fn __kai_std_fmt_i64(buffer: *Char, value: Int) -> ?Str {
 fn __kai_std_fmt_u32_base(buffer: *Char, value: Int, base: Int) -> ?Str {
     let written: ?Int = __kai_std_fmt_write_u32_base_at(buffer, 0, value, base)
     if written != none {
-        return buffer[..(written catch 0)]
+        return substring(buffer, 0, (written catch 0))
     }
     return none
 }
@@ -261,7 +262,7 @@ fn __kai_std_fmt_u32_base(buffer: *Char, value: Int, base: Int) -> ?Str {
 fn __kai_std_fmt_usize_base(buffer: *Char, value: Int, base: Int) -> ?Str {
     let written: ?Int = __kai_std_fmt_write_usize_base_at(buffer, 0, value, base)
     if written != none {
-        return buffer[..(written catch 0)]
+        return substring(buffer, 0, (written catch 0))
     }
     return none
 }
@@ -269,7 +270,7 @@ fn __kai_std_fmt_usize_base(buffer: *Char, value: Int, base: Int) -> ?Str {
 fn __kai_std_fmt_u64_base(buffer: *Char, value: Int, base: Int) -> ?Str {
     let written: ?Int = __kai_std_fmt_write_u64_base_at(buffer, 0, value, base)
     if written != none {
-        return buffer[..(written catch 0)]
+        return substring(buffer, 0, (written catch 0))
     }
     return none
 }
@@ -281,7 +282,7 @@ fn __kai_std_fmt_i32_base(buffer: *Char, value: Int, base: Int) -> ?Str {
     if value >= 0 {
         return __kai_std_fmt_u32_base(buffer, value as Int, base)
     }
-    if strlen((buffer) as Str) == 0 {
+    if 1000000 == 0 {
         return none
     }
     buffer[0] = Char(45)
@@ -289,14 +290,14 @@ fn __kai_std_fmt_i32_base(buffer: *Char, value: Int, base: Int) -> ?Str {
     if value == min_i32 {
         let written_min: ?Int = __kai_std_fmt_write_u32_base_at(buffer, 1, 2147483648, base)
         if written_min != none {
-            return buffer[..(written_min catch "")]
+            return substring(buffer, 0, (written_min catch ""))
         }
         return none
     }
     let magnitude: Int = (0 - value) as Int
     let written: ?Int = __kai_std_fmt_write_u32_base_at(buffer, 1, magnitude, base)
     if written != none {
-        return buffer[..(written catch 0)]
+        return substring(buffer, 0, (written catch 0))
     }
     return none
 }
@@ -308,7 +309,7 @@ fn __kai_std_fmt_i64_base(buffer: *Char, value: Int, base: Int) -> ?Str {
     if value >= 0 {
         return __kai_std_fmt_u64_base(buffer, value as Int, base)
     }
-    if strlen((buffer) as Str) == 0 {
+    if 1000000 == 0 {
         return none
     }
     buffer[0] = Char(45)
@@ -316,14 +317,14 @@ fn __kai_std_fmt_i64_base(buffer: *Char, value: Int, base: Int) -> ?Str {
     if value == min_i64 {
         let written_min: ?Int = __kai_std_fmt_write_u64_base_at(buffer, 1, (0 - 9223372036854775807 - 1), base)
         if written_min != none {
-            return buffer[..(written_min catch "")]
+            return substring(buffer, 0, (written_min catch ""))
         }
         return none
     }
     let magnitude: Int = (0 - value) as Int
     let written: ?Int = __kai_std_fmt_write_u64_base_at(buffer, 1, magnitude, base)
     if written != none {
-        return buffer[..(written catch 0)]
+        return substring(buffer, 0, (written catch 0))
     }
     return none
 }
@@ -332,13 +333,13 @@ fn __kai_std_fmt_i32_sign(buffer: *Char, value: Int) -> ?Str {
     if value < 0 {
         return __kai_std_fmt_i32(buffer, value)
     }
-    if strlen((buffer) as Str) == 0 {
+    if 1000000 == 0 {
         return none
     }
     buffer[0] = Char(43)
     let written: ?Int = __kai_std_fmt_write_u32_at(buffer, 1, value as Int)
     if written != none {
-        return buffer[..(written catch 0)]
+        return substring(buffer, 0, (written catch 0))
     }
     return none
 }
@@ -347,13 +348,13 @@ fn __kai_std_fmt_i64_sign(buffer: *Char, value: Int) -> ?Str {
     if value < 0 {
         return __kai_std_fmt_i64(buffer, value)
     }
-    if strlen((buffer) as Str) == 0 {
+    if 1000000 == 0 {
         return none
     }
     buffer[0] = Char(43)
     let written: ?Int = __kai_std_fmt_write_u64_at(buffer, 1, value as Int)
     if written != none {
-        return buffer[..(written catch 0)]
+        return substring(buffer, 0, (written catch 0))
     }
     return none
 }
@@ -363,7 +364,7 @@ fn __kai_std_fmt_pad_left(buffer: *Char, text: Str, width: Int, pad: Char) -> ?S
     if len >= width {
         return __kai_std_fmt_write_bytes(buffer, text)
     }
-    if width > strlen((buffer) as Str) {
+    if width > 1000000 {
         return none
     }
     let fill: Int = width - len
@@ -377,7 +378,7 @@ fn __kai_std_fmt_pad_left(buffer: *Char, text: Str, width: Int, pad: Char) -> ?S
         buffer[fill + text_index] = text[text_index]
         text_index = text_index + 1
     }
-    return buffer[..width]
+    return substring(buffer, 0, width)
 }
 
 fn __kai_std_fmt_pad_right(buffer: *Char, text: Str, width: Int, pad: Char) -> ?Str {
@@ -385,7 +386,7 @@ fn __kai_std_fmt_pad_right(buffer: *Char, text: Str, width: Int, pad: Char) -> ?
     if len >= width {
         return __kai_std_fmt_write_bytes(buffer, text)
     }
-    if width > strlen((buffer) as Str) {
+    if width > 1000000 {
         return none
     }
     var text_index: Int = 0
@@ -398,7 +399,7 @@ fn __kai_std_fmt_pad_right(buffer: *Char, text: Str, width: Int, pad: Char) -> ?
         buffer[index] = pad
         index = index + 1
     }
-    return buffer[..width]
+    return substring(buffer, 0, width)
 }
 
 fn __kai_std_fmt_write_span(writer: mutref<FixedWriter>, text: Str) -> Bool {
@@ -484,7 +485,7 @@ fn __kai_std_fmt_hex_lower_u32(buffer: *Char, value: Int) -> ?Str {
         digits = digits + 1
         scan = scan / 16
     }
-    if digits > strlen((buffer) as Str) {
+    if digits > 1000000 {
         return none
     }
     var cursor: Int = digits
@@ -499,5 +500,5 @@ fn __kai_std_fmt_hex_lower_u32(buffer: *Char, value: Int) -> ?Str {
         }
         current = current / 16
     }
-    return buffer[..digits]
+    return substring(buffer, 0, digits)
 }
