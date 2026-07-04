@@ -1,0 +1,741 @@
+import ArrayList from std.core.array
+import Allocator from std.core.allocator
+import KaiAllocator from std.core.allocator
+import read_to_string from std.io.file
+import write_string from std.io.file
+import length from std.core.string
+import substring from std.core.string
+import str_replace from utils
+import std.io.print
+
+import Lexer from lexer
+import Parser from parser
+import TypeChecker from type_checker
+import get_error_info from error_registry
+import __kai_std_ascii_is_alpha from std.lib.ascii
+import __kai_std_ascii_is_alnum from std.lib.ascii
+import diag_line from std.lib.diag
+import diag_line_end from std.lib.diag
+import diag_line_text from std.lib.diag
+
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn _kai_set_current_allocator(allocator: *Void)
+
+// ====================================================================
+// Safety/Repair mapping — 1:1 replica of Zero's diag_fix_safety,
+// diag_repair_id, diag_repair_summary
+// ====================================================================
+
+fn diag_fix_safety(code: Str) -> Str {
+    if strcmp(code, "E0008") == 0 { return "behavior-preserving" }
+    if strcmp(code, "E0020") == 0 { return "requires-human-review" }
+    return "requires-human-review"
+}
+
+fn diag_repair_id(code: Str) -> Str {
+    if strcmp(code, "E0008") == 0 { return "make-binding-mutable" }
+    if strcmp(code, "E0020") == 0 { return "declare-missing-symbol" }
+    return "manual-review"
+}
+
+fn diag_repair_summary(code: Str) -> Str {
+    if strcmp(code, "E0008") == 0 { return "Change the root binding to `var` before passing it to a mutable API." }
+    if strcmp(code, "E0020") == 0 { return "Declare the referenced function, import the module that provides it, or correct the identifier spelling." }
+    return "Inspect the diagnostic fields and choose a repair manually."
+}
+
+fn diagnostic_can_apply_edits(code: Str) -> Bool {
+    if strcmp(code, "E0008") == 0 && strcmp(diag_fix_safety(code), "behavior-preserving") == 0 {
+        return true
+    }
+    return false
+}
+
+// ====================================================================
+// JSON string escaping
+// ====================================================================
+
+fn print_json_string(s: Str) {
+    let len = length(s)
+    var i = 0
+    while i < len {
+        unsafe {
+            let c = s[i]
+            if c == Char(34) { printf("\\\"") }
+            else if c == Char(92) { printf("\\\\") }
+            else if c == Char(10) { printf("\\n") }
+            else { printf("%c", c) }
+        }
+        i = i + 1
+    }
+}
+
+// ====================================================================
+// Print a single diagnostic JSON object (Zero's append_fix_plan_diagnostic)
+// ====================================================================
+
+fn print_diag_json(code: Str, message: Str, path: Str, line: Int, column: Int, len_val: Int, expected: Str, actual: Str, help: Str) {
+    printf("{\"code\":\"")
+    print_json_string(code)
+    printf("\",\"message\":\"")
+    print_json_string(message)
+    printf("\",\"path\":\"")
+    print_json_string(path)
+    printf("\",\"line\":%lld,\"column\":%lld,\"length\":%lld", line, column, len_val)
+    printf(",\"expected\":\"")
+    print_json_string(expected)
+    printf("\",\"actual\":\"")
+    print_json_string(actual)
+    printf("\",\"help\":\"")
+    print_json_string(help)
+    printf("\",\"fixSafety\":\"")
+    print_json_string(diag_fix_safety(code))
+    printf("\",\"repair\":{\"id\":\"")
+    print_json_string(diag_repair_id(code))
+    printf("\",\"summary\":\"")
+    print_json_string(diag_repair_summary(code))
+    printf("\"}}")
+}
+
+// ====================================================================
+// Print a single fix JSON object (Zero's fix entry in fix plan)
+// ====================================================================
+
+fn print_fix_json(code: Str, applies: Bool) {
+    printf("{\"id\":\"")
+    print_json_string(diag_repair_id(code))
+    printf("\",\"diagnosticCode\":\"")
+    print_json_string(code)
+    printf("\",\"safety\":\"")
+    print_json_string(diag_fix_safety(code))
+    printf("\",\"summary\":\"")
+    print_json_string(diag_repair_summary(code))
+    if applies { printf("\",\"appliesEdits\":true}") }
+    else { printf("\",\"appliesEdits\":false}") }
+}
+
+// ====================================================================
+// Print full plan JSON — Zero's print_fix_plan_json format
+// ====================================================================
+
+fn print_plan(path: Str, json_mode: Bool,
+              codes: *ArrayList<Str>, messages: *ArrayList<Str>,
+              dlines: *ArrayList<Int>, dcolumns: *ArrayList<Int>,
+              dlengths: *ArrayList<Int>,
+              expected: *ArrayList<Str>, actual: *ArrayList<Str>,
+              helpv: *ArrayList<Str>) {
+
+    let count = codes.length()
+    if !json_mode {
+        // Text mode: print_diag-style output (Zero's text plan)
+        if count == 0 {
+            printf("No diagnostics found in '%s'\n", path)
+            return
+        }
+        printf("Found %lld diagnostic(s) in '%s':\n", count, path)
+        var i = 0
+        while i < count {
+            let cd = codes.get(i)
+            printf("%s:%lld:%lld %s: %s\n", path, dlines.get(i), dcolumns.get(i), cd, messages.get(i))
+            printf("  expected: %s\n", expected.get(i))
+            printf("  actual: %s\n", actual.get(i))
+            printf("  help: %s\n", helpv.get(i))
+            printf("  explain: kai explain %s\n", cd)
+            i = i + 1
+        }
+        return
+    }
+
+    // JSON mode — Zero protocol
+    let has_diag = count > 0
+    printf("{\n  \"schemaVersion\": 1,\n  \"ok\": ")
+    if has_diag { printf("false") } else { printf("true") }
+    printf(",\n  \"mode\": \"plan\",\n  \"appliesEdits\": false,\n  \"safetyLevels\": [\"format-only\",\"behavior-preserving\",\"api-changing\",\"target-changing\",\"requires-human-review\"],\n  \"input\": \"")
+    print_json_string(path)
+    printf("\",\n  \"selfHostRepairPolicy\": {\"unsupportedFeatureSafety\":\"requires-human-review\",\"compatibilityFallback\":\"removed\",\"directFallback\":\"never-c-bridge\"},\n  \"diagnostics\": [")
+
+    var i2 = 0
+    while i2 < count {
+        if i2 > 0 { printf(",") }
+        printf("\n    ")
+        print_diag_json(codes.get(i2), messages.get(i2), path,
+                       dlines.get(i2), dcolumns.get(i2), dlengths.get(i2),
+                       expected.get(i2), actual.get(i2), helpv.get(i2))
+        i2 = i2 + 1
+    }
+
+    printf("\n  ],\n  \"fixes\": [")
+    i2 = 0
+    while i2 < count {
+        if i2 > 0 { printf(",") }
+        printf("\n    ")
+        let cd = codes.get(i2)
+        print_fix_json(cd, diagnostic_can_apply_edits(cd))
+        i2 = i2 + 1
+    }
+
+    printf("\n  ]\n}\n")
+}
+
+// ====================================================================
+// Print patch/apply JSON — Zero's print_or_apply_fix_json format
+// ====================================================================
+
+fn print_patch(path: Str, json_mode: Bool, apply: Bool, applied: Bool,
+               codes: *ArrayList<Str>, messages: *ArrayList<Str>,
+               dlines: *ArrayList<Int>, dcolumns: *ArrayList<Int>,
+               dlengths: *ArrayList<Int>,
+               expected: *ArrayList<Str>, actual: *ArrayList<Str>,
+               helpv: *ArrayList<Str>,
+               patch_lines: *ArrayList<Int>,
+               patch_old: *ArrayList<Str>, patch_new: *ArrayList<Str>,
+               patch_codes: *ArrayList<Str>) {
+
+    let count = codes.length()
+    let patch_count = patch_codes.length()
+
+    if !json_mode {
+        // Text mode: show diffs (Kai's legacy behavior, not in Zero)
+        if patch_count > 0 {
+            printf("Diff for '%s':\n", path)
+            var pi = 0
+            while pi < patch_count {
+                let old_line = patch_old.get(pi)
+                let new_line = patch_new.get(pi)
+                printf("- %s\n+ %s\n", old_line, new_line)
+                pi = pi + 1
+            }
+        }
+        if count > patch_count {
+            printf("(%lld issue(s) without auto-fix — use kai patch to address them)\n", count - patch_count)
+        }
+        if apply {
+            if applied { printf("Applied %lld fix(es) to '%s'\n", patch_count, path) }
+            else { printf("No behavior-preserving edits to apply in '%s'\n", path) }
+        }
+        return
+    }
+
+    // JSON mode — Zero protocol
+    let has_diag = count > 0
+    let can_apply_total = count > 0 && patch_count > 0
+
+    printf("{\n  \"schemaVersion\": 1,\n  \"ok\": ")
+    if has_diag { printf("false") } else { printf("true") }
+    printf(",\n  \"mode\": \"")
+    if apply { printf("apply") } else { printf("patch") }
+    printf("\",\n  \"appliesEdits\": ")
+    if apply { printf("true") } else { printf("false") }
+    printf(",\n  \"applied\": ")
+    if applied { printf("true") } else { printf("false") }
+    printf(",\n  \"input\": \"")
+    print_json_string(path)
+    printf("\",\n  \"selfHostRepairPolicy\": {\"unsupportedFeatureSafety\":\"requires-human-review\",\"compatibilityFallback\":\"removed\",\"directFallback\":\"never-c-bridge\"}")
+    printf(",\n  \"diagnostics\": [")
+
+    var i2 = 0
+    while i2 < count {
+        if i2 > 0 { printf(",") }
+        printf("\n    ")
+        print_diag_json(codes.get(i2), messages.get(i2), path,
+                       dlines.get(i2), dcolumns.get(i2), dlengths.get(i2),
+                       expected.get(i2), actual.get(i2), helpv.get(i2))
+        i2 = i2 + 1
+    }
+
+    printf("\n  ],\n  \"fixes\": [")
+    i2 = 0
+    while i2 < count {
+        if i2 > 0 { printf(",") }
+        printf("\n    ")
+        let cd = codes.get(i2)
+        print_fix_json(cd, diagnostic_can_apply_edits(cd))
+        i2 = i2 + 1
+    }
+
+    printf("\n  ],\n  \"patches\": [")
+    i2 = 0
+    while i2 < patch_count {
+        if i2 > 0 { printf(",") }
+        printf("\n    {\"path\":\"")
+        print_json_string(path)
+        printf("\",\"line\":%lld,\"old\":\"", patch_lines.get(i2))
+        print_json_string(patch_old.get(i2))
+        printf("\",\"new\":\"")
+        print_json_string(patch_new.get(i2))
+        printf("\"}")
+        i2 = i2 + 1
+    }
+
+    printf("\n  ]\n}\n")
+}
+
+// ====================================================================
+// Main fix entry point
+// ====================================================================
+
+fn run_fix(fix_mode: Str, fix_file: Str, json: Bool) -> Int {
+    var fix_alloc = KaiAllocator(heads: 0 as *Char, used: 0)
+    fix_alloc.init()
+    _kai_set_current_allocator(&fix_alloc as *Void)
+
+    let src_res = read_to_string(&fix_alloc, fix_file)
+    if src_res.tag != 0 {
+        printf("Error: Could not read '%s'\n", fix_file)
+        return 1
+    }
+    let source = src_res.value as Str
+    let src_len_val = length(source)
+
+    // Phase 1: Run type checker in text mode for additional diagnostics
+    if !json {
+        var fix_lexer = Lexer(&fix_alloc, source)
+        fix_lexer.lex()
+        if !fix_lexer.has_error {
+            var fix_parser = Parser(&fix_alloc, fix_lexer.tokens)
+            let prog_idx = fix_parser.parse_program()
+            if prog_idx >= 0 {
+                var chk = TypeChecker(&fix_alloc, fix_parser.stmt_pool, fix_parser.expr_pool, fix_parser.pattern_pool, fix_file)
+                let ttmp = chk.check_program(prog_idx)
+                if ttmp { } else { }
+            }
+        }
+    }
+
+    // Phase 2: Text-scan for E0008 (let→var) and E0020 (undefined function)
+    var vars = ArrayList<Str>(&fix_alloc)
+    var var_lines = ArrayList<Int>(&fix_alloc)
+    var var_mut = ArrayList<Bool>(&fix_alloc)
+    var var_columns = ArrayList<Int>(&fix_alloc)
+
+    // Collect declared function names for E0020 detection
+    var declared_fns = ArrayList<Str>(&fix_alloc)
+    var builtins = ArrayList<Str>(&fix_alloc)
+    builtins.push("printf")
+    builtins.push("system")
+    builtins.push("strcmp")
+    builtins.push("get_exe_dir")
+    builtins.push("_kai_set_current_allocator")
+    builtins.push("malloc")
+    builtins.push("free")
+    builtins.push("realloc")
+    builtins.push("memcpy")
+    builtins.push("memset")
+
+    var line_start = 0
+    var line_num = 0
+    while line_start <= src_len_val {
+        var line_end = line_start
+        while line_end < src_len_val {
+            unsafe { if source[line_end] == Char(10) { break } }
+            line_end = line_end + 1
+        }
+        if line_end > src_len_val { line_end = src_len_val }
+        let line_len = line_end - line_start
+        if line_len > 0 {
+            let line_text = substring(source, line_start, line_end)
+
+            // Collect function declarations: "fn name(" or "extern fn name("
+            var di = 0
+            while di < line_len {
+                unsafe {
+                    let c = line_text[di]
+                    if c != Char(32) && c != Char(9) { break }
+                }
+                di = di + 1
+            }
+            if di + 3 <= line_len {
+                unsafe {
+                    if line_text[di] == Char(102) && line_text[di+1] == Char(110) && line_text[di+2] == Char(32) {
+                        var dn_start = di + 3
+                        var dn_end = dn_start
+                        while dn_end < line_len {
+                            if line_text[dn_end] == Char(40) { break }
+                            dn_end = dn_end + 1
+                        }
+                        if dn_end > dn_start && dn_end < line_len {
+                            var name_end2 = dn_end - 1
+                            while name_end2 >= dn_start {
+                                let c2 = line_text[name_end2]
+                                if c2 != Char(32) && c2 != Char(9) { break }
+                                name_end2 = name_end2 - 1
+                            }
+                            let fn_name = substring(line_text, dn_start, name_end2 + 1)
+                            declared_fns.push(fn_name)
+                        }
+                    }
+                }
+            }
+            if di + 10 <= line_len {
+                unsafe {
+                    if line_text[di] == Char(101) && line_text[di+1] == Char(120) && line_text[di+2] == Char(116) && line_text[di+3] == Char(101) && line_text[di+4] == Char(114) && line_text[di+5] == Char(110) && line_text[di+6] == Char(32) && line_text[di+7] == Char(102) && line_text[di+8] == Char(110) && line_text[di+9] == Char(32) {
+                        var dn_start = di + 10
+                        var dn_end = dn_start
+                        while dn_end < line_len {
+                            if line_text[dn_end] == Char(40) { break }
+                            dn_end = dn_end + 1
+                        }
+                        if dn_end > dn_start && dn_end < line_len {
+                            var name_end2 = dn_end - 1
+                            while name_end2 >= dn_start {
+                                let c2 = line_text[name_end2]
+                                if c2 != Char(32) && c2 != Char(9) { break }
+                                name_end2 = name_end2 - 1
+                            }
+                            let fn_name = substring(line_text, dn_start, name_end2 + 1)
+                            declared_fns.push(fn_name)
+                        }
+                    }
+                }
+            }
+
+            // E0008 detection: find "let " pattern
+            var li = 0
+            while li < line_len {
+                unsafe {
+                    let c = line_text[li]
+                    if c != Char(32) && c != Char(9) { break }
+                }
+                li = li + 1
+            }
+            if li + 4 <= line_len {
+                unsafe {
+                    if line_text[li] == Char(108) && line_text[li+1] == Char(101) && line_text[li+2] == Char(116) && line_text[li+3] == Char(32) {
+                        var vstart = li + 4
+                        var vend = vstart
+                        while vend < line_len {
+                            let c = line_text[vend]
+                            if c == Char(32) || c == Char(61) || c == Char(58) || c == Char(9) { break }
+                            vend = vend + 1
+                        }
+                        if vend > vstart {
+                            let vname = substring(line_text, vstart, vend)
+                            vars.push(vname)
+                            var_lines.push(line_num)
+                            var_mut.push(false)
+                            var_columns.push(li + 1)
+                        }
+                    }
+                }
+            }
+
+            // E0008 detection: find "name =" reassignment
+            var ai = 0
+            while ai < line_len {
+                unsafe {
+                    let c = line_text[ai]
+                    if c != Char(32) && c != Char(9) { break }
+                }
+                ai = ai + 1
+            }
+            if ai < line_len {
+                var eq_pos = -1
+                var vi = ai
+                while vi < line_len {
+                    unsafe {
+                        if line_text[vi] == Char(61) {
+                            eq_pos = vi
+                            break
+                        }
+                    }
+                    vi = vi + 1
+                }
+                if eq_pos > ai {
+                    var has_let_prefix = false
+                    if ai + 4 <= eq_pos {
+                        let let_prefix = substring(line_text, ai, ai + 4)
+                        if strcmp(let_prefix, "let ") == 0 {
+                            has_let_prefix = true
+                        }
+                    }
+                    if !has_let_prefix && eq_pos > 0 {
+                        var before_eq = eq_pos - 1
+                        while before_eq >= ai {
+                            unsafe {
+                                let c = line_text[before_eq]
+                                if c != Char(32) && c != Char(9) { break }
+                            }
+                            before_eq = before_eq - 1
+                        }
+                        var assign_start = before_eq
+                        while assign_start >= ai {
+                            unsafe {
+                                let c = line_text[assign_start]
+                                if c == Char(32) || c == Char(9) { break }
+                            }
+                            assign_start = assign_start - 1
+                        }
+                        assign_start = assign_start + 1
+                        if assign_start <= before_eq {
+                            let assign_var = substring(line_text, assign_start, before_eq + 1)
+                            var vi2 = 0
+                            while vi2 < vars.length() {
+                                unsafe {
+                                    if strcmp(assign_var, vars.get(vi2)) == 0 && !var_mut.get(vi2) {
+                                        var_mut.set(vi2, true)
+                                    }
+                                }
+                                vi2 = vi2 + 1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        line_start = line_end + 1
+        line_num = line_num + 1
+    }
+
+    // E0020 detection: find function calls to undeclared functions
+    var undef_fns = ArrayList<Str>(&fix_alloc)
+    var undef_lines = ArrayList<Int>(&fix_alloc)
+    var undef_columns = ArrayList<Int>(&fix_alloc)
+    var undef_lengths = ArrayList<Int>(&fix_alloc)
+
+    line_start = 0
+    line_num = 0
+    while line_start <= src_len_val {
+        var line_end = line_start
+        while line_end < src_len_val {
+            unsafe { if source[line_end] == Char(10) { break } }
+            line_end = line_end + 1
+        }
+        if line_end > src_len_val { line_end = src_len_val }
+        let line_len = line_end - line_start
+        if line_len > 0 {
+            let line_text = substring(source, line_start, line_end)
+
+            var ci = 0
+            while ci < line_len - 1 {
+                unsafe {
+                    let c = line_text[ci]
+                    if __kai_std_ascii_is_alpha(c) || c == Char(95) {
+                        var name_start = ci
+                        var name_end = ci
+                        while name_end < line_len {
+                            let nc = line_text[name_end]
+                            if __kai_std_ascii_is_alnum(nc) || nc == Char(95) {
+                                name_end = name_end + 1
+                            } else { break }
+                        }
+                        if name_end > name_start && name_end < line_len && line_text[name_end] == Char(40) {
+                            let call_name = substring(line_text, name_start, name_end)
+
+                            var is_decl = false
+                            if name_start >= 3 {
+                                let prefix = substring(line_text, name_start - 3, name_start)
+                                if strcmp(prefix, "fn ") == 0 { is_decl = true }
+                            }
+                            if !is_decl && name_start >= 10 {
+                                let exprefix = substring(line_text, name_start - 10, name_start)
+                                if strcmp(exprefix, "extern fn ") == 0 { is_decl = true }
+                            }
+                            if !is_decl && name_start > 0 && line_text[name_start-1] == Char(46) {
+                                is_decl = true
+                            }
+
+                            if !is_decl {
+                                var known = false
+                                var ki = 0
+                                while ki < declared_fns.length() {
+                                    unsafe {
+                                        if strcmp(call_name, declared_fns.get(ki)) == 0 {
+                                            known = true
+                                            break
+                                        }
+                                    }
+                                    ki = ki + 1
+                                }
+                                if !known {
+                                    var bi = 0
+                                    while bi < builtins.length() {
+                                        unsafe {
+                                            if strcmp(call_name, builtins.get(bi)) == 0 {
+                                                known = true
+                                                break
+                                            }
+                                        }
+                                        bi = bi + 1
+                                    }
+                                }
+                                if !known {
+                                    if strcmp(call_name, "Int") == 0 || strcmp(call_name, "Float") == 0 || strcmp(call_name, "Bool") == 0 || strcmp(call_name, "Char") == 0 || strcmp(call_name, "Str") == 0 || strcmp(call_name, "Void") == 0 || strcmp(call_name, "ArrayList") == 0 {
+                                        known = true
+                                    }
+                                }
+
+                                if !known {
+                                    var already = false
+                                    var ai2 = 0
+                                    while ai2 < undef_fns.length() {
+                                        unsafe {
+                                            if strcmp(call_name, undef_fns.get(ai2)) == 0 {
+                                                already = true
+                                                break
+                                            }
+                                        }
+                                        ai2 = ai2 + 1
+                                    }
+                                    if !already {
+                                        undef_fns.push(call_name)
+                                        undef_lines.push(line_num)
+                                        undef_columns.push(name_start + 1)
+                                        undef_lengths.push(name_end - name_start)
+                                    }
+                                }
+                            }
+                            ci = name_end
+                        }
+                    }
+                }
+                ci = ci + 1
+            }
+        }
+        line_start = line_end + 1
+        line_num = line_num + 1
+    }
+
+    // === Build structured diagnostic lists ===
+    var diag_codes = ArrayList<Str>(&fix_alloc)
+    var diag_messages = ArrayList<Str>(&fix_alloc)
+    var diag_lines = ArrayList<Int>(&fix_alloc)
+    var diag_columns = ArrayList<Int>(&fix_alloc)
+    var diag_lengths = ArrayList<Int>(&fix_alloc)
+    var diag_expected = ArrayList<Str>(&fix_alloc)
+    var diag_actual = ArrayList<Str>(&fix_alloc)
+    var diag_help = ArrayList<Str>(&fix_alloc)
+
+    // Build patch info (for behavior-preserving E0008 edits)
+    var patch_lines_arr = ArrayList<Int>(&fix_alloc)
+    var patch_old_arr = ArrayList<Str>(&fix_alloc)
+    var patch_new_arr = ArrayList<Str>(&fix_alloc)
+    var patch_codes_arr = ArrayList<Str>(&fix_alloc)
+
+    // Add E0008 diagnostics for modified vars
+    var vi3 = 0
+    while vi3 < vars.length() {
+        if var_mut.get(vi3) {
+            let vname = vars.get(vi3)
+            let vline = var_lines.get(vi3)
+            let vcol = var_columns.get(vi3)
+            let einfo = get_error_info("E0008")
+            diag_codes.push("E0008")
+            diag_messages.push(einfo.title)
+            diag_lines.push(vline)
+            diag_columns.push(vcol)
+            diag_lengths.push(3)
+            diag_expected.push("Declare with 'var' instead of 'let'")
+            diag_actual.push(vname)
+            diag_help.push(einfo.fix)
+
+            // Build patch for this E0008 using diag_line_text
+            var old_line_text = ""
+            var line_offset = 0
+            var line_num2 = 0
+            while line_offset < src_len_val {
+                if line_num2 == vline {
+                    old_line_text = diag_line_text(source, line_offset)
+                    line_offset = src_len_val
+                } else {
+                    line_offset = diag_line_end(source, line_offset) + 1
+                    if line_offset > src_len_val { line_offset = src_len_val }
+                }
+                line_num2 = line_num2 + 1
+            }
+            if length(old_line_text) > 0 {
+                let new_line_text = str_replace(old_line_text, "let ", "var ")
+                patch_lines_arr.push(vline)
+                patch_old_arr.push(old_line_text)
+                patch_new_arr.push(new_line_text)
+                patch_codes_arr.push("E0008")
+            }
+        }
+        vi3 = vi3 + 1
+    }
+
+    // Add E0020 diagnostics
+    var ui = 0
+    while ui < undef_fns.length() {
+        let fn_name = undef_fns.get(ui)
+        let fn_line = undef_lines.get(ui)
+        let fn_col = undef_columns.get(ui)
+        let fn_len = undef_lengths.get(ui)
+        let einfo = get_error_info("E0020")
+        diag_codes.push("E0020")
+        diag_messages.push(einfo.title)
+        diag_lines.push(fn_line)
+        diag_columns.push(fn_col)
+        diag_lengths.push(fn_len)
+        diag_expected.push("Declare the referenced function, import the module that provides it, or correct the identifier spelling")
+        diag_actual.push(fn_name)
+        diag_help.push(einfo.fix)
+        ui = ui + 1
+    }
+
+    let total_count = diag_codes.length()
+    let patch_count = patch_codes_arr.length()
+    let can_apply = patch_count > 0
+
+    // === Dispatch based on mode ===
+    if strcmp(fix_mode, "plan") == 0 {
+        print_plan(fix_file, json,
+                  &diag_codes, &diag_messages,
+                  &diag_lines, &diag_columns, &diag_lengths,
+                  &diag_expected, &diag_actual, &diag_help)
+        return 0
+    }
+
+    if strcmp(fix_mode, "patch") == 0 || strcmp(fix_mode, "apply") == 0 {
+        let is_apply = strcmp(fix_mode, "apply") == 0
+        var applied = false
+
+        if is_apply && can_apply {
+            // Apply all behavior-preserving patches using diag functions
+            var modified_source = ""
+            var offset = 0
+            var line_num3 = 0
+            while offset < src_len_val {
+                let line_text = diag_line_text(source, offset)
+                let line_end = diag_line_end(source, offset)
+
+                var found_patch = false
+                var pi = 0
+                while pi < patch_count {
+                    if patch_lines_arr.get(pi) == line_num3 {
+                        found_patch = true
+                        modified_source = modified_source + patch_new_arr.get(pi)
+                    }
+                    pi = pi + 1
+                }
+                if !found_patch {
+                    modified_source = modified_source + line_text
+                }
+                offset = line_end + 1
+                if offset > src_len_val { break }
+                modified_source = modified_source + "\n"
+                line_num3 = line_num3 + 1
+            }
+
+            let write_res = write_string(fix_file, modified_source)
+            if write_res.tag == 0 {
+                applied = true
+            }
+        }
+
+        // Patch mode: also compute patch info if not already done
+        // (patches were built during diagnostic collection above for E0008 edits)
+
+        print_patch(fix_file, json, is_apply, applied,
+                   &diag_codes, &diag_messages,
+                   &diag_lines, &diag_columns, &diag_lengths,
+                   &diag_expected, &diag_actual, &diag_help,
+                   &patch_lines_arr, &patch_old_arr, &patch_new_arr,
+                   &patch_codes_arr)
+
+        if is_apply && can_apply && !applied { return 1 }
+        return 0
+    }
+
+    printf("Error: fix requires a mode (--plan, --patch, or --apply)\n")
+    return 1
+}

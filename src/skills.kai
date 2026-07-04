@@ -1,0 +1,53 @@
+import KaiAllocator from std.core.allocator
+import read_to_string from std.io.file
+import std.io.print
+
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn _kai_set_current_allocator(allocator: *Void)
+extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
+
+fn run_skills(argc: Int, argv: **Char) -> Int {
+    var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
+    allocator.init()
+    _kai_set_current_allocator(&allocator as *Void)
+    var exe_dir = ""
+    unsafe {
+        let buf = allocator.alloc(1024, 1) as *Char
+        if get_exe_dir(buf, 1024) == 0 {
+            exe_dir = buf as Str
+        }
+    }
+    if argc < 3 {
+        printf("Available skills:\n")
+        printf("  agent       - Agent workflow guide\n")
+        printf("  diagnostics - Diagnostic reference for AI agents\n")
+        printf("\nUse 'kai skills get <topic>' to load a skill.\n")
+        return 0
+    }
+    var sub = ""
+    unsafe { sub = argv[2] as Str }
+    var is_get = false
+    unsafe {
+        if strcmp(sub, "get") == 0 { is_get = true }
+    }
+    if is_get {
+        if argc < 4 {
+            printf("Usage: kai skills get <topic>\n")
+            return 1
+        }
+        var topic = ""
+        unsafe { topic = argv[3] as Str }
+        let skill_path = exe_dir + "/skill-data/" + topic + ".md"
+        let res = read_to_string(&allocator, skill_path)
+        if res.tag != 0 {
+            printf("skill not found: '%s'\n", topic)
+            printf("Available: agent, diagnostics\n")
+            return 1
+        }
+        let content = res.value as Str
+        printf("%s\n", content)
+        return 0
+    }
+    printf("Usage: kai skills get <topic>\n")
+    return 1
+}

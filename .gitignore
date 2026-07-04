@@ -3,7 +3,8 @@
 .DS_Store
 SCRATCH.md
 __pycache__
-
+dist/
+docs/*.c
 #Files
 
 kai
@@ -23,5 +24,4 @@ docs/
 compiler
 zero
 release/
-dist/
 build.sh

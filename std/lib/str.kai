@@ -1,4 +1,3 @@
-import substring from std.core.string
 cimport "stdio.h"
 cimport "stdlib.h"
 cimport "string.h"
@@ -46,7 +45,7 @@ fn __kai_std_str_copy(buffer: *Char, text: Str) -> ?Str {
         buffer[index] = text[index]
         index = index + 1
     }
-    return substring(buffer, 0, len)
+    return buffer[..len]
 }
 
 fn __kai_std_str_concat(buffer: *Char, left: Str, right: Str) -> ?Str {
@@ -65,7 +64,7 @@ fn __kai_std_str_concat(buffer: *Char, left: Str, right: Str) -> ?Str {
         buffer[left_len + right_index] = right[right_index]
         right_index = right_index + 1
     }
-    return substring(buffer, 0, left_len + right_len)
+    return buffer[..left_len + right_len]
 }
 
 fn __kai_std_str_repeat(buffer: *Char, text: Str, count: Int) -> ?Str {
@@ -84,7 +83,7 @@ fn __kai_std_str_repeat(buffer: *Char, text: Str, count: Int) -> ?Str {
         }
         repetition = repetition + 1
     }
-    return substring(buffer, 0, out)
+    return buffer[..out]
 }
 
 fn __kai_std_str_replace(buffer: *Char, text: Str, old: Str, replacement: Str) -> ?Str {
@@ -96,7 +95,7 @@ fn __kai_std_str_replace(buffer: *Char, text: Str, old: Str, replacement: Str) -
     var read: Int = 0
     var write: Int = 0
     while read < text_len {
-        if old_len <= text_len - read && __kai_std_str_starts_with(substring(text, read, strlen((text) as Str)), old) {
+        if old_len <= text_len - read && __kai_std_str_starts_with(text[read..], old) {
             if strlen((replacement) as Str) > 1000000 - write {
                 return none
             }
@@ -116,7 +115,7 @@ fn __kai_std_str_replace(buffer: *Char, text: Str, old: Str, replacement: Str) -
             read = read + 1
         }
     }
-    return substring(buffer, 0, write)
+    return buffer[..write]
 }
 
 fn __kai_std_str_to_lower_ascii(buffer: *Char, text: Str) -> ?Str {
@@ -129,7 +128,7 @@ fn __kai_std_str_to_lower_ascii(buffer: *Char, text: Str) -> ?Str {
         buffer[index] = __kai_std_str_to_lower_byte(text[index])
         index = index + 1
     }
-    return substring(buffer, 0, len)
+    return buffer[..len]
 }
 
 fn __kai_std_str_to_upper_ascii(buffer: *Char, text: Str) -> ?Str {
@@ -142,7 +141,7 @@ fn __kai_std_str_to_upper_ascii(buffer: *Char, text: Str) -> ?Str {
         buffer[index] = __kai_std_str_to_upper_byte(text[index])
         index = index + 1
     }
-    return substring(buffer, 0, len)
+    return buffer[..len]
 }
 
 fn __kai_std_str_reverse(buffer: *Char, text: Str) -> ?Str {
@@ -155,7 +154,7 @@ fn __kai_std_str_reverse(buffer: *Char, text: Str) -> ?Str {
         buffer[index] = text[len - 1 - index]
         index = index + 1
     }
-    return substring(buffer, 0, len)
+    return buffer[..len]
 }
 
 fn __kai_std_str_count_byte(text: Str, byte: Char) -> Int {
@@ -296,7 +295,7 @@ fn __kai_std_str_count(text: Str, needle: Str) -> Int {
     var index: Int = 0
     var count: Int = 0
     while index <= strlen((text) as Str) {
-        let rest: Str = substring(text, index, strlen((text) as Str))
+        let rest: Str = text[index..]
         let found: Int = __kai_std_str_index_of(rest, needle)
         if found == strlen((rest) as Str) {
             return count
@@ -322,11 +321,11 @@ fn __kai_std_str_split(text: Str, sep: Str, part_index: Int) -> ?Str {
     var current: Int = 0
     var start: Int = 0
     while start <= strlen((text) as Str) {
-        let rest: Str = substring(text, start, strlen((text) as Str))
+        let rest: Str = text[start..]
         let found: Int = __kai_std_str_index_of(rest, sep)
         let end: Int = start + found
         if current == part_index {
-            return substring(text, start, end)
+            return text[start..end]
         }
         if found == strlen((rest) as Str) {
             return none
@@ -360,7 +359,7 @@ fn __kai_std_str_trim_ascii(text: Str) -> Str {
     while end > start && __kai_std_str_is_ascii_space(text[end - 1]) {
         end = end - 1
     }
-    return substring(text, start, end)
+    return text[start..end]
 }
 
 fn __kai_std_str_trim_start_ascii(text: Str) -> Str {
@@ -368,7 +367,7 @@ fn __kai_std_str_trim_start_ascii(text: Str) -> Str {
     while start < strlen((text) as Str) && __kai_std_str_is_ascii_space(text[start]) {
         start = start + 1
     }
-    return substring(text, start, strlen((text) as Str))
+    return text[start..]
 }
 
 fn __kai_std_str_trim_end_ascii(text: Str) -> Str {
@@ -376,7 +375,7 @@ fn __kai_std_str_trim_end_ascii(text: Str) -> Str {
     while end > 0 && __kai_std_str_is_ascii_space(text[end - 1]) {
         end = end - 1
     }
-    return substring(text, 0, end)
+    return text[..end]
 }
 
 fn __kai_std_str_field_count_ascii(text: Str) -> Int {
@@ -398,7 +397,7 @@ fn __kai_std_str_field_ascii(text: Str, field_index: Int) -> ?Str {
             index = index + 1
         }
         if current == field_index {
-            return substring(text, start, index)
+            return text[start..index]
         }
         current = current + 1
     }
@@ -437,7 +436,7 @@ fn __kai_std_str_line(text: Str, line_index: Int) -> ?Str {
                 end = end - 1
             }
             if current == line_index {
-                return substring(text, start, end)
+                return text[start..end]
             }
             current = current + 1
             start = index + 1

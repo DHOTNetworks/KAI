@@ -3,7 +3,6 @@ import Allocator from std.core.allocator
 import StringBuilder from std.core.string
 import int_to_str from std.core.string
 import char_to_str from std.core.string
-import substring from std.core.string
 import length from std.core.string
 
 import ExprKind from ast_nodes
@@ -31,6 +30,29 @@ extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn exit(code: Int)
 extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
 extern fn strstr(haystack: Str, needle: Str) -> *Char
+extern fn malloc(size: Int) -> *Char
+
+
+fn __kai_std_str_concat_alloc(left: Str, right: Str) -> Str {
+    let left_len = length(left)
+    let right_len = length(right)
+    let total = left_len + right_len + 1
+    let buf = malloc(total)
+    if buf != (0 as *Char) {
+        var i = 0
+        while i < left_len {
+            buf[i] = left[i]
+            i = i + 1
+        }
+        var j = 0
+        while j < right_len {
+            buf[left_len + j] = right[j]
+            j = j + 1
+        }
+        buf[total - 1] = Char(0)
+    }
+    return buf as Str
+}
 
 struct StrMapEntry {
     key: Str
@@ -107,7 +129,7 @@ impl Codegen {
 fn add_init_return(self, body_str: Str, struct_name: Str) -> Str {
     let self_decl = "    " + struct_name + " self = (" + struct_name + "){0};\n"
     let body_len = length(body_str)
-    var stripped_body = substring(body_str, 2, body_len - 1)
+    var stripped_body = body_str[2..body_len - 1]
     
     // Check if the stripped body already ends with return self;
     var ends_with_return = false
@@ -161,7 +183,7 @@ fn is_pointer_type(self, t: Str) -> Bool {
     if length(t) == 0 { return false }
     if t[0] == Char(42) || t[0] == Char(38) { return true }
     if t == "Str" { return true }
-    if length(t) >= 2 && substring(t, 0, 2) == "[]" { return true }
+    if length(t) >= 2 && t[0..2] == "[]" { return true }
     return false
 }
 
@@ -176,7 +198,7 @@ fn map_type(self, type_name: Str) -> Str {
     }
 
     if length(resolved_type) > 0 && resolved_type[0] == Char(63) {
-        let val_type = substring(resolved_type, 1, length(resolved_type))
+        let val_type = resolved_type[1..length(resolved_type)]
         if self.is_pointer_type(val_type) {
             return self.map_type(val_type)
         }
@@ -196,8 +218,8 @@ fn map_type(self, type_name: Str) -> Str {
 
     if self.str_contains(resolved_type, Char(33)) {
         let excl_pos = self.str_find(resolved_type, Char(33))
-        let val_type = substring(resolved_type, 0, excl_pos)
-        let err_type = substring(resolved_type, excl_pos + 1, length(resolved_type))
+        let val_type = resolved_type[0..excl_pos]
+        let err_type = resolved_type[excl_pos + 1..length(resolved_type)]
         let clean_val = self.clean_type_for_mangling(val_type)
         let clean_err = self.clean_type_for_mangling(err_type)
         let concrete_name = "Result_" + clean_val + "_" + clean_err
@@ -225,50 +247,49 @@ fn map_type(self, type_name: Str) -> Str {
     if resolved_type == "Str" { return "const char*" }
     if resolved_type == "Allocator" { return "KaiAllocator" }
     
-    if substring(resolved_type, 0, 2) == "[]" {
-        let inner = substring(resolved_type, 2, length(resolved_type))
+    if resolved_type[0..2] == "[]" {
+        let inner = resolved_type[2..length(resolved_type)]
         return self.map_type(inner) + "*"
     }
 
     if resolved_type[0] == Char(42) {
-        if length(resolved_type) > 5 && substring(resolved_type, 0, 5) == "*mut " {
-            let inner = substring(resolved_type, 5, length(resolved_type))
+        if length(resolved_type) > 5 && resolved_type[0..5] == "*mut " {
+            let inner = resolved_type[5..length(resolved_type)]
             if inner == "Void" { return "void*" }
             return self.map_type(inner) + "*"
         } else {
-            let inner = substring(resolved_type, 1, length(resolved_type))
+            let inner = resolved_type[1..length(resolved_type)]
             if inner == "Void" { return "void*" }
             return self.map_type(inner) + "*"
         }
     }
 
     if resolved_type[0] == Char(38) {
-        if length(resolved_type) > 5 && substring(resolved_type, 0, 5) == "&mut " {
-            let inner = substring(resolved_type, 5, length(resolved_type))
+        if length(resolved_type) > 5 && resolved_type[0..5] == "&mut " {
+            let inner = resolved_type[5..length(resolved_type)]
             return self.map_type(inner) + "*"
         } else {
-            let inner = substring(resolved_type, 1, length(resolved_type))
+            let inner = resolved_type[1..length(resolved_type)]
             return self.map_type(inner) + "*"
         }
     }
 
     if self.str_contains(resolved_type, Char(60)) {
         let lt_pos = self.str_find(resolved_type, Char(60))
-        let base_name = substring(resolved_type, 0, lt_pos)
-        let args_str = substring(resolved_type, lt_pos + 1, length(resolved_type) - 1)
+        let base_name = resolved_type[0..lt_pos]
+        let args_str = resolved_type[lt_pos + 1..length(resolved_type) - 1]
         var args = ArrayList<Str>(self.allocator)
         var start = 0
         var i = 0
         while i < length(args_str) {
             let c = args_str[i]
             if c == Char(44) {
-                args.push(self.trim_spaces(substring(args_str, start, i)))
+                args.push(self.trim_spaces(args_str[start..i]))
                 start = i + 1
             }
             i = i + 1
         }
-        args.push(self.trim_spaces(substring(args_str, start, length(args_str))))
-
+        args.push(self.trim_spaces(args_str[start..length(args_str)]))
         var concrete_name = base_name
         var ai = 0
         while ai < args.length() {
@@ -309,19 +330,19 @@ fn substitute_generic_type(self, type_name: Str) -> Str {
     }
     
     if type_name[0] == Char(42) {
-        return "*" + self.substitute_generic_type(substring(type_name, 1, length(type_name)))
+        return "*" + self.substitute_generic_type(type_name[1..length(type_name)])
     }
     if type_name[0] == Char(38) {
-        if substring(type_name, 0, 5) == "&mut " {
-            return "&mut " + self.substitute_generic_type(substring(type_name, 5, length(type_name)))
+        if type_name[0..5] == "&mut " {
+            return "&mut " + self.substitute_generic_type(type_name[5..length(type_name)])
         }
-        return "&" + self.substitute_generic_type(substring(type_name, 1, length(type_name)))
+        return "&" + self.substitute_generic_type(type_name[1..length(type_name)])
     }
     
     if self.str_contains(type_name, Char(60)) {
         let lt_pos = self.str_find(type_name, Char(60))
-        let base = substring(type_name, 0, lt_pos)
-        let inner = substring(type_name, lt_pos + 1, length(type_name) - 1)
+        let base = type_name[0..lt_pos]
+        let inner = type_name[lt_pos + 1..length(type_name) - 1]
         var res = base + "<"
         var start = 0
         var i = 0
@@ -329,7 +350,7 @@ fn substitute_generic_type(self, type_name: Str) -> Str {
         while i < length(inner) {
             let c = inner[i]
             if c == Char(44) {
-                let arg = self.trim_spaces(substring(inner, start, i))
+                let arg = self.trim_spaces(inner[start..i])
                 if arg_count > 0 { res = res + ", " }
                 res = res + self.substitute_generic_type(arg)
                 start = i + 1
@@ -337,7 +358,7 @@ fn substitute_generic_type(self, type_name: Str) -> Str {
             }
             i = i + 1
         }
-        let arg = self.trim_spaces(substring(inner, start, length(inner)))
+        let arg = self.trim_spaces(inner[start..length(inner)])
         if arg_count > 0 { res = res + ", " }
         res = res + self.substitute_generic_type(arg)
         res = res + ">"
@@ -356,7 +377,7 @@ fn trim_spaces(self, s: Str) -> Str {
     while end > start && s[end - 1] == Char(32) {
         end = end - 1
     }
-    return substring(s, start, end)
+    return s[start..end]
 }
 
 fn clean_type_for_mangling(self, s: Str) -> Str {
@@ -418,7 +439,7 @@ fn infer_type_args(self, func_stmt_idx: Int, expr_idx: Int) -> ArrayList<Str> {
         var done = false
         while !done {
             if length(ptype) > 0 && (ptype[0] == Char(42) || ptype[0] == Char(38)) {
-                ptype = substring(ptype, 1, length(ptype))
+                ptype = ptype[1..length(ptype)]
             } else {
                 done = true
             }
@@ -426,16 +447,16 @@ fn infer_type_args(self, func_stmt_idx: Int, expr_idx: Int) -> ArrayList<Str> {
         done = false
         while !done {
             if length(atype) > 0 && (atype[0] == Char(42) || atype[0] == Char(38)) {
-                atype = substring(atype, 1, length(atype))
+                atype = atype[1..length(atype)]
             } else {
                 done = true
             }
         }
-        if length(ptype) >= 4 && substring(ptype, 0, 4) == "mut " {
-            ptype = substring(ptype, 4, length(ptype))
+        if length(ptype) >= 4 && ptype[0..4] == "mut " {
+            ptype = ptype[4..length(ptype)]
         }
-        if length(atype) >= 4 && substring(atype, 0, 4) == "mut " {
-            atype = substring(atype, 4, length(atype))
+        if length(atype) >= 4 && atype[0..4] == "mut " {
+            atype = atype[4..length(atype)]
         }
         
         var is_param = false
@@ -449,7 +470,7 @@ fn infer_type_args(self, func_stmt_idx: Int, expr_idx: Int) -> ArrayList<Str> {
                 var tp_name = stmt.func_type_params.get(tp_i)
                 if self.str_contains(tp_name, Char(58)) {
                     let colon_pos = self.str_find(tp_name, Char(58))
-                    tp_name = substring(tp_name, 0, colon_pos)
+                    tp_name = tp_name[0..colon_pos]
                 }
                 if tp_name == ptype {
                     type_args.set(tp_i, atype)
@@ -477,7 +498,7 @@ fn setup_current_type_map(self, type_params: *ArrayList<Str>, type_args: *ArrayL
         let arg_name = self.trim_spaces(type_args.get(i))
         if self.str_contains(param_name, Char(58)) { // ':' is 58
             let colon_pos = self.str_find(param_name, Char(58))
-            param_name = substring(param_name, 0, colon_pos)
+            param_name = param_name[0..colon_pos]
         }
         type_map_put(&self.current_type_map, param_name, arg_name)
         i = i + 1
@@ -728,7 +749,7 @@ fn extract_first_type_arg(self, type_name: Str) -> Str {
         i = i + 1
     }
     if start >= 0 && end >= 0 {
-        return substring(type_name, start, end)
+        return type_name[start..end]
     }
     return "Int"
 }
@@ -951,8 +972,8 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
             }
             i = i + 1
         }
-        if substring(clean_type, 0, 4) == "mut " {
-            clean_type = substring(clean_type, 4, length(clean_type))
+        if clean_type[0..4] == "mut " {
+            clean_type = clean_type[4..length(clean_type)]
         }
         var s_idx = 0
         while s_idx < self.stmt_pool.length() {
@@ -966,7 +987,7 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
                     // This prevents false matches with unrelated structs sharing a prefix
                     if stmt.struct_type_params.length() > 0 {
                         let underscore_pos = self.str_find(clean_type, Char(95))
-                        let base_name = substring(clean_type, 0, underscore_pos)
+                        let base_name = clean_type[0..underscore_pos]
                         if stmt.struct_name == base_name {
                             is_match = true
                         }
@@ -998,8 +1019,11 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
         if base_type == "Str" {
             return "Char"
         }
-        if base_type[0] == Char(42) {
-            return substring(base_type, 1, length(base_type))
+        if length(base_type) >= 2 && base_type[0..2] == "[]" {
+            return base_type[2..length(base_type)]
+        }
+        if length(base_type) > 0 && base_type[0] == Char(42) {
+            return base_type[1..length(base_type)]
         }
         return "Void"
     }
@@ -1010,14 +1034,14 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
     
     if expr.kind == ExprKind.ek_deref {
         let base_type = self.get_expr_type(expr.deref_expr)
-        if length(base_type) > 5 && substring(base_type, 0, 5) == "*mut " {
-            return substring(base_type, 5, length(base_type))
+        if length(base_type) > 5 && base_type[0..5] == "*mut " {
+            return base_type[5..length(base_type)]
         }
-        if length(base_type) > 5 && substring(base_type, 0, 5) == "&mut " {
-            return substring(base_type, 5, length(base_type))
+        if length(base_type) > 5 && base_type[0..5] == "&mut " {
+            return base_type[5..length(base_type)]
         }
         if base_type[0] == Char(42) || base_type[0] == Char(38) {
-            return substring(base_type, 1, length(base_type))
+            return base_type[1..length(base_type)]
         }
         return "Void"
     }
@@ -1040,8 +1064,8 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
             }
             i = i + 1
         }
-        if substring(clean_type, 0, 4) == "mut " {
-            clean_type = substring(clean_type, 4, length(clean_type))
+        if clean_type[0..4] == "mut " {
+            clean_type = clean_type[4..length(clean_type)]
         }
         
         var is_constructor = false
@@ -1065,31 +1089,31 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
         var done = false
         while !done {
             if length(clean_rec) > 0 && (clean_rec[0] == Char(42) || clean_rec[0] == Char(38)) {
-                clean_rec = substring(clean_rec, 1, length(clean_rec))
+                clean_rec = clean_rec[1..length(clean_rec)]
             } else {
                 done = true
             }
         }
-        if substring(clean_rec, 0, 4) == "mut " {
-            clean_rec = substring(clean_rec, 4, length(clean_rec))
+        if clean_rec[0..4] == "mut " {
+            clean_rec = clean_rec[4..length(clean_rec)]
         }
         
         if self.str_contains(clean_rec, Char(60)) { // '<'
             let lt_pos = self.str_find(clean_rec, Char(60))
-            let base_struct = substring(clean_rec, 0, lt_pos)
-            let args_str = substring(clean_rec, lt_pos + 1, length(clean_rec) - 1)
+            let base_struct = clean_rec[0..lt_pos]
+            let args_str = clean_rec[lt_pos + 1..length(clean_rec) - 1]
             var args = ArrayList<Str>(self.allocator)
             var start = 0
             var ai = 0
             while ai < length(args_str) {
                 let c = args_str[ai]
                 if c == Char(44) {
-                    args.push(self.trim_spaces(substring(args_str, start, ai)))
+                    args.push(self.trim_spaces(args_str[start..ai]))
                     start = ai + 1
                 }
                 ai = ai + 1
             }
-            args.push(self.trim_spaces(substring(args_str, start, length(args_str))))
+        args.push(self.trim_spaces(args_str[start..length(args_str)]))
             
             var struct_idx = -1
             var si = 0
@@ -1109,7 +1133,7 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
                     var p_name = self.trim_spaces(s_decl.struct_type_params.get(pi))
                     if self.str_contains(p_name, Char(58)) {
                         let cp = self.str_find(p_name, Char(58))
-                        p_name = substring(p_name, 0, cp)
+                        p_name = p_name[0..cp]
                     }
                     let a_name = args.get(pi)
                     type_map_put(&temp_map, p_name, a_name)
@@ -1144,7 +1168,10 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
         return "Range"
     }
     if expr.kind == ExprKind.ek_slice {
-        return expr.inferred_type
+        if length(expr.inferred_type) > 0 {
+            return expr.inferred_type
+        }
+        return self.get_expr_type(expr.slice_expr)
     }
     if expr.kind == ExprKind.ek_array {
         return expr.inferred_type
@@ -1159,18 +1186,18 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
         let inner_ty = self.get_expr_type(expr.try_expr)
         let excl_pos = self.str_find(inner_ty, Char(33))
         if excl_pos >= 0 {
-            return substring(inner_ty, 0, excl_pos)
+            return inner_ty[0..excl_pos]
         }
         return inner_ty
     }
     if expr.kind == ExprKind.ek_catch {
         let inner_ty = self.get_expr_type(expr.catch_expr)
         if length(inner_ty) > 0 && inner_ty[0] == Char(63) {
-            return substring(inner_ty, 1, length(inner_ty))
+            return inner_ty[1..length(inner_ty)]
         }
         let excl_pos = self.str_find(inner_ty, Char(33))
         if excl_pos >= 0 {
-            return substring(inner_ty, 0, excl_pos)
+            return inner_ty[0..excl_pos]
         }
         return inner_ty
     }
@@ -1183,7 +1210,7 @@ fn gen_expr_with_expected_type(self, expr_idx: Int, expected_type: Str) -> Str {
     let actual_type = self.get_expr_type(expr_idx)
     if expr.kind == ExprKind.ek_literal && expr.lit_vkind == "NONE" {
         if length(expected_type) > 0 && expected_type[0] == Char(63) {
-            let val_type = substring(expected_type, 1, length(expected_type))
+            let val_type = expected_type[1..length(expected_type)]
             if self.is_pointer_type(val_type) {
                 return "NULL"
             }
@@ -1193,7 +1220,7 @@ fn gen_expr_with_expected_type(self, expr_idx: Int, expected_type: Str) -> Str {
     }
     let gen_val = self.gen_expr(expr_idx)
     if length(expected_type) > 0 && expected_type[0] == Char(63) {
-        let val_type = substring(expected_type, 1, length(expected_type))
+        let val_type = expected_type[1..length(expected_type)]
         if !self.is_pointer_type(val_type) && actual_type == val_type {
             return "(" + self.map_type(expected_type) + "){ .has_value = true, .value = " + gen_val + " }"
         }
@@ -1212,7 +1239,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         if excl_pos < 0 {
             return inner
         }
-        let val_type = substring(inner_ty, 0, excl_pos)
+        let val_type = inner_ty[0..excl_pos]
         let result_ctype = self.map_type(inner_ty)
         let ret_ctype = self.map_type(self.cur_return_type)
         var try_code = "({ " + result_ctype + " _kai_res = (" + inner + "); "
@@ -1323,12 +1350,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             if i == 0 {
                 result = part_str
             } else {
-                let has_str = strlist_find(&self.loaded_modules, "std.lib.str") >= 0 || strlist_find(&self.loaded_modules, "std.zero_ported.str") >= 0
-                if has_str {
-                    result = "__kai_std_str_concat_alloc(" + result + ", " + part_str + ")"
-                } else {
-                    result = "_kai_str_concat(" + result + ", " + part_str + ")"
-                }
+                result = "__kai_std_str_concat_alloc(" + result + ", " + part_str + ")"
             }
             i = i + 1
         }
@@ -1347,7 +1369,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         let rhs_type = self.get_expr_type(expr.binop_right)
         if op == "==" || op == "!=" {
             if length(lhs_type) > 0 && lhs_type[0] == Char(63) && rhs == "NULL" {
-                let val_type = substring(lhs_type, 1, length(lhs_type))
+                let val_type = lhs_type[1..length(lhs_type)]
                 if self.is_pointer_type(val_type) {
                     return "(" + lhs + " " + op + " NULL)"
                 }
@@ -1357,7 +1379,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
                 return "(" + lhs + ".has_value)"
             }
             if length(rhs_type) > 0 && rhs_type[0] == Char(63) && lhs == "NULL" {
-                let val_type = substring(rhs_type, 1, length(rhs_type))
+                let val_type = rhs_type[1..length(rhs_type)]
                 if self.is_pointer_type(val_type) {
                     return "(NULL " + op + " " + rhs + ")"
                 }
@@ -1371,11 +1393,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         let lhs_node = self.expr_pool.get(expr.binop_left)
         if lhs_type == "Str" {
             if op == "+" {
-                let has_str = strlist_find(&self.loaded_modules, "std.lib.str") >= 0 || strlist_find(&self.loaded_modules, "std.zero_ported.str") >= 0
-                if has_str {
-                    return "__kai_std_str_concat_alloc(" + lhs + ", " + rhs + ")"
-                }
-                return "_kai_str_concat(" + lhs + ", " + rhs + ")"
+                return "__kai_std_str_concat_alloc(" + lhs + ", " + rhs + ")"
             }
             if op == "==" {
                 return "(strcmp(" + lhs + ", " + rhs + ") == 0)"
@@ -1571,7 +1589,25 @@ fn gen_expr(self, expr_idx: Int) -> Str {
     }
 
     if expr.kind == ExprKind.ek_slice {
-        return self.gen_expr(expr.slice_expr)
+        let base = self.gen_expr(expr.slice_expr)
+        let base_type = self.get_expr_type(expr.slice_expr)
+        var lower = "0"
+        var upper = "strlen(" + base + ")"
+        if expr.slice_lower >= 0 {
+            lower = self.gen_expr(expr.slice_lower)
+        }
+        if expr.slice_upper >= 0 {
+            upper = self.gen_expr(expr.slice_upper)
+        }
+        if base_type == "Str" || base_type == "*Char" {
+            return "__kai_str_sub(" + base + ", " + lower + ", " + upper + ")"
+        }
+        if length(base_type) >= 2 && base_type[0..2] == "[]" {
+            let inner_type = base_type[2..length(base_type)]
+            let mapped_inner = self.map_type(inner_type)
+            return "__kai_arr_sub(" + base + ", " + lower + ", " + upper + ", sizeof(" + mapped_inner + "))"
+        }
+        return base
     }
 
     if expr.kind == ExprKind.ek_array {
@@ -1586,8 +1622,8 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             elems_str = "0"
         }
         var inner_ty = "Int"
-        if length(expr.inferred_type) > 2 && substring(expr.inferred_type, 0, 2) == "[]" {
-            inner_ty = substring(expr.inferred_type, 2, length(expr.inferred_type))
+        if length(expr.inferred_type) > 2 && expr.inferred_type[0..2] == "[]" {
+            inner_ty = expr.inferred_type[2..length(expr.inferred_type)]
         }
         let mapped_inner = self.map_type(inner_ty)
         return "(" + mapped_inner + "[]){ " + elems_str + " }"
@@ -1717,8 +1753,8 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         let is_enum = (length(expr.struct_name) > 0) && (self.str_contains(expr.struct_name, Char(46))) // '.' is 46
         if is_enum {
             let dot_pos = self.str_find(expr.struct_name, Char(46))
-            let enum_part = substring(expr.struct_name, 0, dot_pos)
-            let variant_name = substring(expr.struct_name, dot_pos + 1, length(expr.struct_name))
+            let enum_part = expr.struct_name[0..dot_pos]
+            let variant_name = expr.struct_name[dot_pos + 1..length(expr.struct_name)]
             let enum_name = self.map_type(enum_part)
             
             var fields_str = ""
@@ -1785,8 +1821,8 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             }
             i = i + 1
         }
-        if substring(clean_type, 0, 4) == "mut " {
-            clean_type = substring(clean_type, 4, length(clean_type))
+        if clean_type[0..4] == "mut " {
+            clean_type = clean_type[4..length(clean_type)]
         }
         clean_type = self.map_type(clean_type)
         
@@ -1855,7 +1891,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         let inner = self.gen_expr(expr.catch_expr)
         let inner_ty = self.get_expr_type(expr.catch_expr)
         if length(inner_ty) > 0 && inner_ty[0] == Char(63) {
-            let val_type = substring(inner_ty, 1, length(inner_ty))
+            let val_type = inner_ty[1..length(inner_ty)]
             let val_ctype = self.map_type(val_type)
             let cond_ctype = self.map_type(inner_ty)
             // Generate fallback: if it's an expr statement, use the expression directly
@@ -1914,7 +1950,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         if excl_pos < 0 {
             return inner
         }
-        let val_type = substring(inner_ty, 0, excl_pos)
+        let val_type = inner_ty[0..excl_pos]
         let result_ctype = self.map_type(inner_ty)
         let val_ctype = self.map_type(val_type)
         // Generate fallback: if it's an expr statement, use the expression directly
@@ -1998,7 +2034,7 @@ fn str_find(self, s: Str, target: Char) -> Int {
 fn is_standard_c_func(self, name: Str) -> Bool {
     let l = length(name)
     if l >= 4 {
-        let sub4 = substring(name, 0, 4)
+        let sub4 = name[0..4]
         var is_llvm = false
         unsafe {
             if strcmp(sub4, "LLVM") == 0 { is_llvm = true }
@@ -2006,7 +2042,7 @@ fn is_standard_c_func(self, name: Str) -> Bool {
         if is_llvm { return true }
     }
     if l >= 8 {
-        let sub8 = substring(name, 0, 8)
+        let sub8 = name[0..8]
         var is_kai_llvm = false
         unsafe {
             if strcmp(sub8, "kai_LLVM") == 0 { is_kai_llvm = true }
@@ -2422,7 +2458,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
     if stmt.kind == StmtKind.sk_if_let {
         let cond_val = self.gen_expr(stmt.iflet_expr)
         let cond_type = self.get_expr_type(stmt.iflet_expr)
-        let unwrapped_type = substring(cond_type, 1, length(cond_type))
+        let unwrapped_type = cond_type[1..length(cond_type)]
         let unwrapped_ctype = self.map_type(unwrapped_type)
         let cond_ctype = self.map_type(cond_type)
         
@@ -2544,8 +2580,8 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
                 let ret_excl_pos = self.str_find(self.cur_return_type, Char(33))
                 if ret_excl_pos >= 0 {
                     let result_ctype = self.map_type(self.cur_return_type)
-                    let val_payload_type = substring(self.cur_return_type, 0, ret_excl_pos)
-                    let err_type = substring(self.cur_return_type, ret_excl_pos + 1, length(self.cur_return_type))
+                    let val_payload_type = self.cur_return_type[0..ret_excl_pos]
+                    let err_type = self.cur_return_type[ret_excl_pos + 1..length(self.cur_return_type)]
                     let ret_node = self.expr_pool.get(stmt.return_value)
                     var is_error_variant = false
                     if ret_node.kind == ExprKind.ek_field_access {
@@ -2594,7 +2630,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
             
             if ret_excl_pos >= 0 {
                 // Result type with drops - need to wrap in Result struct
-                let val_payload_type = substring(self.cur_return_type, 0, ret_excl_pos)
+                let val_payload_type = self.cur_return_type[0..ret_excl_pos]
                 let ret_node = self.expr_pool.get(stmt.return_value)
                 var is_error_variant = false
                 if ret_node.kind == ExprKind.ek_field_access {
@@ -2902,10 +2938,10 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
                 let var_name = pat_node.variant_name
                 var base_type = mapped_expr_type
                 if length(base_type) > 0 && (base_type[length(base_type) - 1] == Char(42) || base_type[length(base_type) - 1] == Char(38)) {
-                    base_type = substring(base_type, 0, length(base_type) - 1)
+                    base_type = base_type[0..length(base_type) - 1]
                 }
                 if length(base_type) > 0 && base_type[0] == Char(42) {
-                    base_type = substring(base_type, 1, length(base_type))
+                    base_type = base_type[1..length(base_type)]
                 }
                 if self.enum_has_payload(expr_type) {
                     cond = expr_val + op + "tag == " + base_type + "_" + var_name + "_TAG"
@@ -2969,7 +3005,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
             var full_block = block_str
             if length(bindings_str) > 0 {
                 let body_len = length(block_str)
-                full_block = "{\n" + bindings_str + substring(block_str, 1, body_len)
+                full_block = "{\n" + bindings_str + block_str[1..body_len]
             }
             
             match_str = match_str + prefix + " " + full_block + " "
@@ -2985,17 +3021,17 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
     var base_name = type_name
     if self.str_contains(type_name, Char(60)) { // '<'
         let lt_pos = self.str_find(type_name, Char(60))
-        base_name = substring(type_name, 0, lt_pos)
+        base_name = type_name[0..lt_pos]
     }
     
-    if substring(base_name, 0, 4) == "mut " {
-        base_name = substring(base_name, 4, length(base_name))
+    if base_name[0..4] == "mut " {
+        base_name = base_name[4..length(base_name)]
     }
     
     var done = false
     while !done {
         if length(base_name) > 0 && (base_name[0] == Char(42) || base_name[0] == Char(38)) {
-            base_name = substring(base_name, 1, length(base_name))
+            base_name = base_name[1..length(base_name)]
         } else {
             done = true
         }
@@ -3005,7 +3041,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
     while !done {
         let l = length(base_name)
         if l > 0 && (base_name[l - 1] == Char(42) || base_name[l - 1] == Char(38)) {
-            base_name = substring(base_name, 0, l - 1)
+            base_name = base_name[0..l - 1]
         } else {
             done = true
         }
@@ -3014,7 +3050,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
     if length(type_map_get(&self.enum_decls, base_name)) == 0 {
         if self.str_contains(base_name, Char(95)) { // '_' is 95
             let underscore_pos = self.str_find(base_name, Char(95))
-            let fallback_name = substring(base_name, 0, underscore_pos)
+            let fallback_name = base_name[0..underscore_pos]
             if length(type_map_get(&self.enum_decls, fallback_name)) > 0 {
                 return fallback_name
             }
@@ -3160,6 +3196,33 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     final_code = final_code + "}\n"
     final_code = final_code + "#endif\n\n"
 
+    final_code = final_code + "static char* __kai_str_sub(const char* s, int64_t start, int64_t end) {\n"
+    final_code = final_code + "    int64_t len = strlen(s);\n"
+    final_code = final_code + "    if (end > len) end = len;\n"
+    final_code = final_code + "    if (start < 0) start = 0;\n"
+    final_code = final_code + "    if (start >= end) {\n"
+    final_code = final_code + "        char* empty = malloc(1);\n"
+    final_code = final_code + "        if (empty) empty[0] = '\\0';\n"
+    final_code = final_code + "        return empty;\n"
+    final_code = final_code + "    }\n"
+    final_code = final_code + "    int64_t sub_len = end - start;\n"
+    final_code = final_code + "    char* buf = malloc(sub_len + 1);\n"
+    final_code = final_code + "    if (buf) {\n"
+    final_code = final_code + "        memcpy(buf, s + start, sub_len);\n"
+    final_code = final_code + "        buf[sub_len] = '\\0';\n"
+    final_code = final_code + "    }\n"
+    final_code = final_code + "    return buf;\n"
+    final_code = final_code + "}\n\n"
+
+    final_code = final_code + "static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t elem_size) {\n"
+    final_code = final_code + "    int64_t count = end - start;\n"
+    final_code = final_code + "    if (count <= 0) return NULL;\n"
+    final_code = final_code + "    size_t total = (size_t)count * (size_t)elem_size;\n"
+    final_code = final_code + "    void* buf = malloc(total);\n"
+    final_code = final_code + "    if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);\n"
+    final_code = final_code + "    return buf;\n"
+    final_code = final_code + "}\n\n"
+
     var ci = 0
     var has_cimports = false
     while ci < self.cimport_headers.length() {
@@ -3212,33 +3275,6 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     final_code = final_code + "static inline int64_t _kai_munmap(char* addr, int64_t length) {\n"
     final_code = final_code + "    return munmap(addr, (unsigned long long)length);\n"
     final_code = final_code + "}\n\n"
-    
-    let has_str = strlist_find(&self.loaded_modules, "std.lib.str") >= 0 || strlist_find(&self.loaded_modules, "std.zero_ported.str") >= 0
-    if !has_str {
-        final_code = final_code + "static inline char* _kai_str_concat(const char* l, const char* r) {\n"
-        final_code = final_code + "    unsigned long long l1 = 0;\n"
-        final_code = final_code + "    while (l[l1] != '\\0') { l1++; }\n"
-        final_code = final_code + "    unsigned long long l2 = 0;\n"
-        final_code = final_code + "    while (r[l2] != '\\0') { l2++; }\n"
-        final_code = final_code + "    if (l1 > 1000000ULL || l2 > 1000000ULL - l1) { return NULL; }\n"
-        final_code = final_code + "    unsigned long long total = l1 + l2 + 1ULL;\n"
-        final_code = final_code + "    char* buf = malloc(total);\n"
-        final_code = final_code + "    if (buf) {\n"
-        final_code = final_code + "        unsigned long long i = 0;\n"
-        final_code = final_code + "        while (i < l1) {\n"
-        final_code = final_code + "            buf[i] = l[i];\n"
-        final_code = final_code + "            i++;\n"
-        final_code = final_code + "        }\n"
-        final_code = final_code + "        unsigned long long j = 0;\n"
-        final_code = final_code + "        while (j < l2) {\n"
-        final_code = final_code + "            buf[l1 + j] = r[j];\n"
-        final_code = final_code + "            j++;\n"
-        final_code = final_code + "        }\n"
-        final_code = final_code + "        buf[l1 + l2] = '\\0';\n"
-        final_code = final_code + "    }\n"
-        final_code = final_code + "    return buf;\n"
-        final_code = final_code + "}\n\n"
-    }
     
     final_code = final_code + self.struct_decls.to_str() + "\n"
     final_code = final_code + self.func_decls.to_str() + "\n"

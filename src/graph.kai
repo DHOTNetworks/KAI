@@ -1,0 +1,211 @@
+import KaiAllocator from std.core.allocator
+import read_to_string from std.io.file
+import length from std.core.string
+import substring from std.core.string
+import std.io.print
+
+import Lexer from lexer
+import Parser from parser
+
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn _kai_set_current_allocator(allocator: *Void)
+
+fn run_graph(argc: Int, argv: **Char) -> Int {
+    if argc < 3 {
+        printf("Usage: kai graph (export|query) <file> [options]\n")
+        printf("  export <file>    Export AST as JSON\n")
+        printf("  query <file>     Query program structure\n")
+        return 1
+    }
+    var graph_sub = ""
+    unsafe { graph_sub = argv[2] as Str }
+    var graph_file = ""
+    var graph_fn = ""
+    var graph_json = false
+    var i3 = 3
+    while i3 < argc {
+        unsafe {
+            let a = argv[i3] as Str
+            if strcmp(a, "--json") == 0 {
+                graph_json = true
+            } else if strcmp(a, "--fn") == 0 {
+                if i3 + 1 < argc {
+                    i3 = i3 + 1
+                    graph_fn = argv[i3] as Str
+                }
+            } else if graph_file == "" {
+                graph_file = a
+            }
+        }
+        i3 = i3 + 1
+    }
+    if length(graph_file) == 0 {
+        printf("Error: No input file specified\n")
+        return 1
+    }
+
+    var graph_alloc = KaiAllocator(heads: 0 as *Char, used: 0)
+    graph_alloc.init()
+    _kai_set_current_allocator(&graph_alloc as *Void)
+
+    let src_res2 = read_to_string(&graph_alloc, graph_file)
+    if src_res2.tag != 0 {
+        printf("Error: Could not read '%s'\n", graph_file)
+        return 1
+    }
+    let graph_source = src_res2.value as Str
+
+    var graph_lexer = Lexer(&graph_alloc, graph_source)
+    graph_lexer.lex()
+    if graph_lexer.has_error {
+        printf("Error: Lexer error in '%s'\n", graph_file)
+        return 1
+    }
+    var graph_parser = Parser(&graph_alloc, graph_lexer.tokens)
+    let graph_program_idx = graph_parser.parse_program()
+    if graph_program_idx < 0 {
+        printf("Error: Parse error in '%s'\n", graph_file)
+        return 1
+    }
+
+    unsafe {
+        if strcmp(graph_sub, "export") == 0 {
+            printf("{\"file\":\"%s\",\"stmts\":[\n", graph_file)
+            var si = 0
+            let stmt_count = graph_parser.stmt_pool.length()
+            while si < stmt_count {
+                let stmt = graph_parser.stmt_pool.get(si)
+                if si > 0 { printf(",\n") }
+                printf("{\"id\":%lld,\"kind\":", si)
+                let sk = stmt.kind
+                if sk == 0 { printf("\"none\"") }
+                else if sk == 1 { printf("\"block\"") }
+                else if sk == 2 { printf("\"var_decl\"") }
+                else if sk == 3 { printf("\"assignment\"") }
+                else if sk == 4 { printf("\"func_decl\"") }
+                else if sk == 5 { printf("\"struct_decl\"") }
+                else if sk == 6 { printf("\"impl_block\"") }
+                else if sk == 7 { printf("\"trait_decl\"") }
+                else if sk == 8 { printf("\"enum_decl\"") }
+                else if sk == 9 { printf("\"if\"") }
+                else if sk == 10 { printf("\"if_let\"") }
+                else if sk == 11 { printf("\"while\"") }
+                else if sk == 12 { printf("\"for\"") }
+                else if sk == 13 { printf("\"return\"") }
+                else if sk == 14 { printf("\"print\"") }
+                else if sk == 15 { printf("\"expr\"") }
+                else if sk == 16 { printf("\"defer\"") }
+                else if sk == 17 { printf("\"unsafe\"") }
+                else if sk == 18 { printf("\"extern\"") }
+                else if sk == 19 { printf("\"import\"") }
+                else if sk == 20 { printf("\"cimport\"") }
+                else if sk == 21 { printf("\"match\"") }
+                else if sk == 22 { printf("\"error_decl\"") }
+                else if sk == 23 { printf("\"break\"") }
+                else if sk == 24 { printf("\"continue\"") }
+                else { printf("\"unknown\"") }
+                if length(stmt.func_name) > 0 { printf(",\"name\":\"%s\"", stmt.func_name) }
+                if length(stmt.struct_name) > 0 { printf(",\"name\":\"%s\"", stmt.struct_name) }
+                if length(stmt.enum_name) > 0 { printf(",\"name\":\"%s\"", stmt.enum_name) }
+                if length(stmt.vardecl_name) > 0 { printf(",\"var\":\"%s\"", stmt.vardecl_name) }
+                if length(stmt.vardecl_type) > 0 { printf(",\"type\":\"%s\"", stmt.vardecl_type) }
+                if length(stmt.func_return_type) > 0 { printf(",\"return_type\":\"%s\"", stmt.func_return_type) }
+                printf("}")
+                si = si + 1
+            }
+            printf("],\n\"exprs\":[\n")
+            var ei = 0
+            let expr_count = graph_parser.expr_pool.length()
+            while ei < expr_count {
+                let expr = graph_parser.expr_pool.get(ei)
+                if ei > 0 { printf(",\n") }
+                printf("{\"id\":%lld,\"kind\":", ei)
+                let ek = expr.kind
+                if ek == 0 { printf("\"none\"") }
+                else if ek == 1 { printf("\"literal\"") }
+                else if ek == 2 { printf("\"str_interp\"") }
+                else if ek == 3 { printf("\"identifier\"") }
+                else if ek == 4 { printf("\"binary_op\"") }
+                else if ek == 5 { printf("\"unary_op\"") }
+                else if ek == 6 { printf("\"func_call\"") }
+                else if ek == 7 { printf("\"struct_init\"") }
+                else if ek == 8 { printf("\"field_access\"") }
+                else if ek == 9 { printf("\"method_call\"") }
+                else if ek == 10 { printf("\"index\"") }
+                else if ek == 11 { printf("\"check\"") }
+                else if ek == 12 { printf("\"slice\"") }
+                else if ek == 13 { printf("\"range\"") }
+                else if ek == 14 { printf("\"array\"") }
+                else if ek == 15 { printf("\"tuple\"") }
+                else if ek == 16 { printf("\"borrow\"") }
+                else if ek == 17 { printf("\"deref\"") }
+                else if ek == 18 { printf("\"try\"") }
+                else if ek == 19 { printf("\"catch\"") }
+                else if ek == 20 { printf("\"asm\"") }
+                else { printf("\"unknown\"") }
+                if length(expr.ident_name) > 0 { printf(",\"name\":\"%s\"", expr.ident_name) }
+                if length(expr.func_name) > 0 { printf(",\"func\":\"%s\"", expr.func_name) }
+                if length(expr.struct_name) > 0 { printf(",\"struct\":\"%s\"", expr.struct_name) }
+                if length(expr.inferred_type) > 0 { printf(",\"type\":\"%s\"", expr.inferred_type) }
+                if length(expr.binop_op) > 0 { printf(",\"op\":\"%s\"", expr.binop_op) }
+                if length(expr.unop_op) > 0 { printf(",\"op\":\"%s\"", expr.unop_op) }
+                printf("}")
+                ei = ei + 1
+            }
+            printf("]}\n")
+        } else if strcmp(graph_sub, "query") == 0 {
+            if length(graph_fn) > 0 {
+                var found = false
+                var si2 = 0
+                let stmt_count2 = graph_parser.stmt_pool.length()
+                while si2 < stmt_count2 {
+                    let stmt2 = graph_parser.stmt_pool.get(si2)
+                    if stmt2.kind == 4 && strcmp(stmt2.func_name, graph_fn) == 0 {
+                        printf("function: %s\n", stmt2.func_name)
+                        printf("  return: %s\n", stmt2.func_return_type)
+                        printf("  params: ")
+                        let param_count = stmt2.func_params.length()
+                        var pi = 0
+                        while pi < param_count {
+                            let p = stmt2.func_params.get(pi)
+                            printf("%s: %s", p.name, p.ptype)
+                            pi = pi + 1
+                            if pi < param_count { printf(", ") }
+                        }
+                        printf("\n")
+                        found = true
+                    }
+                    si2 = si2 + 1
+                }
+                if !found {
+                    printf("function '%s' not found\n", graph_fn)
+                }
+            } else {
+                let root = graph_parser.stmt_pool.get(graph_program_idx)
+                printf("file: %s\n", graph_file)
+                var si3 = 0
+                while si3 < root.block_stmts.length() {
+                    let idx = root.block_stmts.get(si3)
+                    let stmt3 = graph_parser.stmt_pool.get(idx)
+                    if stmt3.kind == 4 {
+                        printf("  fn %s(%s) %s\n", stmt3.func_name, "", stmt3.func_return_type)
+                    } else if stmt3.kind == 5 {
+                        printf("  struct %s\n", stmt3.struct_name)
+                    } else if stmt3.kind == 8 {
+                        printf("  enum %s\n", stmt3.enum_name)
+                    } else if stmt3.kind == 22 {
+                        printf("  error %s\n", stmt3.error_name)
+                    } else if stmt3.kind == 2 {
+                        printf("  var %s: %s\n", stmt3.vardecl_name, stmt3.vardecl_type)
+                    }
+                    si3 = si3 + 1
+                }
+            }
+        } else {
+            printf("Error: Unknown graph subcommand '%s'\n", graph_sub)
+            printf("Supported: export, query\n")
+            return 1
+        }
+    }
+    return 0
+}

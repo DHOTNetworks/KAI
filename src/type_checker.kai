@@ -235,6 +235,9 @@ impl TypeChecker {
         if t == s {
             return true
         }
+        if (t == "Str" && s == "*Char") || (t == "*Char" && s == "Str") {
+            return true
+        }
         if length(t) > 0 && t[0] == Char(63) {
             if s == "NoneType" {
                 return true
@@ -540,6 +543,12 @@ impl TypeChecker {
                 return substring(base_type, 1, length(base_type))
             }
             return "Void"
+        }
+        if expr.kind == ExprKind.ek_slice {
+            return self.get_expr_type(expr.slice_expr)
+        }
+        if expr.kind == ExprKind.ek_range {
+            return "Range"
         }
         if expr.kind == ExprKind.ek_borrow {
             let base_type = self.get_expr_type(expr.borrow_expr)
@@ -1025,6 +1034,21 @@ impl TypeChecker {
         }
         if expr.kind == ExprKind.ek_index {
             self.check_expr(expr.idx_expr)
+            return
+        }
+        if expr.kind == ExprKind.ek_slice {
+            self.check_expr(expr.slice_expr)
+            if expr.slice_lower >= 0 {
+                self.check_expr(expr.slice_lower)
+            }
+            if expr.slice_upper >= 0 {
+                self.check_expr(expr.slice_upper)
+            }
+            return
+        }
+        if expr.kind == ExprKind.ek_range {
+            self.check_expr(expr.range_start)
+            self.check_expr(expr.range_end)
             return
         }
         if expr.kind == ExprKind.ek_borrow {

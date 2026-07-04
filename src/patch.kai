@@ -1,0 +1,372 @@
+import KaiAllocator from std.core.allocator
+import read_to_string from std.io.file
+import write_string from std.io.file
+import length from std.core.string
+import substring from std.core.string
+import str_replace from utils
+import std.io.print
+
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn _kai_set_current_allocator(allocator: *Void)
+
+fn run_patch(argc: Int, argv: **Char) -> Int {
+    if argc < 4 {
+        printf("Usage: kai patch <file> --op <operation> [args...]\n")
+        printf("Operations:\n")
+        printf("  addMain                    Append a main function\n")
+        printf("  addFn <name>               Append a function stub\n")
+        printf("  addParam <fn> <name> <type> Add a parameter to a function\n")
+        printf("  upsertFunction <name> <ret> Update or create a function\n")
+        printf("  appendStmt <text>          Append a statement\n")
+        printf("  replaceText --old <t> --new <t>  Global text replacement\n")
+        printf("  setConst <name> <value>    Change a const value\n")
+        return 1
+    }
+    var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
+    allocator.init()
+    _kai_set_current_allocator(&allocator as *Void)
+
+    var patch_file = ""
+    var operation = ""
+    var op_arg1 = ""
+    var op_arg2 = ""
+    var json = false
+    var i = 2
+    while i < argc {
+        let arg = argv[i] as Str
+        unsafe {
+            if strcmp(arg, "--json") == 0 {
+                json = true
+            } else if strcmp(arg, "--op") == 0 {
+                if i + 1 < argc {
+                    i = i + 1
+                    operation = argv[i] as Str
+                }
+            } else if strcmp(arg, "--old") == 0 {
+                if i + 1 < argc {
+                    i = i + 1
+                    op_arg1 = argv[i] as Str
+                }
+            } else if strcmp(arg, "--new") == 0 {
+                if i + 1 < argc {
+                    i = i + 1
+                    op_arg2 = argv[i] as Str
+                }
+            } else if patch_file == "" {
+                patch_file = arg
+            }
+        }
+        i = i + 1
+    }
+    if length(patch_file) == 0 {
+        printf("Error: No input file specified\n")
+        return 1
+    }
+    if length(operation) == 0 {
+        printf("Error: No operation specified (use --op)\n")
+        return 1
+    }
+    let source_res = read_to_string(&allocator, patch_file)
+    if source_res.tag != 0 {
+        printf("Error: Could not read '%s'\n", patch_file)
+        return 1
+    }
+    let source = source_res.value as Str
+    var modified = ""
+    var op_name = operation
+
+    unsafe {
+        if strcmp(op_name, "addMain") == 0 {
+            modified = source + "\nfn main() Int {\n    printf(\"hello\\n\")\n    return 0\n}\n"
+        } else if strcmp(op_name, "addFn") == 0 {
+            var fn_name = op_arg1
+            if length(fn_name) == 0 {
+                var j = 3
+                while j < argc {
+                    unsafe {
+                        let a = argv[j] as Str
+                        let is_flag = strcmp(a, "--op") == 0 || strcmp(a, "--json") == 0 || strcmp(a, "--old") == 0 || strcmp(a, "--new") == 0
+                        if !is_flag && strcmp(a, patch_file) != 0 && strcmp(a, "addMain") != 0 && strcmp(a, "addFn") != 0 && strcmp(a, "setConst") != 0 && strcmp(a, "replaceText") != 0 {
+                            if fn_name == "" { fn_name = a }
+                        }
+                    }
+                    j = j + 1
+                }
+            }
+            if length(fn_name) == 0 {
+                printf("Error: addFn requires a function name\n")
+                printf("Usage: kai patch <file> --op addFn <name>\n")
+                return 1
+            }
+            modified = source + "\nfn " + fn_name + "() Void {\n\n}\n"
+        } else if strcmp(op_name, "setConst") == 0 {
+            var const_name = op_arg1
+            var const_val = op_arg2
+            if length(const_name) == 0 || length(const_val) == 0 {
+                var j = 3
+                while j < argc {
+                    unsafe {
+                        let a = argv[j] as Str
+                        let is_flag = strcmp(a, "--op") == 0 || strcmp(a, "--json") == 0 || strcmp(a, "--old") == 0 || strcmp(a, "--new") == 0
+                        if !is_flag && strcmp(a, patch_file) != 0 && strcmp(a, "setConst") != 0 && strcmp(a, "addMain") != 0 && strcmp(a, "addFn") != 0 && strcmp(a, "replaceText") != 0 {
+                            if const_name == "" { const_name = a }
+                            else if const_val == "" { const_val = a }
+                        }
+                    }
+                    j = j + 1
+                }
+            }
+            if length(const_name) == 0 || length(const_val) == 0 {
+                printf("Error: setConst requires <name> and <value>\n")
+                printf("Usage: kai patch <file> --op setConst <name> <value>\n")
+                return 1
+            }
+            let pattern = "const " + const_name + " = "
+            let pattern_len = length(pattern)
+            let src_len = length(source)
+            var found_const = false
+            var pos_c = 0
+            while pos_c <= src_len - pattern_len {
+                var matched_c = true
+                var j2 = 0
+                while j2 < pattern_len {
+                    unsafe {
+                        if source[pos_c + j2] != pattern[j2] {
+                            matched_c = false
+                            break
+                        }
+                    }
+                    j2 = j2 + 1
+                }
+                if matched_c {
+                    var end = pos_c + pattern_len
+                    while end < src_len {
+                        unsafe {
+                            let c = source[end]
+                            if c == Char(10) || c == Char(59) { break }
+                        }
+                        end = end + 1
+                    }
+                    let before = substring(source, 0, pos_c + pattern_len)
+                    let after = substring(source, end, src_len)
+                    modified = before + const_val + after
+                    found_const = true
+                    break
+                }
+                pos_c = pos_c + 1
+            }
+            if !found_const {
+                printf("Error: const '%s' not found in '%s'\n", const_name, patch_file)
+                return 1
+            }
+        } else if strcmp(op_name, "replaceText") == 0 {
+            if length(op_arg1) == 0 {
+                printf("Error: replaceText requires --old <text>\n")
+                return 1
+            }
+            if length(op_arg2) == 0 {
+                printf("Error: replaceText requires --new <text>\n")
+                return 1
+            }
+            modified = str_replace(source, op_arg1, op_arg2)
+        } else if strcmp(op_name, "addParam") == 0 {
+            var fn_name = op_arg1
+            var param_name = op_arg2
+            var param_type = ""
+            if length(fn_name) == 0 || length(param_name) == 0 {
+                var j = 3
+                while j < argc {
+                    unsafe {
+                        let a = argv[j] as Str
+                        let is_flag = strcmp(a, "--op") == 0 || strcmp(a, "--json") == 0
+                        if !is_flag && strcmp(a, patch_file) != 0 && strcmp(a, "addParam") != 0 {
+                            if fn_name == "" { fn_name = a }
+                            else if param_name == "" { param_name = a }
+                            else if param_type == "" { param_type = a }
+                        }
+                    }
+                    j = j + 1
+                }
+            } else {
+                var j = 3
+                while j < argc {
+                    unsafe {
+                        let a = argv[j] as Str
+                        let is_flag = strcmp(a, "--op") == 0 || strcmp(a, "--json") == 0
+                        if !is_flag && strcmp(a, patch_file) != 0 && strcmp(a, "addParam") != 0 && strcmp(a, fn_name) != 0 && strcmp(a, param_name) != 0 {
+                            if param_type == "" { param_type = a }
+                        }
+                    }
+                    j = j + 1
+                }
+            }
+            if length(fn_name) == 0 || length(param_name) == 0 {
+                printf("Error: addParam requires <fn_name> <param_name> [param_type]\n")
+                printf("Usage: kai patch <file> --op addParam <fn> <name> <type>\n")
+                return 1
+            }
+            if length(param_type) == 0 { param_type = "Int" }
+            let search = "fn " + fn_name + "("
+            let search_len = length(search)
+            let src_len = length(source)
+            var found_fn = false
+            var pos = 0
+            while pos <= src_len - search_len {
+                var m = true
+                var j2 = 0
+                while j2 < search_len {
+                    unsafe { if source[pos + j2] != search[j2] { m = false; break } }
+                    j2 = j2 + 1
+                }
+                if m {
+                    var paren_end = pos + search_len
+                    var depth = 1
+                    while paren_end < src_len && depth > 0 {
+                        unsafe {
+                            let c = source[paren_end]
+                            if c == Char(40) { depth = depth + 1 }
+                            else if c == Char(41) { depth = depth - 1 }
+                        }
+                        paren_end = paren_end + 1
+                    }
+                    let insert_pos = paren_end - 1
+                    let prefix = substring(source, 0, insert_pos)
+                    let suffix = substring(source, insert_pos, src_len)
+                    let params_section = substring(source, pos + search_len, paren_end - 1)
+                    var has_params = false
+                    var pi = 0
+                    while pi < length(params_section) {
+                        let c = params_section[pi]
+                        if c != Char(32) && c != Char(9) {
+                            has_params = true
+                            break
+                        }
+                        pi = pi + 1
+                    }
+                    if has_params {
+                        modified = prefix + ", " + param_name + ": " + param_type + suffix
+                    } else {
+                        modified = prefix + param_name + ": " + param_type + suffix
+                    }
+                    found_fn = true
+                    break
+                }
+                pos = pos + 1
+            }
+            if !found_fn {
+                printf("Error: function '%s' not found in '%s'\n", fn_name, patch_file)
+                return 1
+            }
+        } else if strcmp(op_name, "upsertFunction") == 0 {
+            var fn_name = op_arg1
+            var ret_type = op_arg2
+            if length(fn_name) == 0 || length(ret_type) == 0 {
+                var j = 3
+                while j < argc {
+                    unsafe {
+                        let a = argv[j] as Str
+                        let is_flag = strcmp(a, "--op") == 0 || strcmp(a, "--json") == 0
+                        if !is_flag && strcmp(a, patch_file) != 0 && strcmp(a, "upsertFunction") != 0 {
+                            if fn_name == "" { fn_name = a }
+                            else if ret_type == "" { ret_type = a }
+                        }
+                    }
+                    j = j + 1
+                }
+            }
+            if length(fn_name) == 0 {
+                printf("Error: upsertFunction requires <name> [return_type]\n")
+                printf("Usage: kai patch <file> --op upsertFunction <name> <return_type>\n")
+                return 1
+            }
+            if length(ret_type) == 0 { ret_type = "Void" }
+            let search = "fn " + fn_name + "("
+            let search_len = length(search)
+            let src_len = length(source)
+            var found_fn = false
+            var pos = 0
+            while pos <= src_len - search_len {
+                var m = true
+                var j2 = 0
+                while j2 < search_len {
+                    unsafe { if source[pos + j2] != search[j2] { m = false; break } }
+                    j2 = j2 + 1
+                }
+                if m {
+                    var paren_end = pos + search_len
+                    var depth = 1
+                    while paren_end < src_len && depth > 0 {
+                        unsafe {
+                            let c = source[paren_end]
+                            if c == Char(40) { depth = depth + 1 }
+                            else if c == Char(41) { depth = depth - 1 }
+                        }
+                        paren_end = paren_end + 1
+                    }
+                    var ret_start = paren_end
+                    while ret_start < src_len {
+                        unsafe {
+                            let c = source[ret_start]
+                            if c != Char(32) && c != Char(9) { break }
+                        }
+                        ret_start = ret_start + 1
+                    }
+                    var ret_end = ret_start
+                    while ret_end < src_len {
+                        unsafe {
+                            let c = source[ret_end]
+                            if c == Char(32) || c == Char(9) || c == Char(10) || c == Char(123) { break }
+                        }
+                        ret_end = ret_end + 1
+                    }
+                    if ret_end > ret_start {
+                        let before = substring(source, 0, ret_start)
+                        let after = substring(source, ret_end, src_len)
+                        modified = before + ret_type + after
+                    } else {
+                        modified = source
+                    }
+                    found_fn = true
+                    break
+                }
+                pos = pos + 1
+            }
+            if !found_fn {
+                modified = source + "\nfn " + fn_name + "() " + ret_type + " {\n\n}\n"
+            }
+        } else if strcmp(op_name, "appendStmt") == 0 {
+            var stmt_text = op_arg1
+            if length(stmt_text) == 0 {
+                var j = 3
+                while j < argc {
+                    unsafe {
+                        let a = argv[j] as Str
+                        let is_flag = strcmp(a, "--op") == 0 || strcmp(a, "--json") == 0
+                        if !is_flag && strcmp(a, patch_file) != 0 && strcmp(a, "appendStmt") != 0 {
+                            if stmt_text == "" { stmt_text = a }
+                        }
+                    }
+                    j = j + 1
+                }
+            }
+            if length(stmt_text) == 0 {
+                printf("Error: appendStmt requires <text>\n")
+                return 1
+            }
+            modified = source + "\n" + stmt_text + "\n"
+        } else {
+            printf("Error: Unknown operation '%s'\n", op_name)
+            printf("Supported: addMain, addFn, addParam, upsertFunction, appendStmt, setConst, replaceText\n")
+            return 1
+        }
+    }
+    let write_res = write_string(patch_file, modified)
+    if write_res.tag != 0 {
+        printf("Error: Could not write '%s'\n", patch_file)
+        return 1
+    }
+    if json {
+        printf("{\"result\":\"patched\",\"file\":\"%s\",\"operation\":\"%s\"}\n", patch_file, op_name)
+    }
+    return 0
+}

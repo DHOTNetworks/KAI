@@ -1,56 +1,3 @@
-const std = @import("std");
-//const builtin = @import("builtin");
-const builtin_mod = @import("builtin");
-
-// Automatically export custom mmap/munmap compatibility layers if targeting Windows
-comptime {
-    if (builtin_mod.os.tag == .windows) {
-        @export(&windows_mmap, .{ .name = "mmap", .linkage = .strong });
-        @export(&windows_munmap, .{ .name = "munmap", .linkage = .strong });
-    }
-}
-
-// Windows native memory definitions
-const MEM_COMMIT = 0x00001000;
-const MEM_RESERVE = 0x00002000;
-const PAGE_READWRITE = 0x04;
-const MEM_RELEASE = 0x00008000;
-
-fn windows_mmap(addr: ?*anyopaque, alloc_length: usize, prot: c_int, flags: c_int, fd: c_int, offset: i64) callconv(.c) ?*anyopaque {
-    _ = addr;
-    _ = prot;
-    _ = flags;
-    _ = fd;
-    _ = offset;
-
-    const result = std.os.windows.kernel32.VirtualAlloc(
-        null,
-        alloc_length,
-        MEM_COMMIT | MEM_RESERVE,
-        PAGE_READWRITE,
-    );
-
-    // Windows VirtualAlloc returns null on failure, not a Zig error union
-    if (result == null) return null;
-    return result;
-}
-
-fn windows_munmap(addr: ?*anyopaque, alloc_length: usize) callconv(.c) c_int {
-    _ = alloc_length;
-    if (addr == null) return 0;
-
-    const result = std.os.windows.kernel32.VirtualFree(
-        addr.?,
-        0,
-        MEM_RELEASE,
-    );
-
-    // Windows VirtualFree returns 0 (FALSE) on failure
-    if (result == 0) return -1;
-    return 0;
-}
-
-//
 pub const __builtin_bswap16 = @import("std").zig.c_builtins.__builtin_bswap16;
 pub const __builtin_bswap32 = @import("std").zig.c_builtins.__builtin_bswap32;
 pub const __builtin_bswap64 = @import("std").zig.c_builtins.__builtin_bswap64;
@@ -1067,1365 +1014,6 @@ pub extern fn ffsll(c_longlong) c_int;
 pub extern fn fls(c_int) c_int;
 pub extern fn flsl(c_long) c_int;
 pub extern fn flsll(c_longlong) c_int;
-pub extern fn mlockall(c_int) c_int;
-pub extern fn munlockall() c_int;
-pub extern fn mlock(?*const anyopaque, usize) c_int;
-pub extern fn mmap(?*anyopaque, usize, c_int, c_int, c_int, off_t) ?*anyopaque;
-pub extern fn mprotect(?*anyopaque, usize, c_int) c_int;
-pub extern fn msync(?*anyopaque, usize, c_int) c_int;
-pub extern fn munlock(?*const anyopaque, usize) c_int;
-pub extern fn munmap(?*anyopaque, usize) c_int;
-pub extern fn shm_open([*c]const u8, c_int, ...) c_int;
-pub extern fn shm_unlink([*c]const u8) c_int;
-pub extern fn posix_madvise(?*anyopaque, usize, c_int) c_int;
-pub extern fn madvise(?*anyopaque, usize, c_int) c_int;
-pub extern fn mincore(?*const anyopaque, usize, [*c]u8) c_int;
-pub extern fn minherit(?*anyopaque, usize, c_int) c_int;
-pub const wint_t = __darwin_wint_t;
-pub const _RuneEntry = extern struct {
-    __min: __darwin_rune_t = @import("std").mem.zeroes(__darwin_rune_t),
-    __max: __darwin_rune_t = @import("std").mem.zeroes(__darwin_rune_t),
-    __map: __darwin_rune_t = @import("std").mem.zeroes(__darwin_rune_t),
-    __types: [*c]__uint32_t = @import("std").mem.zeroes([*c]__uint32_t),
-};
-pub const _RuneRange = extern struct {
-    __nranges: c_int = @import("std").mem.zeroes(c_int),
-    __ranges: [*c]_RuneEntry = @import("std").mem.zeroes([*c]_RuneEntry),
-};
-pub const _RuneCharClass = extern struct {
-    __name: [14]u8 = @import("std").mem.zeroes([14]u8),
-    __mask: __uint32_t = @import("std").mem.zeroes(__uint32_t),
-};
-pub const _RuneLocale = extern struct {
-    __magic: [8]u8 = @import("std").mem.zeroes([8]u8),
-    __encoding: [32]u8 = @import("std").mem.zeroes([32]u8),
-    __sgetrune: ?*const fn ([*c]const u8, __darwin_size_t, [*c][*c]const u8) callconv(.c) __darwin_rune_t = @import("std").mem.zeroes(?*const fn ([*c]const u8, __darwin_size_t, [*c][*c]const u8) callconv(.c) __darwin_rune_t),
-    __sputrune: ?*const fn (__darwin_rune_t, [*c]u8, __darwin_size_t, [*c][*c]u8) callconv(.c) c_int = @import("std").mem.zeroes(?*const fn (__darwin_rune_t, [*c]u8, __darwin_size_t, [*c][*c]u8) callconv(.c) c_int),
-    __invalid_rune: __darwin_rune_t = @import("std").mem.zeroes(__darwin_rune_t),
-    __runetype: [256]__uint32_t = @import("std").mem.zeroes([256]__uint32_t),
-    __maplower: [256]__darwin_rune_t = @import("std").mem.zeroes([256]__darwin_rune_t),
-    __mapupper: [256]__darwin_rune_t = @import("std").mem.zeroes([256]__darwin_rune_t),
-    __runetype_ext: _RuneRange = @import("std").mem.zeroes(_RuneRange),
-    __maplower_ext: _RuneRange = @import("std").mem.zeroes(_RuneRange),
-    __mapupper_ext: _RuneRange = @import("std").mem.zeroes(_RuneRange),
-    __variable: ?*anyopaque = @import("std").mem.zeroes(?*anyopaque),
-    __variable_len: c_int = @import("std").mem.zeroes(c_int),
-    __ncharclasses: c_int = @import("std").mem.zeroes(c_int),
-    __charclasses: [*c]_RuneCharClass = @import("std").mem.zeroes([*c]_RuneCharClass),
-};
-pub extern var _DefaultRuneLocale: _RuneLocale;
-pub extern var _CurrentRuneLocale: [*c]_RuneLocale;
-pub extern fn ___runetype(__darwin_ct_rune_t) c_ulong;
-pub extern fn ___tolower(__darwin_ct_rune_t) __darwin_ct_rune_t;
-pub extern fn ___toupper(__darwin_ct_rune_t) __darwin_ct_rune_t;
-pub fn isascii(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return @intFromBool((_c & ~@as(c_int, 127)) == @as(c_int, 0));
-}
-// 1. REMOVE the "pub extern fn __maskrune" line entirely.
-
-// 2. PASTE this platform-agnostic replacement for __istype:
-pub fn __istype(arg__c: c_int, arg__f: c_ulong) callconv(.c) c_int {
-    if (arg__c < 0 or arg__c > 127) return 0;
-    const u_c: u8 = @intCast(arg__c);
-
-    // We removed the local 'const' definitions here.
-    // The function now safely uses the global _CTYPE_* constants.
-    var matched = false;
-    if ((arg__f & _CTYPE_A) != 0) matched = matched or std.ascii.isAlphabetic(u_c);
-    if ((arg__f & _CTYPE_C) != 0) matched = matched or std.ascii.isControl(u_c);
-    if ((arg__f & _CTYPE_D) != 0) matched = matched or std.ascii.isDigit(u_c);
-    if ((arg__f & _CTYPE_G) != 0) matched = matched or (std.ascii.isPrint(u_c) and u_c != ' ');
-    if ((arg__f & _CTYPE_L) != 0) matched = matched or std.ascii.isLower(u_c);
-    if ((arg__f & _CTYPE_P) != 0) matched = matched or (std.ascii.isPrint(u_c) and !std.ascii.isAlphanumeric(u_c) and u_c != ' ');
-    if ((arg__f & _CTYPE_S) != 0) matched = matched or std.ascii.isWhitespace(u_c);
-    if ((arg__f & _CTYPE_U) != 0) matched = matched or std.ascii.isUpper(u_c);
-    if ((arg__f & _CTYPE_X) != 0) matched = matched or std.ascii.isHex(u_c);
-    if ((arg__f & _CTYPE_B) != 0) matched = matched or (u_c == ' ' or u_c == '\t');
-
-    return if (matched) 1 else 0;
-}
-
-pub fn __isctype(arg__c: c_int, arg__f: c_ulong) callconv(.c) c_int {
-    return __istype(arg__c, arg__f);
-}
-
-pub extern fn __toupper(__darwin_ct_rune_t) __darwin_ct_rune_t;
-pub extern fn __tolower(__darwin_ct_rune_t) __darwin_ct_rune_t;
-pub fn __wcwidth(arg__c: __darwin_ct_rune_t) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    var _x: c_uint = undefined;
-    _ = &_x;
-    if (_c == @as(c_int, 0)) return @as(c_int, 0);
-    _x = @as(c_uint, @intCast(__istype(_c, @as(c_ulong, 3758096384 | 262144))));
-    if ((@as(c_long, @bitCast(@as(c_ulong, _x))) & @as(c_long, 3758096384)) != @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) return @as(c_int, @bitCast(@as(c_int, @truncate((@as(c_long, @bitCast(@as(c_ulong, _x))) & @as(c_long, 3758096384)) >> @intCast(30)))));
-    return if ((@as(c_long, @bitCast(@as(c_ulong, _x))) & @as(c_long, 262144)) != @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, 1) else -@as(c_int, 1);
-}
-pub fn isalnum(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 256) | @as(c_long, 1024))));
-}
-pub fn isalpha(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 256))));
-}
-pub fn isblank(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 131072))));
-}
-pub fn iscntrl(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 512))));
-}
-pub fn isdigit(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __isctype(_c, @as(c_ulong, @bitCast(@as(c_long, 1024))));
-}
-pub fn isgraph(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 2048))));
-}
-pub fn islower(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 4096))));
-}
-pub fn isprint(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 262144))));
-}
-pub fn ispunct(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 8192))));
-}
-pub fn isspace(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 16384))));
-}
-pub fn isupper(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 32768))));
-}
-pub fn isxdigit(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __isctype(_c, @as(c_ulong, @bitCast(@as(c_long, 65536))));
-}
-pub fn toascii(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return _c & @as(c_int, 127);
-}
-pub fn tolower(arg__c: c_int) callconv(.c) c_int {
-    if (arg__c >= 0 and arg__c <= 127) {
-        return @as(c_int, std.ascii.toLower(@intCast(arg__c)));
-    }
-    return arg__c;
-}
-
-pub fn toupper(arg__c: c_int) callconv(.c) c_int {
-    if (arg__c >= 0 and arg__c <= 127) {
-        return @as(c_int, std.ascii.toUpper(@intCast(arg__c)));
-    }
-    return arg__c;
-}
-
-pub fn digittoint(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, 15));
-}
-pub fn ishexnumber(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 65536))));
-}
-pub fn isideogram(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 524288))));
-}
-pub fn isnumber(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 1024))));
-}
-pub fn isphonogram(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 2097152))));
-}
-pub fn isrune(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 4294967280))));
-}
-pub fn isspecial(arg__c: c_int) callconv(.c) c_int {
-    var _c = arg__c;
-    _ = &_c;
-    return __istype(_c, @as(c_ulong, @bitCast(@as(c_long, 1048576))));
-}
-pub const ptrdiff_t = c_long;
-pub const max_align_t = c_longdouble;
-pub const natural_t = __darwin_natural_t;
-pub const integer_t = c_int;
-pub const vm_offset_t = usize;
-pub const vm_size_t = usize;
-pub const mach_vm_address_t = u64;
-pub const mach_vm_offset_t = u64;
-pub const mach_vm_size_t = u64;
-pub const vm_map_offset_t = u64;
-pub const vm_map_address_t = u64;
-pub const vm_map_size_t = u64;
-pub const vm32_offset_t = u32;
-pub const vm32_address_t = u32;
-pub const vm32_size_t = u32;
-pub const mach_port_context_t = vm_offset_t;
-pub const boolean_t = c_int;
-pub const cpu_type_t = integer_t;
-pub const cpu_subtype_t = integer_t;
-pub const cpu_threadtype_t = integer_t;
-pub const vm_prot_t = c_int;
-pub const mach_port_name_t = natural_t;
-pub const mach_port_name_array_t = [*c]mach_port_name_t;
-pub const mach_port_t = __darwin_mach_port_t;
-pub const mach_port_array_t = [*c]mach_port_t;
-pub const mach_port_right_t = natural_t;
-pub const mach_port_type_t = natural_t;
-pub const mach_port_type_array_t = [*c]mach_port_type_t;
-pub const mach_port_urefs_t = natural_t;
-pub const mach_port_delta_t = integer_t;
-pub const mach_port_seqno_t = natural_t;
-pub const mach_port_mscount_t = natural_t;
-pub const mach_port_msgcount_t = natural_t;
-pub const mach_port_rights_t = natural_t;
-pub const mach_port_srights_t = c_uint;
-pub const struct_mach_port_status = extern struct {
-    mps_pset: mach_port_rights_t = @import("std").mem.zeroes(mach_port_rights_t),
-    mps_seqno: mach_port_seqno_t = @import("std").mem.zeroes(mach_port_seqno_t),
-    mps_mscount: mach_port_mscount_t = @import("std").mem.zeroes(mach_port_mscount_t),
-    mps_qlimit: mach_port_msgcount_t = @import("std").mem.zeroes(mach_port_msgcount_t),
-    mps_msgcount: mach_port_msgcount_t = @import("std").mem.zeroes(mach_port_msgcount_t),
-    mps_sorights: mach_port_rights_t = @import("std").mem.zeroes(mach_port_rights_t),
-    mps_srights: boolean_t = @import("std").mem.zeroes(boolean_t),
-    mps_pdrequest: boolean_t = @import("std").mem.zeroes(boolean_t),
-    mps_nsrequest: boolean_t = @import("std").mem.zeroes(boolean_t),
-    mps_flags: natural_t = @import("std").mem.zeroes(natural_t),
-};
-pub const mach_port_status_t = struct_mach_port_status;
-pub const struct_mach_port_limits = extern struct {
-    mpl_qlimit: mach_port_msgcount_t = @import("std").mem.zeroes(mach_port_msgcount_t),
-};
-pub const mach_port_limits_t = struct_mach_port_limits;
-pub const struct_mach_port_info_ext = extern struct {
-    mpie_status: mach_port_status_t = @import("std").mem.zeroes(mach_port_status_t),
-    mpie_boost_cnt: mach_port_msgcount_t = @import("std").mem.zeroes(mach_port_msgcount_t),
-    reserved: [6]u32 = @import("std").mem.zeroes([6]u32),
-};
-pub const mach_port_info_ext_t = struct_mach_port_info_ext;
-pub const struct_mach_port_guard_info = extern struct {
-    mpgi_guard: u64 = @import("std").mem.zeroes(u64),
-};
-pub const mach_port_guard_info_t = struct_mach_port_guard_info;
-pub const mach_port_info_t = [*c]integer_t;
-pub const mach_port_flavor_t = c_int;
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:333:26: warning: struct demoted to opaque type - has bitfield
-pub const struct_mach_port_qos = opaque {};
-pub const mach_port_qos_t = struct_mach_port_qos;
-pub const struct_mach_service_port_info = extern struct {
-    mspi_string_name: [255]u8 = @import("std").mem.zeroes([255]u8),
-    mspi_domain_type: u8 = @import("std").mem.zeroes(u8),
-};
-pub const mach_service_port_info_data_t = struct_mach_service_port_info;
-pub const mach_service_port_info_t = [*c]struct_mach_service_port_info;
-pub const MPO_PORT: u32 = 0;
-pub const MPO_SERVICE_PORT: u32 = 1024;
-pub const MPO_CONNECTION_PORT: u32 = 2048;
-pub const MPO_REPLY_PORT: u32 = 4096;
-pub const MPO_WEAK_REPLY_PORT: u32 = 16384;
-pub const MPO_NOTIFICATION_PORT: u32 = 17408;
-pub const MPO_EXCEPTION_PORT: u32 = 32768;
-pub const MPO_CONNECTION_PORT_WITH_PORT_ARRAY: u32 = 65536;
-pub const mpo_flags_t = u32;
-const union_unnamed_3 = extern union {
-    reserved: [2]u64,
-    work_interval_port: mach_port_name_t,
-    service_port_info: mach_service_port_info_t,
-    service_port_name: mach_port_name_t,
-};
-pub const struct_mach_port_options = extern struct {
-    flags: u32 = @import("std").mem.zeroes(u32),
-    mpl: mach_port_limits_t = @import("std").mem.zeroes(mach_port_limits_t),
-    unnamed_0: union_unnamed_3 = @import("std").mem.zeroes(union_unnamed_3),
-};
-pub const mach_port_options_t = struct_mach_port_options;
-pub const mach_port_options_ptr_t = [*c]mach_port_options_t;
-pub const kGUARD_EXC_NONE: c_int = 0;
-pub const kGUARD_EXC_DESTROY: c_int = 1;
-pub const kGUARD_EXC_MOD_REFS: c_int = 2;
-pub const kGUARD_EXC_INVALID_OPTIONS: c_int = 3;
-pub const kGUARD_EXC_SET_CONTEXT: c_int = 4;
-pub const kGUARD_EXC_THREAD_SET_STATE: c_int = 5;
-pub const kGUARD_EXC_EXCEPTION_BEHAVIOR_ENFORCE: c_int = 6;
-pub const kGUARD_EXC_SERVICE_PORT_VIOLATION_FATAL: c_int = 7;
-pub const kGUARD_EXC_UNGUARDED: c_int = 8;
-pub const kGUARD_EXC_KOBJECT_REPLY_PORT_SEMANTICS: c_int = 9;
-pub const kGUARD_EXC_REQUIRE_REPLY_PORT_SEMANTICS: c_int = 10;
-pub const kGUARD_EXC_INCORRECT_GUARD: c_int = 16;
-pub const kGUARD_EXC_IMMOVABLE: c_int = 32;
-pub const kGUARD_EXC_STRICT_REPLY: c_int = 64;
-pub const kGUARD_EXC_INVALID_NOTIFICATION_REQ: c_int = 65;
-pub const kGUARD_EXC_INVALID_MPO_ENTITLEMENT: c_int = 66;
-pub const kGUARD_EXC_DESCRIPTOR_VIOLATION: c_int = 67;
-pub const kGUARD_EXC_MSG_FILTERED: c_int = 128;
-pub const kGUARD_EXC_INVALID_RIGHT: c_int = 256;
-pub const kGUARD_EXC_INVALID_NAME: c_int = 512;
-pub const kGUARD_EXC_INVALID_VALUE: c_int = 1024;
-pub const kGUARD_EXC_INVALID_ARGUMENT: c_int = 2048;
-pub const kGUARD_EXC_RIGHT_EXISTS: c_int = 4096;
-pub const kGUARD_EXC_KERN_NO_SPACE: c_int = 8192;
-pub const kGUARD_EXC_KERN_FAILURE: c_int = 16384;
-pub const kGUARD_EXC_KERN_RESOURCE: c_int = 32768;
-pub const kGUARD_EXC_SEND_INVALID_REPLY: c_int = 65536;
-pub const kGUARD_EXC_SEND_INVALID_VOUCHER: c_int = 131072;
-pub const kGUARD_EXC_SEND_INVALID_RIGHT: c_int = 262144;
-pub const kGUARD_EXC_RCV_INVALID_NAME: c_int = 524288;
-pub const kGUARD_EXC_RCV_GUARDED_DESC: c_int = 1048576;
-pub const kGUARD_EXC_SERVICE_PORT_VIOLATION_NON_FATAL: c_int = 1048577;
-pub const kGUARD_EXC_INVALID_NOTIFICATION_PORT: c_int = 1048582;
-pub const kGUARD_EXC_MACH_EXC_THREAD_SET_STATE: c_int = 1048583;
-pub const kGUARD_EXC_CV_NOTIFICATION_PORT_REQ: c_int = 1048584;
-pub const kGUARD_EXC_WEAK_REPLY_PORT: c_int = 1048578;
-pub const kGUARD_EXC_OOL_PORT_ARRAY_CREATION: c_int = 1048579;
-pub const kGUARD_EXC_MOVE_WEAK_REPLY_PORT: c_int = 1048580;
-pub const kGUARD_EXC_REPLY_PORT_SINGLE_SO_RIGHT: c_int = 1048581;
-pub const kGUARD_EXC_MOD_REFS_NON_FATAL: c_int = 2097152;
-pub const kGUARD_EXC_IMMOVABLE_NON_FATAL: c_int = 4194304;
-pub const enum_mach_port_guard_exception_codes = c_uint;
-pub const kern_return_t = c_int;
-pub const mach_msg_timeout_t = natural_t;
-pub const mach_msg_bits_t = c_uint;
-pub const mach_msg_size_t = natural_t;
-pub const mach_msg_id_t = integer_t;
-pub const mach_msg_priority_t = c_uint;
-pub const mach_msg_type_name_t = c_uint;
-pub const mach_msg_copy_options_t = c_uint;
-pub const mach_msg_guard_flags_t = c_uint;
-pub const mach_msg_descriptor_type_t = c_uint;
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:296:32: warning: struct demoted to opaque type - has bitfield
-pub const mach_msg_type_descriptor_t = opaque {};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:304:32: warning: struct demoted to opaque type - has bitfield
-pub const mach_msg_port_descriptor_t = opaque {};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:314:32: warning: struct demoted to opaque type - has bitfield
-pub const mach_msg_ool_descriptor32_t = opaque {};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:323:32: warning: struct demoted to opaque type - has bitfield
-pub const mach_msg_ool_descriptor64_t = opaque {};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:336:32: warning: struct demoted to opaque type - has bitfield
-pub const mach_msg_ool_descriptor_t = opaque {};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:349:32: warning: struct demoted to opaque type - has bitfield
-pub const mach_msg_ool_ports_descriptor32_t = opaque {};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:358:32: warning: struct demoted to opaque type - has bitfield
-pub const mach_msg_ool_ports_descriptor64_t = opaque {};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:371:32: warning: struct demoted to opaque type - has bitfield
-pub const mach_msg_ool_ports_descriptor_t = opaque {};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:384:32: warning: struct demoted to opaque type - has bitfield
-pub const mach_msg_guarded_port_descriptor32_t = opaque {};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:392:32: warning: struct demoted to opaque type - has bitfield
-pub const mach_msg_guarded_port_descriptor64_t = opaque {};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:404:32: warning: struct demoted to opaque type - has bitfield
-pub const mach_msg_guarded_port_descriptor_t = opaque {};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-pub const mach_msg_descriptor_t = extern union {
-    port: mach_msg_port_descriptor_t,
-    out_of_line: mach_msg_ool_descriptor_t,
-    ool_ports: mach_msg_ool_ports_descriptor_t,
-    type: mach_msg_type_descriptor_t,
-    guarded_port: mach_msg_guarded_port_descriptor_t,
-};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-pub const mach_msg_body_t = extern struct {
-    msgh_descriptor_count: mach_msg_size_t = @import("std").mem.zeroes(mach_msg_size_t),
-};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-pub const mach_msg_header_t = extern struct {
-    msgh_bits: mach_msg_bits_t = @import("std").mem.zeroes(mach_msg_bits_t),
-    msgh_size: mach_msg_size_t = @import("std").mem.zeroes(mach_msg_size_t),
-    msgh_remote_port: mach_port_t = @import("std").mem.zeroes(mach_port_t),
-    msgh_local_port: mach_port_t = @import("std").mem.zeroes(mach_port_t),
-    msgh_voucher_port: mach_port_name_t = @import("std").mem.zeroes(mach_port_name_t),
-    msgh_id: mach_msg_id_t = @import("std").mem.zeroes(mach_msg_id_t),
-};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-pub const mach_msg_base_t = extern struct {
-    header: mach_msg_header_t = @import("std").mem.zeroes(mach_msg_header_t),
-    body: mach_msg_body_t = @import("std").mem.zeroes(mach_msg_body_t),
-};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-pub const mach_msg_trailer_type_t = c_uint;
-pub const mach_msg_trailer_size_t = c_uint;
-pub const mach_msg_trailer_info_t = [*c]u8;
-pub const mach_msg_trailer_t = extern struct {
-    msgh_trailer_type: mach_msg_trailer_type_t = @import("std").mem.zeroes(mach_msg_trailer_type_t),
-    msgh_trailer_size: mach_msg_trailer_size_t = @import("std").mem.zeroes(mach_msg_trailer_size_t),
-};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-pub const mach_msg_seqno_trailer_t = extern struct {
-    msgh_trailer_type: mach_msg_trailer_type_t = @import("std").mem.zeroes(mach_msg_trailer_type_t),
-    msgh_trailer_size: mach_msg_trailer_size_t = @import("std").mem.zeroes(mach_msg_trailer_size_t),
-    msgh_seqno: mach_port_seqno_t = @import("std").mem.zeroes(mach_port_seqno_t),
-};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-pub const security_token_t = extern struct {
-    val: [2]c_uint = @import("std").mem.zeroes([2]c_uint),
-};
-pub const mach_msg_security_trailer_t = extern struct {
-    msgh_trailer_type: mach_msg_trailer_type_t = @import("std").mem.zeroes(mach_msg_trailer_type_t),
-    msgh_trailer_size: mach_msg_trailer_size_t = @import("std").mem.zeroes(mach_msg_trailer_size_t),
-    msgh_seqno: mach_port_seqno_t = @import("std").mem.zeroes(mach_port_seqno_t),
-    msgh_sender: security_token_t = @import("std").mem.zeroes(security_token_t),
-};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-pub const audit_token_t = extern struct {
-    val: [8]c_uint = @import("std").mem.zeroes([8]c_uint),
-};
-pub const mach_msg_audit_trailer_t = extern struct {
-    msgh_trailer_type: mach_msg_trailer_type_t = @import("std").mem.zeroes(mach_msg_trailer_type_t),
-    msgh_trailer_size: mach_msg_trailer_size_t = @import("std").mem.zeroes(mach_msg_trailer_size_t),
-    msgh_seqno: mach_port_seqno_t = @import("std").mem.zeroes(mach_port_seqno_t),
-    msgh_sender: security_token_t = @import("std").mem.zeroes(security_token_t),
-    msgh_audit: audit_token_t = @import("std").mem.zeroes(audit_token_t),
-};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-pub const mach_msg_context_trailer_t = extern struct {
-    msgh_trailer_type: mach_msg_trailer_type_t = @import("std").mem.zeroes(mach_msg_trailer_type_t),
-    msgh_trailer_size: mach_msg_trailer_size_t = @import("std").mem.zeroes(mach_msg_trailer_size_t),
-    msgh_seqno: mach_port_seqno_t = @import("std").mem.zeroes(mach_port_seqno_t),
-    msgh_sender: security_token_t = @import("std").mem.zeroes(security_token_t),
-    msgh_audit: audit_token_t = @import("std").mem.zeroes(audit_token_t),
-    msgh_context: mach_port_context_t = @import("std").mem.zeroes(mach_port_context_t),
-};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-pub const msg_labels_t = extern struct {
-    sender: mach_port_name_t = @import("std").mem.zeroes(mach_port_name_t),
-};
-pub const mach_msg_filter_id = c_int;
-pub const mach_msg_mac_trailer_t = extern struct {
-    msgh_trailer_type: mach_msg_trailer_type_t = @import("std").mem.zeroes(mach_msg_trailer_type_t),
-    msgh_trailer_size: mach_msg_trailer_size_t = @import("std").mem.zeroes(mach_msg_trailer_size_t),
-    msgh_seqno: mach_port_seqno_t = @import("std").mem.zeroes(mach_port_seqno_t),
-    msgh_sender: security_token_t = @import("std").mem.zeroes(security_token_t),
-    msgh_audit: audit_token_t = @import("std").mem.zeroes(audit_token_t),
-    msgh_context: mach_port_context_t = @import("std").mem.zeroes(mach_port_context_t),
-    msgh_ad: mach_msg_filter_id = @import("std").mem.zeroes(mach_msg_filter_id),
-    msgh_labels: msg_labels_t = @import("std").mem.zeroes(msg_labels_t),
-};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:60: warning: ignoring StaticAssert declaration
-pub const mach_msg_max_trailer_t = mach_msg_mac_trailer_t;
-pub const mach_msg_format_0_trailer_t = mach_msg_security_trailer_t;
-pub extern const KERNEL_SECURITY_TOKEN: security_token_t;
-pub extern const KERNEL_AUDIT_TOKEN: audit_token_t;
-pub const mach_msg_options_t = integer_t;
-pub const mach_msg_empty_send_t = extern struct {
-    header: mach_msg_header_t = @import("std").mem.zeroes(mach_msg_header_t),
-};
-pub const mach_msg_empty_rcv_t = extern struct {
-    header: mach_msg_header_t = @import("std").mem.zeroes(mach_msg_header_t),
-    trailer: mach_msg_trailer_t = @import("std").mem.zeroes(mach_msg_trailer_t),
-};
-pub const mach_msg_empty_t = extern union {
-    send: mach_msg_empty_send_t,
-    rcv: mach_msg_empty_rcv_t,
-};
-pub const mach_msg_type_size_t = natural_t;
-pub const mach_msg_type_number_t = natural_t;
-pub const mach_msg_option_t = integer_t;
-pub const mach_msg_return_t = kern_return_t;
-pub extern fn mach_msg_overwrite(msg: [*c]mach_msg_header_t, option: mach_msg_option_t, send_size: mach_msg_size_t, rcv_size: mach_msg_size_t, rcv_name: mach_port_name_t, timeout: mach_msg_timeout_t, notify: mach_port_name_t, rcv_msg: [*c]mach_msg_header_t, rcv_limit: mach_msg_size_t) mach_msg_return_t;
-pub extern fn mach_msg(msg: [*c]mach_msg_header_t, option: mach_msg_option_t, send_size: mach_msg_size_t, rcv_size: mach_msg_size_t, rcv_name: mach_port_name_t, timeout: mach_msg_timeout_t, notify: mach_port_name_t) mach_msg_return_t;
-pub extern fn mach_voucher_deallocate(voucher: mach_port_name_t) kern_return_t;
-pub const mach_error_t = kern_return_t;
-pub const mach_error_fn_t = ?*const fn () callconv(.c) mach_error_t;
-pub const pointer_t = vm_offset_t;
-pub const vm_address_t = vm_offset_t;
-pub const addr64_t = u64;
-pub const reg64_t = u32;
-pub const ppnum_t = u32;
-pub const vm_map_t = mach_port_t;
-pub const vm_map_read_t = mach_port_t;
-pub const vm_map_inspect_t = mach_port_t;
-pub const upl_t = mach_port_t;
-pub const vm_named_entry_t = mach_port_t;
-pub const mach_vm_offset_list_t = [*c]mach_vm_offset_t;
-pub const vm_object_offset_t = u64;
-pub const vm_object_size_t = u64;
-pub const struct_mach_vm_range = extern struct {
-    min_address: mach_vm_offset_t = @import("std").mem.zeroes(mach_vm_offset_t),
-    max_address: mach_vm_offset_t = @import("std").mem.zeroes(mach_vm_offset_t),
-};
-pub const mach_vm_range_t = [*c]struct_mach_vm_range;
-pub const MACH_VM_RANGE_FLAVOR_INVALID: u32 = 0;
-pub const MACH_VM_RANGE_FLAVOR_V1: u32 = 1;
-pub const mach_vm_range_flavor_t = u32;
-pub const MACH_VM_RANGE_NONE: u64 = 0;
-pub const mach_vm_range_flags_t = u64;
-pub const MACH_VM_RANGE_DEFAULT: u16 = 0;
-pub const MACH_VM_RANGE_DATA: u16 = 1;
-pub const MACH_VM_RANGE_FIXED: u16 = 2;
-pub const mach_vm_range_tag_t = u16;
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/vm_types.h:179:26: warning: struct demoted to opaque type - has bitfield
-pub const mach_vm_range_recipe_v1_t = opaque {};
-pub const mach_vm_range_recipe_t = mach_vm_range_recipe_v1_t;
-pub const mach_vm_range_recipes_raw_t = [*c]u8;
-pub const struct_arm_state_hdr = extern struct {
-    flavor: u32 = @import("std").mem.zeroes(u32),
-    count: u32 = @import("std").mem.zeroes(u32),
-};
-pub const arm_state_hdr_t = struct_arm_state_hdr;
-pub const arm_thread_state_t = struct___darwin_arm_thread_state;
-pub const arm_thread_state32_t = struct___darwin_arm_thread_state;
-pub const arm_thread_state64_t = struct___darwin_arm_thread_state64;
-const union_unnamed_4 = extern union {
-    ts_32: arm_thread_state32_t,
-    ts_64: arm_thread_state64_t,
-};
-pub const struct_arm_unified_thread_state = extern struct {
-    ash: arm_state_hdr_t = @import("std").mem.zeroes(arm_state_hdr_t),
-    uts: union_unnamed_4 = @import("std").mem.zeroes(union_unnamed_4),
-};
-pub const arm_unified_thread_state_t = struct_arm_unified_thread_state;
-pub const arm_vfp_state_t = struct___darwin_arm_vfp_state;
-pub const arm_neon_state_t = struct___darwin_arm_neon_state;
-pub const arm_neon_state32_t = struct___darwin_arm_neon_state;
-pub const arm_neon_state64_t = struct___darwin_arm_neon_state64;
-pub const arm_exception_state_t = struct___darwin_arm_exception_state;
-pub const arm_exception_state32_t = struct___darwin_arm_exception_state;
-pub const arm_exception_state64_t = struct___darwin_arm_exception_state64;
-pub const arm_exception_state64_v2_t = struct___darwin_arm_exception_state64_v2;
-pub const arm_debug_state32_t = struct___darwin_arm_debug_state32;
-pub const arm_debug_state64_t = struct___darwin_arm_debug_state64;
-pub const arm_pagein_state_t = struct___arm_pagein_state;
-pub const arm_sme_state_t = struct___darwin_arm_sme_state;
-pub const arm_sve_z_state_t = struct___darwin_arm_sve_z_state;
-pub const arm_sve_p_state_t = struct___darwin_arm_sve_p_state;
-pub const arm_sme_za_state_t = struct___darwin_arm_sme_za_state;
-pub const arm_sme2_state_t = struct___darwin_arm_sme2_state;
-pub const arm_debug_state_t = struct___arm_legacy_debug_state;
-pub const struct__OSUnalignedU16 = extern struct {
-    __val: u16 align(1) = @import("std").mem.zeroes(u16),
-};
-pub const struct__OSUnalignedU32 = extern struct {
-    __val: u32 align(1) = @import("std").mem.zeroes(u32),
-};
-pub const struct__OSUnalignedU64 = extern struct {
-    __val: u64 align(1) = @import("std").mem.zeroes(u64),
-};
-pub fn OSReadSwapInt16(arg__base: ?*const volatile anyopaque, arg__offset: usize) callconv(.c) u16 {
-    var _base = arg__base;
-    _ = &_base;
-    var _offset = arg__offset;
-    _ = &_offset;
-    return _OSSwapInt16(@as([*c]struct__OSUnalignedU16, @ptrFromInt(@as(usize, @intCast(@intFromPtr(_base))) +% _offset)).*.__val);
-}
-pub fn OSReadSwapInt32(arg__base: ?*const volatile anyopaque, arg__offset: usize) callconv(.c) u32 {
-    var _base = arg__base;
-    _ = &_base;
-    var _offset = arg__offset;
-    _ = &_offset;
-    return _OSSwapInt32(@as([*c]struct__OSUnalignedU32, @ptrFromInt(@as(usize, @intCast(@intFromPtr(_base))) +% _offset)).*.__val);
-}
-pub fn OSReadSwapInt64(arg__base: ?*const volatile anyopaque, arg__offset: usize) callconv(.c) u64 {
-    var _base = arg__base;
-    _ = &_base;
-    var _offset = arg__offset;
-    _ = &_offset;
-    return _OSSwapInt64(@as([*c]struct__OSUnalignedU64, @ptrFromInt(@as(usize, @intCast(@intFromPtr(_base))) +% _offset)).*.__val);
-}
-pub fn OSWriteSwapInt16(arg__base: ?*volatile anyopaque, arg__offset: usize, arg__data: u16) callconv(.c) void {
-    var _base = arg__base;
-    _ = &_base;
-    var _offset = arg__offset;
-    _ = &_offset;
-    var _data = arg__data;
-    _ = &_data;
-    @as([*c]struct__OSUnalignedU16, @ptrFromInt(@as(usize, @intCast(@intFromPtr(_base))) +% _offset)).*.__val = _OSSwapInt16(_data);
-}
-pub fn OSWriteSwapInt32(arg__base: ?*volatile anyopaque, arg__offset: usize, arg__data: u32) callconv(.c) void {
-    var _base = arg__base;
-    _ = &_base;
-    var _offset = arg__offset;
-    _ = &_offset;
-    var _data = arg__data;
-    _ = &_data;
-    @as([*c]struct__OSUnalignedU32, @ptrFromInt(@as(usize, @intCast(@intFromPtr(_base))) +% _offset)).*.__val = _OSSwapInt32(_data);
-}
-pub fn OSWriteSwapInt64(arg__base: ?*volatile anyopaque, arg__offset: usize, arg__data: u64) callconv(.c) void {
-    var _base = arg__base;
-    _ = &_base;
-    var _offset = arg__offset;
-    _ = &_offset;
-    var _data = arg__data;
-    _ = &_data;
-    @as([*c]struct__OSUnalignedU64, @ptrFromInt(@as(usize, @intCast(@intFromPtr(_base))) +% _offset)).*.__val = _OSSwapInt64(_data);
-}
-pub const OSUnknownByteOrder: c_int = 0;
-pub const OSLittleEndian: c_int = 1;
-pub const OSBigEndian: c_int = 2;
-const enum_unnamed_5 = c_uint;
-pub fn OSHostByteOrder() callconv(.c) i32 {
-    return OSLittleEndian;
-}
-pub fn _OSReadInt16(arg_base: ?*const volatile anyopaque, arg_byteOffset: usize) callconv(.c) u16 {
-    var base = arg_base;
-    _ = &base;
-    var byteOffset = arg_byteOffset;
-    _ = &byteOffset;
-    return @as([*c]volatile u16, @ptrFromInt(@as(usize, @intCast(@intFromPtr(base))) +% byteOffset)).*;
-}
-pub fn _OSReadInt32(arg_base: ?*const volatile anyopaque, arg_byteOffset: usize) callconv(.c) u32 {
-    var base = arg_base;
-    _ = &base;
-    var byteOffset = arg_byteOffset;
-    _ = &byteOffset;
-    return @as([*c]volatile u32, @ptrFromInt(@as(usize, @intCast(@intFromPtr(base))) +% byteOffset)).*;
-}
-pub fn _OSReadInt64(arg_base: ?*const volatile anyopaque, arg_byteOffset: usize) callconv(.c) u64 {
-    var base = arg_base;
-    _ = &base;
-    var byteOffset = arg_byteOffset;
-    _ = &byteOffset;
-    return @as([*c]volatile u64, @ptrFromInt(@as(usize, @intCast(@intFromPtr(base))) +% byteOffset)).*;
-}
-pub fn _OSWriteInt16(arg_base: ?*volatile anyopaque, arg_byteOffset: usize, arg_data: u16) callconv(.c) void {
-    var base = arg_base;
-    _ = &base;
-    var byteOffset = arg_byteOffset;
-    _ = &byteOffset;
-    var data = arg_data;
-    _ = &data;
-    @as([*c]volatile u16, @ptrFromInt(@as(usize, @intCast(@intFromPtr(base))) +% byteOffset)).* = data;
-}
-pub fn _OSWriteInt32(arg_base: ?*volatile anyopaque, arg_byteOffset: usize, arg_data: u32) callconv(.c) void {
-    var base = arg_base;
-    _ = &base;
-    var byteOffset = arg_byteOffset;
-    _ = &byteOffset;
-    var data = arg_data;
-    _ = &data;
-    @as([*c]volatile u32, @ptrFromInt(@as(usize, @intCast(@intFromPtr(base))) +% byteOffset)).* = data;
-}
-pub fn _OSWriteInt64(arg_base: ?*volatile anyopaque, arg_byteOffset: usize, arg_data: u64) callconv(.c) void {
-    var base = arg_base;
-    _ = &base;
-    var byteOffset = arg_byteOffset;
-    _ = &byteOffset;
-    var data = arg_data;
-    _ = &data;
-    @as([*c]volatile u64, @ptrFromInt(@as(usize, @intCast(@intFromPtr(base))) +% byteOffset)).* = data;
-}
-pub const NXSwappedFloat = c_ulong;
-pub const NXSwappedDouble = c_ulonglong;
-pub fn NXSwapShort(arg_inv: c_ushort) callconv(.c) c_ushort {
-    var inv = arg_inv;
-    _ = &inv;
-    return @as(c_ushort, @bitCast(@as(__uint16_t, @bitCast(@as(c_short, @truncate(if (__builtin_constant_p(@as(u16, @bitCast(inv))) != 0) @as(c_int, @bitCast(@as(c_uint, @as(__uint16_t, @bitCast(@as(c_ushort, @truncate(((@as(c_uint, @bitCast(@as(c_uint, @as(__uint16_t, @bitCast(@as(u16, @bitCast(inv))))))) & @as(c_uint, 65280)) >> @intCast(8)) | ((@as(c_uint, @bitCast(@as(c_uint, @as(__uint16_t, @bitCast(@as(u16, @bitCast(inv))))))) & @as(c_uint, 255)) << @intCast(8))))))))) else @as(c_int, @bitCast(@as(c_uint, _OSSwapInt16(@as(u16, @bitCast(inv))))))))))));
-}
-pub fn NXSwapInt(arg_inv: c_uint) callconv(.c) c_uint {
-    var inv = arg_inv;
-    _ = &inv;
-    return @as(c_uint, @bitCast(if (__builtin_constant_p(@as(u32, @bitCast(inv))) != 0) @as(__uint32_t, @bitCast(((((@as(__uint32_t, @bitCast(@as(u32, @bitCast(inv)))) & @as(c_uint, 4278190080)) >> @intCast(24)) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(inv)))) & @as(c_uint, 16711680)) >> @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(inv)))) & @as(c_uint, 65280)) << @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(inv)))) & @as(c_uint, 255)) << @intCast(24)))) else _OSSwapInt32(@as(u32, @bitCast(inv)))));
-}
-pub fn NXSwapLong(arg_inv: c_ulong) callconv(.c) c_ulong {
-    var inv = arg_inv;
-    _ = &inv;
-    return @as(c_ulong, @bitCast(@as(c_ulong, if (__builtin_constant_p(@as(u32, @bitCast(@as(c_uint, @truncate(inv))))) != 0) @as(__uint32_t, @bitCast(((((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(inv)))))) & @as(c_uint, 4278190080)) >> @intCast(24)) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(inv)))))) & @as(c_uint, 16711680)) >> @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(inv)))))) & @as(c_uint, 65280)) << @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(inv)))))) & @as(c_uint, 255)) << @intCast(24)))) else _OSSwapInt32(@as(u32, @bitCast(@as(c_uint, @truncate(inv))))))));
-}
-pub fn NXSwapLongLong(arg_inv: c_ulonglong) callconv(.c) c_ulonglong {
-    var inv = arg_inv;
-    _ = &inv;
-    return @as(c_ulonglong, @bitCast(if (__builtin_constant_p(@as(u64, @bitCast(inv))) != 0) @as(__uint64_t, @bitCast(((((((((@as(__uint64_t, @bitCast(@as(u64, @bitCast(inv)))) & @as(c_ulonglong, 18374686479671623680)) >> @intCast(56)) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(inv)))) & @as(c_ulonglong, 71776119061217280)) >> @intCast(40))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(inv)))) & @as(c_ulonglong, 280375465082880)) >> @intCast(24))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(inv)))) & @as(c_ulonglong, 1095216660480)) >> @intCast(8))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(inv)))) & @as(c_ulonglong, 4278190080)) << @intCast(8))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(inv)))) & @as(c_ulonglong, 16711680)) << @intCast(24))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(inv)))) & @as(c_ulonglong, 65280)) << @intCast(40))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(inv)))) & @as(c_ulonglong, 255)) << @intCast(56)))) else _OSSwapInt64(@as(u64, @bitCast(inv)))));
-}
-pub fn NXConvertHostFloatToSwapped(arg_x: f32) callconv(.c) NXSwappedFloat {
-    var x = arg_x;
-    _ = &x;
-    const union_fconv = extern union {
-        number: f32,
-        sf: NXSwappedFloat,
-    };
-    _ = &union_fconv;
-    var u: union_fconv = undefined;
-    _ = &u;
-    u.number = x;
-    return u.sf;
-}
-pub fn NXConvertSwappedFloatToHost(arg_x: NXSwappedFloat) callconv(.c) f32 {
-    var x = arg_x;
-    _ = &x;
-    const union_fconv = extern union {
-        number: f32,
-        sf: NXSwappedFloat,
-    };
-    _ = &union_fconv;
-    var u: union_fconv = undefined;
-    _ = &u;
-    u.sf = x;
-    return u.number;
-}
-pub fn NXConvertHostDoubleToSwapped(arg_x: f64) callconv(.c) NXSwappedDouble {
-    var x = arg_x;
-    _ = &x;
-    const union_dconv = extern union {
-        number: f64,
-        sd: NXSwappedDouble,
-    };
-    _ = &union_dconv;
-    var u: union_dconv = undefined;
-    _ = &u;
-    u.number = x;
-    return u.sd;
-}
-pub fn NXConvertSwappedDoubleToHost(arg_x: NXSwappedDouble) callconv(.c) f64 {
-    var x = arg_x;
-    _ = &x;
-    const union_dconv = extern union {
-        number: f64,
-        sd: NXSwappedDouble,
-    };
-    _ = &union_dconv;
-    var u: union_dconv = undefined;
-    _ = &u;
-    u.sd = x;
-    return u.number;
-}
-pub fn NXSwapFloat(arg_x: NXSwappedFloat) callconv(.c) NXSwappedFloat {
-    var x = arg_x;
-    _ = &x;
-    return @as(NXSwappedFloat, @bitCast(@as(c_ulong, if (__builtin_constant_p(@as(u32, @bitCast(@as(c_uint, @truncate(x))))) != 0) @as(__uint32_t, @bitCast(((((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 4278190080)) >> @intCast(24)) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 16711680)) >> @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 65280)) << @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 255)) << @intCast(24)))) else _OSSwapInt32(@as(u32, @bitCast(@as(c_uint, @truncate(x))))))));
-}
-pub fn NXSwapDouble(arg_x: NXSwappedDouble) callconv(.c) NXSwappedDouble {
-    var x = arg_x;
-    _ = &x;
-    return @as(NXSwappedDouble, @bitCast(if (__builtin_constant_p(@as(u64, @bitCast(x))) != 0) @as(__uint64_t, @bitCast(((((((((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 18374686479671623680)) >> @intCast(56)) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 71776119061217280)) >> @intCast(40))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 280375465082880)) >> @intCast(24))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 1095216660480)) >> @intCast(8))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 4278190080)) << @intCast(8))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 16711680)) << @intCast(24))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 65280)) << @intCast(40))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 255)) << @intCast(56)))) else _OSSwapInt64(@as(u64, @bitCast(x)))));
-}
-pub const NX_UnknownByteOrder: c_int = 0;
-pub const NX_LittleEndian: c_int = 1;
-pub const NX_BigEndian: c_int = 2;
-pub const enum_NXByteOrder = c_uint;
-pub fn NXHostByteOrder() callconv(.c) enum_NXByteOrder {
-    return @as(c_uint, @bitCast(NX_LittleEndian));
-}
-pub fn NXSwapBigShortToHost(arg_x: c_ushort) callconv(.c) c_ushort {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_ushort, @bitCast(@as(__uint16_t, @bitCast(@as(c_short, @truncate(if (__builtin_constant_p(@as(u16, @bitCast(x))) != 0) @as(c_int, @bitCast(@as(c_uint, @as(__uint16_t, @bitCast(@as(c_ushort, @truncate(((@as(c_uint, @bitCast(@as(c_uint, @as(__uint16_t, @bitCast(@as(u16, @bitCast(x))))))) & @as(c_uint, 65280)) >> @intCast(8)) | ((@as(c_uint, @bitCast(@as(c_uint, @as(__uint16_t, @bitCast(@as(u16, @bitCast(x))))))) & @as(c_uint, 255)) << @intCast(8))))))))) else @as(c_int, @bitCast(@as(c_uint, _OSSwapInt16(@as(u16, @bitCast(x))))))))))));
-}
-pub fn NXSwapBigIntToHost(arg_x: c_uint) callconv(.c) c_uint {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_uint, @bitCast(if (__builtin_constant_p(@as(u32, @bitCast(x))) != 0) @as(__uint32_t, @bitCast(((((@as(__uint32_t, @bitCast(@as(u32, @bitCast(x)))) & @as(c_uint, 4278190080)) >> @intCast(24)) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(x)))) & @as(c_uint, 16711680)) >> @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(x)))) & @as(c_uint, 65280)) << @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(x)))) & @as(c_uint, 255)) << @intCast(24)))) else _OSSwapInt32(@as(u32, @bitCast(x)))));
-}
-pub fn NXSwapBigLongToHost(arg_x: c_ulong) callconv(.c) c_ulong {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_ulong, @bitCast(@as(c_ulong, if (__builtin_constant_p(@as(u32, @bitCast(@as(c_uint, @truncate(x))))) != 0) @as(__uint32_t, @bitCast(((((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 4278190080)) >> @intCast(24)) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 16711680)) >> @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 65280)) << @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 255)) << @intCast(24)))) else _OSSwapInt32(@as(u32, @bitCast(@as(c_uint, @truncate(x))))))));
-}
-pub fn NXSwapBigLongLongToHost(arg_x: c_ulonglong) callconv(.c) c_ulonglong {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_ulonglong, @bitCast(if (__builtin_constant_p(@as(u64, @bitCast(x))) != 0) @as(__uint64_t, @bitCast(((((((((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 18374686479671623680)) >> @intCast(56)) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 71776119061217280)) >> @intCast(40))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 280375465082880)) >> @intCast(24))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 1095216660480)) >> @intCast(8))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 4278190080)) << @intCast(8))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 16711680)) << @intCast(24))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 65280)) << @intCast(40))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 255)) << @intCast(56)))) else _OSSwapInt64(@as(u64, @bitCast(x)))));
-}
-pub fn NXSwapBigDoubleToHost(arg_x: NXSwappedDouble) callconv(.c) f64 {
-    var x = arg_x;
-    _ = &x;
-    return NXConvertSwappedDoubleToHost(@as(NXSwappedDouble, @bitCast(if (__builtin_constant_p(@as(u64, @bitCast(x))) != 0) @as(__uint64_t, @bitCast(((((((((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 18374686479671623680)) >> @intCast(56)) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 71776119061217280)) >> @intCast(40))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 280375465082880)) >> @intCast(24))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 1095216660480)) >> @intCast(8))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 4278190080)) << @intCast(8))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 16711680)) << @intCast(24))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 65280)) << @intCast(40))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 255)) << @intCast(56)))) else _OSSwapInt64(@as(u64, @bitCast(x))))));
-}
-pub fn NXSwapBigFloatToHost(arg_x: NXSwappedFloat) callconv(.c) f32 {
-    var x = arg_x;
-    _ = &x;
-    return NXConvertSwappedFloatToHost(@as(NXSwappedFloat, @bitCast(@as(c_ulong, if (__builtin_constant_p(@as(u32, @bitCast(@as(c_uint, @truncate(x))))) != 0) @as(__uint32_t, @bitCast(((((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 4278190080)) >> @intCast(24)) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 16711680)) >> @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 65280)) << @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 255)) << @intCast(24)))) else _OSSwapInt32(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))))));
-}
-pub fn NXSwapHostShortToBig(arg_x: c_ushort) callconv(.c) c_ushort {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_ushort, @bitCast(@as(__uint16_t, @bitCast(@as(c_short, @truncate(if (__builtin_constant_p(@as(u16, @bitCast(x))) != 0) @as(c_int, @bitCast(@as(c_uint, @as(__uint16_t, @bitCast(@as(c_ushort, @truncate(((@as(c_uint, @bitCast(@as(c_uint, @as(__uint16_t, @bitCast(@as(u16, @bitCast(x))))))) & @as(c_uint, 65280)) >> @intCast(8)) | ((@as(c_uint, @bitCast(@as(c_uint, @as(__uint16_t, @bitCast(@as(u16, @bitCast(x))))))) & @as(c_uint, 255)) << @intCast(8))))))))) else @as(c_int, @bitCast(@as(c_uint, _OSSwapInt16(@as(u16, @bitCast(x))))))))))));
-}
-pub fn NXSwapHostIntToBig(arg_x: c_uint) callconv(.c) c_uint {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_uint, @bitCast(if (__builtin_constant_p(@as(u32, @bitCast(x))) != 0) @as(__uint32_t, @bitCast(((((@as(__uint32_t, @bitCast(@as(u32, @bitCast(x)))) & @as(c_uint, 4278190080)) >> @intCast(24)) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(x)))) & @as(c_uint, 16711680)) >> @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(x)))) & @as(c_uint, 65280)) << @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(x)))) & @as(c_uint, 255)) << @intCast(24)))) else _OSSwapInt32(@as(u32, @bitCast(x)))));
-}
-pub fn NXSwapHostLongToBig(arg_x: c_ulong) callconv(.c) c_ulong {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_ulong, @bitCast(@as(c_ulong, if (__builtin_constant_p(@as(u32, @bitCast(@as(c_uint, @truncate(x))))) != 0) @as(__uint32_t, @bitCast(((((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 4278190080)) >> @intCast(24)) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 16711680)) >> @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 65280)) << @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(x)))))) & @as(c_uint, 255)) << @intCast(24)))) else _OSSwapInt32(@as(u32, @bitCast(@as(c_uint, @truncate(x))))))));
-}
-pub fn NXSwapHostLongLongToBig(arg_x: c_ulonglong) callconv(.c) c_ulonglong {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_ulonglong, @bitCast(if (__builtin_constant_p(@as(u64, @bitCast(x))) != 0) @as(__uint64_t, @bitCast(((((((((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 18374686479671623680)) >> @intCast(56)) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 71776119061217280)) >> @intCast(40))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 280375465082880)) >> @intCast(24))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 1095216660480)) >> @intCast(8))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 4278190080)) << @intCast(8))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 16711680)) << @intCast(24))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 65280)) << @intCast(40))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(x)))) & @as(c_ulonglong, 255)) << @intCast(56)))) else _OSSwapInt64(@as(u64, @bitCast(x)))));
-}
-pub fn NXSwapHostDoubleToBig(arg_x: f64) callconv(.c) NXSwappedDouble {
-    var x = arg_x;
-    _ = &x;
-    return @as(NXSwappedDouble, @bitCast(if (__builtin_constant_p(@as(u64, @bitCast(NXConvertHostDoubleToSwapped(x)))) != 0) @as(__uint64_t, @bitCast(((((((((@as(__uint64_t, @bitCast(@as(u64, @bitCast(NXConvertHostDoubleToSwapped(x))))) & @as(c_ulonglong, 18374686479671623680)) >> @intCast(56)) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(NXConvertHostDoubleToSwapped(x))))) & @as(c_ulonglong, 71776119061217280)) >> @intCast(40))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(NXConvertHostDoubleToSwapped(x))))) & @as(c_ulonglong, 280375465082880)) >> @intCast(24))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(NXConvertHostDoubleToSwapped(x))))) & @as(c_ulonglong, 1095216660480)) >> @intCast(8))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(NXConvertHostDoubleToSwapped(x))))) & @as(c_ulonglong, 4278190080)) << @intCast(8))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(NXConvertHostDoubleToSwapped(x))))) & @as(c_ulonglong, 16711680)) << @intCast(24))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(NXConvertHostDoubleToSwapped(x))))) & @as(c_ulonglong, 65280)) << @intCast(40))) | ((@as(__uint64_t, @bitCast(@as(u64, @bitCast(NXConvertHostDoubleToSwapped(x))))) & @as(c_ulonglong, 255)) << @intCast(56)))) else _OSSwapInt64(@as(u64, @bitCast(NXConvertHostDoubleToSwapped(x))))));
-}
-pub fn NXSwapHostFloatToBig(arg_x: f32) callconv(.c) NXSwappedFloat {
-    var x = arg_x;
-    _ = &x;
-    return @as(NXSwappedFloat, @bitCast(@as(c_ulong, if (__builtin_constant_p(@as(u32, @bitCast(@as(c_uint, @truncate(NXConvertHostFloatToSwapped(x)))))) != 0) @as(__uint32_t, @bitCast(((((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(NXConvertHostFloatToSwapped(x))))))) & @as(c_uint, 4278190080)) >> @intCast(24)) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(NXConvertHostFloatToSwapped(x))))))) & @as(c_uint, 16711680)) >> @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(NXConvertHostFloatToSwapped(x))))))) & @as(c_uint, 65280)) << @intCast(8))) | ((@as(__uint32_t, @bitCast(@as(u32, @bitCast(@as(c_uint, @truncate(NXConvertHostFloatToSwapped(x))))))) & @as(c_uint, 255)) << @intCast(24)))) else _OSSwapInt32(@as(u32, @bitCast(@as(c_uint, @truncate(NXConvertHostFloatToSwapped(x)))))))));
-}
-pub fn NXSwapLittleShortToHost(arg_x: c_ushort) callconv(.c) c_ushort {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_ushort, @bitCast(@as(u16, @bitCast(x))));
-}
-pub fn NXSwapLittleIntToHost(arg_x: c_uint) callconv(.c) c_uint {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_uint, @bitCast(@as(u32, @bitCast(x))));
-}
-pub fn NXSwapLittleLongToHost(arg_x: c_ulong) callconv(.c) c_ulong {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_ulong, @bitCast(@as(c_ulong, @as(u32, @bitCast(@as(c_uint, @truncate(x)))))));
-}
-pub fn NXSwapLittleLongLongToHost(arg_x: c_ulonglong) callconv(.c) c_ulonglong {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_ulonglong, @bitCast(@as(u64, @bitCast(x))));
-}
-pub fn NXSwapLittleDoubleToHost(arg_x: NXSwappedDouble) callconv(.c) f64 {
-    var x = arg_x;
-    _ = &x;
-    return NXConvertSwappedDoubleToHost(@as(NXSwappedDouble, @bitCast(@as(u64, @bitCast(x)))));
-}
-pub fn NXSwapLittleFloatToHost(arg_x: NXSwappedFloat) callconv(.c) f32 {
-    var x = arg_x;
-    _ = &x;
-    return NXConvertSwappedFloatToHost(@as(NXSwappedFloat, @bitCast(@as(c_ulong, @as(u32, @bitCast(@as(c_uint, @truncate(x))))))));
-}
-pub fn NXSwapHostShortToLittle(arg_x: c_ushort) callconv(.c) c_ushort {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_ushort, @bitCast(@as(u16, @bitCast(x))));
-}
-pub fn NXSwapHostIntToLittle(arg_x: c_uint) callconv(.c) c_uint {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_uint, @bitCast(@as(u32, @bitCast(x))));
-}
-pub fn NXSwapHostLongToLittle(arg_x: c_ulong) callconv(.c) c_ulong {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_ulong, @bitCast(@as(c_ulong, @as(u32, @bitCast(@as(c_uint, @truncate(x)))))));
-}
-pub fn NXSwapHostLongLongToLittle(arg_x: c_ulonglong) callconv(.c) c_ulonglong {
-    var x = arg_x;
-    _ = &x;
-    return @as(c_ulonglong, @bitCast(@as(u64, @bitCast(x))));
-}
-pub fn NXSwapHostDoubleToLittle(arg_x: f64) callconv(.c) NXSwappedDouble {
-    var x = arg_x;
-    _ = &x;
-    return @as(NXSwappedDouble, @bitCast(@as(u64, @bitCast(NXConvertHostDoubleToSwapped(x)))));
-}
-pub fn NXSwapHostFloatToLittle(arg_x: f32) callconv(.c) NXSwappedFloat {
-    var x = arg_x;
-    _ = &x;
-    return @as(NXSwappedFloat, @bitCast(@as(c_ulong, @as(u32, @bitCast(@as(c_uint, @truncate(NXConvertHostFloatToSwapped(x))))))));
-}
-pub const struct_mach_header = extern struct {
-    magic: u32 = @import("std").mem.zeroes(u32),
-    cputype: i32 = @import("std").mem.zeroes(i32),
-    cpusubtype: i32 = @import("std").mem.zeroes(i32),
-    filetype: u32 = @import("std").mem.zeroes(u32),
-    ncmds: u32 = @import("std").mem.zeroes(u32),
-    sizeofcmds: u32 = @import("std").mem.zeroes(u32),
-    flags: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_mach_header_64 = extern struct {
-    magic: u32 = @import("std").mem.zeroes(u32),
-    cputype: i32 = @import("std").mem.zeroes(i32),
-    cpusubtype: i32 = @import("std").mem.zeroes(i32),
-    filetype: u32 = @import("std").mem.zeroes(u32),
-    ncmds: u32 = @import("std").mem.zeroes(u32),
-    sizeofcmds: u32 = @import("std").mem.zeroes(u32),
-    flags: u32 = @import("std").mem.zeroes(u32),
-    reserved: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_load_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-};
-pub const union_lc_str = extern union {
-    offset: u32,
-};
-pub const struct_segment_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    segname: [16]u8 = @import("std").mem.zeroes([16]u8),
-    vmaddr: u32 = @import("std").mem.zeroes(u32),
-    vmsize: u32 = @import("std").mem.zeroes(u32),
-    fileoff: u32 = @import("std").mem.zeroes(u32),
-    filesize: u32 = @import("std").mem.zeroes(u32),
-    maxprot: i32 = @import("std").mem.zeroes(i32),
-    initprot: i32 = @import("std").mem.zeroes(i32),
-    nsects: u32 = @import("std").mem.zeroes(u32),
-    flags: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_segment_command_64 = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    segname: [16]u8 = @import("std").mem.zeroes([16]u8),
-    vmaddr: u64 = @import("std").mem.zeroes(u64),
-    vmsize: u64 = @import("std").mem.zeroes(u64),
-    fileoff: u64 = @import("std").mem.zeroes(u64),
-    filesize: u64 = @import("std").mem.zeroes(u64),
-    maxprot: i32 = @import("std").mem.zeroes(i32),
-    initprot: i32 = @import("std").mem.zeroes(i32),
-    nsects: u32 = @import("std").mem.zeroes(u32),
-    flags: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_section = extern struct {
-    sectname: [16]u8 = @import("std").mem.zeroes([16]u8),
-    segname: [16]u8 = @import("std").mem.zeroes([16]u8),
-    addr: u32 = @import("std").mem.zeroes(u32),
-    size: u32 = @import("std").mem.zeroes(u32),
-    offset: u32 = @import("std").mem.zeroes(u32),
-    @"align": u32 = @import("std").mem.zeroes(u32),
-    reloff: u32 = @import("std").mem.zeroes(u32),
-    nreloc: u32 = @import("std").mem.zeroes(u32),
-    flags: u32 = @import("std").mem.zeroes(u32),
-    reserved1: u32 = @import("std").mem.zeroes(u32),
-    reserved2: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_section_64 = extern struct {
-    sectname: [16]u8 = @import("std").mem.zeroes([16]u8),
-    segname: [16]u8 = @import("std").mem.zeroes([16]u8),
-    addr: u64 = @import("std").mem.zeroes(u64),
-    size: u64 = @import("std").mem.zeroes(u64),
-    offset: u32 = @import("std").mem.zeroes(u32),
-    @"align": u32 = @import("std").mem.zeroes(u32),
-    reloff: u32 = @import("std").mem.zeroes(u32),
-    nreloc: u32 = @import("std").mem.zeroes(u32),
-    flags: u32 = @import("std").mem.zeroes(u32),
-    reserved1: u32 = @import("std").mem.zeroes(u32),
-    reserved2: u32 = @import("std").mem.zeroes(u32),
-    reserved3: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_fvmlib = extern struct {
-    name: union_lc_str = @import("std").mem.zeroes(union_lc_str),
-    minor_version: u32 = @import("std").mem.zeroes(u32),
-    header_addr: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_fvmlib_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    fvmlib: struct_fvmlib = @import("std").mem.zeroes(struct_fvmlib),
-};
-pub const struct_dylib = extern struct {
-    name: union_lc_str = @import("std").mem.zeroes(union_lc_str),
-    timestamp: u32 = @import("std").mem.zeroes(u32),
-    current_version: u32 = @import("std").mem.zeroes(u32),
-    compatibility_version: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_dylib_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    dylib: struct_dylib = @import("std").mem.zeroes(struct_dylib),
-};
-pub const struct_dylib_use_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    nameoff: u32 = @import("std").mem.zeroes(u32),
-    marker: u32 = @import("std").mem.zeroes(u32),
-    current_version: u32 = @import("std").mem.zeroes(u32),
-    compat_version: u32 = @import("std").mem.zeroes(u32),
-    flags: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_sub_framework_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    umbrella: union_lc_str = @import("std").mem.zeroes(union_lc_str),
-};
-pub const struct_sub_client_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    client: union_lc_str = @import("std").mem.zeroes(union_lc_str),
-};
-pub const struct_sub_umbrella_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    sub_umbrella: union_lc_str = @import("std").mem.zeroes(union_lc_str),
-};
-pub const struct_sub_library_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    sub_library: union_lc_str = @import("std").mem.zeroes(union_lc_str),
-};
-pub const struct_prebound_dylib_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    name: union_lc_str = @import("std").mem.zeroes(union_lc_str),
-    nmodules: u32 = @import("std").mem.zeroes(u32),
-    linked_modules: union_lc_str = @import("std").mem.zeroes(union_lc_str),
-};
-pub const struct_dylinker_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    name: union_lc_str = @import("std").mem.zeroes(union_lc_str),
-};
-pub const struct_thread_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_routines_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    init_address: u32 = @import("std").mem.zeroes(u32),
-    init_module: u32 = @import("std").mem.zeroes(u32),
-    reserved1: u32 = @import("std").mem.zeroes(u32),
-    reserved2: u32 = @import("std").mem.zeroes(u32),
-    reserved3: u32 = @import("std").mem.zeroes(u32),
-    reserved4: u32 = @import("std").mem.zeroes(u32),
-    reserved5: u32 = @import("std").mem.zeroes(u32),
-    reserved6: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_routines_command_64 = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    init_address: u64 = @import("std").mem.zeroes(u64),
-    init_module: u64 = @import("std").mem.zeroes(u64),
-    reserved1: u64 = @import("std").mem.zeroes(u64),
-    reserved2: u64 = @import("std").mem.zeroes(u64),
-    reserved3: u64 = @import("std").mem.zeroes(u64),
-    reserved4: u64 = @import("std").mem.zeroes(u64),
-    reserved5: u64 = @import("std").mem.zeroes(u64),
-    reserved6: u64 = @import("std").mem.zeroes(u64),
-};
-pub const struct_symtab_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    symoff: u32 = @import("std").mem.zeroes(u32),
-    nsyms: u32 = @import("std").mem.zeroes(u32),
-    stroff: u32 = @import("std").mem.zeroes(u32),
-    strsize: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_dysymtab_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    ilocalsym: u32 = @import("std").mem.zeroes(u32),
-    nlocalsym: u32 = @import("std").mem.zeroes(u32),
-    iextdefsym: u32 = @import("std").mem.zeroes(u32),
-    nextdefsym: u32 = @import("std").mem.zeroes(u32),
-    iundefsym: u32 = @import("std").mem.zeroes(u32),
-    nundefsym: u32 = @import("std").mem.zeroes(u32),
-    tocoff: u32 = @import("std").mem.zeroes(u32),
-    ntoc: u32 = @import("std").mem.zeroes(u32),
-    modtaboff: u32 = @import("std").mem.zeroes(u32),
-    nmodtab: u32 = @import("std").mem.zeroes(u32),
-    extrefsymoff: u32 = @import("std").mem.zeroes(u32),
-    nextrefsyms: u32 = @import("std").mem.zeroes(u32),
-    indirectsymoff: u32 = @import("std").mem.zeroes(u32),
-    nindirectsyms: u32 = @import("std").mem.zeroes(u32),
-    extreloff: u32 = @import("std").mem.zeroes(u32),
-    nextrel: u32 = @import("std").mem.zeroes(u32),
-    locreloff: u32 = @import("std").mem.zeroes(u32),
-    nlocrel: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_dylib_table_of_contents = extern struct {
-    symbol_index: u32 = @import("std").mem.zeroes(u32),
-    module_index: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_dylib_module = extern struct {
-    module_name: u32 = @import("std").mem.zeroes(u32),
-    iextdefsym: u32 = @import("std").mem.zeroes(u32),
-    nextdefsym: u32 = @import("std").mem.zeroes(u32),
-    irefsym: u32 = @import("std").mem.zeroes(u32),
-    nrefsym: u32 = @import("std").mem.zeroes(u32),
-    ilocalsym: u32 = @import("std").mem.zeroes(u32),
-    nlocalsym: u32 = @import("std").mem.zeroes(u32),
-    iextrel: u32 = @import("std").mem.zeroes(u32),
-    nextrel: u32 = @import("std").mem.zeroes(u32),
-    iinit_iterm: u32 = @import("std").mem.zeroes(u32),
-    ninit_nterm: u32 = @import("std").mem.zeroes(u32),
-    objc_module_info_addr: u32 = @import("std").mem.zeroes(u32),
-    objc_module_info_size: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_dylib_module_64 = extern struct {
-    module_name: u32 = @import("std").mem.zeroes(u32),
-    iextdefsym: u32 = @import("std").mem.zeroes(u32),
-    nextdefsym: u32 = @import("std").mem.zeroes(u32),
-    irefsym: u32 = @import("std").mem.zeroes(u32),
-    nrefsym: u32 = @import("std").mem.zeroes(u32),
-    ilocalsym: u32 = @import("std").mem.zeroes(u32),
-    nlocalsym: u32 = @import("std").mem.zeroes(u32),
-    iextrel: u32 = @import("std").mem.zeroes(u32),
-    nextrel: u32 = @import("std").mem.zeroes(u32),
-    iinit_iterm: u32 = @import("std").mem.zeroes(u32),
-    ninit_nterm: u32 = @import("std").mem.zeroes(u32),
-    objc_module_info_size: u32 = @import("std").mem.zeroes(u32),
-    objc_module_info_addr: u64 = @import("std").mem.zeroes(u64),
-};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach-o/loader.h:1160:14: warning: struct demoted to opaque type - has bitfield
-pub const struct_dylib_reference = opaque {};
-pub const struct_twolevel_hints_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    offset: u32 = @import("std").mem.zeroes(u32),
-    nhints: u32 = @import("std").mem.zeroes(u32),
-};
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach-o/loader.h:1193:2: warning: struct demoted to opaque type - has bitfield
-pub const struct_twolevel_hint = opaque {};
-pub const struct_prebind_cksum_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    cksum: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_uuid_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    uuid: [16]u8 = @import("std").mem.zeroes([16]u8),
-};
-pub const struct_rpath_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    path: union_lc_str = @import("std").mem.zeroes(union_lc_str),
-};
-pub const struct_target_triple_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    triple: union_lc_str = @import("std").mem.zeroes(union_lc_str),
-};
-pub const struct_linkedit_data_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    dataoff: u32 = @import("std").mem.zeroes(u32),
-    datasize: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_encryption_info_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    cryptoff: u32 = @import("std").mem.zeroes(u32),
-    cryptsize: u32 = @import("std").mem.zeroes(u32),
-    cryptid: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_encryption_info_command_64 = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    cryptoff: u32 = @import("std").mem.zeroes(u32),
-    cryptsize: u32 = @import("std").mem.zeroes(u32),
-    cryptid: u32 = @import("std").mem.zeroes(u32),
-    pad: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_version_min_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    version: u32 = @import("std").mem.zeroes(u32),
-    sdk: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_build_version_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    platform: u32 = @import("std").mem.zeroes(u32),
-    minos: u32 = @import("std").mem.zeroes(u32),
-    sdk: u32 = @import("std").mem.zeroes(u32),
-    ntools: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_build_tool_version = extern struct {
-    tool: u32 = @import("std").mem.zeroes(u32),
-    version: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_dyld_info_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    rebase_off: u32 = @import("std").mem.zeroes(u32),
-    rebase_size: u32 = @import("std").mem.zeroes(u32),
-    bind_off: u32 = @import("std").mem.zeroes(u32),
-    bind_size: u32 = @import("std").mem.zeroes(u32),
-    weak_bind_off: u32 = @import("std").mem.zeroes(u32),
-    weak_bind_size: u32 = @import("std").mem.zeroes(u32),
-    lazy_bind_off: u32 = @import("std").mem.zeroes(u32),
-    lazy_bind_size: u32 = @import("std").mem.zeroes(u32),
-    export_off: u32 = @import("std").mem.zeroes(u32),
-    export_size: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_linker_option_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    count: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_symseg_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    offset: u32 = @import("std").mem.zeroes(u32),
-    size: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_ident_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_fvmfile_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    name: union_lc_str = @import("std").mem.zeroes(union_lc_str),
-    header_addr: u32 = @import("std").mem.zeroes(u32),
-};
-pub const struct_entry_point_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    entryoff: u64 = @import("std").mem.zeroes(u64),
-    stacksize: u64 = @import("std").mem.zeroes(u64),
-};
-pub const struct_source_version_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    version: u64 = @import("std").mem.zeroes(u64),
-};
-pub const struct_data_in_code_entry = extern struct {
-    offset: u32 = @import("std").mem.zeroes(u32),
-    length: u16 = @import("std").mem.zeroes(u16),
-    kind: u16 = @import("std").mem.zeroes(u16),
-};
-pub const struct_tlv_descriptor = extern struct {
-    thunk: ?*const fn ([*c]struct_tlv_descriptor) callconv(.c) ?*anyopaque = @import("std").mem.zeroes(?*const fn ([*c]struct_tlv_descriptor) callconv(.c) ?*anyopaque),
-    key: c_ulong = @import("std").mem.zeroes(c_ulong),
-    offset: c_ulong = @import("std").mem.zeroes(c_ulong),
-};
-pub const struct_note_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    data_owner: [16]u8 = @import("std").mem.zeroes([16]u8),
-    offset: u64 = @import("std").mem.zeroes(u64),
-    size: u64 = @import("std").mem.zeroes(u64),
-};
-pub const struct_fileset_entry_command = extern struct {
-    cmd: u32 = @import("std").mem.zeroes(u32),
-    cmdsize: u32 = @import("std").mem.zeroes(u32),
-    vmaddr: u64 = @import("std").mem.zeroes(u64),
-    fileoff: u64 = @import("std").mem.zeroes(u64),
-    entry_id: union_lc_str = @import("std").mem.zeroes(union_lc_str),
-    reserved: u32 = @import("std").mem.zeroes(u32),
-};
-pub extern fn _dyld_image_count() u32;
-pub extern fn _dyld_get_image_header(image_index: u32) [*c]const struct_mach_header;
-pub extern fn _dyld_get_image_vmaddr_slide(image_index: u32) isize;
-pub extern fn _dyld_get_image_name(image_index: u32) [*c]const u8;
-pub extern fn _dyld_register_func_for_add_image(func: ?*const fn ([*c]const struct_mach_header, isize) callconv(.c) void) void;
-pub extern fn _dyld_register_func_for_remove_image(func: ?*const fn ([*c]const struct_mach_header, isize) callconv(.c) void) void;
-pub extern fn NSVersionOfRunTimeLibrary(libraryName: [*c]const u8) i32;
-pub extern fn NSVersionOfLinkTimeLibrary(libraryName: [*c]const u8) i32;
-pub extern fn _NSGetExecutablePath(buf: [*c]u8, bufsize: [*c]u32) c_int;
-pub extern fn _tlv_atexit(termFunc: ?*const fn (?*anyopaque) callconv(.c) void, objAddr: ?*anyopaque) void;
-pub extern fn _tlv_bootstrap() void;
-pub extern fn _dyld_shared_cache_contains_path(path: [*c]const u8) bool;
-pub const FALSE: c_int = 0;
-pub const TRUE: c_int = 1;
-pub const enum_DYLD_BOOL = c_uint;
-pub const NSObjectFileImageFailure: c_int = 0;
-pub const NSObjectFileImageSuccess: c_int = 1;
-pub const NSObjectFileImageInappropriateFile: c_int = 2;
-pub const NSObjectFileImageArch: c_int = 3;
-pub const NSObjectFileImageFormat: c_int = 4;
-pub const NSObjectFileImageAccess: c_int = 5;
-pub const NSObjectFileImageReturnCode = c_uint;
-pub const struct___NSObjectFileImage = opaque {};
-pub const NSObjectFileImage = ?*struct___NSObjectFileImage;
-pub extern fn NSCreateObjectFileImageFromFile(pathName: [*c]const u8, objectFileImage: [*c]NSObjectFileImage) NSObjectFileImageReturnCode;
-pub extern fn NSCreateObjectFileImageFromMemory(address: ?*const anyopaque, size: usize, objectFileImage: [*c]NSObjectFileImage) NSObjectFileImageReturnCode;
-pub extern fn NSDestroyObjectFileImage(objectFileImage: NSObjectFileImage) bool;
-pub extern fn NSSymbolDefinitionCountInObjectFileImage(objectFileImage: NSObjectFileImage) u32;
-pub extern fn NSSymbolDefinitionNameInObjectFileImage(objectFileImage: NSObjectFileImage, ordinal: u32) [*c]const u8;
-pub extern fn NSSymbolReferenceCountInObjectFileImage(objectFileImage: NSObjectFileImage) u32;
-pub extern fn NSSymbolReferenceNameInObjectFileImage(objectFileImage: NSObjectFileImage, ordinal: u32, tentative_definition: [*c]bool) [*c]const u8;
-pub extern fn NSIsSymbolDefinedInObjectFileImage(objectFileImage: NSObjectFileImage, symbolName: [*c]const u8) bool;
-pub extern fn NSGetSectionDataInObjectFileImage(objectFileImage: NSObjectFileImage, segmentName: [*c]const u8, sectionName: [*c]const u8, size: [*c]usize) ?*anyopaque;
-pub const struct___NSModule = opaque {};
-pub const NSModule = ?*struct___NSModule;
-pub extern fn NSNameOfModule(m: NSModule) [*c]const u8;
-pub extern fn NSLibraryNameForModule(m: NSModule) [*c]const u8;
-pub extern fn NSLinkModule(objectFileImage: NSObjectFileImage, moduleName: [*c]const u8, options: u32) NSModule;
-pub extern fn NSUnLinkModule(module: NSModule, options: u32) bool;
-pub const struct___NSSymbol = opaque {};
-pub const NSSymbol = ?*struct___NSSymbol;
-pub extern fn NSIsSymbolNameDefined(symbolName: [*c]const u8) bool;
-pub extern fn NSIsSymbolNameDefinedWithHint(symbolName: [*c]const u8, libraryNameHint: [*c]const u8) bool;
-pub extern fn NSIsSymbolNameDefinedInImage(image: [*c]const struct_mach_header, symbolName: [*c]const u8) bool;
-pub extern fn NSLookupAndBindSymbol(symbolName: [*c]const u8) NSSymbol;
-pub extern fn NSLookupAndBindSymbolWithHint(symbolName: [*c]const u8, libraryNameHint: [*c]const u8) NSSymbol;
-pub extern fn NSLookupSymbolInModule(module: NSModule, symbolName: [*c]const u8) NSSymbol;
-pub extern fn NSLookupSymbolInImage(image: [*c]const struct_mach_header, symbolName: [*c]const u8, options: u32) NSSymbol;
-pub extern fn NSNameOfSymbol(symbol: NSSymbol) [*c]const u8;
-pub extern fn NSAddressOfSymbol(symbol: NSSymbol) ?*anyopaque;
-pub extern fn NSModuleForSymbol(symbol: NSSymbol) NSModule;
-pub const NSLinkEditFileAccessError: c_int = 0;
-pub const NSLinkEditFileFormatError: c_int = 1;
-pub const NSLinkEditMachResourceError: c_int = 2;
-pub const NSLinkEditUnixResourceError: c_int = 3;
-pub const NSLinkEditOtherError: c_int = 4;
-pub const NSLinkEditWarningError: c_int = 5;
-pub const NSLinkEditMultiplyDefinedError: c_int = 6;
-pub const NSLinkEditUndefinedError: c_int = 7;
-pub const NSLinkEditErrors = c_uint;
-pub const NSOtherErrorRelocation: c_int = 0;
-pub const NSOtherErrorLazyBind: c_int = 1;
-pub const NSOtherErrorIndrLoop: c_int = 2;
-pub const NSOtherErrorLazyInit: c_int = 3;
-pub const NSOtherErrorInvalidArgs: c_int = 4;
-pub const NSOtherErrorNumbers = c_uint;
-pub extern fn NSLinkEditError(c: [*c]NSLinkEditErrors, errorNumber: [*c]c_int, fileName: [*c][*c]const u8, errorString: [*c][*c]const u8) void;
-pub const NSLinkEditErrorHandlers = extern struct {
-    undefined: ?*const fn ([*c]const u8) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]const u8) callconv(.c) void),
-    multiple: ?*const fn (NSSymbol, NSModule, NSModule) callconv(.c) NSModule = @import("std").mem.zeroes(?*const fn (NSSymbol, NSModule, NSModule) callconv(.c) NSModule),
-    linkEdit: ?*const fn (NSLinkEditErrors, c_int, [*c]const u8, [*c]const u8) callconv(.c) void = @import("std").mem.zeroes(?*const fn (NSLinkEditErrors, c_int, [*c]const u8, [*c]const u8) callconv(.c) void),
-};
-pub extern fn NSInstallLinkEditErrorHandlers(handlers: [*c]const NSLinkEditErrorHandlers) void;
-pub extern fn NSAddLibrary(pathName: [*c]const u8) bool;
-pub extern fn NSAddLibraryWithSearching(pathName: [*c]const u8) bool;
-pub extern fn NSAddImage(image_name: [*c]const u8, options: u32) [*c]const struct_mach_header;
-pub extern fn _dyld_present() bool;
-pub extern fn _dyld_launched_prebound() bool;
-pub extern fn _dyld_all_twolevel_modules_prebound() bool;
-pub extern fn _dyld_bind_fully_image_containing_address(address: ?*const anyopaque) bool;
-pub extern fn _dyld_image_containing_address(address: ?*const anyopaque) bool;
-pub extern fn _dyld_lookup_and_bind(symbol_name: [*c]const u8, address: [*c]?*anyopaque, module: [*c]NSModule) void;
-pub extern fn _dyld_lookup_and_bind_with_hint(symbol_name: [*c]const u8, library_name_hint: [*c]const u8, address: [*c]?*anyopaque, module: [*c]NSModule) void;
-pub extern fn _dyld_lookup_and_bind_fully(symbol_name: [*c]const u8, address: [*c]?*anyopaque, module: [*c]NSModule) void;
-pub extern fn _dyld_get_image_header_containing_address(address: ?*const anyopaque) [*c]const struct_mach_header;
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/secure/_string.h:147:3: warning: TODO implement function '__builtin___strncpy_chk' in std.zig.c_builtins
-
-// compiler.c:21:9: warning: unable to translate function, demoted to extern
 pub const struct_timespec = extern struct {
     tv_sec: __darwin_time_t = @import("std").mem.zeroes(__darwin_time_t),
     tv_nsec: c_long = @import("std").mem.zeroes(c_long),
@@ -2873,74 +1461,75 @@ pub fn kai_fs_closedir(arg_handle: ?*anyopaque) callconv(.c) void {
     _ = closedir(kd.*.dir);
     free(@as(?*anyopaque, @ptrCast(kd)));
 }
-pub export threadlocal var _kai_current_allocator: ?*anyopaque = @as(?*anyopaque, @ptrFromInt(@as(c_int, 0)));
-pub export fn _kai_set_current_allocator(arg_allocator: ?*anyopaque) void {
+pub threadlocal var _kai_current_allocator: ?*anyopaque = @as(?*anyopaque, @ptrFromInt(@as(c_int, 0)));
+pub fn _kai_set_current_allocator(arg_allocator: ?*anyopaque) callconv(.c) void {
     var allocator = arg_allocator;
     _ = &allocator;
     _kai_current_allocator = allocator;
 }
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/secure/_string.h:172:3: warning: TODO implement function '__builtin___strcpy_chk' in std.zig.c_builtins
-//const std = @import("std");
-//const builtin = @import("builtin");
-
-/// Direct implementation of get_exe_dir in Zig using cross-platform std API.
-/// Writes the null-terminated directory path of the executable into out_buf.
-/// Returns 0 on success, or -1 on error.
-pub export fn get_exe_dir(out_buf: [*c]u8, max_len: i64) i64 {
-    if (out_buf == null or max_len <= 0) return -1;
-
-    // Create an allocator backed by a fixed buffer to avoid heap allocations,
-    // ensuring identical runtime behavior to your original C stack approach.
-    var mem_buf: [4096]u8 = undefined;
-    var fba = std.heap.FixedBufferAllocator.init(&mem_buf);
-    const allocator = fba.allocator();
-
-    // Cross-platform equivalent to GetModuleFileNameA / _NSGetExecutablePath / /proc/self/exe
-    const exe_dir = std.fs.selfExeDirPathAlloc(allocator) catch {
-        return -1;
-    };
-    defer allocator.free(exe_dir);
-
-    if (exe_dir.len >= @as(usize, @intCast(max_len))) {
-        return -1;
+pub extern fn mmap(addr: ?*anyopaque, length: c_ulonglong, prot: c_int, flags: c_int, fd: c_int, offset: c_longlong) ?*anyopaque;
+pub extern fn munmap(addr: ?*anyopaque, length: c_ulonglong) c_int;
+pub fn _kai_mmap(arg_addr: [*c]u8, arg_length_1: i64, arg_prot: i64, arg_flags: i64, arg_fd: i64, arg_offset: i64) callconv(.c) [*c]u8 {
+    var addr = arg_addr;
+    _ = &addr;
+    var length_1 = arg_length_1;
+    _ = &length_1;
+    var prot = arg_prot;
+    _ = &prot;
+    var flags = arg_flags;
+    _ = &flags;
+    var fd = arg_fd;
+    _ = &fd;
+    var offset = arg_offset;
+    _ = &offset;
+    return @as([*c]u8, @ptrCast(@alignCast(mmap(@as(?*anyopaque, @ptrCast(addr)), @as(c_ulonglong, @bitCast(length_1)), @as(c_int, @bitCast(@as(c_int, @truncate(prot)))), @as(c_int, @bitCast(@as(c_int, @truncate(flags)))), @as(c_int, @bitCast(@as(c_int, @truncate(fd)))), offset))));
+}
+pub fn _kai_munmap(arg_addr: [*c]u8, arg_length_1: i64) callconv(.c) i64 {
+    var addr = arg_addr;
+    _ = &addr;
+    var length_1 = arg_length_1;
+    _ = &length_1;
+    return @as(i64, @bitCast(@as(c_longlong, munmap(@as(?*anyopaque, @ptrCast(addr)), @as(c_ulonglong, @bitCast(length_1))))));
+}
+pub fn _kai_str_concat(arg_l: [*c]const u8, arg_r: [*c]const u8) callconv(.c) [*c]u8 {
+    var l = arg_l;
+    _ = &l;
+    var r = arg_r;
+    _ = &r;
+    var l1: c_ulonglong = 0;
+    _ = &l1;
+    while (@as(c_int, @bitCast(@as(c_uint, l[@as(usize, @intCast(l1))]))) != @as(c_int, '\x00')) {
+        l1 +%= 1;
     }
-
-    // Copy the path string into the output C-style buffer
-    @memcpy(out_buf[0..exe_dir.len], exe_dir);
-    out_buf[@as(usize, @intCast(exe_dir.len))] = 0; // Null-terminate
-
-    return 0;
-}
-
-/// Direct implementation of _kai_str_concat using standard C allocation.
-/// Expects null-terminated inputs and returns a freshly allocated null-terminated C string.
-/// Original C definition matching local calls
-pub export fn _kai_str_concat(l: [*c]const u8, r: [*c]const u8) [*c]u8 {
-    return __kai_str_concat(l, r);
-}
-
-/// The Linker-expected definition matching external calls
-pub export fn __kai_str_concat(l: [*c]const u8, r: [*c]const u8) [*c]u8 {
-    if (l == null or r == null) return null;
-
-    const l_len = std.mem.len(l);
-    const r_len = std.mem.len(r);
-    const total_bytes = l_len + r_len + 1;
-
-    const c_allocator = std.heap.c_allocator;
-    const buf = c_allocator.alloc(u8, total_bytes) catch {
+    var l2: c_ulonglong = 0;
+    _ = &l2;
+    while (@as(c_int, @bitCast(@as(c_uint, r[@as(usize, @intCast(l2))]))) != @as(c_int, '\x00')) {
+        l2 +%= 1;
+    }
+    if ((l1 > @as(c_ulonglong, 1000000)) or (l2 > (@as(c_ulonglong, 1000000) -% l1))) {
         return null;
-    };
-
-    @memcpy(buf[0..l_len], l[0..l_len]);
-    @memcpy(buf[l_len .. l_len + r_len], r[0..r_len]);
-    buf[total_bytes - 1] = 0;
-
-    return @ptrCast(buf.ptr);
+    }
+    var total: c_ulonglong = (l1 +% l2) +% @as(c_ulonglong, 1);
+    _ = &total;
+    var buf: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_ulong, @truncate(total))))))));
+    _ = &buf;
+    if (buf != null) {
+        var i: c_ulonglong = 0;
+        _ = &i;
+        while (i < l1) {
+            buf[@as(usize, @intCast(i))] = l[@as(usize, @intCast(i))];
+            i +%= 1;
+        }
+        var j: c_ulonglong = 0;
+        _ = &j;
+        while (j < l2) {
+            buf[@as(usize, @intCast(l1 +% j))] = r[@as(usize, @intCast(j))];
+            j +%= 1;
+        }
+        buf[@as(usize, @intCast(l1 +% l2))] = '\x00';
+    }
+    return buf;
 }
-
-// compiler.c:1112:7: warning: unable to translate function, demoted to extern
-
 pub const struct_CAlloc = extern struct {
     dummy: i64 = @import("std").mem.zeroes(i64),
     _pad: i64 = @import("std").mem.zeroes(i64),
@@ -3079,31 +1668,31 @@ pub const TokenValue_tv_bool_TAG: c_int = 3;
 pub const TokenValue_tv_char_TAG: c_int = 4;
 pub const TokenValue_tv_str_TAG: c_int = 5;
 pub const TokenValue_tags = c_uint;
-const struct_unnamed_7 = extern struct {
+const struct_unnamed_4 = extern struct {
     v: i64 = @import("std").mem.zeroes(i64),
 };
-const struct_unnamed_8 = extern struct {
+const struct_unnamed_5 = extern struct {
     v: f64 = @import("std").mem.zeroes(f64),
 };
-const struct_unnamed_9 = extern struct {
+const struct_unnamed_6 = extern struct {
     v: bool = @import("std").mem.zeroes(bool),
 };
-const struct_unnamed_10 = extern struct {
+const struct_unnamed_7 = extern struct {
     v: u8 = @import("std").mem.zeroes(u8),
 };
-const struct_unnamed_11 = extern struct {
+const struct_unnamed_8 = extern struct {
     v: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
 };
-const union_unnamed_6 = extern union {
-    tv_int: struct_unnamed_7,
-    tv_float: struct_unnamed_8,
-    tv_bool: struct_unnamed_9,
-    tv_char: struct_unnamed_10,
-    tv_str: struct_unnamed_11,
+const union_unnamed_3 = extern union {
+    tv_int: struct_unnamed_4,
+    tv_float: struct_unnamed_5,
+    tv_bool: struct_unnamed_6,
+    tv_char: struct_unnamed_7,
+    tv_str: struct_unnamed_8,
 };
 pub const struct_TokenValue = extern struct {
     tag: u8 = @import("std").mem.zeroes(u8),
-    payload: union_unnamed_6 = @import("std").mem.zeroes(union_unnamed_6),
+    payload: union_unnamed_3 = @import("std").mem.zeroes(union_unnamed_3),
 };
 pub const TokenValue = struct_TokenValue;
 pub const struct_Token = extern struct {
@@ -3636,58 +2225,58 @@ pub export fn CAlloc_deinit(arg_self: [*c]CAlloc) void {
 pub export fn class_obj_size(arg_idx: i64) i64 {
     var idx = arg_idx;
     _ = &idx;
-    return @as(i64, @bitCast(@as(c_longlong, @as(c_int, 8) << @intCast(idx))));
+    return @as(c_longlong, 8) << @intCast(idx);
 }
 pub export fn class_for(arg_sz: i64) i64 {
     var sz = arg_sz;
     _ = &sz;
-    if (sz <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 8))))) {
+    if (sz <= @as(c_longlong, 8)) {
         return 0;
     }
-    if (sz <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 16))))) {
+    if (sz <= @as(c_longlong, 16)) {
         return 1;
     }
-    if (sz <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 32))))) {
+    if (sz <= @as(c_longlong, 32)) {
         return 2;
     }
-    if (sz <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 64))))) {
+    if (sz <= @as(c_longlong, 64)) {
         return 3;
     }
-    if (sz <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 128))))) {
+    if (sz <= @as(c_longlong, 128)) {
         return 4;
     }
-    if (sz <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 256))))) {
+    if (sz <= @as(c_longlong, 256)) {
         return 5;
     }
-    if (sz <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 512))))) {
+    if (sz <= @as(c_longlong, 512)) {
         return 6;
     }
-    if (sz <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1024))))) {
+    if (sz <= @as(c_longlong, 1024)) {
         return 7;
     }
-    if (sz <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2048))))) {
+    if (sz <= @as(c_longlong, 2048)) {
         return 8;
     }
-    if (sz <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4096))))) {
+    if (sz <= @as(c_longlong, 4096)) {
         return 9;
     }
-    if (sz <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 8192))))) {
+    if (sz <= @as(c_longlong, 8192)) {
         return 10;
     }
-    if (sz <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 16384))))) {
+    if (sz <= @as(c_longlong, 16384)) {
         return 11;
     }
-    return @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    return -@as(c_longlong, 1);
 }
 pub export fn is_small(arg_sz: i64) bool {
     var sz = arg_sz;
     _ = &sz;
-    return sz <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 16384))));
+    return sz <= @as(c_longlong, 16384);
 }
 pub export fn page_align_up(arg_n: i64) i64 {
     var n = arg_n;
     _ = &n;
-    return (n + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4095))))) & @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 4096))));
+    return (n + @as(c_longlong, 4095)) & -@as(c_longlong, 4096);
 }
 pub export fn KaiAllocator_init() KaiAllocator {
     var self: KaiAllocator = KaiAllocator{
@@ -3696,7 +2285,7 @@ pub export fn KaiAllocator_init() KaiAllocator {
     };
     _ = &self;
     {
-        var ptr: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(mmap(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrFromInt(@as(usize, 0))))), @as(usize, 4096), @as(c_int, 3), @as(c_int, 4098), -@as(c_int, 1), @as(off_t, 0)))));
+        var ptr: [*c]u8 = _kai_mmap(@as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))), @as(c_longlong, 4096), @as(c_longlong, 3), @as(c_longlong, 4098), -@as(c_longlong, 1), @as(c_longlong, 0));
         _ = &ptr;
         self.heads = ptr;
         self.used = 0;
@@ -3739,36 +2328,36 @@ pub export fn KaiAllocator_allocate_slab(arg_self: [*c]KaiAllocator, arg_idx: i6
     var idx = arg_idx;
     _ = &idx;
     {
-        var raw: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(mmap(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrFromInt(@as(usize, 0))))), @as(usize, 131072), @as(c_int, 3), @as(c_int, 4098), -@as(c_int, 1), @as(off_t, 0)))));
+        var raw: [*c]u8 = _kai_mmap(@as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))), @as(c_longlong, 131072), @as(c_longlong, 3), @as(c_longlong, 4098), -@as(c_longlong, 1), @as(c_longlong, 0));
         _ = &raw;
-        if (@as(i64, @intCast(@intFromPtr(raw))) == @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))))) {
-            return @as([*c]u8, @ptrFromInt(@as(c_int, 0)));
+        if (@as(i64, @intCast(@intFromPtr(raw))) == -@as(c_longlong, 1)) {
+            return @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))));
         }
-        var aligned_addr: i64 = (@as(i64, @intCast(@intFromPtr(raw))) + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 65535))))) & @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 65536))));
+        var aligned_addr: i64 = (@as(i64, @intCast(@intFromPtr(raw))) + @as(c_longlong, 65535)) & -@as(c_longlong, 65536);
         _ = &aligned_addr;
-        var slab: [*c]u8 = @as([*c]u8, @ptrFromInt(@as(usize, @intCast(aligned_addr))));
+        var slab: [*c]u8 = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(aligned_addr))));
         _ = &slab;
         var before: i64 = aligned_addr - @as(i64, @intCast(@intFromPtr(raw)));
         _ = &before;
-        if (before > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-            _ = munmap(@as(?*anyopaque, @ptrCast(raw)), @as(usize, @intCast(before)));
+        if (before > @as(c_longlong, 0)) {
+            _ = _kai_munmap(raw, before);
         }
-        var after_start: i64 = aligned_addr + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 65536))));
+        var after_start: i64 = aligned_addr + @as(c_longlong, 65536);
         _ = &after_start;
-        var after_len: i64 = (@as(i64, @intCast(@intFromPtr(raw))) + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 131072))))) - after_start;
+        var after_len: i64 = (@as(i64, @intCast(@intFromPtr(raw))) + @as(c_longlong, 131072)) - after_start;
         _ = &after_len;
-        if (after_len > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-            _ = munmap(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrFromInt(@as(usize, @intCast(after_start)))))), @as(usize, @intCast(after_len)));
+        if (after_len > @as(c_longlong, 0)) {
+            _ = _kai_munmap(@as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(after_start)))), after_len);
         }
         var objsz: i64 = class_obj_size(idx);
         _ = &objsz;
         var hdr: [*c]SlabHeader = @as([*c]SlabHeader, @ptrCast(@alignCast(slab)));
         _ = &hdr;
-        hdr.*.magic = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1262569811))));
+        hdr.*.magic = 1262569811;
         hdr.*.obj_size = objsz;
-        hdr.*.capacity = @divTrunc(@as(i64, @bitCast(@as(c_longlong, @as(c_int, 65536) - @as(c_int, 64)))), objsz);
+        hdr.*.capacity = @divTrunc(@as(c_longlong, 65536) - @as(c_longlong, 64), objsz);
         hdr.*.free_cnt = 0;
-        hdr.*.free_head = @as([*c]u8, @ptrFromInt(@as(c_int, 0)));
+        hdr.*.free_head = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))));
         hdr.*.next_bump_idx = 0;
         hdr.*.pad = 0;
         hdr.*.next = KaiAllocator_get_head(self, idx);
@@ -3782,23 +2371,23 @@ pub export fn KaiAllocator_alloc_large(arg_self: [*c]KaiAllocator, arg_size: i64
     var size = arg_size;
     _ = &size;
     {
-        var total: i64 = size + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 16))));
+        var total: i64 = size + @as(c_longlong, 16);
         _ = &total;
         var page_aligned: i64 = page_align_up(total);
         _ = &page_aligned;
-        var raw: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(mmap(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrFromInt(@as(usize, 0))))), @as(usize, @intCast(page_aligned + 65536)), @as(c_int, 3), @as(c_int, 4098), -@as(c_int, 1), @as(off_t, 0)))));
+        var raw: [*c]u8 = _kai_mmap(@as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))), page_aligned + @as(c_longlong, 65536), @as(c_longlong, 3), @as(c_longlong, 4098), -@as(c_longlong, 1), @as(c_longlong, 0));
         _ = &raw;
-        if (@as(i64, @intCast(@intFromPtr(raw))) == @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))))) {
-            return @as([*c]u8, @ptrFromInt(@as(c_int, 0)));
+        if (@as(i64, @intCast(@intFromPtr(raw))) == -@as(c_longlong, 1)) {
+            return @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))));
         }
-        var aligned_addr: i64 = (@as(i64, @intCast(@intFromPtr(raw))) + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 65535))))) & @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 65536))));
+        var aligned_addr: i64 = (@as(i64, @intCast(@intFromPtr(raw))) + @as(c_longlong, 65535)) & -@as(c_longlong, 65536);
         _ = &aligned_addr;
-        var slab: [*c]u8 = @as([*c]u8, @ptrFromInt(@as(usize, @intCast(aligned_addr))));
+        var slab: [*c]u8 = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(aligned_addr))));
         _ = &slab;
-        @as([*c]i64, @ptrCast(@alignCast(slab)))[@as(c_uint, @intCast(@as(c_int, 0)))] = @as(i64, @intCast(@intFromPtr(raw)));
-        @as([*c]i64, @ptrCast(@alignCast(slab)))[@as(c_uint, @intCast(@as(c_int, 1)))] = size;
+        @as([*c]i64, @ptrCast(@alignCast(slab)))[@as(usize, @intCast(@as(c_longlong, 0)))] = @as(i64, @intCast(@intFromPtr(raw)));
+        @as([*c]i64, @ptrCast(@alignCast(slab)))[@as(usize, @intCast(@as(c_longlong, 1)))] = size;
         self.*.used = self.*.used + size;
-        return @as([*c]u8, @ptrFromInt(@as(usize, @intCast(aligned_addr)) + @as(usize, @bitCast(@as(c_longlong, @as(c_int, 16))))));
+        return @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(aligned_addr + @as(c_longlong, 16)))));
     }
 }
 pub export fn KaiAllocator_free_large(arg_self: [*c]KaiAllocator, arg_ptr: [*c]u8) void {
@@ -3807,16 +2396,16 @@ pub export fn KaiAllocator_free_large(arg_self: [*c]KaiAllocator, arg_ptr: [*c]u
     var ptr = arg_ptr;
     _ = &ptr;
     {
-        var slab_addr: i64 = @as(i64, @intCast(@intFromPtr(ptr))) & @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 65536))));
+        var slab_addr: i64 = @as(i64, @intCast(@intFromPtr(ptr))) & -@as(c_longlong, 65536);
         _ = &slab_addr;
-        var raw_ptr: i64 = @as(i64, @intCast(@as([*c]i64, @ptrCast(@alignCast(@as([*c]u8, @ptrFromInt(@as(usize, @intCast(slab_addr)))))))[@as(c_uint, @intCast(@as(c_int, 0)))]));
+        var raw_ptr: i64 = @as([*c]i64, @ptrCast(@alignCast(@as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(slab_addr)))))))[@as(usize, @intCast(@as(c_longlong, 0)))];
         _ = &raw_ptr;
-        var orig_size: i64 = @as([*c]i64, @ptrCast(@alignCast(@as([*c]u8, @ptrFromInt(@as(usize, @intCast(slab_addr)))))))[@as(c_uint, @intCast(@as(c_int, 1)))];
+        var orig_size: i64 = @as([*c]i64, @ptrCast(@alignCast(@as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(slab_addr)))))))[@as(usize, @intCast(@as(c_longlong, 1)))];
         _ = &orig_size;
-        var mmap_size: i64 = page_align_up(orig_size + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 16))))) + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 65536))));
+        var mmap_size: i64 = page_align_up(orig_size + @as(c_longlong, 16)) + @as(c_longlong, 65536);
         _ = &mmap_size;
         self.*.used = self.*.used - orig_size;
-        _ = munmap(@ptrFromInt(@as(usize, @intCast(raw_ptr))), @as(usize, @intCast(mmap_size)));
+        _ = _kai_munmap(@as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(raw_ptr)))), mmap_size);
     }
 }
 pub export fn KaiAllocator_alloc(arg_self: [*c]KaiAllocator, arg_size: i64, arg_align: i64) [*c]u8 {
@@ -3836,23 +2425,23 @@ pub export fn KaiAllocator_alloc(arg_self: [*c]KaiAllocator, arg_size: i64, arg_
     {
         var slab: [*c]u8 = KaiAllocator_get_head(self, idx);
         _ = &slab;
-        while (slab != @as([*c]u8, @ptrFromInt(@as(c_int, 0)))) {
+        while (slab != @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
             var hdr: [*c]SlabHeader = @as([*c]SlabHeader, @ptrCast(@alignCast(slab)));
             _ = &hdr;
-            if (hdr.*.free_head != @as([*c]u8, @ptrFromInt(@as(c_int, 0)))) {
+            if (hdr.*.free_head != @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
                 var ptr: [*c]u8 = hdr.*.free_head;
                 _ = &ptr;
                 hdr.*.free_head = @as([*c]FreeBlock, @ptrCast(@alignCast(ptr))).*.next;
-                hdr.*.free_cnt = hdr.*.free_cnt - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                hdr.*.free_cnt = hdr.*.free_cnt - @as(c_longlong, 1);
                 self.*.used = self.*.used + objsz;
                 return ptr;
             }
             if (hdr.*.next_bump_idx < hdr.*.capacity) {
-                var off: i64 = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 64)))) + (hdr.*.next_bump_idx * objsz);
+                var off: i64 = @as(c_longlong, 64) + (hdr.*.next_bump_idx * objsz);
                 _ = &off;
-                var ptr: [*c]u8 = @as([*c]u8, @ptrFromInt(@as(usize, @intCast(@as(i64, @intCast(@intFromPtr(slab))) + off))));
+                var ptr: [*c]u8 = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(i64, @intCast(@intFromPtr(slab))) + off))));
                 _ = &ptr;
-                hdr.*.next_bump_idx = hdr.*.next_bump_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                hdr.*.next_bump_idx = hdr.*.next_bump_idx + @as(c_longlong, 1);
                 self.*.used = self.*.used + objsz;
                 return ptr;
             }
@@ -3860,14 +2449,14 @@ pub export fn KaiAllocator_alloc(arg_self: [*c]KaiAllocator, arg_size: i64, arg_
         }
         var ns: [*c]u8 = KaiAllocator_allocate_slab(self, idx);
         _ = &ns;
-        if (ns == @as([*c]u8, @ptrFromInt(@as(c_int, 0)))) {
-            return @as([*c]u8, @ptrFromInt(@as(c_int, 0)));
+        if (ns == @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
+            return @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))));
         }
         var hdr: [*c]SlabHeader = @as([*c]SlabHeader, @ptrCast(@alignCast(ns)));
         _ = &hdr;
         hdr.*.next_bump_idx = 1;
         self.*.used = self.*.used + objsz;
-        return @as([*c]u8, @ptrFromInt(@as(usize, @intCast(@as(i64, @intCast(@intFromPtr(ns))) + @as(i64, 64)))));
+        return @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(i64, @intCast(@intFromPtr(ns))) + @as(c_longlong, 64)))));
     }
 }
 pub export fn KaiAllocator_realloc(arg_self: [*c]KaiAllocator, arg_ptr: [*c]u8, arg_old_size: i64, arg_new_size: i64, arg_align: i64) [*c]u8 {
@@ -3881,25 +2470,25 @@ pub export fn KaiAllocator_realloc(arg_self: [*c]KaiAllocator, arg_ptr: [*c]u8, 
     _ = &new_size;
     var @"align" = arg_align;
     _ = &@"align";
-    if (ptr == @as([*c]u8, @ptrFromInt(@as(c_int, 0)))) {
+    if (ptr == @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
         return KaiAllocator_alloc(self, new_size, @"align");
     }
     if (new_size <= old_size) {
         return ptr;
     }
     {
-        var slab_addr: i64 = @as(i64, @intCast(@intFromPtr(ptr))) & @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 65536))));
+        var slab_addr: i64 = @as(i64, @intCast(@intFromPtr(ptr))) & -@as(c_longlong, 65536);
         _ = &slab_addr;
-        var hdr: [*c]SlabHeader = @as([*c]SlabHeader, @ptrCast(@alignCast(@as([*c]u8, @ptrFromInt(@as(usize, @intCast(slab_addr)))))));
+        var hdr: [*c]SlabHeader = @as([*c]SlabHeader, @ptrCast(@alignCast(@as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(slab_addr)))))));
         _ = &hdr;
-        if (hdr.*.magic == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1262569811))))) {
+        if (hdr.*.magic == @as(c_longlong, 1262569811)) {
             if (new_size <= hdr.*.obj_size) {
                 return ptr;
             }
             var np: [*c]u8 = KaiAllocator_alloc(self, new_size, @"align");
             _ = &np;
-            if (np == @as([*c]u8, @ptrFromInt(@as(c_int, 0)))) {
-                return @as([*c]u8, @ptrFromInt(@as(c_int, 0)));
+            if (np == @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
+                return @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))));
             }
             var i: i64 = 0;
             _ = &i;
@@ -3911,7 +2500,7 @@ pub export fn KaiAllocator_realloc(arg_self: [*c]KaiAllocator, arg_ptr: [*c]u8, 
                     const tmp = i;
                     if (tmp >= 0) break :blk ptr + @as(usize, @intCast(tmp)) else break :blk ptr - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self, ptr);
             return np;
@@ -3919,8 +2508,8 @@ pub export fn KaiAllocator_realloc(arg_self: [*c]KaiAllocator, arg_ptr: [*c]u8, 
     }
     var np: [*c]u8 = KaiAllocator_alloc(self, new_size, @"align");
     _ = &np;
-    if (np == @as([*c]u8, @ptrFromInt(@as(c_int, 0)))) {
-        return @as([*c]u8, @ptrFromInt(@as(c_int, 0)));
+    if (np == @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
+        return @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))));
     }
     {
         var i: i64 = 0;
@@ -3933,7 +2522,7 @@ pub export fn KaiAllocator_realloc(arg_self: [*c]KaiAllocator, arg_ptr: [*c]u8, 
                 const tmp = i;
                 if (tmp >= 0) break :blk ptr + @as(usize, @intCast(tmp)) else break :blk ptr - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
             }).*;
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         KaiAllocator_free(self, ptr);
     }
@@ -3944,20 +2533,20 @@ pub export fn KaiAllocator_free(arg_self: [*c]KaiAllocator, arg_ptr: [*c]u8) voi
     _ = &self;
     var ptr = arg_ptr;
     _ = &ptr;
-    if (ptr == @as([*c]u8, @ptrFromInt(@as(c_int, 0)))) {
+    if (ptr == @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
         return;
     }
     {
-        var slab_addr: i64 = @as(i64, @intCast(@intFromPtr(ptr))) & @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 65536))));
+        var slab_addr: i64 = @as(i64, @intCast(@intFromPtr(ptr))) & -@as(c_longlong, 65536);
         _ = &slab_addr;
-        var hdr: [*c]SlabHeader = @as([*c]SlabHeader, @ptrCast(@alignCast(@as([*c]u8, @ptrFromInt(@as(usize, @intCast(slab_addr)))))));
+        var hdr: [*c]SlabHeader = @as([*c]SlabHeader, @ptrCast(@alignCast(@as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(slab_addr)))))));
         _ = &hdr;
-        if (hdr.*.magic == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1262569811))))) {
+        if (hdr.*.magic == @as(c_longlong, 1262569811)) {
             var fb: [*c]FreeBlock = @as([*c]FreeBlock, @ptrCast(@alignCast(ptr)));
             _ = &fb;
             fb.*.next = hdr.*.free_head;
             hdr.*.free_head = ptr;
-            hdr.*.free_cnt = hdr.*.free_cnt + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            hdr.*.free_cnt = hdr.*.free_cnt + @as(c_longlong, 1);
         } else {
             KaiAllocator_free_large(self, ptr);
         }
@@ -3968,21 +2557,21 @@ pub export fn KaiAllocator_deinit(arg_self: [*c]KaiAllocator) void {
     _ = &self;
     var i: i64 = 0;
     _ = &i;
-    while (i < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 12))))) {
+    while (i < @as(c_longlong, 12)) {
         {
             var slab: [*c]u8 = KaiAllocator_get_head(self, i);
             _ = &slab;
-            while (slab != @as([*c]u8, @ptrFromInt(@as(c_int, 0)))) {
+            while (slab != @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
                 var next: [*c]u8 = @as([*c]SlabHeader, @ptrCast(@alignCast(slab))).*.next;
                 _ = &next;
-                _ = munmap(@as(?*anyopaque, @ptrCast(slab)), @as(usize, 65536));
+                _ = _kai_munmap(slab, @as(c_longlong, 65536));
                 slab = next;
             }
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
     {
-        _ = munmap(@as(?*anyopaque, @ptrCast(self.*.heads)), @as(usize, @intCast(page_align_up(96))));
+        _ = _kai_munmap(self.*.heads, page_align_up(@as(c_longlong, 96)));
     }
 }
 pub export fn read_to_string(arg_allocator: [*c]KaiAllocator, arg_path: [*c]const u8) Result_Str_IoError {
@@ -3999,18 +2588,18 @@ pub export fn read_to_string(arg_allocator: [*c]KaiAllocator, arg_path: [*c]cons
                 .value = null,
             };
         }
-        _ = fseek(@as([*c]FILE, @ptrCast(@alignCast(file))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0)))), @as(c_int, 2));
+        _ = fseek(@as([*c]FILE, @ptrCast(@alignCast(file))), @as(c_long, @bitCast(@as(c_long, @truncate(@as(c_longlong, 0))))), @as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 2))))));
         var size: i64 = @as(i64, @bitCast(@as(c_longlong, ftell(@as([*c]FILE, @ptrCast(@alignCast(file)))))));
         _ = &size;
         rewind(@as([*c]FILE, @ptrCast(@alignCast(file))));
-        var buf: [*c]u8 = KaiAllocator_alloc(allocator, size + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))));
+        var buf: [*c]u8 = KaiAllocator_alloc(allocator, size + @as(c_longlong, 1), @as(c_longlong, 1));
         _ = &buf;
-        var bytes_read: i64 = @as(i64, @bitCast(@as(c_ulonglong, fread(@as(?*anyopaque, @ptrCast(buf)), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))), @as(c_ulong, @bitCast(@as(c_long, @truncate(size)))), @as([*c]FILE, @ptrCast(@alignCast(file)))))));
+        var bytes_read: i64 = @as(i64, @bitCast(@as(c_ulonglong, fread(@as(?*anyopaque, @ptrCast(buf)), @as(c_ulong, @bitCast(@as(c_long, @truncate(@as(c_longlong, 1))))), @as(c_ulong, @bitCast(@as(c_long, @truncate(size)))), @as([*c]FILE, @ptrCast(@alignCast(file)))))));
         _ = &bytes_read;
         (blk: {
             const tmp = bytes_read;
             if (tmp >= 0) break :blk buf + @as(usize, @intCast(tmp)) else break :blk buf - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-        }).* = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 0)))));
+        }).* = @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 0)))));
         _ = fclose(@as([*c]FILE, @ptrCast(@alignCast(file))));
         return Result_Str_IoError{
             .tag = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
@@ -4034,7 +2623,7 @@ pub export fn write_string(arg_path: [*c]const u8, arg_content: [*c]const u8) Re
         }
         var len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(content))));
         _ = &len;
-        var bytes_written: i64 = @as(i64, @bitCast(@as(c_ulonglong, fwrite(@as(?*const anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@constCast(@volatileCast(content)))))), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))), @as(c_ulong, @bitCast(@as(c_long, @truncate(len)))), @as([*c]FILE, @ptrCast(@alignCast(file)))))));
+        var bytes_written: i64 = @as(i64, @bitCast(@as(c_ulonglong, fwrite(@as(?*const anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@constCast(@volatileCast(content)))))), @as(c_ulong, @bitCast(@as(c_long, @truncate(@as(c_longlong, 1))))), @as(c_ulong, @bitCast(@as(c_long, @truncate(len)))), @as([*c]FILE, @ptrCast(@alignCast(file)))))));
         _ = &bytes_written;
         _ = fclose(@as([*c]FILE, @ptrCast(@alignCast(file))));
         return Result_Bool_IoError{
@@ -4056,44 +2645,38 @@ pub export fn char_at(arg_s: [*c]const u8, arg_i: i64) u8 {
 pub export fn is_digit(arg_c: u8) bool {
     var c = arg_c;
     _ = &c;
-    {
-        return isdigit(@as(c_int, @bitCast(@as(c_uint, c)))) != 0;
-    }
+    return (@as(c_int, @bitCast(@as(c_uint, c))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 48))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 57)))))))));
 }
 pub export fn is_alpha(arg_c: u8) bool {
     var c = arg_c;
     _ = &c;
-    {
-        return isalpha(@as(c_int, @bitCast(@as(c_uint, c)))) != 0;
-    }
+    return ((@as(c_int, @bitCast(@as(c_uint, c))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 97))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 122)))))))))) or ((@as(c_int, @bitCast(@as(c_uint, c))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 65))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 90))))))))));
 }
 pub export fn is_alnum(arg_c: u8) bool {
     var c = arg_c;
     _ = &c;
-    {
-        return isalnum(@as(c_int, @bitCast(@as(c_uint, c)))) != 0;
-    }
+    return (@as(c_int, @intFromBool(is_digit(c))) != 0) or (@as(c_int, @intFromBool(is_alpha(c))) != 0);
 }
 pub export fn is_space(arg_c: u8) bool {
     var c = arg_c;
     _ = &c;
-    {
-        return isspace(@as(c_int, @bitCast(@as(c_uint, c)))) != 0;
-    }
+    return (((((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 13)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 11)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 12)))))))));
 }
 pub export fn to_upper(arg_c: u8) u8 {
     var c = arg_c;
     _ = &c;
-    {
-        return @as(u8, @bitCast(@as(i8, @truncate(toupper(@as(c_int, @bitCast(@as(c_uint, c))))))));
+    if ((@as(c_int, @bitCast(@as(c_uint, c))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 97))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 122)))))))))) {
+        return @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, @bitCast(@as(c_uint, c))) - @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))))));
     }
+    return c;
 }
 pub export fn to_lower(arg_c: u8) u8 {
     var c = arg_c;
     _ = &c;
-    {
-        return @as(u8, @bitCast(@as(i8, @truncate(tolower(@as(c_int, @bitCast(@as(c_uint, c))))))));
+    if ((@as(c_int, @bitCast(@as(c_uint, c))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 65))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 90)))))))))) {
+        return @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, @bitCast(@as(c_uint, c))) + @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))))));
     }
+    return c;
 }
 pub export fn length(arg_s: [*c]const u8) i64 {
     var s = arg_s;
@@ -4116,7 +2699,7 @@ pub export fn StringBuilder_init(arg_allocator: [*c]KaiAllocator) StringBuilder 
     self.cap = 16;
     self.allocator = allocator;
     {
-        self.data = KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(u8)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))));
+        self.data = KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(u8)))))), @as(c_longlong, 1));
     }
     return self;
 }
@@ -4125,11 +2708,11 @@ pub export fn StringBuilder_append_char(arg_self: [*c]StringBuilder, arg_c: u8) 
     _ = &self;
     var c = arg_c;
     _ = &c;
-    if ((self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))) >= self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+    if ((self.*.len + @as(c_longlong, 1)) >= self.*.cap) {
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]u8 = KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(u8)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))));
+            var new_data: [*c]u8 = KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(u8)))))), @as(c_longlong, 1));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -4141,7 +2724,7 @@ pub export fn StringBuilder_append_char(arg_self: [*c]StringBuilder, arg_c: u8) 
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, self.*.data);
             self.*.data = new_data;
@@ -4152,11 +2735,11 @@ pub export fn StringBuilder_append_char(arg_self: [*c]StringBuilder, arg_c: u8) 
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = c;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
     (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-    }).* = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 0)))));
+    }).* = @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 0)))));
 }
 pub export fn StringBuilder_append_str(arg_self: [*c]StringBuilder, arg_s: [*c]const u8) void {
     var self = arg_self;
@@ -4168,12 +2751,12 @@ pub export fn StringBuilder_append_str(arg_self: [*c]StringBuilder, arg_s: [*c]c
     while (@as(c_int, @bitCast(@as(c_uint, (blk: {
         const tmp = i;
         if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-    }).*))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 0))))))))) {
+    }).*))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 0))))))))) {
         StringBuilder_append_char(self, (blk: {
             const tmp = i;
             if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
         }).*);
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
 }
 pub export fn StringBuilder_append(arg_self: [*c]StringBuilder, arg_s: [*c]const u8) void {
@@ -4200,8 +2783,8 @@ pub export fn int_to_str(arg_n: i64) [*c]const u8 {
     _ = &n;
     {
         var allocator: KaiAllocator = KaiAllocator{
-            .heads = @as([*c]u8, @ptrFromInt(@as(c_int, 0))),
-            .used = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
+            .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+            .used = @as(c_longlong, 0),
         };
         _ = &allocator;
         allocator = KaiAllocator_init();
@@ -4211,23 +2794,23 @@ pub export fn int_to_str(arg_n: i64) [*c]const u8 {
         _ = &sb;
         var num: i64 = n;
         _ = &num;
-        if (num < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-            StringBuilder_append_char(&sb, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 45))))));
+        if (num < @as(c_longlong, 0)) {
+            StringBuilder_append_char(&sb, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 45))))));
             num = -num;
         }
         var divisor: i64 = 1;
         _ = &divisor;
         var tmp: i64 = num;
         _ = &tmp;
-        while (tmp >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 10))))) {
-            divisor = divisor * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 10))));
-            tmp = @divTrunc(tmp, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 10)))));
+        while (tmp >= @as(c_longlong, 10)) {
+            divisor = divisor * @as(c_longlong, 10);
+            tmp = @divTrunc(tmp, @as(c_longlong, 10));
         }
-        while (divisor > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-            var digit: i64 = @import("std").zig.c_translation.signedRemainder(@divTrunc(num, divisor), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 10)))));
+        while (divisor > @as(c_longlong, 0)) {
+            var digit: i64 = @import("std").zig.c_translation.signedRemainder(@divTrunc(num, divisor), @as(c_longlong, 10));
             _ = &digit;
-            StringBuilder_append_char(&sb, @as(u8, @bitCast(@as(i8, @truncate(@as(i64, @bitCast(@as(c_longlong, @as(c_int, 48)))) + digit)))));
-            divisor = @divTrunc(divisor, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 10)))));
+            StringBuilder_append_char(&sb, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 48) + digit)))));
+            divisor = @divTrunc(divisor, @as(c_longlong, 10));
         }
         return StringBuilder_to_str(&sb);
     }
@@ -4237,8 +2820,8 @@ pub export fn char_to_str(arg_c: u8) [*c]const u8 {
     _ = &c;
     {
         var allocator: KaiAllocator = KaiAllocator{
-            .heads = @as([*c]u8, @ptrFromInt(@as(c_int, 0))),
-            .used = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
+            .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+            .used = @as(c_longlong, 0),
         };
         _ = &allocator;
         allocator = KaiAllocator_init();
@@ -4256,30 +2839,49 @@ pub export fn substring(arg_s: [*c]const u8, arg_start: i64, arg_end: i64) [*c]c
     var end = arg_end;
     _ = &end;
     {
-        var allocator: KaiAllocator = KaiAllocator{
-            .heads = @as([*c]u8, @ptrFromInt(@as(c_int, 0))),
-            .used = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        };
-        _ = &allocator;
-        allocator = KaiAllocator_init();
-        var sb: StringBuilder = StringBuilder_init(&allocator);
-        _ = &sb;
-        var i: i64 = start;
-        _ = &i;
-        if (i < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-            i = 0;
+        var len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(s))));
+        _ = &len;
+        var real_end: i64 = end;
+        _ = &real_end;
+        if (real_end > len) {
+            real_end = len;
         }
-        while ((@as(c_int, @bitCast(@as(c_uint, (blk: {
-            const tmp = i;
-            if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-        }).*))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 0))))))))) and (i < end)) {
-            StringBuilder_append_char(&sb, (blk: {
-                const tmp = i;
-                if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).*);
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        var real_start: i64 = start;
+        _ = &real_start;
+        if (real_start < @as(c_longlong, 0)) {
+            real_start = 0;
         }
-        return StringBuilder_to_str(&sb);
+        if (real_start >= real_end) {
+            var empty: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, @truncate(@as(c_longlong, 1)))))))));
+            _ = &empty;
+            if (empty != @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
+                empty[@as(usize, @intCast(@as(c_longlong, 0)))] = @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 0)))));
+            }
+            return @as([*c]const u8, @ptrCast(@alignCast(empty)));
+        }
+        var sub_len: i64 = real_end - real_start;
+        _ = &sub_len;
+        var buf: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, @truncate(sub_len + @as(c_longlong, 1)))))))));
+        _ = &buf;
+        if (buf != @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
+            var i: i64 = 0;
+            _ = &i;
+            while (i < sub_len) {
+                (blk: {
+                    const tmp = i;
+                    if (tmp >= 0) break :blk buf + @as(usize, @intCast(tmp)) else break :blk buf - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                }).* = (blk: {
+                    const tmp = real_start + i;
+                    if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                }).*;
+                i = i + @as(c_longlong, 1);
+            }
+            (blk: {
+                const tmp = sub_len;
+                if (tmp >= 0) break :blk buf + @as(usize, @intCast(tmp)) else break :blk buf - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).* = @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 0)))));
+        }
+        return @as([*c]const u8, @ptrCast(@alignCast(buf)));
     }
 }
 pub export fn keyword_type(arg_ident: [*c]const u8) TokenType {
@@ -4375,8 +2977,8 @@ pub export fn make_keyword_value(arg_ident: [*c]const u8, arg_ttype: TokenType) 
         if (strcmp(ident, "true") == @as(c_int, 0)) {
             return TokenValue{
                 .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_bool_TAG)))),
-                .payload = union_unnamed_6{
-                    .tv_bool = struct_unnamed_9{
+                .payload = union_unnamed_3{
+                    .tv_bool = struct_unnamed_6{
                         .v = @as(c_int, 1) != 0,
                     },
                 },
@@ -4384,8 +2986,8 @@ pub export fn make_keyword_value(arg_ident: [*c]const u8, arg_ttype: TokenType) 
         }
         return TokenValue{
             .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_bool_TAG)))),
-            .payload = union_unnamed_6{
-                .tv_bool = struct_unnamed_9{
+            .payload = union_unnamed_3{
+                .tv_bool = struct_unnamed_6{
                     .v = @as(c_int, 0) != 0,
                 },
             },
@@ -4393,8 +2995,8 @@ pub export fn make_keyword_value(arg_ident: [*c]const u8, arg_ttype: TokenType) 
     }
     return TokenValue{
         .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-        .payload = union_unnamed_6{
-            .tv_str = struct_unnamed_11{
+        .payload = union_unnamed_3{
+            .tv_str = struct_unnamed_8{
                 .v = ident,
             },
         },
@@ -4414,7 +3016,7 @@ pub export fn ArrayList_Token_init(arg_allocator: [*c]KaiAllocator) ArrayList_To
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]Token, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Token)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]Token, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Token)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -4424,10 +3026,10 @@ pub export fn ArrayList_Token_push(arg_self: [*c]ArrayList_Token, arg_item: Toke
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]Token = @as([*c]Token, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Token)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]Token = @as([*c]Token, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Token)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -4439,7 +3041,7 @@ pub export fn ArrayList_Token_push(arg_self: [*c]ArrayList_Token, arg_item: Toke
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -4450,16 +3052,16 @@ pub export fn ArrayList_Token_push(arg_self: [*c]ArrayList_Token, arg_item: Toke
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_Token_get(arg_self: [*c]ArrayList_Token, arg_index_1: i64) Token {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -4474,9 +3076,9 @@ pub export fn ArrayList_Token_set(arg_self: [*c]ArrayList_Token, arg_index_1: i6
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -4487,12 +3089,12 @@ pub export fn ArrayList_Token_set(arg_self: [*c]ArrayList_Token, arg_index_1: i6
 pub export fn ArrayList_Token_pop(arg_self: [*c]ArrayList_Token) Token {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -4510,7 +3112,7 @@ pub export fn ArrayList_Token_deinit(arg_self: [*c]ArrayList_Token) void {
         KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
     }
 }
-pub fn ArrayList_Int_init(arg_allocator: [*c]KaiAllocator) ArrayList_Int {
+pub export fn ArrayList_Int_init(arg_allocator: [*c]KaiAllocator) ArrayList_Int {
     var allocator = arg_allocator;
     _ = &allocator;
     var self: ArrayList_Int = ArrayList_Int{
@@ -4524,7 +3126,7 @@ pub fn ArrayList_Int_init(arg_allocator: [*c]KaiAllocator) ArrayList_Int {
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]i64, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(i64)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]i64, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(i64)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -4534,10 +3136,10 @@ pub export fn ArrayList_Int_push(arg_self: [*c]ArrayList_Int, arg_item: i64) voi
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]i64 = @as([*c]i64, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(i64)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]i64 = @as([*c]i64, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(i64)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -4549,7 +3151,7 @@ pub export fn ArrayList_Int_push(arg_self: [*c]ArrayList_Int, arg_item: i64) voi
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -4560,16 +3162,16 @@ pub export fn ArrayList_Int_push(arg_self: [*c]ArrayList_Int, arg_item: i64) voi
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_Int_get(arg_self: [*c]ArrayList_Int, arg_index_1: i64) i64 {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -4584,9 +3186,9 @@ pub export fn ArrayList_Int_set(arg_self: [*c]ArrayList_Int, arg_index_1: i64, a
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -4597,12 +3199,12 @@ pub export fn ArrayList_Int_set(arg_self: [*c]ArrayList_Int, arg_index_1: i64, a
 pub export fn ArrayList_Int_pop(arg_self: [*c]ArrayList_Int) i64 {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -4648,12 +3250,12 @@ pub export fn Lexer_init(arg_allocator: [*c]KaiAllocator, arg_source: [*c]const 
     self.brace_depth = 0;
     self.has_error = @as(c_int, 0) != 0;
     {
-        self.tokens = @as([*c]ArrayList_Token, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ArrayList_Token)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
-        self.indent_stack = @as([*c]ArrayList_Int, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ArrayList_Int)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.tokens = @as([*c]ArrayList_Token, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ArrayList_Token)))), @as(c_longlong, 1)))));
+        self.indent_stack = @as([*c]ArrayList_Int, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ArrayList_Int)))), @as(c_longlong, 1)))));
     }
     self.tokens.* = ArrayList_Token_init(allocator);
     self.indent_stack.* = ArrayList_Int_init(allocator);
-    ArrayList_Int_push(self.indent_stack, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    ArrayList_Int_push(self.indent_stack, @as(c_longlong, 0));
     {
         self.source_len = @as(i64, @bitCast(@as(c_ulonglong, strlen(source))));
     }
@@ -4667,7 +3269,7 @@ pub export fn Lexer_peek(arg_self: [*c]Lexer, arg_offset: i64) u8 {
     var pos: i64 = self.*.cursor + offset;
     _ = &pos;
     if (pos >= self.*.source_len) {
-        return @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 0)))));
+        return @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 0)))));
     }
     return (blk: {
         const tmp = pos;
@@ -4678,19 +3280,19 @@ pub export fn Lexer_advance(arg_self: [*c]Lexer) u8 {
     var self = arg_self;
     _ = &self;
     if (self.*.cursor >= self.*.source_len) {
-        return @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 0)))));
+        return @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 0)))));
     }
     var c: u8 = (blk: {
         const tmp = self.*.cursor;
         if (tmp >= 0) break :blk self.*.source + @as(usize, @intCast(tmp)) else break :blk self.*.source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).*;
     _ = &c;
-    self.*.cursor = self.*.cursor + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.cursor = self.*.cursor + @as(c_longlong, 1);
     if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '\n')) {
-        self.*.line = self.*.line + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        self.*.line = self.*.line + @as(c_longlong, 1);
         self.*.column = 1;
     } else {
-        self.*.column = self.*.column + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        self.*.column = self.*.column + @as(c_longlong, 1);
     }
     return c;
 }
@@ -4719,7 +3321,7 @@ pub export fn Lexer_lex_error(arg_self: [*c]Lexer, arg_msg: [*c]const u8) void {
 pub export fn Lexer_skip_line_comment(arg_self: [*c]Lexer) void {
     var self = arg_self;
     _ = &self;
-    while ((self.*.cursor < self.*.source_len) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))))))) != @as(c_int, '\n'))) {
+    while ((self.*.cursor < self.*.source_len) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 0))))) != @as(c_int, '\n'))) {
         _ = Lexer_advance(self);
     }
 }
@@ -4728,7 +3330,7 @@ pub export fn Lexer_skip_block_comment(arg_self: [*c]Lexer) void {
     _ = &self;
     _ = Lexer_advance(self);
     while (self.*.cursor < self.*.source_len) {
-        if ((@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))))))) == @as(c_int, '*')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '/'))) {
+        if ((@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 0))))) == @as(c_int, '*')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '/'))) {
             _ = Lexer_advance(self);
             _ = Lexer_advance(self);
             return;
@@ -4742,14 +3344,14 @@ pub export fn Lexer_skip_whitespace(arg_self: [*c]Lexer) void {
     var done: bool = @as(c_int, 0) != 0;
     _ = &done;
     while ((self.*.cursor < self.*.source_len) and !done) {
-        var c: u8 = Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+        var c: u8 = Lexer_peek(self, @as(c_longlong, 0));
         _ = &c;
         if (((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, ' ')) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '\t'))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '\r'))) {
             _ = Lexer_advance(self);
         } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '/')) {
-            if (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '/')) {
+            if (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '/')) {
                 Lexer_skip_line_comment(self);
-            } else if (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '*')) {
+            } else if (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '*')) {
                 Lexer_skip_block_comment(self);
             } else {
                 done = @as(c_int, 1) != 0;
@@ -4767,7 +3369,7 @@ pub export fn Lexer_lex_identifier(arg_self: [*c]Lexer) void {
     var done: bool = @as(c_int, 0) != 0;
     _ = &done;
     while ((self.*.cursor < self.*.source_len) and !done) {
-        var c: u8 = Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+        var c: u8 = Lexer_peek(self, @as(c_longlong, 0));
         _ = &c;
         if ((@as(c_int, @intFromBool(is_alnum(c))) != 0) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '_'))) {
             StringBuilder_append_char(&sb, Lexer_advance(self));
@@ -4782,8 +3384,8 @@ pub export fn Lexer_lex_identifier(arg_self: [*c]Lexer) void {
     if (ktype == @as(c_uint, @bitCast(TokenType_IDENTIFIER))) {
         Lexer_emit(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER)), TokenValue{
             .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-            .payload = union_unnamed_6{
-                .tv_str = struct_unnamed_11{
+            .payload = union_unnamed_3{
+                .tv_str = struct_unnamed_8{
                     .v = ident,
                 },
             },
@@ -4793,8 +3395,8 @@ pub export fn Lexer_lex_identifier(arg_self: [*c]Lexer) void {
     } else {
         Lexer_emit(self, ktype, TokenValue{
             .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-            .payload = union_unnamed_6{
-                .tv_str = struct_unnamed_11{
+            .payload = union_unnamed_3{
+                .tv_str = struct_unnamed_8{
                     .v = ident,
                 },
             },
@@ -4809,7 +3411,7 @@ pub export fn Lexer_lex_number(arg_self: [*c]Lexer) void {
     var done: bool = @as(c_int, 0) != 0;
     _ = &done;
     while ((self.*.cursor < self.*.source_len) and !done) {
-        var c: u8 = Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+        var c: u8 = Lexer_peek(self, @as(c_longlong, 0));
         _ = &c;
         if (is_digit(c)) {
             StringBuilder_append_char(&sb, Lexer_advance(self));
@@ -4817,11 +3419,11 @@ pub export fn Lexer_lex_number(arg_self: [*c]Lexer) void {
             done = @as(c_int, 1) != 0;
         }
     }
-    if ((@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))))))) == @as(c_int, '.')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) != @as(c_int, '.'))) {
+    if ((@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 0))))) == @as(c_int, '.')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) != @as(c_int, '.'))) {
         StringBuilder_append_char(&sb, Lexer_advance(self));
         done = @as(c_int, 0) != 0;
         while ((self.*.cursor < self.*.source_len) and !done) {
-            var c: u8 = Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+            var c: u8 = Lexer_peek(self, @as(c_longlong, 0));
             _ = &c;
             if (is_digit(c)) {
                 StringBuilder_append_char(&sb, Lexer_advance(self));
@@ -4833,8 +3435,8 @@ pub export fn Lexer_lex_number(arg_self: [*c]Lexer) void {
         _ = &num_str;
         Lexer_emit(self, @as(c_uint, @bitCast(TokenType_FLOAT_LIT)), TokenValue{
             .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-            .payload = union_unnamed_6{
-                .tv_str = struct_unnamed_11{
+            .payload = union_unnamed_3{
+                .tv_str = struct_unnamed_8{
                     .v = num_str,
                 },
             },
@@ -4844,8 +3446,8 @@ pub export fn Lexer_lex_number(arg_self: [*c]Lexer) void {
         _ = &num_str;
         Lexer_emit(self, @as(c_uint, @bitCast(TokenType_INT_LIT)), TokenValue{
             .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-            .payload = union_unnamed_6{
-                .tv_str = struct_unnamed_11{
+            .payload = union_unnamed_3{
+                .tv_str = struct_unnamed_8{
                     .v = num_str,
                 },
             },
@@ -4861,7 +3463,7 @@ pub export fn Lexer_lex_string(arg_self: [*c]Lexer) void {
     var done: bool = @as(c_int, 0) != 0;
     _ = &done;
     while ((self.*.cursor < self.*.source_len) and !done) {
-        var c: u8 = Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+        var c: u8 = Lexer_peek(self, @as(c_longlong, 0));
         _ = &c;
         if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '"')) {
             done = @as(c_int, 1) != 0;
@@ -4894,8 +3496,8 @@ pub export fn Lexer_lex_string(arg_self: [*c]Lexer) void {
     _ = &s;
     Lexer_emit(self, @as(c_uint, @bitCast(TokenType_STRING_LIT)), TokenValue{
         .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-        .payload = union_unnamed_6{
-            .tv_str = struct_unnamed_11{
+        .payload = union_unnamed_3{
+            .tv_str = struct_unnamed_8{
                 .v = s,
             },
         },
@@ -4907,7 +3509,7 @@ pub export fn Lexer_lex_char(arg_self: [*c]Lexer) void {
     _ = Lexer_advance(self);
     var c: u8 = Lexer_advance(self);
     _ = &c;
-    var ch: u8 = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 0)))));
+    var ch: u8 = @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 0)))));
     _ = &ch;
     if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '\\')) {
         var esc: u8 = Lexer_advance(self);
@@ -4931,8 +3533,8 @@ pub export fn Lexer_lex_char(arg_self: [*c]Lexer) void {
     _ = Lexer_advance(self);
     Lexer_emit(self, @as(c_uint, @bitCast(TokenType_CHAR_LIT)), TokenValue{
         .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_char_TAG)))),
-        .payload = union_unnamed_6{
-            .tv_char = struct_unnamed_10{
+        .payload = union_unnamed_3{
+            .tv_char = struct_unnamed_7{
                 .v = ch,
             },
         },
@@ -4956,37 +3558,37 @@ pub export fn Lexer_compute_indent(arg_self: [*c]Lexer) i64 {
         }).*;
         _ = &c;
         if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, ' ')) {
-            indent = indent + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
-            temp = temp + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            indent = indent + @as(c_longlong, 1);
+            temp = temp + @as(c_longlong, 1);
         } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '\t')) {
-            indent = indent + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))));
-            temp = temp + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            indent = indent + @as(c_longlong, 4);
+            temp = temp + @as(c_longlong, 1);
         } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '\r')) {
-            temp = temp + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            temp = temp + @as(c_longlong, 1);
         } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '\n')) {
             indent = 0;
-            temp = temp + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
-        } else if (((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '/')) and ((temp + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))) < self.*.source_len)) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-            const tmp = temp + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            temp = temp + @as(c_longlong, 1);
+        } else if (((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '/')) and ((temp + @as(c_longlong, 1)) < self.*.source_len)) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+            const tmp = temp + @as(c_longlong, 1);
             if (tmp >= 0) break :blk self.*.source + @as(usize, @intCast(tmp)) else break :blk self.*.source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
         }).*))) == @as(c_int, '/'))) {
             while ((temp < self.*.source_len) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
                 const tmp = temp;
                 if (tmp >= 0) break :blk self.*.source + @as(usize, @intCast(tmp)) else break :blk self.*.source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
             }).*))) != @as(c_int, '\n'))) {
-                temp = temp + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                temp = temp + @as(c_longlong, 1);
             }
             indent = 0;
-        } else if (((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '/')) and ((temp + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))) < self.*.source_len)) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-            const tmp = temp + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        } else if (((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '/')) and ((temp + @as(c_longlong, 1)) < self.*.source_len)) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+            const tmp = temp + @as(c_longlong, 1);
             if (tmp >= 0) break :blk self.*.source + @as(usize, @intCast(tmp)) else break :blk self.*.source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
         }).*))) == @as(c_int, '*'))) {
-            temp = temp + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
-            while ((temp < self.*.source_len) and !((((temp + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))) < self.*.source_len) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+            temp = temp + @as(c_longlong, 2);
+            while ((temp < self.*.source_len) and !((((temp + @as(c_longlong, 1)) < self.*.source_len) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
                 const tmp = temp;
                 if (tmp >= 0) break :blk self.*.source + @as(usize, @intCast(tmp)) else break :blk self.*.source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
             }).*))) == @as(c_int, '*'))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                const tmp = temp + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                const tmp = temp + @as(c_longlong, 1);
                 if (tmp >= 0) break :blk self.*.source + @as(usize, @intCast(tmp)) else break :blk self.*.source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
             }).*))) == @as(c_int, '/')))) {
                 if (@as(c_int, @bitCast(@as(c_uint, (blk: {
@@ -4995,10 +3597,10 @@ pub export fn Lexer_compute_indent(arg_self: [*c]Lexer) i64 {
                 }).*))) == @as(c_int, '\n')) {
                     indent = 0;
                 }
-                temp = temp + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                temp = temp + @as(c_longlong, 1);
             }
             if (temp < self.*.source_len) {
-                temp = temp + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+                temp = temp + @as(c_longlong, 2);
             }
         } else {
             has_content = @as(c_int, 1) != 0;
@@ -5008,7 +3610,7 @@ pub export fn Lexer_compute_indent(arg_self: [*c]Lexer) i64 {
     if (has_content) {
         return indent;
     }
-    return @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    return -@as(c_longlong, 1);
 }
 pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
     var self = arg_self;
@@ -5019,33 +3621,33 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
         if (false) {
             var indent: i64 = Lexer_compute_indent(self);
             _ = &indent;
-            if (indent >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-                if ((self.*.paren_depth == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) and (self.*.brace_depth == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))))) {
-                    var current: i64 = ArrayList_Int_get(self.*.indent_stack, ArrayList_Int_length(self.*.indent_stack) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))));
+            if (indent >= @as(c_longlong, 0)) {
+                if ((self.*.paren_depth == @as(c_longlong, 0)) and (self.*.brace_depth == @as(c_longlong, 0))) {
+                    var current: i64 = ArrayList_Int_get(self.*.indent_stack, ArrayList_Int_length(self.*.indent_stack) - @as(c_longlong, 1));
                     _ = &current;
                     if (indent > current) {
                         ArrayList_Int_push(self.*.indent_stack, indent);
                         Lexer_emit(self, @as(c_uint, @bitCast(TokenType_INDENT)), TokenValue{
                             .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_int_TAG)))),
-                            .payload = union_unnamed_6{
-                                .tv_int = struct_unnamed_7{
+                            .payload = union_unnamed_3{
+                                .tv_int = struct_unnamed_4{
                                     .v = indent,
                                 },
                             },
                         });
                     } else if (indent < current) {
-                        while (indent < ArrayList_Int_get(self.*.indent_stack, ArrayList_Int_length(self.*.indent_stack) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))) {
+                        while (indent < ArrayList_Int_get(self.*.indent_stack, ArrayList_Int_length(self.*.indent_stack) - @as(c_longlong, 1))) {
                             _ = ArrayList_Int_pop(self.*.indent_stack);
                             Lexer_emit(self, @as(c_uint, @bitCast(TokenType_DEDENT)), TokenValue{
                                 .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_int_TAG)))),
-                                .payload = union_unnamed_6{
-                                    .tv_int = struct_unnamed_7{
+                                .payload = union_unnamed_3{
+                                    .tv_int = struct_unnamed_4{
                                         .v = indent,
                                     },
                                 },
                             });
                         }
-                        if (indent != ArrayList_Int_get(self.*.indent_stack, ArrayList_Int_length(self.*.indent_stack) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))) {
+                        if (indent != ArrayList_Int_get(self.*.indent_stack, ArrayList_Int_length(self.*.indent_stack) - @as(c_longlong, 1))) {
                             self.*.has_error = @as(c_int, 1) != 0;
                         }
                     }
@@ -5055,20 +3657,20 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
         }
         Lexer_skip_whitespace(self);
         if (self.*.cursor < self.*.source_len) {
-            var c: u8 = Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+            var c: u8 = Lexer_peek(self, @as(c_longlong, 0));
             _ = &c;
             if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '\n')) {
                 _ = Lexer_advance(self);
-                if (self.*.paren_depth == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                if (self.*.paren_depth == @as(c_longlong, 0)) {
                     var last: i64 = ArrayList_Token_length(self.*.tokens);
                     _ = &last;
-                    if (last > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-                        var last_tok: Token = ArrayList_Token_get(self.*.tokens, last - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))));
+                    if (last > @as(c_longlong, 0)) {
+                        var last_tok: Token = ArrayList_Token_get(self.*.tokens, last - @as(c_longlong, 1));
                         _ = &last_tok;
                         if (((last_tok.tok_type != @as(c_uint, @bitCast(TokenType_NEWLINE))) and (last_tok.tok_type != @as(c_uint, @bitCast(TokenType_INDENT)))) and (last_tok.tok_type != @as(c_uint, @bitCast(TokenType_DEDENT)))) {
                             Lexer_emit(self, @as(c_uint, @bitCast(TokenType_NEWLINE)), TokenValue{
                                 .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_none_TAG)))),
-                                .payload = @import("std").mem.zeroes(union_unnamed_6),
+                                .payload = @import("std").mem.zeroes(union_unnamed_3),
                             });
                         }
                     }
@@ -5082,157 +3684,157 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 Lexer_lex_string(self);
             } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '\'')) {
                 Lexer_lex_char(self);
-            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '-')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '>'))) {
+            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '-')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '>'))) {
                 _ = Lexer_advance(self);
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_ARROW)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "->",
                         },
                     },
                 });
-            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '=')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '>'))) {
+            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '=')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '>'))) {
                 _ = Lexer_advance(self);
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_FAT_ARROW)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "=>",
                         },
                     },
                 });
-            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '+')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '='))) {
+            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '+')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '='))) {
                 _ = Lexer_advance(self);
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_PLUS_ASSIGN)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "+=",
                         },
                     },
                 });
-            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '-')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '='))) {
+            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '-')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '='))) {
                 _ = Lexer_advance(self);
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_MINUS_ASSIGN)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "-=",
                         },
                     },
                 });
-            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '=')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '='))) {
+            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '=')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '='))) {
                 _ = Lexer_advance(self);
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_EQ)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "==",
                         },
                     },
                 });
-            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '!')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '='))) {
+            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '!')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '='))) {
                 _ = Lexer_advance(self);
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_NE)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "!=",
                         },
                     },
                 });
-            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '<')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '='))) {
+            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '<')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '='))) {
                 _ = Lexer_advance(self);
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_LE)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "<=",
                         },
                     },
                 });
-            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '>')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '='))) {
+            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '>')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '='))) {
                 _ = Lexer_advance(self);
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_GE)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = ">=",
                         },
                     },
                 });
-            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '&')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '&'))) {
+            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '&')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '&'))) {
                 _ = Lexer_advance(self);
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_AND)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "&&",
                         },
                     },
                 });
-            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '|')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '|'))) {
+            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '|')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '|'))) {
                 _ = Lexer_advance(self);
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_OR)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "||",
                         },
                     },
                 });
-            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '<')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '<'))) {
+            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '<')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '<'))) {
                 _ = Lexer_advance(self);
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_LSHIFT)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "<<",
                         },
                     },
                 });
-            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '>')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '>'))) {
+            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '>')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '>'))) {
                 _ = Lexer_advance(self);
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_RSHIFT)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = ">>",
                         },
                     },
                 });
-            } else if (((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '.')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '.'))) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2)))))))) == @as(c_int, '='))) {
+            } else if (((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '.')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '.'))) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 2))))) == @as(c_int, '='))) {
                 _ = Lexer_advance(self);
                 _ = Lexer_advance(self);
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_DOTDOTEQ)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "..=",
                         },
                     },
                 });
-            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '.')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) == @as(c_int, '.'))) {
+            } else if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '.')) and (@as(c_int, @bitCast(@as(c_uint, Lexer_peek(self, @as(c_longlong, 1))))) == @as(c_int, '.'))) {
                 _ = Lexer_advance(self);
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_DOTDOT)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "..",
                         },
                     },
@@ -5241,8 +3843,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_PLUS)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "+",
                         },
                     },
@@ -5251,8 +3853,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_MINUS)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "-",
                         },
                     },
@@ -5261,8 +3863,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_MUL)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "*",
                         },
                     },
@@ -5271,8 +3873,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_DIV)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "/",
                         },
                     },
@@ -5281,8 +3883,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_MOD)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "%",
                         },
                     },
@@ -5291,8 +3893,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_ASSIGN)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "=",
                         },
                     },
@@ -5301,8 +3903,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_LT)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "<",
                         },
                     },
@@ -5311,8 +3913,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_GT)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = ">",
                         },
                     },
@@ -5321,8 +3923,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_COLON)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = ":",
                         },
                     },
@@ -5331,8 +3933,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_SEMICOLON)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = ";",
                         },
                     },
@@ -5341,80 +3943,80 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_COMMA)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = ",",
                         },
                     },
                 });
             } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '(')) {
                 _ = Lexer_advance(self);
-                self.*.paren_depth = self.*.paren_depth + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                self.*.paren_depth = self.*.paren_depth + @as(c_longlong, 1);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_LPAREN)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "(",
                         },
                     },
                 });
             } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, ')')) {
                 _ = Lexer_advance(self);
-                if (self.*.paren_depth > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-                    self.*.paren_depth = self.*.paren_depth - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                if (self.*.paren_depth > @as(c_longlong, 0)) {
+                    self.*.paren_depth = self.*.paren_depth - @as(c_longlong, 1);
                 }
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_RPAREN)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = ")",
                         },
                     },
                 });
             } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '[')) {
                 _ = Lexer_advance(self);
-                self.*.paren_depth = self.*.paren_depth + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                self.*.paren_depth = self.*.paren_depth + @as(c_longlong, 1);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_LBRACKET)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "[",
                         },
                     },
                 });
             } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, ']')) {
                 _ = Lexer_advance(self);
-                if (self.*.paren_depth > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-                    self.*.paren_depth = self.*.paren_depth - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                if (self.*.paren_depth > @as(c_longlong, 0)) {
+                    self.*.paren_depth = self.*.paren_depth - @as(c_longlong, 1);
                 }
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_RBRACKET)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "]",
                         },
                     },
                 });
             } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '{')) {
                 _ = Lexer_advance(self);
-                self.*.brace_depth = self.*.brace_depth + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                self.*.brace_depth = self.*.brace_depth + @as(c_longlong, 1);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_LBRACE)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "{",
                         },
                     },
                 });
             } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, '}')) {
                 _ = Lexer_advance(self);
-                if (self.*.brace_depth > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-                    self.*.brace_depth = self.*.brace_depth - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                if (self.*.brace_depth > @as(c_longlong, 0)) {
+                    self.*.brace_depth = self.*.brace_depth - @as(c_longlong, 1);
                 }
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_RBRACE)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "}",
                         },
                     },
@@ -5423,8 +4025,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_AMP)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "&",
                         },
                     },
@@ -5433,8 +4035,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_HASH)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "#",
                         },
                     },
@@ -5443,8 +4045,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_NOT)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "!",
                         },
                     },
@@ -5453,8 +4055,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_QUESTION)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "?",
                         },
                     },
@@ -5463,8 +4065,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_BITXOR)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "^",
                         },
                     },
@@ -5473,8 +4075,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_BITNOT)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "~",
                         },
                     },
@@ -5483,8 +4085,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_PIPE)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = "|",
                         },
                     },
@@ -5493,8 +4095,8 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 _ = Lexer_advance(self);
                 Lexer_emit(self, @as(c_uint, @bitCast(TokenType_DOT)), TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = ".",
                         },
                     },
@@ -5510,16 +4112,16 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
         _ = ArrayList_Int_pop(self.*.indent_stack);
         Lexer_emit(self, @as(c_uint, @bitCast(TokenType_DEDENT)), TokenValue{
             .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_int_TAG)))),
-            .payload = union_unnamed_6{
-                .tv_int = struct_unnamed_7{
-                    .v = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
+            .payload = union_unnamed_3{
+                .tv_int = struct_unnamed_4{
+                    .v = @as(c_longlong, 0),
                 },
             },
         });
     }
     Lexer_emit(self, @as(c_uint, @bitCast(TokenType_EOF)), TokenValue{
         .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_none_TAG)))),
-        .payload = @import("std").mem.zeroes(union_unnamed_6),
+        .payload = @import("std").mem.zeroes(union_unnamed_3),
     });
 }
 pub export fn print_separator() void {
@@ -5559,7 +4161,7 @@ pub export fn ArrayList_Param_init(arg_allocator: [*c]KaiAllocator) ArrayList_Pa
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]Param, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Param)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]Param, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Param)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -5569,10 +4171,10 @@ pub export fn ArrayList_Param_push(arg_self: [*c]ArrayList_Param, arg_item: Para
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]Param = @as([*c]Param, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Param)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]Param = @as([*c]Param, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Param)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -5584,7 +4186,7 @@ pub export fn ArrayList_Param_push(arg_self: [*c]ArrayList_Param, arg_item: Para
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -5595,16 +4197,16 @@ pub export fn ArrayList_Param_push(arg_self: [*c]ArrayList_Param, arg_item: Para
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_Param_get(arg_self: [*c]ArrayList_Param, arg_index_1: i64) Param {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -5619,9 +4221,9 @@ pub export fn ArrayList_Param_set(arg_self: [*c]ArrayList_Param, arg_index_1: i6
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -5632,12 +4234,12 @@ pub export fn ArrayList_Param_set(arg_self: [*c]ArrayList_Param, arg_index_1: i6
 pub export fn ArrayList_Param_pop(arg_self: [*c]ArrayList_Param) Param {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -5669,7 +4271,7 @@ pub export fn ArrayList_Str_init(arg_allocator: [*c]KaiAllocator) ArrayList_Str 
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c][*c]const u8, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf([*c]const u8)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c][*c]const u8, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf([*c]const u8)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -5679,10 +4281,10 @@ pub export fn ArrayList_Str_push(arg_self: [*c]ArrayList_Str, arg_item: [*c]cons
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c][*c]const u8 = @as([*c][*c]const u8, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf([*c]const u8)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c][*c]const u8 = @as([*c][*c]const u8, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf([*c]const u8)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -5694,7 +4296,7 @@ pub export fn ArrayList_Str_push(arg_self: [*c]ArrayList_Str, arg_item: [*c]cons
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -5705,16 +4307,16 @@ pub export fn ArrayList_Str_push(arg_self: [*c]ArrayList_Str, arg_item: [*c]cons
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_Str_get(arg_self: [*c]ArrayList_Str, arg_index_1: i64) [*c]const u8 {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -5729,9 +4331,9 @@ pub export fn ArrayList_Str_set(arg_self: [*c]ArrayList_Str, arg_index_1: i64, a
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -5742,12 +4344,12 @@ pub export fn ArrayList_Str_set(arg_self: [*c]ArrayList_Str, arg_index_1: i64, a
 pub export fn ArrayList_Str_pop(arg_self: [*c]ArrayList_Str) [*c]const u8 {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -5779,7 +4381,7 @@ pub export fn ArrayList_StrInterpPart_init(arg_allocator: [*c]KaiAllocator) Arra
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]StrInterpPart, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StrInterpPart)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]StrInterpPart, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StrInterpPart)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -5789,10 +4391,10 @@ pub export fn ArrayList_StrInterpPart_push(arg_self: [*c]ArrayList_StrInterpPart
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]StrInterpPart = @as([*c]StrInterpPart, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StrInterpPart)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]StrInterpPart = @as([*c]StrInterpPart, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StrInterpPart)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -5804,7 +4406,7 @@ pub export fn ArrayList_StrInterpPart_push(arg_self: [*c]ArrayList_StrInterpPart
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -5815,16 +4417,16 @@ pub export fn ArrayList_StrInterpPart_push(arg_self: [*c]ArrayList_StrInterpPart
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_StrInterpPart_get(arg_self: [*c]ArrayList_StrInterpPart, arg_index_1: i64) StrInterpPart {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -5839,9 +4441,9 @@ pub export fn ArrayList_StrInterpPart_set(arg_self: [*c]ArrayList_StrInterpPart,
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -5852,12 +4454,12 @@ pub export fn ArrayList_StrInterpPart_set(arg_self: [*c]ArrayList_StrInterpPart,
 pub export fn ArrayList_StrInterpPart_pop(arg_self: [*c]ArrayList_StrInterpPart) StrInterpPart {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -5889,7 +4491,7 @@ pub export fn ArrayList_FieldInit_init(arg_allocator: [*c]KaiAllocator) ArrayLis
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]FieldInit, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(FieldInit)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]FieldInit, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(FieldInit)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -5899,10 +4501,10 @@ pub export fn ArrayList_FieldInit_push(arg_self: [*c]ArrayList_FieldInit, arg_it
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]FieldInit = @as([*c]FieldInit, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(FieldInit)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]FieldInit = @as([*c]FieldInit, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(FieldInit)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -5914,7 +4516,7 @@ pub export fn ArrayList_FieldInit_push(arg_self: [*c]ArrayList_FieldInit, arg_it
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -5925,16 +4527,16 @@ pub export fn ArrayList_FieldInit_push(arg_self: [*c]ArrayList_FieldInit, arg_it
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_FieldInit_get(arg_self: [*c]ArrayList_FieldInit, arg_index_1: i64) FieldInit {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -5949,9 +4551,9 @@ pub export fn ArrayList_FieldInit_set(arg_self: [*c]ArrayList_FieldInit, arg_ind
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -5962,12 +4564,12 @@ pub export fn ArrayList_FieldInit_set(arg_self: [*c]ArrayList_FieldInit, arg_ind
 pub export fn ArrayList_FieldInit_pop(arg_self: [*c]ArrayList_FieldInit) FieldInit {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -5999,7 +4601,7 @@ pub export fn ArrayList_AsmOutput_init(arg_allocator: [*c]KaiAllocator) ArrayLis
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]AsmOutput, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(AsmOutput)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]AsmOutput, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(AsmOutput)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -6009,10 +4611,10 @@ pub export fn ArrayList_AsmOutput_push(arg_self: [*c]ArrayList_AsmOutput, arg_it
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]AsmOutput = @as([*c]AsmOutput, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(AsmOutput)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]AsmOutput = @as([*c]AsmOutput, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(AsmOutput)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -6024,7 +4626,7 @@ pub export fn ArrayList_AsmOutput_push(arg_self: [*c]ArrayList_AsmOutput, arg_it
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -6035,16 +4637,16 @@ pub export fn ArrayList_AsmOutput_push(arg_self: [*c]ArrayList_AsmOutput, arg_it
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_AsmOutput_get(arg_self: [*c]ArrayList_AsmOutput, arg_index_1: i64) AsmOutput {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -6059,9 +4661,9 @@ pub export fn ArrayList_AsmOutput_set(arg_self: [*c]ArrayList_AsmOutput, arg_ind
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -6072,12 +4674,12 @@ pub export fn ArrayList_AsmOutput_set(arg_self: [*c]ArrayList_AsmOutput, arg_ind
 pub export fn ArrayList_AsmOutput_pop(arg_self: [*c]ArrayList_AsmOutput) AsmOutput {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -6109,7 +4711,7 @@ pub export fn ArrayList_AsmInput_init(arg_allocator: [*c]KaiAllocator) ArrayList
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]AsmInput, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(AsmInput)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]AsmInput, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(AsmInput)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -6119,10 +4721,10 @@ pub export fn ArrayList_AsmInput_push(arg_self: [*c]ArrayList_AsmInput, arg_item
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]AsmInput = @as([*c]AsmInput, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(AsmInput)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]AsmInput = @as([*c]AsmInput, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(AsmInput)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -6134,7 +4736,7 @@ pub export fn ArrayList_AsmInput_push(arg_self: [*c]ArrayList_AsmInput, arg_item
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -6145,16 +4747,16 @@ pub export fn ArrayList_AsmInput_push(arg_self: [*c]ArrayList_AsmInput, arg_item
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_AsmInput_get(arg_self: [*c]ArrayList_AsmInput, arg_index_1: i64) AsmInput {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -6169,9 +4771,9 @@ pub export fn ArrayList_AsmInput_set(arg_self: [*c]ArrayList_AsmInput, arg_index
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -6182,12 +4784,12 @@ pub export fn ArrayList_AsmInput_set(arg_self: [*c]ArrayList_AsmInput, arg_index
 pub export fn ArrayList_AsmInput_pop(arg_self: [*c]ArrayList_AsmInput) AsmInput {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -6219,7 +4821,7 @@ pub export fn ArrayList_StructField_init(arg_allocator: [*c]KaiAllocator) ArrayL
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]StructField, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StructField)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]StructField, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StructField)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -6229,10 +4831,10 @@ pub export fn ArrayList_StructField_push(arg_self: [*c]ArrayList_StructField, ar
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]StructField = @as([*c]StructField, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StructField)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]StructField = @as([*c]StructField, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StructField)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -6244,7 +4846,7 @@ pub export fn ArrayList_StructField_push(arg_self: [*c]ArrayList_StructField, ar
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -6255,16 +4857,16 @@ pub export fn ArrayList_StructField_push(arg_self: [*c]ArrayList_StructField, ar
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_StructField_get(arg_self: [*c]ArrayList_StructField, arg_index_1: i64) StructField {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -6279,9 +4881,9 @@ pub export fn ArrayList_StructField_set(arg_self: [*c]ArrayList_StructField, arg
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -6292,12 +4894,12 @@ pub export fn ArrayList_StructField_set(arg_self: [*c]ArrayList_StructField, arg
 pub export fn ArrayList_StructField_pop(arg_self: [*c]ArrayList_StructField) StructField {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -6329,7 +4931,7 @@ pub export fn ArrayList_Variant_init(arg_allocator: [*c]KaiAllocator) ArrayList_
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]Variant, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Variant)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]Variant, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Variant)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -6339,10 +4941,10 @@ pub export fn ArrayList_Variant_push(arg_self: [*c]ArrayList_Variant, arg_item: 
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]Variant = @as([*c]Variant, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Variant)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]Variant = @as([*c]Variant, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Variant)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -6354,7 +4956,7 @@ pub export fn ArrayList_Variant_push(arg_self: [*c]ArrayList_Variant, arg_item: 
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -6365,16 +4967,16 @@ pub export fn ArrayList_Variant_push(arg_self: [*c]ArrayList_Variant, arg_item: 
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_Variant_get(arg_self: [*c]ArrayList_Variant, arg_index_1: i64) Variant {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -6389,9 +4991,9 @@ pub export fn ArrayList_Variant_set(arg_self: [*c]ArrayList_Variant, arg_index_1
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -6402,12 +5004,12 @@ pub export fn ArrayList_Variant_set(arg_self: [*c]ArrayList_Variant, arg_index_1
 pub export fn ArrayList_Variant_pop(arg_self: [*c]ArrayList_Variant) Variant {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -6439,7 +5041,7 @@ pub export fn ArrayList_DropVarEntry_init(arg_allocator: [*c]KaiAllocator) Array
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]DropVarEntry, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(DropVarEntry)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]DropVarEntry, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(DropVarEntry)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -6449,10 +5051,10 @@ pub export fn ArrayList_DropVarEntry_push(arg_self: [*c]ArrayList_DropVarEntry, 
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]DropVarEntry = @as([*c]DropVarEntry, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(DropVarEntry)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]DropVarEntry = @as([*c]DropVarEntry, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(DropVarEntry)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -6464,7 +5066,7 @@ pub export fn ArrayList_DropVarEntry_push(arg_self: [*c]ArrayList_DropVarEntry, 
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -6475,16 +5077,16 @@ pub export fn ArrayList_DropVarEntry_push(arg_self: [*c]ArrayList_DropVarEntry, 
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_DropVarEntry_get(arg_self: [*c]ArrayList_DropVarEntry, arg_index_1: i64) DropVarEntry {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -6499,9 +5101,9 @@ pub export fn ArrayList_DropVarEntry_set(arg_self: [*c]ArrayList_DropVarEntry, a
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -6512,12 +5114,12 @@ pub export fn ArrayList_DropVarEntry_set(arg_self: [*c]ArrayList_DropVarEntry, a
 pub export fn ArrayList_DropVarEntry_pop(arg_self: [*c]ArrayList_DropVarEntry) DropVarEntry {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -6549,7 +5151,7 @@ pub export fn ArrayList_MatchCase_init(arg_allocator: [*c]KaiAllocator) ArrayLis
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]MatchCase, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(MatchCase)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]MatchCase, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(MatchCase)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -6559,10 +5161,10 @@ pub export fn ArrayList_MatchCase_push(arg_self: [*c]ArrayList_MatchCase, arg_it
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]MatchCase = @as([*c]MatchCase, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(MatchCase)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]MatchCase = @as([*c]MatchCase, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(MatchCase)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -6574,7 +5176,7 @@ pub export fn ArrayList_MatchCase_push(arg_self: [*c]ArrayList_MatchCase, arg_it
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -6585,16 +5187,16 @@ pub export fn ArrayList_MatchCase_push(arg_self: [*c]ArrayList_MatchCase, arg_it
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_MatchCase_get(arg_self: [*c]ArrayList_MatchCase, arg_index_1: i64) MatchCase {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -6609,9 +5211,9 @@ pub export fn ArrayList_MatchCase_set(arg_self: [*c]ArrayList_MatchCase, arg_ind
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -6622,12 +5224,12 @@ pub export fn ArrayList_MatchCase_set(arg_self: [*c]ArrayList_MatchCase, arg_ind
 pub export fn ArrayList_MatchCase_pop(arg_self: [*c]ArrayList_MatchCase) MatchCase {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -6647,90 +5249,90 @@ pub export fn ArrayList_MatchCase_deinit(arg_self: [*c]ArrayList_MatchCase) void
 }
 pub export fn empty_dropvarentry_array() ArrayList_DropVarEntry {
     return ArrayList_DropVarEntry{
-        .data = @as([*c]DropVarEntry, @ptrFromInt(@as(c_int, 0))),
-        .len = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .cap = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_int, 0))),
+        .data = @as([*c]DropVarEntry, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .len = @as(c_longlong, 0),
+        .cap = @as(c_longlong, 0),
+        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
     };
 }
 pub export fn empty_str_array() ArrayList_Str {
     return ArrayList_Str{
-        .data = @as([*c][*c]const u8, @ptrFromInt(@as(c_int, 0))),
-        .len = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .cap = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_int, 0))),
+        .data = @as([*c][*c]const u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .len = @as(c_longlong, 0),
+        .cap = @as(c_longlong, 0),
+        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
     };
 }
 pub export fn empty_int_array() ArrayList_Int {
     return ArrayList_Int{
-        .data = @as([*c]i64, @ptrFromInt(@as(c_int, 0))),
-        .len = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .cap = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_int, 0))),
+        .data = @as([*c]i64, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .len = @as(c_longlong, 0),
+        .cap = @as(c_longlong, 0),
+        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
     };
 }
 pub export fn empty_fieldinit_array() ArrayList_FieldInit {
     return ArrayList_FieldInit{
-        .data = @as([*c]FieldInit, @ptrFromInt(@as(c_int, 0))),
-        .len = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .cap = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_int, 0))),
+        .data = @as([*c]FieldInit, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .len = @as(c_longlong, 0),
+        .cap = @as(c_longlong, 0),
+        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
     };
 }
 pub export fn empty_param_array() ArrayList_Param {
     return ArrayList_Param{
-        .data = @as([*c]Param, @ptrFromInt(@as(c_int, 0))),
-        .len = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .cap = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_int, 0))),
+        .data = @as([*c]Param, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .len = @as(c_longlong, 0),
+        .cap = @as(c_longlong, 0),
+        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
     };
 }
 pub export fn empty_structfield_array() ArrayList_StructField {
     return ArrayList_StructField{
-        .data = @as([*c]StructField, @ptrFromInt(@as(c_int, 0))),
-        .len = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .cap = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_int, 0))),
+        .data = @as([*c]StructField, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .len = @as(c_longlong, 0),
+        .cap = @as(c_longlong, 0),
+        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
     };
 }
 pub export fn empty_variant_array() ArrayList_Variant {
     return ArrayList_Variant{
-        .data = @as([*c]Variant, @ptrFromInt(@as(c_int, 0))),
-        .len = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .cap = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_int, 0))),
+        .data = @as([*c]Variant, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .len = @as(c_longlong, 0),
+        .cap = @as(c_longlong, 0),
+        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
     };
 }
 pub export fn empty_matchcase_array() ArrayList_MatchCase {
     return ArrayList_MatchCase{
-        .data = @as([*c]MatchCase, @ptrFromInt(@as(c_int, 0))),
-        .len = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .cap = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_int, 0))),
+        .data = @as([*c]MatchCase, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .len = @as(c_longlong, 0),
+        .cap = @as(c_longlong, 0),
+        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
     };
 }
 pub export fn empty_strinterp_array() ArrayList_StrInterpPart {
     return ArrayList_StrInterpPart{
-        .data = @as([*c]StrInterpPart, @ptrFromInt(@as(c_int, 0))),
-        .len = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .cap = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_int, 0))),
+        .data = @as([*c]StrInterpPart, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .len = @as(c_longlong, 0),
+        .cap = @as(c_longlong, 0),
+        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
     };
 }
 pub export fn empty_asmoutput_array() ArrayList_AsmOutput {
     return ArrayList_AsmOutput{
-        .data = @as([*c]AsmOutput, @ptrFromInt(@as(c_int, 0))),
-        .len = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .cap = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_int, 0))),
+        .data = @as([*c]AsmOutput, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .len = @as(c_longlong, 0),
+        .cap = @as(c_longlong, 0),
+        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
     };
 }
 pub export fn empty_asminput_array() ArrayList_AsmInput {
     return ArrayList_AsmInput{
-        .data = @as([*c]AsmInput, @ptrFromInt(@as(c_int, 0))),
-        .len = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .cap = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
-        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_int, 0))),
+        .data = @as([*c]AsmInput, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .len = @as(c_longlong, 0),
+        .cap = @as(c_longlong, 0),
+        .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
     };
 }
 pub export fn new_expr_node(arg_kind: ExprKind) ExprNode {
@@ -6741,46 +5343,46 @@ pub export fn new_expr_node(arg_kind: ExprKind) ExprNode {
         .inferred_type = "",
         .lit_value = TokenValue{
             .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_none_TAG)))),
-            .payload = @import("std").mem.zeroes(union_unnamed_6),
+            .payload = @import("std").mem.zeroes(union_unnamed_3),
         },
         .lit_vkind = "",
         .interp_parts = empty_strinterp_array(),
         .ident_name = "",
         .ident_type_args = empty_str_array(),
         .binop_op = "",
-        .binop_left = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .binop_right = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .binop_left = -@as(c_longlong, 1),
+        .binop_right = -@as(c_longlong, 1),
         .unop_op = "",
-        .unop_operand = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .unop_operand = -@as(c_longlong, 1),
         .func_name = "",
         .func_args = empty_int_array(),
         .func_type_args = empty_str_array(),
         .struct_name = "",
         .struct_fields = empty_fieldinit_array(),
-        .field_expr = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .field_expr = -@as(c_longlong, 1),
         .field_name = "",
-        .meth_expr = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .meth_expr = -@as(c_longlong, 1),
         .meth_name = "",
         .meth_args = empty_int_array(),
-        .idx_expr = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .idx_index = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .check_expr = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .slice_expr = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .slice_lower = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .slice_upper = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .idx_expr = -@as(c_longlong, 1),
+        .idx_index = -@as(c_longlong, 1),
+        .check_expr = -@as(c_longlong, 1),
+        .slice_expr = -@as(c_longlong, 1),
+        .slice_lower = -@as(c_longlong, 1),
+        .slice_upper = -@as(c_longlong, 1),
         .slice_inclusive = @as(c_int, 0) != 0,
-        .range_start = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .range_end = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .range_start = -@as(c_longlong, 1),
+        .range_end = -@as(c_longlong, 1),
         .range_inclusive = @as(c_int, 0) != 0,
         .arr_elements = empty_int_array(),
         .tup_elements = empty_int_array(),
-        .borrow_expr = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .borrow_expr = -@as(c_longlong, 1),
         .borrow_mut = @as(c_int, 0) != 0,
-        .deref_expr = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .try_expr = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .catch_expr = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .deref_expr = -@as(c_longlong, 1),
+        .try_expr = -@as(c_longlong, 1),
+        .catch_expr = -@as(c_longlong, 1),
         .catch_var = "",
-        .catch_fallback = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .catch_fallback = -@as(c_longlong, 1),
         .asm_code = "",
         .asm_is_volatile = @as(c_int, 0) != 0,
         .asm_outputs = empty_asmoutput_array(),
@@ -6798,15 +5400,15 @@ pub export fn new_stmt_node(arg_kind: StmtKind) StmtNode {
         .block_stmts = empty_int_array(),
         .vardecl_name = "",
         .vardecl_type = "",
-        .vardecl_value = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .vardecl_value = -@as(c_longlong, 1),
         .vardecl_mut = @as(c_int, 0) != 0,
-        .assign_target = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .assign_value = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .assign_target = -@as(c_longlong, 1),
+        .assign_value = -@as(c_longlong, 1),
         .assign_op = "",
         .func_name = "",
         .func_params = empty_param_array(),
         .func_return_type = "",
-        .func_body = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .func_body = -@as(c_longlong, 1),
         .func_capability = "",
         .func_type_params = empty_str_array(),
         .func_public = @as(c_int, 0) != 0,
@@ -6826,25 +5428,25 @@ pub export fn new_stmt_node(arg_kind: StmtKind) StmtNode {
         .enum_variants = empty_variant_array(),
         .enum_type_params = empty_str_array(),
         .enum_public = @as(c_int, 0) != 0,
-        .if_cond = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .if_then = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .if_else = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .if_cond = -@as(c_longlong, 1),
+        .if_then = -@as(c_longlong, 1),
+        .if_else = -@as(c_longlong, 1),
         .iflet_var = "",
-        .iflet_expr = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .iflet_then = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .iflet_else = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .while_cond = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .while_body = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .iflet_expr = -@as(c_longlong, 1),
+        .iflet_then = -@as(c_longlong, 1),
+        .iflet_else = -@as(c_longlong, 1),
+        .while_cond = -@as(c_longlong, 1),
+        .while_body = -@as(c_longlong, 1),
         .for_var = "",
-        .for_start = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .for_end = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .for_start = -@as(c_longlong, 1),
+        .for_end = -@as(c_longlong, 1),
         .for_inclusive = @as(c_int, 0) != 0,
-        .for_body = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .return_value = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .print_value = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .expr_stmt = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .defer_body = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
-        .unsafe_body = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .for_body = -@as(c_longlong, 1),
+        .return_value = -@as(c_longlong, 1),
+        .print_value = -@as(c_longlong, 1),
+        .expr_stmt = -@as(c_longlong, 1),
+        .defer_body = -@as(c_longlong, 1),
+        .unsafe_body = -@as(c_longlong, 1),
         .extern_name = "",
         .extern_params = empty_param_array(),
         .extern_return = "",
@@ -6854,7 +5456,7 @@ pub export fn new_stmt_node(arg_kind: StmtKind) StmtNode {
         .cimport_alias = "",
         .block_drop_vars = empty_dropvarentry_array(),
         .block_is_loop_body = @as(c_int, 0) != 0,
-        .match_expr = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1)))),
+        .match_expr = -@as(c_longlong, 1),
         .match_cases = empty_matchcase_array(),
         .error_name = "",
         .error_variants = empty_str_array(),
@@ -6871,7 +5473,7 @@ pub export fn new_pattern_node(arg_kind: PatternKind) PatternNode {
         .bindings = empty_str_array(),
         .lit_value = TokenValue{
             .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_none_TAG)))),
-            .payload = @import("std").mem.zeroes(union_unnamed_6),
+            .payload = @import("std").mem.zeroes(union_unnamed_3),
         },
     };
     _ = &node;
@@ -6889,7 +5491,7 @@ pub export fn tv_get_str(arg_val: TokenValue) [*c]const u8 {
     } else {
         {
             _ = printf("error[E0101]: internal error: unexpected token value type\n");
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return result;
@@ -6987,16 +5589,16 @@ pub export fn str_array_join(arg_arr: ArrayList_Str, arg_sep: [*c]const u8) [*c]
     _ = &arr;
     var sep = arg_sep;
     _ = &sep;
-    if (ArrayList_Str_length(&arr) == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (ArrayList_Str_length(&arr) == @as(c_longlong, 0)) {
         return "";
     }
-    var result: [*c]const u8 = ArrayList_Str_get(&arr, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    var result: [*c]const u8 = ArrayList_Str_get(&arr, @as(c_longlong, 0));
     _ = &result;
     var i: i64 = 1;
     _ = &i;
     while (i < ArrayList_Str_length(&arr)) {
         result = _kai_str_concat(_kai_str_concat(result, sep), ArrayList_Str_get(&arr, i));
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
     return result;
 }
@@ -7014,7 +5616,7 @@ pub export fn ArrayList_ExprNode_init(arg_allocator: [*c]KaiAllocator) ArrayList
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]ExprNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(ExprNode)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]ExprNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(ExprNode)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -7024,10 +5626,10 @@ pub export fn ArrayList_ExprNode_push(arg_self: [*c]ArrayList_ExprNode, arg_item
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]ExprNode = @as([*c]ExprNode, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(ExprNode)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]ExprNode = @as([*c]ExprNode, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(ExprNode)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -7039,7 +5641,7 @@ pub export fn ArrayList_ExprNode_push(arg_self: [*c]ArrayList_ExprNode, arg_item
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -7050,16 +5652,16 @@ pub export fn ArrayList_ExprNode_push(arg_self: [*c]ArrayList_ExprNode, arg_item
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_ExprNode_get(arg_self: [*c]ArrayList_ExprNode, arg_index_1: i64) ExprNode {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -7074,9 +5676,9 @@ pub export fn ArrayList_ExprNode_set(arg_self: [*c]ArrayList_ExprNode, arg_index
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -7087,12 +5689,12 @@ pub export fn ArrayList_ExprNode_set(arg_self: [*c]ArrayList_ExprNode, arg_index
 pub export fn ArrayList_ExprNode_pop(arg_self: [*c]ArrayList_ExprNode) ExprNode {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -7124,7 +5726,7 @@ pub export fn ArrayList_StmtNode_init(arg_allocator: [*c]KaiAllocator) ArrayList
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]StmtNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StmtNode)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]StmtNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StmtNode)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -7134,10 +5736,10 @@ pub export fn ArrayList_StmtNode_push(arg_self: [*c]ArrayList_StmtNode, arg_item
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]StmtNode = @as([*c]StmtNode, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StmtNode)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]StmtNode = @as([*c]StmtNode, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StmtNode)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -7149,7 +5751,7 @@ pub export fn ArrayList_StmtNode_push(arg_self: [*c]ArrayList_StmtNode, arg_item
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -7160,16 +5762,16 @@ pub export fn ArrayList_StmtNode_push(arg_self: [*c]ArrayList_StmtNode, arg_item
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_StmtNode_get(arg_self: [*c]ArrayList_StmtNode, arg_index_1: i64) StmtNode {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -7184,9 +5786,9 @@ pub export fn ArrayList_StmtNode_set(arg_self: [*c]ArrayList_StmtNode, arg_index
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -7197,12 +5799,12 @@ pub export fn ArrayList_StmtNode_set(arg_self: [*c]ArrayList_StmtNode, arg_index
 pub export fn ArrayList_StmtNode_pop(arg_self: [*c]ArrayList_StmtNode) StmtNode {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -7234,7 +5836,7 @@ pub export fn ArrayList_PatternNode_init(arg_allocator: [*c]KaiAllocator) ArrayL
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]PatternNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(PatternNode)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]PatternNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(PatternNode)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -7244,10 +5846,10 @@ pub export fn ArrayList_PatternNode_push(arg_self: [*c]ArrayList_PatternNode, ar
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]PatternNode = @as([*c]PatternNode, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(PatternNode)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]PatternNode = @as([*c]PatternNode, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(PatternNode)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -7259,7 +5861,7 @@ pub export fn ArrayList_PatternNode_push(arg_self: [*c]ArrayList_PatternNode, ar
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -7270,16 +5872,16 @@ pub export fn ArrayList_PatternNode_push(arg_self: [*c]ArrayList_PatternNode, ar
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_PatternNode_get(arg_self: [*c]ArrayList_PatternNode, arg_index_1: i64) PatternNode {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -7294,9 +5896,9 @@ pub export fn ArrayList_PatternNode_set(arg_self: [*c]ArrayList_PatternNode, arg
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -7307,12 +5909,12 @@ pub export fn ArrayList_PatternNode_set(arg_self: [*c]ArrayList_PatternNode, arg
 pub export fn ArrayList_PatternNode_pop(arg_self: [*c]ArrayList_PatternNode) PatternNode {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -7388,9 +5990,9 @@ pub export fn Parser_init(arg_allocator: [*c]KaiAllocator, arg_tokens: [*c]Array
     self.pending_gt_line = 0;
     self.pending_gt_col = 0;
     {
-        self.expr_pool = @as([*c]ArrayList_ExprNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ArrayList_ExprNode)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 8))))))));
-        self.stmt_pool = @as([*c]ArrayList_StmtNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ArrayList_StmtNode)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 8))))))));
-        self.pattern_pool = @as([*c]ArrayList_PatternNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ArrayList_PatternNode)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 8))))))));
+        self.expr_pool = @as([*c]ArrayList_ExprNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ArrayList_ExprNode)))), @as(c_longlong, 8)))));
+        self.stmt_pool = @as([*c]ArrayList_StmtNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ArrayList_StmtNode)))), @as(c_longlong, 8)))));
+        self.pattern_pool = @as([*c]ArrayList_PatternNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ArrayList_PatternNode)))), @as(c_longlong, 8)))));
     }
     self.expr_pool.* = ArrayList_ExprNode_init(allocator);
     self.stmt_pool.* = ArrayList_StmtNode_init(allocator);
@@ -7402,13 +6004,13 @@ pub export fn Parser_peek(arg_self: [*c]Parser, arg_offset: i64) Token {
     _ = &self;
     var offset = arg_offset;
     _ = &offset;
-    if ((@as(c_int, @intFromBool(self.*.pending_gt)) != 0) and (offset == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))))) {
+    if ((@as(c_int, @intFromBool(self.*.pending_gt)) != 0) and (offset == @as(c_longlong, 0))) {
         return Token{
             .tok_type = @as(c_uint, @bitCast(TokenType_GT)),
             .value = TokenValue{
                 .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                .payload = union_unnamed_6{
-                    .tv_str = struct_unnamed_11{
+                .payload = union_unnamed_3{
+                    .tv_str = struct_unnamed_8{
                         .v = ">",
                     },
                 },
@@ -7420,7 +6022,7 @@ pub export fn Parser_peek(arg_self: [*c]Parser, arg_offset: i64) Token {
     var pos: i64 = self.*.cursor + offset;
     _ = &pos;
     if (pos >= ArrayList_Token_length(self.*.tokens)) {
-        return ArrayList_Token_get(self.*.tokens, ArrayList_Token_length(self.*.tokens) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))));
+        return ArrayList_Token_get(self.*.tokens, ArrayList_Token_length(self.*.tokens) - @as(c_longlong, 1));
     }
     return ArrayList_Token_get(self.*.tokens, pos);
 }
@@ -7433,8 +6035,8 @@ pub export fn Parser_advance(arg_self: [*c]Parser) Token {
             .tok_type = @as(c_uint, @bitCast(TokenType_GT)),
             .value = TokenValue{
                 .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                .payload = union_unnamed_6{
-                    .tv_str = struct_unnamed_11{
+                .payload = union_unnamed_3{
+                    .tv_str = struct_unnamed_8{
                         .v = ">",
                     },
                 },
@@ -7443,10 +6045,10 @@ pub export fn Parser_advance(arg_self: [*c]Parser) Token {
             .column = self.*.pending_gt_col,
         };
     }
-    var tok: Token = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    var tok: Token = Parser_peek(self, @as(c_longlong, 0));
     _ = &tok;
     if (tok.tok_type != @as(c_uint, @bitCast(TokenType_EOF))) {
-        self.*.cursor = self.*.cursor + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        self.*.cursor = self.*.cursor + @as(c_longlong, 1);
     }
     return tok;
 }
@@ -7455,7 +6057,7 @@ pub export fn Parser_match_token(arg_self: [*c]Parser, arg_ttype: TokenType) boo
     _ = &self;
     var ttype = arg_ttype;
     _ = &ttype;
-    if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == ttype) {
+    if (Parser_peek(self, @as(c_longlong, 0)).tok_type == ttype) {
         _ = Parser_advance(self);
         return @as(c_int, 1) != 0;
     }
@@ -7473,8 +6075,8 @@ pub export fn Parser_expect(arg_self: [*c]Parser, arg_ttype: TokenType) Token {
                 .tok_type = @as(c_uint, @bitCast(TokenType_GT)),
                 .value = TokenValue{
                     .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                    .payload = union_unnamed_6{
-                        .tv_str = struct_unnamed_11{
+                    .payload = union_unnamed_3{
+                        .tv_str = struct_unnamed_8{
                             .v = ">",
                         },
                     },
@@ -7485,19 +6087,19 @@ pub export fn Parser_expect(arg_self: [*c]Parser, arg_ttype: TokenType) Token {
         }
         self.*.pending_gt = @as(c_int, 0) != 0;
     }
-    var tok: Token = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    var tok: Token = Parser_peek(self, @as(c_longlong, 0));
     _ = &tok;
     if ((ttype == @as(c_uint, @bitCast(TokenType_GT))) and (tok.tok_type == @as(c_uint, @bitCast(TokenType_RSHIFT)))) {
         _ = Parser_advance(self);
         self.*.pending_gt = @as(c_int, 1) != 0;
         self.*.pending_gt_line = tok.line;
-        self.*.pending_gt_col = tok.column + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        self.*.pending_gt_col = tok.column + @as(c_longlong, 1);
         return Token{
             .tok_type = @as(c_uint, @bitCast(TokenType_GT)),
             .value = TokenValue{
                 .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_str_TAG)))),
-                .payload = union_unnamed_6{
-                    .tv_str = struct_unnamed_11{
+                .payload = union_unnamed_3{
+                    .tv_str = struct_unnamed_8{
                         .v = ">",
                     },
                 },
@@ -7511,7 +6113,7 @@ pub export fn Parser_expect(arg_self: [*c]Parser, arg_ttype: TokenType) Token {
     }
     {
         _ = printf("error[E0101]: expected token type %lld but found %lld at line %lld, column %lld\n", @as(i64, @bitCast(@as(c_ulonglong, ttype))), @as(i64, @bitCast(@as(c_ulonglong, tok.tok_type))), tok.line, tok.column);
-        exit(@as(c_int, 1));
+        exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
     }
     return tok;
 }
@@ -7523,7 +6125,7 @@ pub export fn Parser_consume_newlines(arg_self: [*c]Parser) void {
 pub export fn Parser_expect_end_of_statement(arg_self: [*c]Parser) void {
     var self = arg_self;
     _ = &self;
-    var tok: Token = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    var tok: Token = Parser_peek(self, @as(c_longlong, 0));
     _ = &tok;
     if ((((tok.tok_type == @as(c_uint, @bitCast(TokenType_RBRACE))) or (tok.tok_type == @as(c_uint, @bitCast(TokenType_DEDENT)))) or (tok.tok_type == @as(c_uint, @bitCast(TokenType_EOF)))) or (tok.tok_type == @as(c_uint, @bitCast(TokenType_LBRACE)))) {
         return;
@@ -7537,7 +6139,7 @@ pub export fn Parser_expect_end_of_statement(arg_self: [*c]Parser) void {
 pub export fn Parser_is_generic_instantiation(arg_self: [*c]Parser) bool {
     var self = arg_self;
     _ = &self;
-    if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))).tok_type != @as(c_uint, @bitCast(TokenType_LT))) {
+    if (Parser_peek(self, @as(c_longlong, 1)).tok_type != @as(c_uint, @bitCast(TokenType_LT))) {
         return @as(c_int, 0) != 0;
     }
     var offset: i64 = 2;
@@ -7557,21 +6159,21 @@ pub export fn Parser_is_generic_instantiation(arg_self: [*c]Parser) bool {
         if ((((((((tt == @as(c_uint, @bitCast(TokenType_IDENTIFIER))) or (tt == @as(c_uint, @bitCast(TokenType_MUL)))) or (tt == @as(c_uint, @bitCast(TokenType_AMP)))) or (tt == @as(c_uint, @bitCast(TokenType_LBRACKET)))) or (tt == @as(c_uint, @bitCast(TokenType_RBRACKET)))) or (tt == @as(c_uint, @bitCast(TokenType_COMMA)))) or (tt == @as(c_uint, @bitCast(TokenType_QUESTION)))) or (tt == @as(c_uint, @bitCast(TokenType_MUT)))) {
             done = @as(c_int, 0) != 0;
         } else if (tt == @as(c_uint, @bitCast(TokenType_LT))) {
-            nested = nested + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            nested = nested + @as(c_longlong, 1);
         } else if (tt == @as(c_uint, @bitCast(TokenType_GT))) {
-            nested = nested - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
-            if (nested <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-                return (Parser_peek(self, offset + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))).tok_type == @as(c_uint, @bitCast(TokenType_LPAREN))) or (Parser_peek(self, offset + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))).tok_type == @as(c_uint, @bitCast(TokenType_DOT)));
+            nested = nested - @as(c_longlong, 1);
+            if (nested <= @as(c_longlong, 0)) {
+                return (Parser_peek(self, offset + @as(c_longlong, 1)).tok_type == @as(c_uint, @bitCast(TokenType_LPAREN))) or (Parser_peek(self, offset + @as(c_longlong, 1)).tok_type == @as(c_uint, @bitCast(TokenType_DOT)));
             }
         } else if (tt == @as(c_uint, @bitCast(TokenType_RSHIFT))) {
-            nested = nested - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
-            if (nested <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-                return (Parser_peek(self, offset + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))).tok_type == @as(c_uint, @bitCast(TokenType_LPAREN))) or (Parser_peek(self, offset + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))).tok_type == @as(c_uint, @bitCast(TokenType_DOT)));
+            nested = nested - @as(c_longlong, 2);
+            if (nested <= @as(c_longlong, 0)) {
+                return (Parser_peek(self, offset + @as(c_longlong, 1)).tok_type == @as(c_uint, @bitCast(TokenType_LPAREN))) or (Parser_peek(self, offset + @as(c_longlong, 1)).tok_type == @as(c_uint, @bitCast(TokenType_DOT)));
             }
         } else {
             return @as(c_int, 0) != 0;
         }
-        offset = offset + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        offset = offset + @as(c_longlong, 1);
     }
     return @as(c_int, 0) != 0;
 }
@@ -7587,7 +6189,7 @@ pub export fn Parser_ex_literal(arg_self: [*c]Parser, arg_val: TokenValue, arg_v
     node.lit_value = val;
     node.lit_vkind = vkind;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_ident(arg_self: [*c]Parser, arg_name: [*c]const u8) i64 {
     var self = arg_self;
@@ -7598,7 +6200,7 @@ pub export fn Parser_ex_ident(arg_self: [*c]Parser, arg_name: [*c]const u8) i64 
     _ = &node;
     node.ident_name = name;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_ident_with(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_targs: ArrayList_Str) i64 {
     var self = arg_self;
@@ -7612,7 +6214,7 @@ pub export fn Parser_ex_ident_with(arg_self: [*c]Parser, arg_name: [*c]const u8,
     node.ident_name = name;
     node.ident_type_args = targs;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_binop(arg_self: [*c]Parser, arg_op: [*c]const u8, arg_left: i64, arg_right: i64) i64 {
     var self = arg_self;
@@ -7629,7 +6231,7 @@ pub export fn Parser_ex_binop(arg_self: [*c]Parser, arg_op: [*c]const u8, arg_le
     node.binop_left = left;
     node.binop_right = right;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_unop(arg_self: [*c]Parser, arg_op: [*c]const u8, arg_operand: i64) i64 {
     var self = arg_self;
@@ -7643,7 +6245,7 @@ pub export fn Parser_ex_unop(arg_self: [*c]Parser, arg_op: [*c]const u8, arg_ope
     node.unop_op = op;
     node.unop_operand = operand;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_call(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_args: ArrayList_Int) i64 {
     var self = arg_self;
@@ -7657,7 +6259,7 @@ pub export fn Parser_ex_call(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_a
     node.func_name = name;
     node.func_args = args;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_call_with(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_args: ArrayList_Int, arg_targs: ArrayList_Str) i64 {
     var self = arg_self;
@@ -7674,7 +6276,7 @@ pub export fn Parser_ex_call_with(arg_self: [*c]Parser, arg_name: [*c]const u8, 
     node.func_args = args;
     node.func_type_args = targs;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_struct_init(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_fields: ArrayList_FieldInit) i64 {
     var self = arg_self;
@@ -7688,7 +6290,7 @@ pub export fn Parser_ex_struct_init(arg_self: [*c]Parser, arg_name: [*c]const u8
     node.struct_name = name;
     node.struct_fields = fields;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_field(arg_self: [*c]Parser, arg_expr: i64, arg_field: [*c]const u8) i64 {
     var self = arg_self;
@@ -7702,7 +6304,7 @@ pub export fn Parser_ex_field(arg_self: [*c]Parser, arg_expr: i64, arg_field: [*
     node.field_expr = expr;
     node.field_name = field;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_method(arg_self: [*c]Parser, arg_expr: i64, arg_method: [*c]const u8, arg_args: ArrayList_Int) i64 {
     var self = arg_self;
@@ -7719,7 +6321,7 @@ pub export fn Parser_ex_method(arg_self: [*c]Parser, arg_expr: i64, arg_method: 
     node.meth_name = method;
     node.meth_args = args;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_index(arg_self: [*c]Parser, arg_expr: i64, arg_idx: i64) i64 {
     var self = arg_self;
@@ -7733,7 +6335,7 @@ pub export fn Parser_ex_index(arg_self: [*c]Parser, arg_expr: i64, arg_idx: i64)
     node.idx_expr = expr;
     node.idx_index = idx;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_check(arg_self: [*c]Parser, arg_expr: i64) i64 {
     var self = arg_self;
@@ -7744,7 +6346,7 @@ pub export fn Parser_ex_check(arg_self: [*c]Parser, arg_expr: i64) i64 {
     _ = &node;
     node.check_expr = expr;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_slice(arg_self: [*c]Parser, arg_expr: i64, arg_lower: i64, arg_upper: i64, arg_is_inclusive: bool) i64 {
     var self = arg_self;
@@ -7764,7 +6366,7 @@ pub export fn Parser_ex_slice(arg_self: [*c]Parser, arg_expr: i64, arg_lower: i6
     node.slice_upper = upper;
     node.slice_inclusive = is_inclusive;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_range(arg_self: [*c]Parser, arg_start: i64, arg_end: i64, arg_is_inclusive: bool) i64 {
     var self = arg_self;
@@ -7781,7 +6383,7 @@ pub export fn Parser_ex_range(arg_self: [*c]Parser, arg_start: i64, arg_end: i64
     node.range_end = end;
     node.range_inclusive = is_inclusive;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_array(arg_self: [*c]Parser, arg_elements: ArrayList_Int) i64 {
     var self = arg_self;
@@ -7792,7 +6394,7 @@ pub export fn Parser_ex_array(arg_self: [*c]Parser, arg_elements: ArrayList_Int)
     _ = &node;
     node.arr_elements = elements;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_tuple(arg_self: [*c]Parser, arg_elements: ArrayList_Int) i64 {
     var self = arg_self;
@@ -7803,7 +6405,7 @@ pub export fn Parser_ex_tuple(arg_self: [*c]Parser, arg_elements: ArrayList_Int)
     _ = &node;
     node.tup_elements = elements;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_borrow(arg_self: [*c]Parser, arg_expr: i64, arg_is_mut: bool) i64 {
     var self = arg_self;
@@ -7817,7 +6419,7 @@ pub export fn Parser_ex_borrow(arg_self: [*c]Parser, arg_expr: i64, arg_is_mut: 
     node.borrow_expr = expr;
     node.borrow_mut = is_mut;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_deref(arg_self: [*c]Parser, arg_expr: i64) i64 {
     var self = arg_self;
@@ -7828,7 +6430,7 @@ pub export fn Parser_ex_deref(arg_self: [*c]Parser, arg_expr: i64) i64 {
     _ = &node;
     node.deref_expr = expr;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_try(arg_self: [*c]Parser, arg_expr: i64) i64 {
     var self = arg_self;
@@ -7839,7 +6441,7 @@ pub export fn Parser_ex_try(arg_self: [*c]Parser, arg_expr: i64) i64 {
     _ = &node;
     node.try_expr = expr;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_catch(arg_self: [*c]Parser, arg_expr: i64, arg_var_name: [*c]const u8, arg_fallback: i64) i64 {
     var self = arg_self;
@@ -7856,7 +6458,7 @@ pub export fn Parser_ex_catch(arg_self: [*c]Parser, arg_expr: i64, arg_var_name:
     node.catch_var = var_name;
     node.catch_fallback = fallback;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_ex_asm(arg_self: [*c]Parser, arg_code: [*c]const u8, arg_is_volatile: bool, arg_outputs: ArrayList_AsmOutput, arg_inputs: ArrayList_AsmInput, arg_clobbers: ArrayList_Str) i64 {
     var self = arg_self;
@@ -7879,7 +6481,7 @@ pub export fn Parser_ex_asm(arg_self: [*c]Parser, arg_code: [*c]const u8, arg_is
     node.asm_inputs = inputs;
     node.asm_clobbers = clobbers;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
-    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_block(arg_self: [*c]Parser, arg_stmts: ArrayList_Int) i64 {
     var self = arg_self;
@@ -7890,7 +6492,7 @@ pub export fn Parser_st_block(arg_self: [*c]Parser, arg_stmts: ArrayList_Int) i6
     _ = &node;
     node.block_stmts = stmts;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_error(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_variants: ArrayList_Str) i64 {
     var self = arg_self;
@@ -7904,7 +6506,7 @@ pub export fn Parser_st_error(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_
     node.error_name = name;
     node.error_variants = variants;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_var_decl(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_type_ann: [*c]const u8, arg_value: i64, arg_is_mut: bool) i64 {
     var self = arg_self;
@@ -7924,7 +6526,7 @@ pub export fn Parser_st_var_decl(arg_self: [*c]Parser, arg_name: [*c]const u8, a
     node.vardecl_value = value;
     node.vardecl_mut = is_mut;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_assign(arg_self: [*c]Parser, arg_target: i64, arg_value: i64, arg_op: [*c]const u8) i64 {
     var self = arg_self;
@@ -7941,7 +6543,7 @@ pub export fn Parser_st_assign(arg_self: [*c]Parser, arg_target: i64, arg_value:
     node.assign_value = value;
     node.assign_op = op;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_func(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_params: ArrayList_Param, arg_ret_type: [*c]const u8, arg_body: i64, arg_cap: [*c]const u8, arg_tp: ArrayList_Str) i64 {
     var self = arg_self;
@@ -7967,7 +6569,7 @@ pub export fn Parser_st_func(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_p
     node.func_capability = cap;
     node.func_type_params = tp;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_struct(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_fields: ArrayList_StructField, arg_tp: ArrayList_Str, arg_methods: ArrayList_Int, arg_impls: ArrayList_Int) i64 {
     var self = arg_self;
@@ -7990,7 +6592,7 @@ pub export fn Parser_st_struct(arg_self: [*c]Parser, arg_name: [*c]const u8, arg
     node.struct_methods = methods;
     node.struct_trait_impls = impls;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_impl(arg_self: [*c]Parser, arg_struct_name: [*c]const u8, arg_trait_name: [*c]const u8, arg_methods: ArrayList_Int) i64 {
     var self = arg_self;
@@ -8007,7 +6609,7 @@ pub export fn Parser_st_impl(arg_self: [*c]Parser, arg_struct_name: [*c]const u8
     node.impl_trait_name = trait_name;
     node.impl_methods = methods;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_trait(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_methods: ArrayList_Int) i64 {
     var self = arg_self;
@@ -8021,7 +6623,7 @@ pub export fn Parser_st_trait(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_
     node.trait_name = name;
     node.trait_methods = methods;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_enum(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_variants: ArrayList_Variant, arg_tp: ArrayList_Str) i64 {
     var self = arg_self;
@@ -8038,7 +6640,7 @@ pub export fn Parser_st_enum(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_v
     node.enum_variants = variants;
     node.enum_type_params = tp;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_match(arg_self: [*c]Parser, arg_expr: i64, arg_cases: ArrayList_MatchCase) i64 {
     var self = arg_self;
@@ -8052,7 +6654,7 @@ pub export fn Parser_st_match(arg_self: [*c]Parser, arg_expr: i64, arg_cases: Ar
     node.match_expr = expr;
     node.match_cases = cases;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_unsafe(arg_self: [*c]Parser, arg_body: i64) i64 {
     var self = arg_self;
@@ -8063,7 +6665,7 @@ pub export fn Parser_st_unsafe(arg_self: [*c]Parser, arg_body: i64) i64 {
     _ = &node;
     node.unsafe_body = body;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_extern(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_params: ArrayList_Param, arg_ret: [*c]const u8) i64 {
     var self = arg_self;
@@ -8080,7 +6682,7 @@ pub export fn Parser_st_extern(arg_self: [*c]Parser, arg_name: [*c]const u8, arg
     node.extern_params = params;
     node.extern_return = ret;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_if(arg_self: [*c]Parser, arg_cond: i64, arg_then_b: i64, arg_else_b: i64) i64 {
     var self = arg_self;
@@ -8097,7 +6699,7 @@ pub export fn Parser_st_if(arg_self: [*c]Parser, arg_cond: i64, arg_then_b: i64,
     node.if_then = then_b;
     node.if_else = else_b;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_if_let(arg_self: [*c]Parser, arg_vname: [*c]const u8, arg_expr: i64, arg_then_b: i64, arg_else_b: i64) i64 {
     var self = arg_self;
@@ -8117,7 +6719,7 @@ pub export fn Parser_st_if_let(arg_self: [*c]Parser, arg_vname: [*c]const u8, ar
     node.iflet_then = then_b;
     node.iflet_else = else_b;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_while(arg_self: [*c]Parser, arg_cond: i64, arg_body: i64) i64 {
     var self = arg_self;
@@ -8131,7 +6733,7 @@ pub export fn Parser_st_while(arg_self: [*c]Parser, arg_cond: i64, arg_body: i64
     node.while_cond = cond;
     node.while_body = body;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_for(arg_self: [*c]Parser, arg_var_name: [*c]const u8, arg_start: i64, arg_end: i64, arg_inc: bool, arg_body: i64) i64 {
     var self = arg_self;
@@ -8154,7 +6756,7 @@ pub export fn Parser_st_for(arg_self: [*c]Parser, arg_var_name: [*c]const u8, ar
     node.for_inclusive = inc;
     node.for_body = body;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_return(arg_self: [*c]Parser, arg_value: i64) i64 {
     var self = arg_self;
@@ -8165,7 +6767,7 @@ pub export fn Parser_st_return(arg_self: [*c]Parser, arg_value: i64) i64 {
     _ = &node;
     node.return_value = value;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_expr(arg_self: [*c]Parser, arg_expr: i64) i64 {
     var self = arg_self;
@@ -8176,7 +6778,7 @@ pub export fn Parser_st_expr(arg_self: [*c]Parser, arg_expr: i64) i64 {
     _ = &node;
     node.expr_stmt = expr;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_defer(arg_self: [*c]Parser, arg_body: i64) i64 {
     var self = arg_self;
@@ -8187,7 +6789,7 @@ pub export fn Parser_st_defer(arg_self: [*c]Parser, arg_body: i64) i64 {
     _ = &node;
     node.defer_body = body;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_break(arg_self: [*c]Parser) i64 {
     var self = arg_self;
@@ -8195,7 +6797,7 @@ pub export fn Parser_st_break(arg_self: [*c]Parser) i64 {
     var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_break)));
     _ = &node;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_continue(arg_self: [*c]Parser) i64 {
     var self = arg_self;
@@ -8203,7 +6805,7 @@ pub export fn Parser_st_continue(arg_self: [*c]Parser) i64 {
     var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_continue)));
     _ = &node;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_import(arg_self: [*c]Parser, arg_path: ArrayList_Str, arg_alias: [*c]const u8) i64 {
     var self = arg_self;
@@ -8217,7 +6819,7 @@ pub export fn Parser_st_import(arg_self: [*c]Parser, arg_path: ArrayList_Str, ar
     node.import_path = path;
     node.import_alias = alias;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_cimport(arg_self: [*c]Parser, arg_header: [*c]const u8, arg_alias: [*c]const u8) i64 {
     var self = arg_self;
@@ -8231,7 +6833,7 @@ pub export fn Parser_st_cimport(arg_self: [*c]Parser, arg_header: [*c]const u8, 
     node.cimport_header = header;
     node.cimport_alias = alias;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
-    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_parse_program(arg_self: [*c]Parser) i64 {
     var self = arg_self;
@@ -8239,10 +6841,10 @@ pub export fn Parser_parse_program(arg_self: [*c]Parser) i64 {
     Parser_consume_newlines(self);
     var stmts: ArrayList_Int = ArrayList_Int_init(self.*.allocator);
     _ = &stmts;
-    while (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_EOF))) {
+    while (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_EOF))) {
         var stmt: i64 = Parser_parse_statement(self);
         _ = &stmt;
-        if (stmt >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (stmt >= @as(c_longlong, 0)) {
             ArrayList_Int_push(&stmts, stmt);
         }
         Parser_consume_newlines(self);
@@ -8253,14 +6855,14 @@ pub export fn Parser_parse_statement(arg_self: [*c]Parser) i64 {
     var self = arg_self;
     _ = &self;
     Parser_consume_newlines(self);
-    var tok: Token = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    var tok: Token = Parser_peek(self, @as(c_longlong, 0));
     _ = &tok;
     var is_public: bool = @as(c_int, 0) != 0;
     _ = &is_public;
     if (tok.tok_type == @as(c_uint, @bitCast(TokenType_PUB))) {
         _ = Parser_advance(self);
         is_public = @as(c_int, 1) != 0;
-        tok = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+        tok = Parser_peek(self, @as(c_longlong, 0));
     }
     if (tok.tok_type == @as(c_uint, @bitCast(TokenType_LET))) {
         return Parser_parse_var_decl(self, @as(c_int, 0) != 0);
@@ -8392,7 +6994,7 @@ pub export fn Parser_parse_base_type(arg_self: [*c]Parser) [*c]const u8 {
     } else if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_LPAREN)))) {
         var types: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
         _ = &types;
-        if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
+        if (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
             var done: bool = @as(c_int, 0) != 0;
             _ = &done;
             while (!done) {
@@ -8407,7 +7009,7 @@ pub export fn Parser_parse_base_type(arg_self: [*c]Parser) [*c]const u8 {
     } else {
         var name: [*c]const u8 = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
         _ = &name;
-        if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_LT))) {
+        if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_LT))) {
             _ = Parser_advance(self);
             var type_args: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
             _ = &type_args;
@@ -8431,7 +7033,7 @@ pub export fn Parser_parse_generic_params(arg_self: [*c]Parser) ArrayList_Str {
     _ = &self;
     var type_params: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
     _ = &type_params;
-    if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_LT))) {
+    if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_LT))) {
         _ = Parser_advance(self);
         var done: bool = @as(c_int, 0) != 0;
         _ = &done;
@@ -8457,7 +7059,7 @@ pub export fn Parser_parse_var_decl(arg_self: [*c]Parser, arg_is_mutable: bool) 
     var is_mutable = arg_is_mutable;
     _ = &is_mutable;
     _ = Parser_advance(self);
-    if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_LPAREN))) {
+    if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_LPAREN))) {
         _ = Parser_advance(self);
         var names: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
         _ = &names;
@@ -8471,7 +7073,7 @@ pub export fn Parser_parse_var_decl(arg_self: [*c]Parser, arg_is_mutable: bool) 
         }
         _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_RPAREN)));
         _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_ASSIGN)));
-        var val_expr: i64 = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+        var val_expr: i64 = Parser_parse_expression(self, @as(c_longlong, 0));
         _ = &val_expr;
         Parser_expect_end_of_statement(self);
         return Parser_st_var_decl(self, str_array_join(names, ","), "", val_expr, is_mutable);
@@ -8484,7 +7086,7 @@ pub export fn Parser_parse_var_decl(arg_self: [*c]Parser, arg_is_mutable: bool) 
         type_ann = Parser_parse_type(self);
     }
     _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_ASSIGN)));
-    var val_expr: i64 = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    var val_expr: i64 = Parser_parse_expression(self, @as(c_longlong, 0));
     _ = &val_expr;
     Parser_expect_end_of_statement(self);
     return Parser_st_var_decl(self, name, type_ann, val_expr, is_mutable);
@@ -8500,7 +7102,7 @@ pub export fn Parser_parse_func_decl(arg_self: [*c]Parser) i64 {
     _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_LPAREN)));
     var params: ArrayList_Param = ArrayList_Param_init(self.*.allocator);
     _ = &params;
-    if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
+    if (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
         var done: bool = @as(c_int, 0) != 0;
         _ = &done;
         while (!done) {
@@ -8508,7 +7110,7 @@ pub export fn Parser_parse_func_decl(arg_self: [*c]Parser) i64 {
             _ = &param_name;
             var param_type: [*c]const u8 = "";
             _ = &param_type;
-            if ((strcmp(param_name, "self") == @as(c_int, 0)) and (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_COLON)))) {
+            if ((strcmp(param_name, "self") == @as(c_int, 0)) and (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_COLON)))) {
                 param_type = "self";
             } else {
                 _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_COLON)));
@@ -8529,7 +7131,7 @@ pub export fn Parser_parse_func_decl(arg_self: [*c]Parser) i64 {
     if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_ARROW)))) {
         return_type = Parser_parse_type(self);
     } else {
-        var next_tok: Token = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+        var next_tok: Token = Parser_peek(self, @as(c_longlong, 0));
         _ = &next_tok;
         if (((((next_tok.tok_type == @as(c_uint, @bitCast(TokenType_IDENTIFIER))) or (next_tok.tok_type == @as(c_uint, @bitCast(TokenType_LPAREN)))) or (next_tok.tok_type == @as(c_uint, @bitCast(TokenType_MUL)))) or (next_tok.tok_type == @as(c_uint, @bitCast(TokenType_AMP)))) or (next_tok.tok_type == @as(c_uint, @bitCast(TokenType_LBRACKET)))) {
             return_type = Parser_parse_type(self);
@@ -8562,10 +7164,10 @@ pub export fn Parser_parse_struct_decl(arg_self: [*c]Parser) i64 {
     var trait_impls: ArrayList_Int = ArrayList_Int_init(self.*.allocator);
     _ = &trait_impls;
     Parser_consume_newlines(self);
-    while ((Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
-        if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_FUNC))) {
+    while ((Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
+        if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_FUNC))) {
             ArrayList_Int_push(&methods, Parser_parse_func_decl(self));
-        } else if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_IMPL))) {
+        } else if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_IMPL))) {
             _ = Parser_advance(self);
             var trait_name: [*c]const u8 = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
             _ = &trait_name;
@@ -8574,7 +7176,7 @@ pub export fn Parser_parse_struct_decl(arg_self: [*c]Parser) i64 {
             var impl_methods: ArrayList_Int = ArrayList_Int_init(self.*.allocator);
             _ = &impl_methods;
             Parser_consume_newlines(self);
-            while ((Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
+            while ((Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
                 ArrayList_Int_push(&impl_methods, Parser_parse_func_decl(self));
                 Parser_consume_newlines(self);
             }
@@ -8605,7 +7207,7 @@ pub export fn Parser_parse_impl_block(arg_self: [*c]Parser) i64 {
     _ = &struct_name;
     var trait_name: [*c]const u8 = "";
     _ = &trait_name;
-    if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_FOR))) {
+    if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_FOR))) {
         _ = Parser_advance(self);
         trait_name = first_name;
         struct_name = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
@@ -8617,7 +7219,7 @@ pub export fn Parser_parse_impl_block(arg_self: [*c]Parser) i64 {
     var methods: ArrayList_Int = ArrayList_Int_init(self.*.allocator);
     _ = &methods;
     Parser_consume_newlines(self);
-    while ((Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
+    while ((Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
         ArrayList_Int_push(&methods, Parser_parse_func_decl(self));
         Parser_consume_newlines(self);
     }
@@ -8635,7 +7237,7 @@ pub export fn Parser_parse_trait_decl(arg_self: [*c]Parser) i64 {
     var methods: ArrayList_Int = ArrayList_Int_init(self.*.allocator);
     _ = &methods;
     Parser_consume_newlines(self);
-    while ((Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
+    while ((Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
         ArrayList_Int_push(&methods, Parser_parse_func_decl(self));
         Parser_consume_newlines(self);
     }
@@ -8655,7 +7257,7 @@ pub export fn Parser_parse_enum_decl(arg_self: [*c]Parser) i64 {
     var variants: ArrayList_Variant = ArrayList_Variant_init(self.*.allocator);
     _ = &variants;
     Parser_consume_newlines(self);
-    while ((Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
+    while ((Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
         _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_CASE)));
         var v_name: [*c]const u8 = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
         _ = &v_name;
@@ -8664,13 +7266,13 @@ pub export fn Parser_parse_enum_decl(arg_self: [*c]Parser) i64 {
         var unnamed_count: i64 = 0;
         _ = &unnamed_count;
         if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_LPAREN)))) {
-            if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
+            if (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
                 var done: bool = @as(c_int, 0) != 0;
                 _ = &done;
                 while (!done) {
                     var pname_or_type: [*c]const u8 = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
                     _ = &pname_or_type;
-                    if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_COLON))) {
+                    if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_COLON))) {
                         _ = Parser_advance(self);
                         ArrayList_Param_push(&v_params, Param{
                             .name = pname_or_type,
@@ -8679,10 +7281,10 @@ pub export fn Parser_parse_enum_decl(arg_self: [*c]Parser) i64 {
                     } else {
                         var pname: [*c]const u8 = "value";
                         _ = &pname;
-                        if (unnamed_count > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                        if (unnamed_count > @as(c_longlong, 0)) {
                             pname = "value0";
                         }
-                        unnamed_count = unnamed_count + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        unnamed_count = unnamed_count + @as(c_longlong, 1);
                         ArrayList_Param_push(&v_params, Param{
                             .name = pname,
                             .ptype = pname_or_type,
@@ -8716,9 +7318,9 @@ pub export fn Parser_parse_error_decl(arg_self: [*c]Parser) i64 {
     var variants: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
     _ = &variants;
     Parser_consume_newlines(self);
-    while ((Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
+    while ((Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
         if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_CASE)))) {
-            _ = @as(c_int, 0);
+            _ = @as(c_longlong, 0);
         }
         var v_name: [*c]const u8 = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
         _ = &v_name;
@@ -8733,22 +7335,22 @@ pub export fn Parser_parse_match_stmt(arg_self: [*c]Parser) i64 {
     var self = arg_self;
     _ = &self;
     _ = Parser_advance(self);
-    var expr: i64 = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    var expr: i64 = Parser_parse_expression(self, @as(c_longlong, 0));
     _ = &expr;
     Parser_expect_end_of_statement(self);
     _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_LBRACE)));
     var cases: ArrayList_MatchCase = ArrayList_MatchCase_init(self.*.allocator);
     _ = &cases;
     Parser_consume_newlines(self);
-    while ((Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
+    while ((Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
         _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_CASE)));
         var pattern: i64 = Parser_parse_pattern(self);
         _ = &pattern;
         _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_FAT_ARROW)));
         Parser_consume_newlines(self);
-        var body: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+        var body: i64 = -@as(c_longlong, 1);
         _ = &body;
-        if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_LBRACE))) {
+        if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_LBRACE))) {
             body = Parser_parse_block(self);
         } else {
             var stmts: ArrayList_Int = ArrayList_Int_init(self.*.allocator);
@@ -8768,7 +7370,7 @@ pub export fn Parser_parse_match_stmt(arg_self: [*c]Parser) i64 {
 pub export fn Parser_parse_pattern(arg_self: [*c]Parser) i64 {
     var self = arg_self;
     _ = &self;
-    var tok: Token = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    var tok: Token = Parser_peek(self, @as(c_longlong, 0));
     _ = &tok;
     if (tok.tok_type == @as(c_uint, @bitCast(TokenType_DOT))) {
         _ = Parser_advance(self);
@@ -8777,7 +7379,7 @@ pub export fn Parser_parse_pattern(arg_self: [*c]Parser) i64 {
         var bindings: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
         _ = &bindings;
         if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_LPAREN)))) {
-            if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
+            if (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
                 var done: bool = @as(c_int, 0) != 0;
                 _ = &done;
                 while (!done) {
@@ -8806,9 +7408,9 @@ pub export fn Parser_parse_pattern(arg_self: [*c]Parser) i64 {
     } else {
         {
             _ = printf("error[E0101]: unexpected token in pattern at line %lld, column %lld\n", tok.line, tok.column);
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
-        return @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+        return -@as(c_longlong, 1);
     }
     return @import("std").mem.zeroes(i64);
 }
@@ -8818,7 +7420,7 @@ pub export fn Parser_add_pattern(arg_self: [*c]Parser, arg_p: PatternNode) i64 {
     var p = arg_p;
     _ = &p;
     ArrayList_PatternNode_push(self.*.pattern_pool, p);
-    return ArrayList_PatternNode_length(self.*.pattern_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    return ArrayList_PatternNode_length(self.*.pattern_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_parse_unsafe_block(arg_self: [*c]Parser) i64 {
     var self = arg_self;
@@ -8837,7 +7439,7 @@ pub export fn Parser_parse_extern_decl(arg_self: [*c]Parser) i64 {
     _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_LPAREN)));
     var params: ArrayList_Param = ArrayList_Param_init(self.*.allocator);
     _ = &params;
-    if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
+    if (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
         var done: bool = @as(c_int, 0) != 0;
         _ = &done;
         while (!done) {
@@ -8859,7 +7461,7 @@ pub export fn Parser_parse_extern_decl(arg_self: [*c]Parser) i64 {
     if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_ARROW)))) {
         return_type = Parser_parse_type(self);
     } else {
-        var next_tok: Token = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+        var next_tok: Token = Parser_peek(self, @as(c_longlong, 0));
         _ = &next_tok;
         if (((((next_tok.tok_type == @as(c_uint, @bitCast(TokenType_IDENTIFIER))) or (next_tok.tok_type == @as(c_uint, @bitCast(TokenType_LPAREN)))) or (next_tok.tok_type == @as(c_uint, @bitCast(TokenType_MUL)))) or (next_tok.tok_type == @as(c_uint, @bitCast(TokenType_AMP)))) or (next_tok.tok_type == @as(c_uint, @bitCast(TokenType_LBRACKET)))) {
             return_type = Parser_parse_type(self);
@@ -8872,22 +7474,22 @@ pub export fn Parser_parse_if_stmt(arg_self: [*c]Parser) i64 {
     var self = arg_self;
     _ = &self;
     _ = Parser_advance(self);
-    if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_LET))) {
+    if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_LET))) {
         _ = Parser_advance(self);
         var var_name: [*c]const u8 = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
         _ = &var_name;
         _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_ASSIGN)));
-        var cond_expr: i64 = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+        var cond_expr: i64 = Parser_parse_expression(self, @as(c_longlong, 0));
         _ = &cond_expr;
         Parser_expect_end_of_statement(self);
         var then_branch: i64 = Parser_parse_block(self);
         _ = &then_branch;
-        var else_branch: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+        var else_branch: i64 = -@as(c_longlong, 1);
         _ = &else_branch;
         Parser_consume_newlines(self);
-        if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_ELSE))) {
+        if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_ELSE))) {
             _ = Parser_advance(self);
-            if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_IF))) {
+            if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_IF))) {
                 var stmts: ArrayList_Int = ArrayList_Int_init(self.*.allocator);
                 _ = &stmts;
                 ArrayList_Int_push(&stmts, Parser_parse_if_stmt(self));
@@ -8899,17 +7501,17 @@ pub export fn Parser_parse_if_stmt(arg_self: [*c]Parser) i64 {
         }
         return Parser_st_if_let(self, var_name, cond_expr, then_branch, else_branch);
     }
-    var cond_expr: i64 = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    var cond_expr: i64 = Parser_parse_expression(self, @as(c_longlong, 0));
     _ = &cond_expr;
     Parser_expect_end_of_statement(self);
     var then_branch: i64 = Parser_parse_block(self);
     _ = &then_branch;
-    var else_branch: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    var else_branch: i64 = -@as(c_longlong, 1);
     _ = &else_branch;
     Parser_consume_newlines(self);
-    if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_ELSE))) {
+    if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_ELSE))) {
         _ = Parser_advance(self);
-        if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_IF))) {
+        if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_IF))) {
             var stmts: ArrayList_Int = ArrayList_Int_init(self.*.allocator);
             _ = &stmts;
             ArrayList_Int_push(&stmts, Parser_parse_if_stmt(self));
@@ -8925,7 +7527,7 @@ pub export fn Parser_parse_while_stmt(arg_self: [*c]Parser) i64 {
     var self = arg_self;
     _ = &self;
     _ = Parser_advance(self);
-    var cond_expr: i64 = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    var cond_expr: i64 = Parser_parse_expression(self, @as(c_longlong, 0));
     _ = &cond_expr;
     Parser_expect_end_of_statement(self);
     return Parser_st_while(self, cond_expr, Parser_parse_block(self));
@@ -8937,13 +7539,13 @@ pub export fn Parser_parse_for_stmt(arg_self: [*c]Parser) i64 {
     var var_name: [*c]const u8 = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
     _ = &var_name;
     _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_IN)));
-    var expr: i64 = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    var expr: i64 = Parser_parse_expression(self, @as(c_longlong, 0));
     _ = &expr;
     var expr_node: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr);
     _ = &expr_node;
-    var range_start: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    var range_start: i64 = -@as(c_longlong, 1);
     _ = &range_start;
-    var range_end: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    var range_end: i64 = -@as(c_longlong, 1);
     _ = &range_end;
     var is_inclusive: bool = @as(c_int, 0) != 0;
     _ = &is_inclusive;
@@ -8953,8 +7555,8 @@ pub export fn Parser_parse_for_stmt(arg_self: [*c]Parser) i64 {
         is_inclusive = expr_node.range_inclusive;
     } else {
         {
-            _ = printf("error[E0101]: invalid expression in for loop at line %lld, column %lld\n", Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).line, Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).column);
-            exit(@as(c_int, 1));
+            _ = printf("error[E0101]: invalid expression in for loop at line %lld, column %lld\n", Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     Parser_expect_end_of_statement(self);
@@ -8964,12 +7566,12 @@ pub export fn Parser_parse_return_stmt(arg_self: [*c]Parser) i64 {
     var self = arg_self;
     _ = &self;
     _ = Parser_advance(self);
-    var val_expr: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    var val_expr: i64 = -@as(c_longlong, 1);
     _ = &val_expr;
-    var next: Token = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    var next: Token = Parser_peek(self, @as(c_longlong, 0));
     _ = &next;
     if ((((next.tok_type != @as(c_uint, @bitCast(TokenType_NEWLINE))) and (next.tok_type != @as(c_uint, @bitCast(TokenType_RBRACE)))) and (next.tok_type != @as(c_uint, @bitCast(TokenType_DEDENT)))) and (next.tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
-        val_expr = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+        val_expr = Parser_parse_expression(self, @as(c_longlong, 0));
     }
     Parser_expect_end_of_statement(self);
     return Parser_st_return(self, val_expr);
@@ -8992,10 +7594,10 @@ pub export fn Parser_parse_defer_stmt(arg_self: [*c]Parser) i64 {
     var self = arg_self;
     _ = &self;
     _ = Parser_advance(self);
-    var body: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    var body: i64 = -@as(c_longlong, 1);
     _ = &body;
-    if ((Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_NEWLINE))) or (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_LBRACE)))) {
-        if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_NEWLINE))) {
+    if ((Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_NEWLINE))) or (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_LBRACE)))) {
+        if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_NEWLINE))) {
             Parser_expect_end_of_statement(self);
         }
         body = Parser_parse_block(self);
@@ -9007,14 +7609,14 @@ pub export fn Parser_parse_defer_stmt(arg_self: [*c]Parser) i64 {
 pub export fn Parser_parse_expr_or_assignment_stmt(arg_self: [*c]Parser) i64 {
     var self = arg_self;
     _ = &self;
-    var expr: i64 = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    var expr: i64 = Parser_parse_expression(self, @as(c_longlong, 0));
     _ = &expr;
-    var next: Token = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    var next: Token = Parser_peek(self, @as(c_longlong, 0));
     _ = &next;
     if (((next.tok_type == @as(c_uint, @bitCast(TokenType_ASSIGN))) or (next.tok_type == @as(c_uint, @bitCast(TokenType_PLUS_ASSIGN)))) or (next.tok_type == @as(c_uint, @bitCast(TokenType_MINUS_ASSIGN)))) {
         var op_tok: Token = Parser_advance(self);
         _ = &op_tok;
-        var val_expr: i64 = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+        var val_expr: i64 = Parser_parse_expression(self, @as(c_longlong, 0));
         _ = &val_expr;
         Parser_expect_end_of_statement(self);
         return Parser_st_assign(self, expr, val_expr, token_op_str(op_tok.tok_type));
@@ -9030,18 +7632,18 @@ pub export fn Parser_parse_block(arg_self: [*c]Parser) i64 {
     _ = &stmts;
     _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_LBRACE)));
     Parser_consume_newlines(self);
-    while ((Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
+    while ((Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RBRACE))) and (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
         var stmt: i64 = Parser_parse_statement(self);
         _ = &stmt;
-        if (stmt >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (stmt >= @as(c_longlong, 0)) {
             ArrayList_Int_push(&stmts, stmt);
         }
         Parser_consume_newlines(self);
     }
-    if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_EOF))) {
+    if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_EOF))) {
         {
             _ = printf("error[E0101]: expected '}' but reached end of file\n");
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     _ = Parser_advance(self);
@@ -9070,7 +7672,7 @@ pub export fn Parser_parse_import_stmt_new(arg_self: [*c]Parser) i64 {
     _ = Parser_advance(self);
     var first_name: [*c]const u8 = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
     _ = &first_name;
-    if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_FROM))) {
+    if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_FROM))) {
         _ = Parser_advance(self);
         var path: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
         _ = &path;
@@ -9084,7 +7686,7 @@ pub export fn Parser_parse_import_stmt_new(arg_self: [*c]Parser) i64 {
         }
         var alias: [*c]const u8 = "";
         _ = &alias;
-        if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_AS))) {
+        if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_AS))) {
             _ = Parser_advance(self);
             alias = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
         }
@@ -9099,7 +7701,7 @@ pub export fn Parser_parse_import_stmt_new(arg_self: [*c]Parser) i64 {
         }
         var alias: [*c]const u8 = "";
         _ = &alias;
-        if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_AS))) {
+        if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_AS))) {
             _ = Parser_advance(self);
             alias = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
         }
@@ -9118,7 +7720,7 @@ pub export fn Parser_parse_cimport_stmt(arg_self: [*c]Parser) i64 {
     _ = &header;
     var alias: [*c]const u8 = "";
     _ = &alias;
-    if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_AS))) {
+    if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_AS))) {
         _ = Parser_advance(self);
         alias = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
     }
@@ -9135,23 +7737,23 @@ pub export fn Parser_parse_expression(arg_self: [*c]Parser, arg_precedence: i64)
     var done: bool = @as(c_int, 0) != 0;
     _ = &done;
     while (!done) {
-        var op_tok: Token = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+        var op_tok: Token = Parser_peek(self, @as(c_longlong, 0));
         _ = &op_tok;
         var op_prec: i64 = token_precedence(op_tok.tok_type);
         _ = &op_prec;
-        if ((op_prec == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (op_prec <= precedence)) {
+        if ((op_prec == @as(c_longlong, 0)) or (op_prec <= precedence)) {
             done = @as(c_int, 1) != 0;
         } else {
             _ = Parser_advance(self);
             if (op_tok.tok_type == @as(c_uint, @bitCast(TokenType_DOT))) {
                 var member_name: [*c]const u8 = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
                 _ = &member_name;
-                if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_LPAREN))) {
+                if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_LPAREN))) {
                     _ = Parser_advance(self);
-                    if ((Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_IDENTIFIER))) and (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))).tok_type == @as(c_uint, @bitCast(TokenType_COLON)))) {
+                    if ((Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_IDENTIFIER))) and (Parser_peek(self, @as(c_longlong, 1)).tok_type == @as(c_uint, @bitCast(TokenType_COLON)))) {
                         var fields: ArrayList_FieldInit = ArrayList_FieldInit_init(self.*.allocator);
                         _ = &fields;
-                        if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
+                        if (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
                             var fields_done: bool = @as(c_int, 0) != 0;
                             _ = &fields_done;
                             while (!fields_done) {
@@ -9160,7 +7762,7 @@ pub export fn Parser_parse_expression(arg_self: [*c]Parser, arg_precedence: i64)
                                 _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_COLON)));
                                 ArrayList_FieldInit_push(&fields, FieldInit{
                                     .name = f_name,
-                                    .value = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))),
+                                    .value = Parser_parse_expression(self, @as(c_longlong, 0)),
                                 });
                                 if (!Parser_match_token(self, @as(c_uint, @bitCast(TokenType_COMMA)))) {
                                     fields_done = @as(c_int, 1) != 0;
@@ -9174,7 +7776,7 @@ pub export fn Parser_parse_expression(arg_self: [*c]Parser, arg_precedence: i64)
                         _ = &full_name;
                         if (left_node.kind == @as(c_uint, @bitCast(ExprKind_ek_identifier))) {
                             full_name = left_node.ident_name;
-                            if (ArrayList_Str_length(&left_node.ident_type_args) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                            if (ArrayList_Str_length(&left_node.ident_type_args) > @as(c_longlong, 0)) {
                                 full_name = _kai_str_concat(_kai_str_concat(_kai_str_concat(full_name, "<"), str_array_join(left_node.ident_type_args, ", ")), ">");
                             }
                         }
@@ -9182,11 +7784,11 @@ pub export fn Parser_parse_expression(arg_self: [*c]Parser, arg_precedence: i64)
                     } else {
                         var args: ArrayList_Int = ArrayList_Int_init(self.*.allocator);
                         _ = &args;
-                        if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
+                        if (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
                             var args_done: bool = @as(c_int, 0) != 0;
                             _ = &args_done;
                             while (!args_done) {
-                                ArrayList_Int_push(&args, Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))));
+                                ArrayList_Int_push(&args, Parser_parse_expression(self, @as(c_longlong, 0)));
                                 if (!Parser_match_token(self, @as(c_uint, @bitCast(TokenType_COMMA)))) {
                                     args_done = @as(c_int, 1) != 0;
                                 }
@@ -9199,35 +7801,35 @@ pub export fn Parser_parse_expression(arg_self: [*c]Parser, arg_precedence: i64)
                     left = Parser_ex_field(self, left, member_name);
                 }
             } else if (op_tok.tok_type == @as(c_uint, @bitCast(TokenType_LBRACKET))) {
-                if ((Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_DOTDOT))) or (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_DOTDOTEQ)))) {
-                    var lower: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+                if ((Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_DOTDOT))) or (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_DOTDOTEQ)))) {
+                    var lower: i64 = -@as(c_longlong, 1);
                     _ = &lower;
-                    var upper: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+                    var upper: i64 = -@as(c_longlong, 1);
                     _ = &upper;
                     var slice_tok: Token = Parser_advance(self);
                     _ = &slice_tok;
                     var is_inclusive: bool = slice_tok.tok_type == @as(c_uint, @bitCast(TokenType_DOTDOTEQ));
                     _ = &is_inclusive;
-                    if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RBRACKET))) {
-                        upper = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+                    if (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RBRACKET))) {
+                        upper = Parser_parse_expression(self, @as(c_longlong, 0));
                     }
                     left = Parser_ex_slice(self, left, lower, upper, is_inclusive);
                 } else {
-                    var lower: i64 = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+                    var lower: i64 = Parser_parse_expression(self, @as(c_longlong, 0));
                     _ = &lower;
                     var lower_node: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, lower);
                     _ = &lower_node;
                     if (lower_node.kind == @as(c_uint, @bitCast(ExprKind_ek_range))) {
                         left = Parser_ex_slice(self, left, lower_node.range_start, lower_node.range_end, lower_node.range_inclusive);
-                    } else if ((Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_DOTDOT))) or (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_DOTDOTEQ)))) {
+                    } else if ((Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_DOTDOT))) or (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_DOTDOTEQ)))) {
                         var slice_tok: Token = Parser_advance(self);
                         _ = &slice_tok;
                         var is_inclusive: bool = slice_tok.tok_type == @as(c_uint, @bitCast(TokenType_DOTDOTEQ));
                         _ = &is_inclusive;
-                        var upper: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+                        var upper: i64 = -@as(c_longlong, 1);
                         _ = &upper;
-                        if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RBRACKET))) {
-                            upper = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+                        if (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RBRACKET))) {
+                            upper = Parser_parse_expression(self, @as(c_longlong, 0));
                         }
                         left = Parser_ex_slice(self, left, lower, upper, is_inclusive);
                     } else {
@@ -9238,9 +7840,9 @@ pub export fn Parser_parse_expression(arg_self: [*c]Parser, arg_precedence: i64)
             } else if ((op_tok.tok_type == @as(c_uint, @bitCast(TokenType_DOTDOT))) or (op_tok.tok_type == @as(c_uint, @bitCast(TokenType_DOTDOTEQ)))) {
                 var is_inclusive: bool = op_tok.tok_type == @as(c_uint, @bitCast(TokenType_DOTDOTEQ));
                 _ = &is_inclusive;
-                var right: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+                var right: i64 = -@as(c_longlong, 1);
                 _ = &right;
-                var next: Token = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+                var next: Token = Parser_peek(self, @as(c_longlong, 0));
                 _ = &next;
                 if (((((((next.tok_type != @as(c_uint, @bitCast(TokenType_RBRACKET))) and (next.tok_type != @as(c_uint, @bitCast(TokenType_COMMA)))) and (next.tok_type != @as(c_uint, @bitCast(TokenType_NEWLINE)))) and (next.tok_type != @as(c_uint, @bitCast(TokenType_SEMICOLON)))) and (next.tok_type != @as(c_uint, @bitCast(TokenType_RBRACE)))) and (next.tok_type != @as(c_uint, @bitCast(TokenType_DEDENT)))) and (next.tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
                     right = Parser_parse_expression(self, op_prec);
@@ -9253,20 +7855,20 @@ pub export fn Parser_parse_expression(arg_self: [*c]Parser, arg_precedence: i64)
                     var_name = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
                     _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_PIPE)));
                 }
-                var fallback: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+                var fallback: i64 = -@as(c_longlong, 1);
                 _ = &fallback;
-                var next: Token = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+                var next: Token = Parser_peek(self, @as(c_longlong, 0));
                 _ = &next;
                 if (next.tok_type == @as(c_uint, @bitCast(TokenType_NEWLINE))) {
                     fallback = Parser_parse_block(self);
                 } else if (next.tok_type == @as(c_uint, @bitCast(TokenType_RETURN))) {
                     _ = Parser_advance(self);
-                    var ret_val: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+                    var ret_val: i64 = -@as(c_longlong, 1);
                     _ = &ret_val;
-                    var follow: Token = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+                    var follow: Token = Parser_peek(self, @as(c_longlong, 0));
                     _ = &follow;
                     if (((((follow.tok_type != @as(c_uint, @bitCast(TokenType_NEWLINE))) and (follow.tok_type != @as(c_uint, @bitCast(TokenType_SEMICOLON)))) and (follow.tok_type != @as(c_uint, @bitCast(TokenType_RBRACE)))) and (follow.tok_type != @as(c_uint, @bitCast(TokenType_DEDENT)))) and (follow.tok_type != @as(c_uint, @bitCast(TokenType_EOF)))) {
-                        ret_val = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+                        ret_val = Parser_parse_expression(self, @as(c_longlong, 0));
                     }
                     var ret_stmt: i64 = Parser_st_return(self, ret_val);
                     _ = &ret_stmt;
@@ -9307,7 +7909,7 @@ pub export fn Parser_parse_expression(arg_self: [*c]Parser, arg_precedence: i64)
 pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
     var self = arg_self;
     _ = &self;
-    var tok: Token = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+    var tok: Token = Parser_peek(self, @as(c_longlong, 0));
     _ = &tok;
     if ((((tok.tok_type == @as(c_uint, @bitCast(TokenType_INT_LIT))) or (tok.tok_type == @as(c_uint, @bitCast(TokenType_FLOAT_LIT)))) or (tok.tok_type == @as(c_uint, @bitCast(TokenType_BOOL_LIT)))) or (tok.tok_type == @as(c_uint, @bitCast(TokenType_CHAR_LIT)))) {
         _ = Parser_advance(self);
@@ -9327,20 +7929,20 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
         _ = Parser_advance(self);
         return Parser_ex_literal(self, TokenValue{
             .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_none_TAG)))),
-            .payload = @import("std").mem.zeroes(union_unnamed_6),
+            .payload = @import("std").mem.zeroes(union_unnamed_3),
         }, "NONE");
     } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_STRING_LIT))) {
         _ = Parser_advance(self);
         return Parser_ex_literal(self, tok.value, "STRING");
     } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_CHECK))) {
         _ = Parser_advance(self);
-        return Parser_ex_check(self, Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5))))));
+        return Parser_ex_check(self, Parser_parse_expression(self, @as(c_longlong, 5)));
     } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_TRY))) {
         _ = Parser_advance(self);
-        return Parser_ex_try(self, Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5))))));
+        return Parser_ex_try(self, Parser_parse_expression(self, @as(c_longlong, 5)));
     } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_OWN))) {
         _ = Parser_advance(self);
-        return Parser_ex_unop(self, "own", Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5))))));
+        return Parser_ex_unop(self, "own", Parser_parse_expression(self, @as(c_longlong, 5)));
     } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_ASM))) {
         _ = Parser_advance(self);
         var is_volatile: bool = @as(c_int, 0) != 0;
@@ -9361,7 +7963,7 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
             var done: bool = @as(c_int, 0) != 0;
             _ = &done;
             while (!done) {
-                var next_tt: TokenType = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type;
+                var next_tt: TokenType = Parser_peek(self, @as(c_longlong, 0)).tok_type;
                 _ = &next_tt;
                 if (((next_tt == @as(c_uint, @bitCast(TokenType_COLON))) or (next_tt == @as(c_uint, @bitCast(TokenType_RPAREN)))) or (next_tt == @as(c_uint, @bitCast(TokenType_EOF)))) {
                     done = @as(c_int, 1) != 0;
@@ -9375,12 +7977,12 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
                     _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_LPAREN)));
                     var type_name: [*c]const u8 = "";
                     _ = &type_name;
-                    var expr_idx: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+                    var expr_idx: i64 = -@as(c_longlong, 1);
                     _ = &expr_idx;
                     if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_ARROW)))) {
                         type_name = Parser_parse_type(self);
                     } else {
-                        expr_idx = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+                        expr_idx = Parser_parse_expression(self, @as(c_longlong, 0));
                     }
                     _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_RPAREN)));
                     ArrayList_AsmOutput_push(&outputs, AsmOutput{
@@ -9399,7 +8001,7 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
             var done: bool = @as(c_int, 0) != 0;
             _ = &done;
             while (!done) {
-                var next_tt: TokenType = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type;
+                var next_tt: TokenType = Parser_peek(self, @as(c_longlong, 0)).tok_type;
                 _ = &next_tt;
                 if (((next_tt == @as(c_uint, @bitCast(TokenType_COLON))) or (next_tt == @as(c_uint, @bitCast(TokenType_RPAREN)))) or (next_tt == @as(c_uint, @bitCast(TokenType_EOF)))) {
                     done = @as(c_int, 1) != 0;
@@ -9411,7 +8013,7 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
                     var constraint: [*c]const u8 = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_STRING_LIT))).value);
                     _ = &constraint;
                     _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_LPAREN)));
-                    var expr_idx: i64 = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+                    var expr_idx: i64 = Parser_parse_expression(self, @as(c_longlong, 0));
                     _ = &expr_idx;
                     _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_RPAREN)));
                     ArrayList_AsmInput_push(&inputs, AsmInput{
@@ -9429,7 +8031,7 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
             var done: bool = @as(c_int, 0) != 0;
             _ = &done;
             while (!done) {
-                var next_tt: TokenType = Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type;
+                var next_tt: TokenType = Parser_peek(self, @as(c_longlong, 0)).tok_type;
                 _ = &next_tt;
                 if ((next_tt == @as(c_uint, @bitCast(TokenType_RPAREN))) or (next_tt == @as(c_uint, @bitCast(TokenType_EOF)))) {
                     done = @as(c_int, 1) != 0;
@@ -9467,14 +8069,14 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
             _ = &ci;
             while (ci < ArrayList_Str_length(&type_args)) {
                 ArrayList_Str_push(&id_type_args, ArrayList_Str_get(&type_args, ci));
-                ci = ci + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                ci = ci + @as(c_longlong, 1);
             }
-            if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_LPAREN))) {
+            if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_LPAREN))) {
                 _ = Parser_advance(self);
-                if ((Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_IDENTIFIER))) and (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))).tok_type == @as(c_uint, @bitCast(TokenType_COLON)))) {
+                if ((Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_IDENTIFIER))) and (Parser_peek(self, @as(c_longlong, 1)).tok_type == @as(c_uint, @bitCast(TokenType_COLON)))) {
                     var fields: ArrayList_FieldInit = ArrayList_FieldInit_init(self.*.allocator);
                     _ = &fields;
-                    if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
+                    if (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
                         var fields_done: bool = @as(c_int, 0) != 0;
                         _ = &fields_done;
                         while (!fields_done) {
@@ -9483,7 +8085,7 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
                             _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_COLON)));
                             ArrayList_FieldInit_push(&fields, FieldInit{
                                 .name = f_name,
-                                .value = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))),
+                                .value = Parser_parse_expression(self, @as(c_longlong, 0)),
                             });
                             if (!Parser_match_token(self, @as(c_uint, @bitCast(TokenType_COMMA)))) {
                                 fields_done = @as(c_int, 1) != 0;
@@ -9497,7 +8099,7 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
                     _ = &cj;
                     while (cj < ArrayList_Str_length(&type_args)) {
                         ArrayList_Str_push(&sa_type_args, ArrayList_Str_get(&type_args, cj));
-                        cj = cj + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        cj = cj + @as(c_longlong, 1);
                     }
                     var type_args_str: [*c]const u8 = str_array_join(sa_type_args, ", ");
                     _ = &type_args_str;
@@ -9505,11 +8107,11 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
                 }
                 var args: ArrayList_Int = ArrayList_Int_init(self.*.allocator);
                 _ = &args;
-                if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
+                if (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
                     var args_done: bool = @as(c_int, 0) != 0;
                     _ = &args_done;
                     while (!args_done) {
-                        ArrayList_Int_push(&args, Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))));
+                        ArrayList_Int_push(&args, Parser_parse_expression(self, @as(c_longlong, 0)));
                         if (!Parser_match_token(self, @as(c_uint, @bitCast(TokenType_COMMA)))) {
                             args_done = @as(c_int, 1) != 0;
                         }
@@ -9523,15 +8125,15 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
             id_node.ident_name = ident;
             id_node.ident_type_args = id_type_args;
             ArrayList_ExprNode_push(self.*.expr_pool, id_node);
-            return ArrayList_ExprNode_length(self.*.expr_pool) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
-        } else if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))).tok_type == @as(c_uint, @bitCast(TokenType_LPAREN))) {
+            return ArrayList_ExprNode_length(self.*.expr_pool) - @as(c_longlong, 1);
+        } else if (Parser_peek(self, @as(c_longlong, 1)).tok_type == @as(c_uint, @bitCast(TokenType_LPAREN))) {
             var ident: [*c]const u8 = tv_get_str(Parser_advance(self).value);
             _ = &ident;
             _ = Parser_advance(self);
-            if ((Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_IDENTIFIER))) and (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))).tok_type == @as(c_uint, @bitCast(TokenType_COLON)))) {
+            if ((Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_IDENTIFIER))) and (Parser_peek(self, @as(c_longlong, 1)).tok_type == @as(c_uint, @bitCast(TokenType_COLON)))) {
                 var fields: ArrayList_FieldInit = ArrayList_FieldInit_init(self.*.allocator);
                 _ = &fields;
-                if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
+                if (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
                     var fields_done: bool = @as(c_int, 0) != 0;
                     _ = &fields_done;
                     while (!fields_done) {
@@ -9540,7 +8142,7 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
                         _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_COLON)));
                         ArrayList_FieldInit_push(&fields, FieldInit{
                             .name = f_name,
-                            .value = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))),
+                            .value = Parser_parse_expression(self, @as(c_longlong, 0)),
                         });
                         if (!Parser_match_token(self, @as(c_uint, @bitCast(TokenType_COMMA)))) {
                             fields_done = @as(c_int, 1) != 0;
@@ -9552,11 +8154,11 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
             } else {
                 var args: ArrayList_Int = ArrayList_Int_init(self.*.allocator);
                 _ = &args;
-                if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
+                if (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
                     var args_done: bool = @as(c_int, 0) != 0;
                     _ = &args_done;
                     while (!args_done) {
-                        ArrayList_Int_push(&args, Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))));
+                        ArrayList_Int_push(&args, Parser_parse_expression(self, @as(c_longlong, 0)));
                         if (!Parser_match_token(self, @as(c_uint, @bitCast(TokenType_COMMA)))) {
                             args_done = @as(c_int, 1) != 0;
                         }
@@ -9571,13 +8173,13 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
         }
     } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_MINUS))) {
         _ = Parser_advance(self);
-        return Parser_ex_unop(self, "-", Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 7))))));
+        return Parser_ex_unop(self, "-", Parser_parse_expression(self, @as(c_longlong, 7)));
     } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_NOT))) {
         _ = Parser_advance(self);
-        return Parser_ex_unop(self, "!", Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 7))))));
+        return Parser_ex_unop(self, "!", Parser_parse_expression(self, @as(c_longlong, 7)));
     } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_BITNOT))) {
         _ = Parser_advance(self);
-        return Parser_ex_unop(self, "~", Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 7))))));
+        return Parser_ex_unop(self, "~", Parser_parse_expression(self, @as(c_longlong, 7)));
     } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_SIZEOF))) {
         _ = Parser_advance(self);
         _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_LPAREN)));
@@ -9595,19 +8197,19 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
         if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_MUT)))) {
             is_mut = @as(c_int, 1) != 0;
         }
-        return Parser_ex_borrow(self, Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 8))))), is_mut);
+        return Parser_ex_borrow(self, Parser_parse_expression(self, @as(c_longlong, 8)), is_mut);
     } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_MUL))) {
         _ = Parser_advance(self);
-        return Parser_ex_deref(self, Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 8))))));
+        return Parser_ex_deref(self, Parser_parse_expression(self, @as(c_longlong, 8)));
     } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_LBRACKET))) {
         _ = Parser_advance(self);
         var elements: ArrayList_Int = ArrayList_Int_init(self.*.allocator);
         _ = &elements;
-        if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RBRACKET))) {
+        if (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RBRACKET))) {
             var done: bool = @as(c_int, 0) != 0;
             _ = &done;
             while (!done) {
-                ArrayList_Int_push(&elements, Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))));
+                ArrayList_Int_push(&elements, Parser_parse_expression(self, @as(c_longlong, 0)));
                 if (!Parser_match_token(self, @as(c_uint, @bitCast(TokenType_COMMA)))) {
                     done = @as(c_int, 1) != 0;
                 }
@@ -9617,15 +8219,15 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
         return Parser_ex_array(self, elements);
     } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_LPAREN))) {
         _ = Parser_advance(self);
-        var first: i64 = Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+        var first: i64 = Parser_parse_expression(self, @as(c_longlong, 0));
         _ = &first;
-        if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type == @as(c_uint, @bitCast(TokenType_COMMA))) {
+        if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_COMMA))) {
             var elements: ArrayList_Int = ArrayList_Int_init(self.*.allocator);
             _ = &elements;
             ArrayList_Int_push(&elements, first);
             while (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_COMMA)))) {
-                if (Parser_peek(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
-                    ArrayList_Int_push(&elements, Parser_parse_expression(self, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))));
+                if (Parser_peek(self, @as(c_longlong, 0)).tok_type != @as(c_uint, @bitCast(TokenType_RPAREN))) {
+                    ArrayList_Int_push(&elements, Parser_parse_expression(self, @as(c_longlong, 0)));
                 }
             }
             _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_RPAREN)));
@@ -9636,9 +8238,9 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
     } else {
         {
             _ = printf("error[E0101]: unexpected token at line %lld, column %lld (token type: %lld)\n", tok.line, tok.column, @as(i64, @bitCast(@as(c_ulonglong, tok.tok_type))));
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
-        return @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+        return -@as(c_longlong, 1);
     }
     return @import("std").mem.zeroes(i64);
 }
@@ -9656,7 +8258,7 @@ pub export fn ArrayList_Symbol_init(arg_allocator: [*c]KaiAllocator) ArrayList_S
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]Symbol, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Symbol)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]Symbol, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Symbol)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -9666,10 +8268,10 @@ pub export fn ArrayList_Symbol_push(arg_self: [*c]ArrayList_Symbol, arg_item: Sy
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]Symbol = @as([*c]Symbol, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Symbol)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]Symbol = @as([*c]Symbol, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Symbol)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -9681,7 +8283,7 @@ pub export fn ArrayList_Symbol_push(arg_self: [*c]ArrayList_Symbol, arg_item: Sy
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -9692,16 +8294,16 @@ pub export fn ArrayList_Symbol_push(arg_self: [*c]ArrayList_Symbol, arg_item: Sy
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_Symbol_get(arg_self: [*c]ArrayList_Symbol, arg_index_1: i64) Symbol {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -9716,9 +8318,9 @@ pub export fn ArrayList_Symbol_set(arg_self: [*c]ArrayList_Symbol, arg_index_1: 
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -9729,12 +8331,12 @@ pub export fn ArrayList_Symbol_set(arg_self: [*c]ArrayList_Symbol, arg_index_1: 
 pub export fn ArrayList_Symbol_pop(arg_self: [*c]ArrayList_Symbol) Symbol {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -9809,7 +8411,7 @@ pub export fn ArrayList_SymbolTable_init(arg_allocator: [*c]KaiAllocator) ArrayL
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]SymbolTable, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(SymbolTable)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]SymbolTable, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(SymbolTable)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -9819,10 +8421,10 @@ pub export fn ArrayList_SymbolTable_push(arg_self: [*c]ArrayList_SymbolTable, ar
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]SymbolTable = @as([*c]SymbolTable, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(SymbolTable)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]SymbolTable = @as([*c]SymbolTable, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(SymbolTable)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -9834,7 +8436,7 @@ pub export fn ArrayList_SymbolTable_push(arg_self: [*c]ArrayList_SymbolTable, ar
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -9845,16 +8447,16 @@ pub export fn ArrayList_SymbolTable_push(arg_self: [*c]ArrayList_SymbolTable, ar
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_SymbolTable_get(arg_self: [*c]ArrayList_SymbolTable, arg_index_1: i64) SymbolTable {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -9869,9 +8471,9 @@ pub export fn ArrayList_SymbolTable_set(arg_self: [*c]ArrayList_SymbolTable, arg
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -9882,12 +8484,12 @@ pub export fn ArrayList_SymbolTable_set(arg_self: [*c]ArrayList_SymbolTable, arg
 pub export fn ArrayList_SymbolTable_pop(arg_self: [*c]ArrayList_SymbolTable) SymbolTable {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -9918,14 +8520,14 @@ pub export fn SymbolTable_lookup(arg_self: [*c]SymbolTable, arg_name: [*c]const 
         if (strcmp(ArrayList_Symbol_get(&self.*.entries, i).name, name) == @as(c_int, 0)) {
             return i;
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
-    if (self.*.parent_idx >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.parent_idx >= @as(c_longlong, 0)) {
         var parent: SymbolTable = ArrayList_SymbolTable_get(tables, self.*.parent_idx);
         _ = &parent;
         return SymbolTable_lookup(&parent, name, tables);
     }
-    return @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    return -@as(c_longlong, 1);
 }
 pub export fn SymbolTable_lookup_symbol(arg_self: [*c]SymbolTable, arg_name: [*c]const u8, arg_tables: [*c]ArrayList_SymbolTable) Symbol {
     var self = arg_self;
@@ -9940,9 +8542,9 @@ pub export fn SymbolTable_lookup_symbol(arg_self: [*c]SymbolTable, arg_name: [*c
         if (strcmp(ArrayList_Symbol_get(&self.*.entries, i).name, name) == @as(c_int, 0)) {
             return ArrayList_Symbol_get(&self.*.entries, i);
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
-    if (self.*.parent_idx >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.parent_idx >= @as(c_longlong, 0)) {
         var parent: SymbolTable = ArrayList_SymbolTable_get(tables, self.*.parent_idx);
         _ = &parent;
         return SymbolTable_lookup_symbol(&parent, name, tables);
@@ -9973,9 +8575,9 @@ pub export fn SymbolTable_mark_moved(arg_self: [*c]SymbolTable, arg_name: [*c]co
             ArrayList_Symbol_set(&self.*.entries, i, sym);
             return;
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
-    if (self.*.parent_idx >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.parent_idx >= @as(c_longlong, 0)) {
         var parent: SymbolTable = ArrayList_SymbolTable_get(tables, self.*.parent_idx);
         _ = &parent;
         SymbolTable_mark_moved(&parent, name, tables);
@@ -9993,9 +8595,9 @@ pub export fn SymbolTable_lookup_current(arg_self: [*c]SymbolTable, arg_name: [*
         if (strcmp(ArrayList_Symbol_get(&self.*.entries, i).name, name) == @as(c_int, 0)) {
             return i;
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
-    return @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    return -@as(c_longlong, 1);
 }
 pub export fn ArrayList_StructInfo_init(arg_allocator: [*c]KaiAllocator) ArrayList_StructInfo {
     var allocator = arg_allocator;
@@ -10011,7 +8613,7 @@ pub export fn ArrayList_StructInfo_init(arg_allocator: [*c]KaiAllocator) ArrayLi
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]StructInfo, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StructInfo)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]StructInfo, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StructInfo)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -10021,10 +8623,10 @@ pub export fn ArrayList_StructInfo_push(arg_self: [*c]ArrayList_StructInfo, arg_
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]StructInfo = @as([*c]StructInfo, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StructInfo)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]StructInfo = @as([*c]StructInfo, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StructInfo)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -10036,7 +8638,7 @@ pub export fn ArrayList_StructInfo_push(arg_self: [*c]ArrayList_StructInfo, arg_
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -10047,16 +8649,16 @@ pub export fn ArrayList_StructInfo_push(arg_self: [*c]ArrayList_StructInfo, arg_
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_StructInfo_get(arg_self: [*c]ArrayList_StructInfo, arg_index_1: i64) StructInfo {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -10071,9 +8673,9 @@ pub export fn ArrayList_StructInfo_set(arg_self: [*c]ArrayList_StructInfo, arg_i
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -10084,12 +8686,12 @@ pub export fn ArrayList_StructInfo_set(arg_self: [*c]ArrayList_StructInfo, arg_i
 pub export fn ArrayList_StructInfo_pop(arg_self: [*c]ArrayList_StructInfo) StructInfo {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -10137,7 +8739,7 @@ pub export fn TypeChecker_init(arg_allocator: [*c]KaiAllocator, arg_stmt_pool: [
     self.expr_pool = expr_pool;
     self.pattern_pool = pattern_pool;
     self.symbol_tables = ArrayList_SymbolTable_init(allocator);
-    self.current_table_idx = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    self.current_table_idx = -@as(c_longlong, 1);
     self.struct_info = ArrayList_StructInfo_init(allocator);
     self.has_error = @as(c_int, 0) != 0;
     self.current_func_ret_type = "";
@@ -10156,12 +8758,12 @@ pub export fn TypeChecker_enter_scope(arg_self: [*c]TypeChecker) void {
     _ = &new_table;
     new_table = SymbolTable_init(self.*.allocator, self.*.current_table_idx);
     ArrayList_SymbolTable_push(&self.*.symbol_tables, new_table);
-    self.*.current_table_idx = ArrayList_SymbolTable_length(&self.*.symbol_tables) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.current_table_idx = ArrayList_SymbolTable_length(&self.*.symbol_tables) - @as(c_longlong, 1);
 }
 pub export fn TypeChecker_exit_scope(arg_self: [*c]TypeChecker) void {
     var self = arg_self;
     _ = &self;
-    if (self.*.current_table_idx >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.current_table_idx >= @as(c_longlong, 0)) {
         var table: SymbolTable = ArrayList_SymbolTable_get(&self.*.symbol_tables, self.*.current_table_idx);
         _ = &table;
         self.*.current_table_idx = table.parent_idx;
@@ -10178,7 +8780,7 @@ pub export fn TypeChecker_define_symbol(arg_self: [*c]TypeChecker, arg_name: [*c
     _ = &is_mutable;
     var kind = arg_kind;
     _ = &kind;
-    if (self.*.current_table_idx >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.current_table_idx >= @as(c_longlong, 0)) {
         var table: SymbolTable = ArrayList_SymbolTable_get(&self.*.symbol_tables, self.*.current_table_idx);
         _ = &table;
         SymbolTable_define(&table, name, type_name, is_mutable, kind, "");
@@ -10216,7 +8818,7 @@ pub export fn TypeChecker_detect_imports(arg_self: [*c]TypeChecker, arg_top_stmt
                 self.*.has_any_import = @as(c_int, 1) != 0;
                 return;
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
     }
 }
@@ -10248,14 +8850,14 @@ pub export fn TypeChecker_register_struct_info(arg_self: [*c]TypeChecker, arg_to
                     if (strcmp(m.func_name, "drop") == @as(c_int, 0)) {
                         has_drop = @as(c_int, 1) != 0;
                     }
-                    j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    j = j + @as(c_longlong, 1);
                 }
                 ArrayList_StructInfo_push(&self.*.struct_info, StructInfo{
                     .name = s.impl_struct_name,
                     .has_drop = has_drop,
                 });
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
     }
 }
@@ -10266,10 +8868,10 @@ pub export fn TypeChecker_has_drop_method(arg_self: [*c]TypeChecker, arg_type_na
     _ = &type_name;
     var clean_type: [*c]const u8 = type_name;
     _ = &clean_type;
-    if ((strlen(type_name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 4))))) and (strcmp(substring(type_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))))), "own ") == @as(c_int, 0))) {
-        clean_type = substring(type_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(type_name)))));
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(type_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 4)))) and (strcmp(substring(type_name, @as(c_longlong, 0), @as(c_longlong, 4)), "own ") == @as(c_int, 0))) {
+        clean_type = substring(type_name, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(type_name)))));
     }
-    if ((strlen(clean_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (((@as(c_int, @bitCast(@as(c_uint, clean_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38))))))))) or (@as(c_int, @bitCast(@as(c_uint, clean_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42)))))))))) or (@as(c_int, @bitCast(@as(c_uint, clean_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63))))))))))) {
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clean_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (((@as(c_int, @bitCast(@as(c_uint, clean_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))) or (@as(c_int, @bitCast(@as(c_uint, clean_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42)))))))))) or (@as(c_int, @bitCast(@as(c_uint, clean_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63))))))))))) {
         return @as(c_int, 0) != 0;
     }
     var i: i64 = 0;
@@ -10280,7 +8882,7 @@ pub export fn TypeChecker_has_drop_method(arg_self: [*c]TypeChecker, arg_type_na
         if (strcmp(info.name, clean_type) == @as(c_int, 0)) {
             return info.has_drop;
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
     return @as(c_int, 0) != 0;
 }
@@ -10289,16 +8891,16 @@ pub export fn TypeChecker_collect_block_drops(arg_self: [*c]TypeChecker, arg_stm
     _ = &self;
     var stmt_idx = arg_stmt_idx;
     _ = &stmt_idx;
-    if (self.*.current_table_idx < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.current_table_idx < @as(c_longlong, 0)) {
         return;
     }
     var table: SymbolTable = ArrayList_SymbolTable_get(&self.*.symbol_tables, self.*.current_table_idx);
     _ = &table;
     var drop_vars: ArrayList_DropVarEntry = ArrayList_DropVarEntry_init(self.*.allocator);
     _ = &drop_vars;
-    var i: i64 = ArrayList_Symbol_length(&table.entries) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    var i: i64 = ArrayList_Symbol_length(&table.entries) - @as(c_longlong, 1);
     _ = &i;
-    while (i >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    while (i >= @as(c_longlong, 0)) {
         var sym: Symbol = ArrayList_Symbol_get(&table.entries, i);
         _ = &sym;
         if (((strcmp(sym.kind, "var") == @as(c_int, 0)) or (strcmp(sym.kind, "param") == @as(c_int, 0))) and !sym.moved) {
@@ -10311,7 +8913,7 @@ pub export fn TypeChecker_collect_block_drops(arg_self: [*c]TypeChecker, arg_stm
                 });
             }
         }
-        i = i - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i - @as(c_longlong, 1);
     }
     var block_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt_idx);
     _ = &block_stmt;
@@ -10344,7 +8946,7 @@ pub export fn TypeChecker_is_copy_type(arg_self: [*c]TypeChecker, arg_type_name:
     if (strcmp(type_name, "NoneType") == @as(c_int, 0)) {
         return @as(c_int, 1) != 0;
     }
-    if ((strlen(type_name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and ((@as(c_int, @bitCast(@as(c_uint, type_name[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, type_name[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38))))))))))) {
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(type_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, type_name[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, type_name[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
         return @as(c_int, 1) != 0;
     }
     return @as(c_int, 0) != 0;
@@ -10360,23 +8962,23 @@ pub export fn TypeChecker_parse_ptr_ref(arg_self: [*c]TypeChecker, arg_type_str:
     _ = &is_mut;
     var inner: [*c]const u8 = type_str;
     _ = &inner;
-    if ((strlen(inner) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, inner[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63)))))))))) {
-        inner = substring(inner, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner)))));
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, inner[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
+        inner = substring(inner, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner)))));
     }
-    if ((strlen(inner) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 5))))) and (strcmp(substring(inner, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5))))), "*mut ") == @as(c_int, 0))) {
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(substring(inner, @as(c_longlong, 0), @as(c_longlong, 5)), "*mut ") == @as(c_int, 0))) {
         is_ptr = @as(c_int, 1) != 0;
         is_mut = @as(c_int, 1) != 0;
-        inner = substring(inner, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner)))));
-    } else if ((strlen(inner) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))) and (@as(c_int, @bitCast(@as(c_uint, inner[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42)))))))))) {
+        inner = substring(inner, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner)))));
+    } else if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))) and (@as(c_int, @bitCast(@as(c_uint, inner[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42)))))))))) {
         is_ptr = @as(c_int, 1) != 0;
-        inner = substring(inner, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner)))));
-    } else if ((strlen(inner) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 5))))) and (strcmp(substring(inner, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5))))), "&mut ") == @as(c_int, 0))) {
+        inner = substring(inner, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner)))));
+    } else if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(substring(inner, @as(c_longlong, 0), @as(c_longlong, 5)), "&mut ") == @as(c_int, 0))) {
         is_ptr = @as(c_int, 1) != 0;
         is_mut = @as(c_int, 1) != 0;
-        inner = substring(inner, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner)))));
-    } else if ((strlen(inner) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))) and (@as(c_int, @bitCast(@as(c_uint, inner[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38)))))))))) {
+        inner = substring(inner, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner)))));
+    } else if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))) and (@as(c_int, @bitCast(@as(c_uint, inner[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
         is_ptr = @as(c_int, 1) != 0;
-        inner = substring(inner, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner)))));
+        inner = substring(inner, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner)))));
     }
     return PtrRefResult{
         .is_ptr = is_ptr,
@@ -10395,11 +8997,11 @@ pub export fn TypeChecker_types_compatible(arg_self: [*c]TypeChecker, arg_target
     _ = &t;
     var s: [*c]const u8 = source;
     _ = &s;
-    if ((strlen(t) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 4))))) and (strcmp(substring(t, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))))), "own ") == @as(c_int, 0))) {
-        t = substring(t, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(t)))));
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(t)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 4)))) and (strcmp(substring(t, @as(c_longlong, 0), @as(c_longlong, 4)), "own ") == @as(c_int, 0))) {
+        t = substring(t, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(t)))));
     }
-    if ((strlen(s) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 4))))) and (strcmp(substring(s, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))))), "own ") == @as(c_int, 0))) {
-        s = substring(s, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(s)))));
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 4)))) and (strcmp(substring(s, @as(c_longlong, 0), @as(c_longlong, 4)), "own ") == @as(c_int, 0))) {
+        s = substring(s, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(s)))));
     }
     if ((strcmp(t, "Void") == @as(c_int, 0)) or (strcmp(s, "Void") == @as(c_int, 0))) {
         return @as(c_int, 1) != 0;
@@ -10410,20 +9012,20 @@ pub export fn TypeChecker_types_compatible(arg_self: [*c]TypeChecker, arg_target
     if (strcmp(t, s) == @as(c_int, 0)) {
         return @as(c_int, 1) != 0;
     }
-    if ((strlen(t) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, t[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63)))))))))) {
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(t)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, t[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
         if (strcmp(s, "NoneType") == @as(c_int, 0)) {
             return @as(c_int, 1) != 0;
         }
-        var t_inner: [*c]const u8 = substring(t, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(t)))));
+        var t_inner: [*c]const u8 = substring(t, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(t)))));
         _ = &t_inner;
         var s_inner: [*c]const u8 = s;
         _ = &s_inner;
-        if ((strlen(s) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, s[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63)))))))))) {
-            s_inner = substring(s, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(s)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, s[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
+            s_inner = substring(s, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(s)))));
         }
         return TypeChecker_types_compatible(self, t_inner, s_inner);
     }
-    var excl_t: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    var excl_t: i64 = -@as(c_longlong, 1);
     _ = &excl_t;
     var i: i64 = 0;
     _ = &i;
@@ -10431,32 +9033,32 @@ pub export fn TypeChecker_types_compatible(arg_self: [*c]TypeChecker, arg_target
         if (@as(c_int, @bitCast(@as(c_uint, (blk: {
             const tmp = i;
             if (tmp >= 0) break :blk t + @as(usize, @intCast(tmp)) else break :blk t - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))))))) {
+        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))))))) {
             excl_t = i;
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
-    if (excl_t >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-        var target_val: [*c]const u8 = substring(t, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), excl_t);
+    if (excl_t >= @as(c_longlong, 0)) {
+        var target_val: [*c]const u8 = substring(t, @as(c_longlong, 0), excl_t);
         _ = &target_val;
-        var target_err: [*c]const u8 = substring(t, excl_t + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(t)))));
+        var target_err: [*c]const u8 = substring(t, excl_t + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(t)))));
         _ = &target_err;
-        var excl_s: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+        var excl_s: i64 = -@as(c_longlong, 1);
         _ = &excl_s;
         i = 0;
         while (@as(c_ulonglong, @bitCast(i)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s))))) {
             if (@as(c_int, @bitCast(@as(c_uint, (blk: {
                 const tmp = i;
                 if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))))))) {
+            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))))))) {
                 excl_s = i;
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
-        if (excl_s >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-            var source_val: [*c]const u8 = substring(s, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), excl_s);
+        if (excl_s >= @as(c_longlong, 0)) {
+            var source_val: [*c]const u8 = substring(s, @as(c_longlong, 0), excl_s);
             _ = &source_val;
-            var source_err: [*c]const u8 = substring(s, excl_s + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(s)))));
+            var source_err: [*c]const u8 = substring(s, excl_s + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(s)))));
             _ = &source_err;
             return (@as(c_int, @intFromBool(TypeChecker_types_compatible(self, target_val, source_val))) != 0) and (@as(c_int, @intFromBool(TypeChecker_types_compatible(self, target_err, source_err))) != 0);
         }
@@ -10498,9 +9100,9 @@ pub export fn TypeChecker_find_func_decl(arg_self: [*c]TypeChecker, arg_name: [*
         if ((stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_extern))) and (strcmp(stmt.extern_name, name) == @as(c_int, 0))) {
             return idx;
         }
-        idx = idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        idx = idx + @as(c_longlong, 1);
     }
-    return @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    return -@as(c_longlong, 1);
 }
 pub export fn TypeChecker_find_method_decl(arg_self: [*c]TypeChecker, arg_struct_name: [*c]const u8, arg_meth_name: [*c]const u8) i64 {
     var self = arg_self;
@@ -10521,29 +9123,29 @@ pub export fn TypeChecker_find_method_decl(arg_self: [*c]TypeChecker, arg_struct
             if (tmp >= 0) break :blk clean_struct + @as(usize, @intCast(tmp)) else break :blk clean_struct - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
         }).*;
         _ = &c;
-        if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38)))))))))) {
+        if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
             clean = _kai_str_concat(clean, char_to_str(c));
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
     clean_struct = clean;
-    if ((strlen(clean_struct) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 4))))) and (strcmp(substring(clean_struct, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))))), "mut ") == @as(c_int, 0))) {
-        clean_struct = substring(clean_struct, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_struct)))));
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clean_struct)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 4)))) and (strcmp(substring(clean_struct, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0))) {
+        clean_struct = substring(clean_struct, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_struct)))));
     }
-    var lt_pos: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    var lt_pos: i64 = -@as(c_longlong, 1);
     _ = &lt_pos;
     i = 0;
     while (@as(c_ulonglong, @bitCast(i)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clean_struct))))) {
         if (@as(c_int, @bitCast(@as(c_uint, (blk: {
             const tmp = i;
             if (tmp >= 0) break :blk clean_struct + @as(usize, @intCast(tmp)) else break :blk clean_struct - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 60))))))))) {
+        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))))))) {
             lt_pos = i;
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
-    if (lt_pos >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-        clean_struct = substring(clean_struct, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), lt_pos);
+    if (lt_pos >= @as(c_longlong, 0)) {
+        clean_struct = substring(clean_struct, @as(c_longlong, 0), lt_pos);
     }
     var idx: i64 = 0;
     _ = &idx;
@@ -10553,7 +9155,7 @@ pub export fn TypeChecker_find_method_decl(arg_self: [*c]TypeChecker, arg_struct
         if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_impl_block))) {
             var impl_name: [*c]const u8 = stmt.impl_struct_name;
             _ = &impl_name;
-            var impl_lt: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+            var impl_lt: i64 = -@as(c_longlong, 1);
             _ = &impl_lt;
             var j: i64 = 0;
             _ = &j;
@@ -10561,13 +9163,13 @@ pub export fn TypeChecker_find_method_decl(arg_self: [*c]TypeChecker, arg_struct
                 if (@as(c_int, @bitCast(@as(c_uint, (blk: {
                     const tmp = j;
                     if (tmp >= 0) break :blk impl_name + @as(usize, @intCast(tmp)) else break :blk impl_name - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 60))))))))) {
+                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))))))) {
                     impl_lt = j;
                 }
-                j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                j = j + @as(c_longlong, 1);
             }
-            if (impl_lt >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-                impl_name = substring(impl_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), impl_lt);
+            if (impl_lt >= @as(c_longlong, 0)) {
+                impl_name = substring(impl_name, @as(c_longlong, 0), impl_lt);
             }
             if (strcmp(impl_name, clean_struct) == @as(c_int, 0)) {
                 var mi: i64 = 0;
@@ -10580,13 +9182,13 @@ pub export fn TypeChecker_find_method_decl(arg_self: [*c]TypeChecker, arg_struct
                     if (strcmp(m.func_name, meth_name) == @as(c_int, 0)) {
                         return m_idx;
                     }
-                    mi = mi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    mi = mi + @as(c_longlong, 1);
                 }
             }
         }
-        idx = idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        idx = idx + @as(c_longlong, 1);
     }
-    return @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    return -@as(c_longlong, 1);
 }
 pub export fn TypeChecker_find_struct_decl(arg_self: [*c]TypeChecker, arg_name: [*c]const u8) i64 {
     var self = arg_self;
@@ -10601,25 +9203,25 @@ pub export fn TypeChecker_find_struct_decl(arg_self: [*c]TypeChecker, arg_name: 
         if ((stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) and (strcmp(stmt.struct_name, name) == @as(c_int, 0))) {
             return idx;
         }
-        idx = idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        idx = idx + @as(c_longlong, 1);
     }
-    return @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    return -@as(c_longlong, 1);
 }
 pub export fn TypeChecker_get_block_yield_type(arg_self: [*c]TypeChecker, arg_stmt_idx: i64) [*c]const u8 {
     var self = arg_self;
     _ = &self;
     var stmt_idx = arg_stmt_idx;
     _ = &stmt_idx;
-    if (stmt_idx < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (stmt_idx < @as(c_longlong, 0)) {
         return "Void";
     }
     var stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt_idx);
     _ = &stmt;
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) {
-        if (ArrayList_Int_length(&stmt.block_stmts) == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (ArrayList_Int_length(&stmt.block_stmts) == @as(c_longlong, 0)) {
             return "Void";
         }
-        var last_idx: i64 = ArrayList_Int_get(&stmt.block_stmts, ArrayList_Int_length(&stmt.block_stmts) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))));
+        var last_idx: i64 = ArrayList_Int_get(&stmt.block_stmts, ArrayList_Int_length(&stmt.block_stmts) - @as(c_longlong, 1));
         _ = &last_idx;
         var last_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, last_idx);
         _ = &last_stmt;
@@ -10640,7 +9242,7 @@ pub export fn TypeChecker_mark_expr_moved(arg_self: [*c]TypeChecker, arg_expr_id
     _ = &self;
     var expr_idx = arg_expr_idx;
     _ = &expr_idx;
-    if (expr_idx < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (expr_idx < @as(c_longlong, 0)) {
         return;
     }
     var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr_idx);
@@ -10661,7 +9263,7 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
     _ = &self;
     var expr_idx = arg_expr_idx;
     _ = &expr_idx;
-    if (expr_idx < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (expr_idx < @as(c_longlong, 0)) {
         return "Void";
     }
     var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr_idx);
@@ -10693,7 +9295,7 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
         _ = &table;
         var sym: Symbol = SymbolTable_lookup_symbol(&table, name, &self.*.symbol_tables);
         _ = &sym;
-        if (strlen(sym.name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(sym.name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             return sym.type_name;
         }
         return "Void";
@@ -10718,7 +9320,7 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
         var name: [*c]const u8 = expr.func_name;
         _ = &name;
         if ((strcmp(name, "cast") == @as(c_int, 0)) or (strcmp(name, "as") == @as(c_int, 0))) {
-            return ArrayList_Str_get(&expr.func_type_args, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+            return ArrayList_Str_get(&expr.func_type_args, @as(c_longlong, 0));
         }
         if (strcmp(name, "size_of") == @as(c_int, 0)) {
             return "Int";
@@ -10736,13 +9338,13 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
             if ((stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) and (strcmp(stmt.struct_name, name) == @as(c_int, 0))) {
                 is_struct = @as(c_int, 1) != 0;
             }
-            s_idx = s_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            s_idx = s_idx + @as(c_longlong, 1);
         }
         if (((strcmp(name, "ArrayList") == @as(c_int, 0)) or (strcmp(name, "HashMap") == @as(c_int, 0))) or (strcmp(name, "StringBuilder") == @as(c_int, 0))) {
             is_struct = @as(c_int, 1) != 0;
         }
         if (is_struct) {
-            if (ArrayList_Str_length(&expr.func_type_args) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (ArrayList_Str_length(&expr.func_type_args) > @as(c_longlong, 0)) {
                 return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("*", name), "<"), str_array_join(expr.func_type_args, ", ")), ">");
             }
             return _kai_str_concat("*", name);
@@ -10751,7 +9353,7 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
         _ = &table;
         var sym: Symbol = SymbolTable_lookup_symbol(&table, name, &self.*.symbol_tables);
         _ = &sym;
-        if (strlen(sym.name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(sym.name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             return sym.type_name;
         }
         return "Void";
@@ -10770,7 +9372,7 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
                 if (((stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_enum_decl))) and (strcmp(stmt.enum_name, base_node.ident_name) == @as(c_int, 0))) or ((stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_error_decl))) and (strcmp(stmt.error_name, base_node.ident_name) == @as(c_int, 0)))) {
                     is_static = @as(c_int, 1) != 0;
                 }
-                s_idx = s_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                s_idx = s_idx + @as(c_longlong, 1);
             }
             if (is_static) {
                 return base_node.ident_name;
@@ -10788,13 +9390,13 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
                 if (tmp >= 0) break :blk base_type + @as(usize, @intCast(tmp)) else break :blk base_type - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
             }).*;
             _ = &c;
-            if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38)))))))))) {
+            if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
                 clean_type = _kai_str_concat(clean_type, char_to_str(c));
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
-        if ((strlen(clean_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 4))))) and (strcmp(substring(clean_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))))), "mut ") == @as(c_int, 0))) {
-            clean_type = substring(clean_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clean_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 4)))) and (strcmp(substring(clean_type, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0))) {
+            clean_type = substring(clean_type, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
         }
         var s_idx: i64 = 0;
         _ = &s_idx;
@@ -10811,11 +9413,11 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
                         if (strcmp(f.name, expr.field_name) == @as(c_int, 0)) {
                             return f.ftype;
                         }
-                        f_idx = f_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        f_idx = f_idx + @as(c_longlong, 1);
                     }
                 }
             }
-            s_idx = s_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            s_idx = s_idx + @as(c_longlong, 1);
         }
         return "Void";
     }
@@ -10825,8 +9427,8 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
         if (strcmp(base_type, "Str") == @as(c_int, 0)) {
             return "Char";
         }
-        if ((strlen(base_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, base_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42)))))))))) {
-            return substring(base_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42)))))))))) {
+            return substring(base_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
         }
         return "Void";
     }
@@ -10841,14 +9443,14 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_deref))) {
         var base_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.deref_expr);
         _ = &base_type;
-        if ((strlen(base_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 5))))) and (strcmp(substring(base_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5))))), "*mut ") == @as(c_int, 0))) {
-            return substring(base_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(substring(base_type, @as(c_longlong, 0), @as(c_longlong, 5)), "*mut ") == @as(c_int, 0))) {
+            return substring(base_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
         }
-        if ((strlen(base_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 5))))) and (strcmp(substring(base_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5))))), "&mut ") == @as(c_int, 0))) {
-            return substring(base_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(substring(base_type, @as(c_longlong, 0), @as(c_longlong, 5)), "&mut ") == @as(c_int, 0))) {
+            return substring(base_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
         }
-        if ((strlen(base_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and ((@as(c_int, @bitCast(@as(c_uint, base_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, base_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38))))))))))) {
-            return substring(base_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
+            return substring(base_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
         }
         return "Void";
     }
@@ -10858,7 +9460,7 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_try))) {
         var inner_ty: [*c]const u8 = TypeChecker_get_expr_type(self, expr.try_expr);
         _ = &inner_ty;
-        var excl_pos: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+        var excl_pos: i64 = -@as(c_longlong, 1);
         _ = &excl_pos;
         var i: i64 = 0;
         _ = &i;
@@ -10866,23 +9468,23 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
             if (@as(c_int, @bitCast(@as(c_uint, (blk: {
                 const tmp = i;
                 if (tmp >= 0) break :blk inner_ty + @as(usize, @intCast(tmp)) else break :blk inner_ty - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))))))) {
+            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))))))) {
                 excl_pos = i;
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
-        if (excl_pos >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-            return substring(inner_ty, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), excl_pos);
+        if (excl_pos >= @as(c_longlong, 0)) {
+            return substring(inner_ty, @as(c_longlong, 0), excl_pos);
         }
         return "Void";
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_catch))) {
         var inner_ty: [*c]const u8 = TypeChecker_get_expr_type(self, expr.catch_expr);
         _ = &inner_ty;
-        if ((strlen(inner_ty) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, inner_ty[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63)))))))))) {
-            return substring(inner_ty, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner_ty)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, inner_ty[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
+            return substring(inner_ty, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
         }
-        var excl_pos: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+        var excl_pos: i64 = -@as(c_longlong, 1);
         _ = &excl_pos;
         var i: i64 = 0;
         _ = &i;
@@ -10890,13 +9492,13 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
             if (@as(c_int, @bitCast(@as(c_uint, (blk: {
                 const tmp = i;
                 if (tmp >= 0) break :blk inner_ty + @as(usize, @intCast(tmp)) else break :blk inner_ty - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))))))) {
+            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))))))) {
                 excl_pos = i;
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
-        if (excl_pos >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-            return substring(inner_ty, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), excl_pos);
+        if (excl_pos >= @as(c_longlong, 0)) {
+            return substring(inner_ty, @as(c_longlong, 0), excl_pos);
         }
         return "Void";
     }
@@ -10907,7 +9509,7 @@ pub export fn TypeChecker_expr_is_mutable(arg_self: [*c]TypeChecker, arg_expr_id
     _ = &self;
     var expr_idx = arg_expr_idx;
     _ = &expr_idx;
-    if (expr_idx < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (expr_idx < @as(c_longlong, 0)) {
         return @as(c_int, 0) != 0;
     }
     var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr_idx);
@@ -10917,7 +9519,7 @@ pub export fn TypeChecker_expr_is_mutable(arg_self: [*c]TypeChecker, arg_expr_id
         _ = &table;
         var sym: Symbol = SymbolTable_lookup_symbol(&table, expr.ident_name, &self.*.symbol_tables);
         _ = &sym;
-        if (strlen(sym.name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(sym.name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             return sym.is_mutable;
         }
     }
@@ -10945,7 +9547,7 @@ pub export fn TypeChecker_is_enum_or_error_type(arg_self: [*c]TypeChecker, arg_n
         if ((stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_error_decl))) and (strcmp(stmt.error_name, name) == @as(c_int, 0))) {
             return @as(c_int, 1) != 0;
         }
-        idx = idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        idx = idx + @as(c_longlong, 1);
     }
     return @as(c_int, 0) != 0;
 }
@@ -10962,7 +9564,7 @@ pub export fn TypeChecker_check_identifier(arg_self: [*c]TypeChecker, arg_expr_i
     _ = &table;
     var sym: Symbol = SymbolTable_lookup_symbol(&table, name, &self.*.symbol_tables);
     _ = &sym;
-    if (strlen(sym.name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(sym.name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
         if (sym.moved) {
             _ = printf("error[E0009]: use of moved value: '%s'\n", name);
             self.*.has_error = @as(c_int, 1) != 0;
@@ -10981,7 +9583,7 @@ pub export fn TypeChecker_check_field_access(arg_self: [*c]TypeChecker, arg_expr
     _ = &expr;
     var recv_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.field_expr);
     _ = &recv_type;
-    if ((strlen(recv_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, recv_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63)))))))))) {
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(recv_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, recv_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
         _ = printf("error[E0011]: cannot access field '%s' on optional type '%s'. unwrap it first\n", expr.field_name, recv_type);
         self.*.has_error = @as(c_int, 1) != 0;
     }
@@ -10995,7 +9597,7 @@ pub export fn TypeChecker_check_method_call(arg_self: [*c]TypeChecker, arg_expr_
     _ = &expr;
     var recv_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.meth_expr);
     _ = &recv_type;
-    if ((strlen(recv_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, recv_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63)))))))))) {
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(recv_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, recv_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
         _ = printf("error[E0012]: cannot call method '%s' on optional type '%s'. unwrap it first\n", expr.meth_name, recv_type);
         self.*.has_error = @as(c_int, 1) != 0;
     }
@@ -11009,7 +9611,7 @@ pub export fn TypeChecker_check_return_stmt(arg_self: [*c]TypeChecker, arg_stmt_
     _ = &stmt;
     var val_type: [*c]const u8 = "Void";
     _ = &val_type;
-    if (stmt.return_value >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (stmt.return_value >= @as(c_longlong, 0)) {
         var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, stmt.return_value);
         _ = &expr;
         if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_borrow))) {
@@ -11034,7 +9636,7 @@ pub export fn TypeChecker_check_return_stmt(arg_self: [*c]TypeChecker, arg_stmt_
     }
     var expected_ret: [*c]const u8 = self.*.current_func_ret_type;
     _ = &expected_ret;
-    if ((strlen(expected_ret) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (strcmp(expected_ret, "<infer>") != @as(c_int, 0))) {
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expected_ret)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (strcmp(expected_ret, "<infer>") != @as(c_int, 0))) {
         if (!TypeChecker_types_compatible(self, expected_ret, val_type)) {
             _ = printf("error[E0007]: return type mismatch: expected '%s', got '%s'\n", expected_ret, val_type);
             self.*.has_error = @as(c_int, 1) != 0;
@@ -11046,7 +9648,7 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
     _ = &self;
     var stmt_idx = arg_stmt_idx;
     _ = &stmt_idx;
-    if (stmt_idx < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (stmt_idx < @as(c_longlong, 0)) {
         return;
     }
     var stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt_idx);
@@ -11057,7 +9659,7 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
         _ = &i;
         while (i < ArrayList_Int_length(&stmt.block_stmts)) {
             TypeChecker_check_stmt(self, ArrayList_Int_get(&stmt.block_stmts, i));
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         TypeChecker_collect_block_drops(self, stmt_idx);
         TypeChecker_exit_scope(self);
@@ -11069,7 +9671,7 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
         _ = &val_type;
         var var_type: [*c]const u8 = stmt.vardecl_type;
         _ = &var_type;
-        if (strlen(var_type) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(var_type)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             var_type = val_type;
         } else if (!TypeChecker_types_compatible(self, var_type, val_type)) {
             _ = printf("error[E0001]: type mismatch in declaration of '%s': expected '%s', got '%s'\n", stmt.vardecl_name, var_type, val_type);
@@ -11084,7 +9686,7 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
         TypeChecker_check_expr(self, stmt.assign_value);
         var target_type: [*c]const u8 = "Void";
         _ = &target_type;
-        if (stmt.assign_target >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (stmt.assign_target >= @as(c_longlong, 0)) {
             target_type = TypeChecker_get_expr_type(self, stmt.assign_target);
             var target_expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, stmt.assign_target);
             _ = &target_expr;
@@ -11093,7 +9695,7 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
                 _ = &table;
                 var sym: Symbol = SymbolTable_lookup_symbol(&table, target_expr.ident_name, &self.*.symbol_tables);
                 _ = &sym;
-                if ((strlen(sym.name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and !sym.is_mutable) {
+                if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(sym.name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and !sym.is_mutable) {
                     _ = printf("error[E0008]: cannot assign to immutable variable '%s'\n", target_expr.ident_name);
                     self.*.has_error = @as(c_int, 1) != 0;
                 }
@@ -11104,7 +9706,7 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
         if (!TypeChecker_types_compatible(self, target_type, val_type)) {
             var target_name: [*c]const u8 = "<non-ident>";
             _ = &target_name;
-            if (stmt.assign_target >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (stmt.assign_target >= @as(c_longlong, 0)) {
                 var target_expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, stmt.assign_target);
                 _ = &target_expr;
                 if (target_expr.kind == @as(c_uint, @bitCast(ExprKind_ek_identifier))) {
@@ -11122,7 +9724,7 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
         _ = &old_ret;
         self.*.current_func_ret_type = stmt.func_return_type;
         TypeChecker_define_symbol(self, stmt.func_name, stmt.func_return_type, @as(c_int, 0) != 0, "func");
-        if (ArrayList_Str_length(&stmt.func_type_params) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (ArrayList_Str_length(&stmt.func_type_params) > @as(c_longlong, 0)) {
             return;
         }
         TypeChecker_enter_scope(self);
@@ -11132,7 +9734,7 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
             var p: Param = ArrayList_Param_get(&stmt.func_params, i);
             _ = &p;
             TypeChecker_define_symbol(self, p.name, p.ptype, @as(c_int, 0) != 0, "param");
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         TypeChecker_check_stmt(self, stmt.func_body);
         TypeChecker_exit_scope(self);
@@ -11154,8 +9756,8 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
         _ = &opt_type;
         var unwrapped_type: [*c]const u8 = opt_type;
         _ = &unwrapped_type;
-        if ((strlen(opt_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, opt_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63)))))))))) {
-            unwrapped_type = substring(opt_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(opt_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(opt_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, opt_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
+            unwrapped_type = substring(opt_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(opt_type)))));
         }
         TypeChecker_enter_scope(self);
         TypeChecker_define_symbol(self, stmt.iflet_var, unwrapped_type, @as(c_int, 0) != 0, "var");
@@ -11175,7 +9777,7 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
         TypeChecker_enter_scope(self);
         var iter_type: [*c]const u8 = TypeChecker_get_expr_type(self, stmt.for_start);
         _ = &iter_type;
-        if ((strlen(iter_type) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) or (strcmp(iter_type, "Void") == @as(c_int, 0))) {
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(iter_type)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) or (strcmp(iter_type, "Void") == @as(c_int, 0))) {
             iter_type = "Int";
         }
         TypeChecker_define_symbol(self, stmt.for_var, iter_type, @as(c_int, 0) != 0, "var");
@@ -11210,12 +9812,12 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
                 _ = &bi;
                 while (bi < ArrayList_Str_length(&pat.bindings)) {
                     TypeChecker_define_symbol(self, ArrayList_Str_get(&pat.bindings, bi), "Void", @as(c_int, 0) != 0, "var");
-                    bi = bi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    bi = bi + @as(c_longlong, 1);
                 }
             }
             TypeChecker_check_stmt(self, mc.body);
             TypeChecker_exit_scope(self);
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         return;
     }
@@ -11241,12 +9843,12 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
                 var p: Param = ArrayList_Param_get(&m.func_params, pi);
                 _ = &p;
                 TypeChecker_define_symbol(self, p.name, p.ptype, @as(c_int, 0) != 0, "param");
-                pi = pi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                pi = pi + @as(c_longlong, 1);
             }
             TypeChecker_check_stmt(self, m.func_body);
             TypeChecker_exit_scope(self);
             self.*.current_func_ret_type = old_ret;
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         return;
     }
@@ -11275,7 +9877,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
     _ = &self;
     var expr_idx = arg_expr_idx;
     _ = &expr_idx;
-    if (expr_idx < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (expr_idx < @as(c_longlong, 0)) {
         return;
     }
     var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr_idx);
@@ -11301,7 +9903,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             _ = &arg;
             TypeChecker_check_expr(self, arg);
             TypeChecker_mark_expr_moved(self, arg);
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         var name: [*c]const u8 = expr.func_name;
         _ = &name;
@@ -11310,7 +9912,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
         }
         var func_idx: i64 = TypeChecker_find_func_decl(self, name);
         _ = &func_idx;
-        if (func_idx >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (func_idx >= @as(c_longlong, 0)) {
             var decl: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, func_idx);
             _ = &decl;
             var is_extern: bool = decl.kind == @as(c_uint, @bitCast(StmtKind_sk_extern));
@@ -11327,7 +9929,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
                 _ = printf("error[E0005]: argument count mismatch for function '%s': expected %lld, got %lld\n", name, ArrayList_Param_length(&params), ArrayList_Int_length(&expr.func_args));
                 self.*.has_error = @as(c_int, 1) != 0;
             } else {
-                if (ArrayList_Str_length(&type_params) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                if (ArrayList_Str_length(&type_params) > @as(c_longlong, 0)) {
                     return;
                 }
                 var arg_i: i64 = 0;
@@ -11341,13 +9943,13 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
                     _ = &arg_type;
                     var ptype: [*c]const u8 = param.ptype;
                     _ = &ptype;
-                    var is_generic_param: bool = ((strlen(ptype) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))) and (@as(c_int, @bitCast(@as(c_uint, ptype[@as(c_uint, @intCast(@as(c_int, 0)))]))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 65)))))))))) and (@as(c_int, @bitCast(@as(c_uint, ptype[@as(c_uint, @intCast(@as(c_int, 0)))]))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 90)))))))));
+                    var is_generic_param: bool = ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(ptype)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))) and (@as(c_int, @bitCast(@as(c_uint, ptype[@as(usize, @intCast(@as(c_longlong, 0)))]))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 65)))))))))) and (@as(c_int, @bitCast(@as(c_uint, ptype[@as(usize, @intCast(@as(c_longlong, 0)))]))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 90)))))))));
                     _ = &is_generic_param;
                     if (!is_generic_param and !TypeChecker_types_compatible(self, ptype, arg_type)) {
                         _ = printf("error[E0003]: argument type mismatch for function '%s', parameter '%s': expected '%s', got '%s'\n", name, param.name, ptype, arg_type);
                         self.*.has_error = @as(c_int, 1) != 0;
                     }
-                    arg_i = arg_i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    arg_i = arg_i + @as(c_longlong, 1);
                 }
             }
         } else if (!self.*.has_any_import) {
@@ -11371,7 +9973,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             _ = &arg;
             TypeChecker_check_expr(self, arg);
             TypeChecker_mark_expr_moved(self, arg);
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         var recv_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.meth_expr);
         _ = &recv_type;
@@ -11379,11 +9981,11 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
         _ = &meth_name;
         var meth_idx: i64 = TypeChecker_find_method_decl(self, recv_type, meth_name);
         _ = &meth_idx;
-        if (meth_idx >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (meth_idx >= @as(c_longlong, 0)) {
             var decl: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, meth_idx);
             _ = &decl;
-            if (ArrayList_Param_length(&decl.func_params) != (ArrayList_Int_length(&expr.meth_args) + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))) {
-                _ = printf("error[E0006]: argument count mismatch for method '%s': expected %lld, got %lld\n", meth_name, ArrayList_Param_length(&decl.func_params) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), ArrayList_Int_length(&expr.meth_args));
+            if (ArrayList_Param_length(&decl.func_params) != (ArrayList_Int_length(&expr.meth_args) + @as(c_longlong, 1))) {
+                _ = printf("error[E0006]: argument count mismatch for method '%s': expected %lld, got %lld\n", meth_name, ArrayList_Param_length(&decl.func_params) - @as(c_longlong, 1), ArrayList_Int_length(&expr.meth_args));
                 self.*.has_error = @as(c_int, 1) != 0;
             } else {
                 var arg_i: i64 = 0;
@@ -11391,7 +9993,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
                 while (arg_i < ArrayList_Int_length(&expr.meth_args)) {
                     var arg: i64 = ArrayList_Int_get(&expr.meth_args, arg_i);
                     _ = &arg;
-                    var param: Param = ArrayList_Param_get(&decl.func_params, arg_i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))));
+                    var param: Param = ArrayList_Param_get(&decl.func_params, arg_i + @as(c_longlong, 1));
                     _ = &param;
                     var arg_type: [*c]const u8 = TypeChecker_get_expr_type(self, arg);
                     _ = &arg_type;
@@ -11399,7 +10001,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
                         _ = printf("error[E0003]: argument type mismatch for method '%s', parameter '%s': expected '%s', got '%s'\n", meth_name, param.name, param.ptype, arg_type);
                         self.*.has_error = @as(c_int, 1) != 0;
                     }
-                    arg_i = arg_i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    arg_i = arg_i + @as(c_longlong, 1);
                 }
             }
         } else if (!self.*.has_any_import) {
@@ -11428,13 +10030,13 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             _ = &f;
             TypeChecker_check_expr(self, f.value);
             TypeChecker_mark_expr_moved(self, f.value);
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         var struct_name: [*c]const u8 = expr.struct_name;
         _ = &struct_name;
         var struct_idx: i64 = TypeChecker_find_struct_decl(self, struct_name);
         _ = &struct_idx;
-        if (struct_idx < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (struct_idx < @as(c_longlong, 0)) {
             if (!self.*.has_any_import) {
                 _ = printf("error[E0021]: undefined struct: '%s'\n", struct_name);
                 self.*.has_error = @as(c_int, 1) != 0;
@@ -11464,13 +10066,13 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
                         self.*.has_error = @as(c_int, 1) != 0;
                     }
                 }
-                dfi = dfi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                dfi = dfi + @as(c_longlong, 1);
             }
             if (!found) {
                 _ = printf("error[E0013]: field '%s' does not exist in struct '%s'\n", f.name, struct_name);
                 self.*.has_error = @as(c_int, 1) != 0;
             }
-            fi = fi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            fi = fi + @as(c_longlong, 1);
         }
         return;
     }
@@ -11481,7 +10083,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
         if (strcmp(inner_ty, "Void") == @as(c_int, 0)) {
             return;
         }
-        var excl_pos: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+        var excl_pos: i64 = -@as(c_longlong, 1);
         _ = &excl_pos;
         var i: i64 = 0;
         _ = &i;
@@ -11489,36 +10091,36 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             if (@as(c_int, @bitCast(@as(c_uint, (blk: {
                 const tmp = i;
                 if (tmp >= 0) break :blk inner_ty + @as(usize, @intCast(tmp)) else break :blk inner_ty - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))))))) {
+            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))))))) {
                 excl_pos = i;
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
-        if (excl_pos < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (excl_pos < @as(c_longlong, 0)) {
             _ = printf("error[E0014]: cannot use 'try' on non-error-union type '%s'\n", inner_ty);
             self.*.has_error = @as(c_int, 1) != 0;
         } else {
-            var error_set: [*c]const u8 = substring(inner_ty, excl_pos + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
+            var error_set: [*c]const u8 = substring(inner_ty, excl_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
             _ = &error_set;
             var expected_ret: [*c]const u8 = self.*.current_func_ret_type;
             _ = &expected_ret;
-            var func_excl: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+            var func_excl: i64 = -@as(c_longlong, 1);
             _ = &func_excl;
             i = 0;
             while (@as(c_ulonglong, @bitCast(i)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expected_ret))))) {
                 if (@as(c_int, @bitCast(@as(c_uint, (blk: {
                     const tmp = i;
                     if (tmp >= 0) break :blk expected_ret + @as(usize, @intCast(tmp)) else break :blk expected_ret - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))))))) {
+                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))))))) {
                     func_excl = i;
                 }
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
-            if (func_excl < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (func_excl < @as(c_longlong, 0)) {
                 _ = printf("error[E0015]: cannot use 'try' in a function that returns non-error-union type '%s'\n", expected_ret);
                 self.*.has_error = @as(c_int, 1) != 0;
             } else {
-                var func_err: [*c]const u8 = substring(expected_ret, func_excl + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(expected_ret)))));
+                var func_err: [*c]const u8 = substring(expected_ret, func_excl + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(expected_ret)))));
                 _ = &func_err;
                 if (!TypeChecker_types_compatible(self, func_err, error_set)) {
                     _ = printf("error[E0016]: error set '%s' of try expression is not compatible with function error set '%s'\n", error_set, func_err);
@@ -11534,18 +10136,18 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
         _ = &inner_ty;
         if (strcmp(inner_ty, "Void") == @as(c_int, 0)) {
             TypeChecker_enter_scope(self);
-            if (strlen(expr.catch_var) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.catch_var)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 TypeChecker_define_symbol(self, expr.catch_var, "Void", @as(c_int, 0) != 0, "var");
             }
             TypeChecker_check_stmt(self, expr.catch_fallback);
             TypeChecker_exit_scope(self);
             return;
         }
-        if ((strlen(inner_ty) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, inner_ty[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63)))))))))) {
-            var val_type: [*c]const u8 = substring(inner_ty, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner_ty)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, inner_ty[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
+            var val_type: [*c]const u8 = substring(inner_ty, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
             _ = &val_type;
             TypeChecker_enter_scope(self);
-            if (strlen(expr.catch_var) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.catch_var)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 TypeChecker_define_symbol(self, expr.catch_var, "Void", @as(c_int, 0) != 0, "var");
             }
             TypeChecker_check_stmt(self, expr.catch_fallback);
@@ -11558,7 +10160,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             }
             return;
         }
-        var excl_pos: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+        var excl_pos: i64 = -@as(c_longlong, 1);
         _ = &excl_pos;
         var i: i64 = 0;
         _ = &i;
@@ -11566,21 +10168,21 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             if (@as(c_int, @bitCast(@as(c_uint, (blk: {
                 const tmp = i;
                 if (tmp >= 0) break :blk inner_ty + @as(usize, @intCast(tmp)) else break :blk inner_ty - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))))))) {
+            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))))))) {
                 excl_pos = i;
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
-        if (excl_pos < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (excl_pos < @as(c_longlong, 0)) {
             _ = printf("error[E0017]: cannot use 'catch' on non-error-union type '%s'\n", inner_ty);
             self.*.has_error = @as(c_int, 1) != 0;
         } else {
-            var val_type: [*c]const u8 = substring(inner_ty, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), excl_pos);
+            var val_type: [*c]const u8 = substring(inner_ty, @as(c_longlong, 0), excl_pos);
             _ = &val_type;
-            var error_set: [*c]const u8 = substring(inner_ty, excl_pos + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
+            var error_set: [*c]const u8 = substring(inner_ty, excl_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
             _ = &error_set;
             TypeChecker_enter_scope(self);
-            if (strlen(expr.catch_var) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.catch_var)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 TypeChecker_define_symbol(self, expr.catch_var, error_set, @as(c_int, 0) != 0, "var");
             }
             TypeChecker_check_stmt(self, expr.catch_fallback);
@@ -11595,6 +10197,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
         return;
     }
 }
+pub extern fn get_exe_dir(buf: [*c]u8, max_len: i64) i64;
 pub export fn ArrayList_StrMapEntry_init(arg_allocator: [*c]KaiAllocator) ArrayList_StrMapEntry {
     var allocator = arg_allocator;
     _ = &allocator;
@@ -11609,7 +10212,7 @@ pub export fn ArrayList_StrMapEntry_init(arg_allocator: [*c]KaiAllocator) ArrayL
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]StrMapEntry, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StrMapEntry)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]StrMapEntry, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StrMapEntry)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -11619,10 +10222,10 @@ pub export fn ArrayList_StrMapEntry_push(arg_self: [*c]ArrayList_StrMapEntry, ar
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]StrMapEntry = @as([*c]StrMapEntry, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StrMapEntry)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]StrMapEntry = @as([*c]StrMapEntry, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StrMapEntry)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -11634,7 +10237,7 @@ pub export fn ArrayList_StrMapEntry_push(arg_self: [*c]ArrayList_StrMapEntry, ar
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -11645,16 +10248,16 @@ pub export fn ArrayList_StrMapEntry_push(arg_self: [*c]ArrayList_StrMapEntry, ar
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_StrMapEntry_get(arg_self: [*c]ArrayList_StrMapEntry, arg_index_1: i64) StrMapEntry {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -11669,9 +10272,9 @@ pub export fn ArrayList_StrMapEntry_set(arg_self: [*c]ArrayList_StrMapEntry, arg
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -11682,12 +10285,12 @@ pub export fn ArrayList_StrMapEntry_set(arg_self: [*c]ArrayList_StrMapEntry, arg
 pub export fn ArrayList_StrMapEntry_pop(arg_self: [*c]ArrayList_StrMapEntry) StrMapEntry {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -11710,15 +10313,15 @@ pub export fn type_map_find(arg_arr: [*c]ArrayList_StrMapEntry, arg_key: [*c]con
     _ = &arr;
     var key = arg_key;
     _ = &key;
-    var i: i64 = ArrayList_StrMapEntry_length(arr) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    var i: i64 = ArrayList_StrMapEntry_length(arr) - @as(c_longlong, 1);
     _ = &i;
-    while (i >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    while (i >= @as(c_longlong, 0)) {
         if (strcmp(ArrayList_StrMapEntry_get(arr, i).key, key) == @as(c_int, 0)) {
             return i;
         }
-        i = i - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i - @as(c_longlong, 1);
     }
-    return @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    return -@as(c_longlong, 1);
 }
 pub export fn type_map_get(arg_arr: [*c]ArrayList_StrMapEntry, arg_key: [*c]const u8) [*c]const u8 {
     var arr = arg_arr;
@@ -11727,7 +10330,7 @@ pub export fn type_map_get(arg_arr: [*c]ArrayList_StrMapEntry, arg_key: [*c]cons
     _ = &key;
     var idx: i64 = type_map_find(arr, key);
     _ = &idx;
-    if (idx < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (idx < @as(c_longlong, 0)) {
         return "";
     }
     return ArrayList_StrMapEntry_get(arr, idx).value;
@@ -11755,9 +10358,42 @@ pub export fn strlist_find(arg_arr: [*c]ArrayList_Str, arg_key: [*c]const u8) i6
         if (strcmp(ArrayList_Str_get(arr, i), key) == @as(c_int, 0)) {
             return i;
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
-    return @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    return -@as(c_longlong, 1);
+}
+pub export fn Codegen_add_init_return(arg_self: [*c]Codegen, arg_body_str: [*c]const u8, arg_struct_name: [*c]const u8) [*c]const u8 {
+    var self = arg_self;
+    _ = &self;
+    var body_str = arg_body_str;
+    _ = &body_str;
+    var struct_name = arg_struct_name;
+    _ = &struct_name;
+    var self_decl: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("    ", struct_name), " self = ("), struct_name), "){0};\n");
+    _ = &self_decl;
+    var body_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(body_str))));
+    _ = &body_len;
+    var stripped_body: [*c]const u8 = substring(body_str, @as(c_longlong, 2), body_len - @as(c_longlong, 1));
+    _ = &stripped_body;
+    var ends_with_return: bool = @as(c_int, 0) != 0;
+    _ = &ends_with_return;
+    {
+        var ret_ptr: [*c]u8 = strstr(stripped_body, "return self;");
+        _ = &ret_ptr;
+        if (ret_ptr != @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
+            var offset: i64 = @as(i64, @intCast(@intFromPtr(ret_ptr))) - @as(i64, @intCast(@intFromPtr(stripped_body)));
+            _ = &offset;
+            if (@as(c_ulonglong, @bitCast(offset)) >= (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stripped_body)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 20))))) {
+                ends_with_return = @as(c_int, 1) != 0;
+            }
+        }
+    }
+    if (ends_with_return) {
+        return _kai_str_concat(_kai_str_concat(_kai_str_concat("{\n", self_decl), stripped_body), "}");
+    }
+    var self_ret: [*c]const u8 = "    return self;\n}";
+    _ = &self_ret;
+    return _kai_str_concat(_kai_str_concat(_kai_str_concat("{\n", self_decl), stripped_body), self_ret);
 }
 pub export fn Codegen_init(arg_allocator: [*c]KaiAllocator, arg_stmt_pool: [*c]ArrayList_StmtNode, arg_expr_pool: [*c]ArrayList_ExprNode, arg_pattern_pool: [*c]ArrayList_PatternNode) Codegen {
     var allocator = arg_allocator;
@@ -11830,16 +10466,16 @@ pub export fn Codegen_is_pointer_type(arg_self: [*c]Codegen, arg_t: [*c]const u8
     _ = &self;
     var t = arg_t;
     _ = &t;
-    if (strlen(t) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(t)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
         return @as(c_int, 0) != 0;
     }
-    if ((@as(c_int, @bitCast(@as(c_uint, t[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, t[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38)))))))))) {
+    if ((@as(c_int, @bitCast(@as(c_uint, t[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, t[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
         return @as(c_int, 1) != 0;
     }
     if (strcmp(t, "Str") == @as(c_int, 0)) {
         return @as(c_int, 1) != 0;
     }
-    if ((strlen(t) >= @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 2))))) and (strcmp(substring(t, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))))), "[]") == @as(c_int, 0))) {
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(t)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(substring(t, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0))) {
         return @as(c_int, 1) != 0;
     }
     return @as(c_int, 0) != 0;
@@ -11849,16 +10485,16 @@ pub export fn Codegen_map_type(arg_self: [*c]Codegen, arg_type_name: [*c]const u
     _ = &self;
     var type_name = arg_type_name;
     _ = &type_name;
-    if (strlen(type_name) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(type_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
         return "void";
     }
     var resolved_type: [*c]const u8 = type_name;
     _ = &resolved_type;
-    if (ArrayList_StrMapEntry_length(&self.*.current_type_map) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (ArrayList_StrMapEntry_length(&self.*.current_type_map) > @as(c_longlong, 0)) {
         resolved_type = Codegen_substitute_generic_type(self, type_name);
     }
-    if ((strlen(resolved_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, resolved_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63)))))))))) {
-        var val_type: [*c]const u8 = substring(resolved_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(resolved_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, resolved_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
+        var val_type: [*c]const u8 = substring(resolved_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
         _ = &val_type;
         if (Codegen_is_pointer_type(self, val_type)) {
             return Codegen_map_type(self, val_type);
@@ -11867,7 +10503,7 @@ pub export fn Codegen_map_type(arg_self: [*c]Codegen, arg_type_name: [*c]const u
         _ = &clean_val;
         var concrete_name: [*c]const u8 = _kai_str_concat("Optional_", clean_val);
         _ = &concrete_name;
-        if (strlist_find(&self.*.result_definitions, concrete_name) < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (strlist_find(&self.*.result_definitions, concrete_name) < @as(c_longlong, 0)) {
             ArrayList_Str_push(&self.*.result_definitions, concrete_name);
             var struct_str: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("typedef struct ", concrete_name), " "), concrete_name), ";\n");
             _ = &struct_str;
@@ -11879,12 +10515,12 @@ pub export fn Codegen_map_type(arg_self: [*c]Codegen, arg_type_name: [*c]const u
         }
         return concrete_name;
     }
-    if (Codegen_str_contains(self, resolved_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))))) {
-        var excl_pos: i64 = Codegen_str_find(self, resolved_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))));
+    if (Codegen_str_contains(self, resolved_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))))) {
+        var excl_pos: i64 = Codegen_str_find(self, resolved_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
         _ = &excl_pos;
-        var val_type: [*c]const u8 = substring(resolved_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), excl_pos);
+        var val_type: [*c]const u8 = substring(resolved_type, @as(c_longlong, 0), excl_pos);
         _ = &val_type;
-        var err_type: [*c]const u8 = substring(resolved_type, excl_pos + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
+        var err_type: [*c]const u8 = substring(resolved_type, excl_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
         _ = &err_type;
         var clean_val: [*c]const u8 = Codegen_clean_type_for_mangling(self, val_type);
         _ = &clean_val;
@@ -11892,7 +10528,7 @@ pub export fn Codegen_map_type(arg_self: [*c]Codegen, arg_type_name: [*c]const u
         _ = &clean_err;
         var concrete_name: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat("Result_", clean_val), "_"), clean_err);
         _ = &concrete_name;
-        if (strlist_find(&self.*.result_definitions, concrete_name) < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (strlist_find(&self.*.result_definitions, concrete_name) < @as(c_longlong, 0)) {
             ArrayList_Str_push(&self.*.result_definitions, concrete_name);
             var struct_str: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("typedef struct ", concrete_name), " "), concrete_name), ";\n");
             _ = &struct_str;
@@ -11933,21 +10569,21 @@ pub export fn Codegen_map_type(arg_self: [*c]Codegen, arg_type_name: [*c]const u
     if (strcmp(resolved_type, "Allocator") == @as(c_int, 0)) {
         return "KaiAllocator";
     }
-    if (strcmp(substring(resolved_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))))), "[]") == @as(c_int, 0)) {
-        var inner: [*c]const u8 = substring(resolved_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
+    if (strcmp(substring(resolved_type, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0)) {
+        var inner: [*c]const u8 = substring(resolved_type, @as(c_longlong, 2), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
         _ = &inner;
         return _kai_str_concat(Codegen_map_type(self, inner), "*");
     }
-    if (@as(c_int, @bitCast(@as(c_uint, resolved_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) {
-        if ((strlen(resolved_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 5))))) and (strcmp(substring(resolved_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5))))), "*mut ") == @as(c_int, 0))) {
-            var inner: [*c]const u8 = substring(resolved_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
+    if (@as(c_int, @bitCast(@as(c_uint, resolved_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) {
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(resolved_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(substring(resolved_type, @as(c_longlong, 0), @as(c_longlong, 5)), "*mut ") == @as(c_int, 0))) {
+            var inner: [*c]const u8 = substring(resolved_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
             _ = &inner;
             if (strcmp(inner, "Void") == @as(c_int, 0)) {
                 return "void*";
             }
             return _kai_str_concat(Codegen_map_type(self, inner), "*");
         } else {
-            var inner: [*c]const u8 = substring(resolved_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
+            var inner: [*c]const u8 = substring(resolved_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
             _ = &inner;
             if (strcmp(inner, "Void") == @as(c_int, 0)) {
                 return "void*";
@@ -11955,23 +10591,23 @@ pub export fn Codegen_map_type(arg_self: [*c]Codegen, arg_type_name: [*c]const u
             return _kai_str_concat(Codegen_map_type(self, inner), "*");
         }
     }
-    if (@as(c_int, @bitCast(@as(c_uint, resolved_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38))))))))) {
-        if ((strlen(resolved_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 5))))) and (strcmp(substring(resolved_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5))))), "&mut ") == @as(c_int, 0))) {
-            var inner: [*c]const u8 = substring(resolved_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
+    if (@as(c_int, @bitCast(@as(c_uint, resolved_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))) {
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(resolved_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(substring(resolved_type, @as(c_longlong, 0), @as(c_longlong, 5)), "&mut ") == @as(c_int, 0))) {
+            var inner: [*c]const u8 = substring(resolved_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
             _ = &inner;
             return _kai_str_concat(Codegen_map_type(self, inner), "*");
         } else {
-            var inner: [*c]const u8 = substring(resolved_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
+            var inner: [*c]const u8 = substring(resolved_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
             _ = &inner;
             return _kai_str_concat(Codegen_map_type(self, inner), "*");
         }
     }
-    if (Codegen_str_contains(self, resolved_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 60))))))) {
-        var lt_pos: i64 = Codegen_str_find(self, resolved_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 60))))));
+    if (Codegen_str_contains(self, resolved_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))))) {
+        var lt_pos: i64 = Codegen_str_find(self, resolved_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))));
         _ = &lt_pos;
-        var base_name: [*c]const u8 = substring(resolved_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), lt_pos);
+        var base_name: [*c]const u8 = substring(resolved_type, @as(c_longlong, 0), lt_pos);
         _ = &base_name;
-        var args_str: [*c]const u8 = substring(resolved_type, lt_pos + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))))));
+        var args_str: [*c]const u8 = substring(resolved_type, lt_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(resolved_type)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))));
         _ = &args_str;
         var args: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
         _ = &args;
@@ -11985,11 +10621,11 @@ pub export fn Codegen_map_type(arg_self: [*c]Codegen, arg_type_name: [*c]const u
                 if (tmp >= 0) break :blk args_str + @as(usize, @intCast(tmp)) else break :blk args_str - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
             }).*;
             _ = &c;
-            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 44))))))))) {
+            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 44))))))))) {
                 ArrayList_Str_push(&args, Codegen_trim_spaces(self, substring(args_str, start, i)));
-                start = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                start = i + @as(c_longlong, 1);
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         ArrayList_Str_push(&args, Codegen_trim_spaces(self, substring(args_str, start, @as(i64, @bitCast(@as(c_ulonglong, strlen(args_str)))))));
         var concrete_name: [*c]const u8 = base_name;
@@ -12002,12 +10638,12 @@ pub export fn Codegen_map_type(arg_self: [*c]Codegen, arg_type_name: [*c]const u
             var clean_arg: [*c]const u8 = Codegen_clean_type_for_mangling(self, raw_arg);
             _ = &clean_arg;
             concrete_name = _kai_str_concat(_kai_str_concat(concrete_name, "_"), clean_arg);
-            ai = ai + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            ai = ai + @as(c_longlong, 1);
         }
         var struct_idx_str: [*c]const u8 = type_map_get(&self.*.generic_struct_decls, base_name);
         _ = &struct_idx_str;
-        if (strlen(struct_idx_str) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
-            if (strlist_find(&self.*.monomorphized_types, concrete_name) < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(struct_idx_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+            if (strlist_find(&self.*.monomorphized_types, concrete_name) < @as(c_longlong, 0)) {
                 ArrayList_Str_push(&self.*.monomorphized_types, concrete_name);
                 Codegen_monomorphize_struct(self, Codegen_str_to_int(self, struct_idx_str), concrete_name, &args);
             }
@@ -12015,8 +10651,8 @@ pub export fn Codegen_map_type(arg_self: [*c]Codegen, arg_type_name: [*c]const u
         }
         var enum_idx_str: [*c]const u8 = type_map_get(&self.*.generic_enum_decls, base_name);
         _ = &enum_idx_str;
-        if (strlen(enum_idx_str) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
-            if (strlist_find(&self.*.monomorphized_types, concrete_name) < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(enum_idx_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+            if (strlist_find(&self.*.monomorphized_types, concrete_name) < @as(c_longlong, 0)) {
                 ArrayList_Str_push(&self.*.monomorphized_types, concrete_name);
                 Codegen_monomorphize_enum(self, Codegen_str_to_int(self, enum_idx_str), concrete_name, &args);
             }
@@ -12033,24 +10669,24 @@ pub export fn Codegen_substitute_generic_type(arg_self: [*c]Codegen, arg_type_na
     _ = &type_name;
     var mapped: [*c]const u8 = type_map_get(&self.*.current_type_map, type_name);
     _ = &mapped;
-    if (strlen(mapped) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(mapped)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
         return mapped;
     }
-    if (@as(c_int, @bitCast(@as(c_uint, type_name[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) {
-        return _kai_str_concat("*", Codegen_substitute_generic_type(self, substring(type_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(type_name)))))));
+    if (@as(c_int, @bitCast(@as(c_uint, type_name[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) {
+        return _kai_str_concat("*", Codegen_substitute_generic_type(self, substring(type_name, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(type_name)))))));
     }
-    if (@as(c_int, @bitCast(@as(c_uint, type_name[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38))))))))) {
-        if (strcmp(substring(type_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5))))), "&mut ") == @as(c_int, 0)) {
-            return _kai_str_concat("&mut ", Codegen_substitute_generic_type(self, substring(type_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(type_name)))))));
+    if (@as(c_int, @bitCast(@as(c_uint, type_name[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))) {
+        if (strcmp(substring(type_name, @as(c_longlong, 0), @as(c_longlong, 5)), "&mut ") == @as(c_int, 0)) {
+            return _kai_str_concat("&mut ", Codegen_substitute_generic_type(self, substring(type_name, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(type_name)))))));
         }
-        return _kai_str_concat("&", Codegen_substitute_generic_type(self, substring(type_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(type_name)))))));
+        return _kai_str_concat("&", Codegen_substitute_generic_type(self, substring(type_name, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(type_name)))))));
     }
-    if (Codegen_str_contains(self, type_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 60))))))) {
-        var lt_pos: i64 = Codegen_str_find(self, type_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 60))))));
+    if (Codegen_str_contains(self, type_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))))) {
+        var lt_pos: i64 = Codegen_str_find(self, type_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))));
         _ = &lt_pos;
-        var base: [*c]const u8 = substring(type_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), lt_pos);
+        var base: [*c]const u8 = substring(type_name, @as(c_longlong, 0), lt_pos);
         _ = &base;
-        var inner: [*c]const u8 = substring(type_name, lt_pos + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(type_name) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))))));
+        var inner: [*c]const u8 = substring(type_name, lt_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(type_name)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))));
         _ = &inner;
         var res: [*c]const u8 = _kai_str_concat(base, "<");
         _ = &res;
@@ -12066,21 +10702,21 @@ pub export fn Codegen_substitute_generic_type(arg_self: [*c]Codegen, arg_type_na
                 if (tmp >= 0) break :blk inner + @as(usize, @intCast(tmp)) else break :blk inner - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
             }).*;
             _ = &c;
-            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 44))))))))) {
+            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 44))))))))) {
                 var arg: [*c]const u8 = Codegen_trim_spaces(self, substring(inner, start, i));
                 _ = &arg;
-                if (arg_count > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                if (arg_count > @as(c_longlong, 0)) {
                     res = _kai_str_concat(res, ", ");
                 }
                 res = _kai_str_concat(res, Codegen_substitute_generic_type(self, arg));
-                start = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
-                arg_count = arg_count + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                start = i + @as(c_longlong, 1);
+                arg_count = arg_count + @as(c_longlong, 1);
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         var arg: [*c]const u8 = Codegen_trim_spaces(self, substring(inner, start, @as(i64, @bitCast(@as(c_ulonglong, strlen(inner))))));
         _ = &arg;
-        if (arg_count > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (arg_count > @as(c_longlong, 0)) {
             res = _kai_str_concat(res, ", ");
         }
         res = _kai_str_concat(res, Codegen_substitute_generic_type(self, arg));
@@ -12099,16 +10735,16 @@ pub export fn Codegen_trim_spaces(arg_self: [*c]Codegen, arg_s: [*c]const u8) [*
     while ((@as(c_ulonglong, @bitCast(start)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
         const tmp = start;
         if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 32)))))))))) {
-        start = start + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32)))))))))) {
+        start = start + @as(c_longlong, 1);
     }
     var end: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(s))));
     _ = &end;
     while ((end > start) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-        const tmp = end - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        const tmp = end - @as(c_longlong, 1);
         if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 32)))))))))) {
-        end = end - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32)))))))))) {
+        end = end - @as(c_longlong, 1);
     }
     return substring(s, start, end);
 }
@@ -12127,20 +10763,20 @@ pub export fn Codegen_clean_type_for_mangling(arg_self: [*c]Codegen, arg_s: [*c]
             if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
         }).*;
         _ = &c;
-        if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) {
+        if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) {
             res = _kai_str_concat(res, "ptr");
-        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38))))))))) {
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))) {
             res = _kai_str_concat(res, "ref");
-        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 32))))))))) {
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) {
             res = _kai_str_concat(res, "_");
-        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63))))))))) {
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63))))))))) {
             res = _kai_str_concat(res, "opt_");
-        } else if ((((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 60))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 62)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 44)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33)))))))))) {
+        } else if ((((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 62)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 44)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33)))))))))) {
             res = _kai_str_concat(res, "_");
         } else {
             res = _kai_str_concat(res, char_to_str(c));
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
     return res;
 }
@@ -12159,10 +10795,10 @@ pub export fn Codegen_str_to_int(arg_self: [*c]Codegen, arg_s: [*c]const u8) i64
             if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
         }).*;
         _ = &c;
-        if ((@as(c_int, @bitCast(@as(c_uint, c))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 48))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 57)))))))))) {
-            res = (res * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 10))))) + (@as(i64, @bitCast(@as(c_ulonglong, c))) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 48)))));
+        if ((@as(c_int, @bitCast(@as(c_uint, c))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 48))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 57)))))))))) {
+            res = (res * @as(c_longlong, 10)) + (@as(i64, @bitCast(@as(c_ulonglong, c))) - @as(c_longlong, 48));
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
     return res;
 }
@@ -12183,7 +10819,7 @@ pub export fn Codegen_infer_type_args(arg_self: [*c]Codegen, arg_func_stmt_idx: 
     _ = &p_idx;
     while (p_idx < ArrayList_Str_length(&stmt.func_type_params)) {
         ArrayList_Str_push(&type_args, "");
-        p_idx = p_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        p_idx = p_idx + @as(c_longlong, 1);
     }
     var arg_i: i64 = 0;
     _ = &arg_i;
@@ -12201,29 +10837,29 @@ pub export fn Codegen_infer_type_args(arg_self: [*c]Codegen, arg_func_stmt_idx: 
         var done: bool = @as(c_int, 0) != 0;
         _ = &done;
         while (!done) {
-            if ((strlen(ptype) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and ((@as(c_int, @bitCast(@as(c_uint, ptype[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, ptype[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38))))))))))) {
-                ptype = substring(ptype, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(ptype)))));
+            if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(ptype)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, ptype[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, ptype[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
+                ptype = substring(ptype, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(ptype)))));
             } else {
                 done = @as(c_int, 1) != 0;
             }
         }
         done = @as(c_int, 0) != 0;
         while (!done) {
-            if ((strlen(atype) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and ((@as(c_int, @bitCast(@as(c_uint, atype[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, atype[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38))))))))))) {
-                atype = substring(atype, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(atype)))));
+            if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(atype)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, atype[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, atype[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
+                atype = substring(atype, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(atype)))));
             } else {
                 done = @as(c_int, 1) != 0;
             }
         }
-        if ((strlen(ptype) >= @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 4))))) and (strcmp(substring(ptype, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))))), "mut ") == @as(c_int, 0))) {
-            ptype = substring(ptype, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(ptype)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(ptype)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 4)))) and (strcmp(substring(ptype, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0))) {
+            ptype = substring(ptype, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(ptype)))));
         }
-        if ((strlen(atype) >= @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 4))))) and (strcmp(substring(atype, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))))), "mut ") == @as(c_int, 0))) {
-            atype = substring(atype, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(atype)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(atype)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 4)))) and (strcmp(substring(atype, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0))) {
+            atype = substring(atype, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(atype)))));
         }
         var is_param: bool = @as(c_int, 0) != 0;
         _ = &is_param;
-        if (((strlen(ptype) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))) and (@as(c_int, @bitCast(@as(c_uint, ptype[@as(c_uint, @intCast(@as(c_int, 0)))]))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 65)))))))))) and (@as(c_int, @bitCast(@as(c_uint, ptype[@as(c_uint, @intCast(@as(c_int, 0)))]))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 90)))))))))) {
+        if (((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(ptype)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))) and (@as(c_int, @bitCast(@as(c_uint, ptype[@as(usize, @intCast(@as(c_longlong, 0)))]))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 65)))))))))) and (@as(c_int, @bitCast(@as(c_uint, ptype[@as(usize, @intCast(@as(c_longlong, 0)))]))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 90)))))))))) {
             is_param = @as(c_int, 1) != 0;
         }
         if (is_param) {
@@ -12232,26 +10868,26 @@ pub export fn Codegen_infer_type_args(arg_self: [*c]Codegen, arg_func_stmt_idx: 
             while (tp_i < ArrayList_Str_length(&stmt.func_type_params)) {
                 var tp_name: [*c]const u8 = ArrayList_Str_get(&stmt.func_type_params, tp_i);
                 _ = &tp_name;
-                if (Codegen_str_contains(self, tp_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 58))))))) {
-                    var colon_pos: i64 = Codegen_str_find(self, tp_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 58))))));
+                if (Codegen_str_contains(self, tp_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58))))))) {
+                    var colon_pos: i64 = Codegen_str_find(self, tp_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58))))));
                     _ = &colon_pos;
-                    tp_name = substring(tp_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), colon_pos);
+                    tp_name = substring(tp_name, @as(c_longlong, 0), colon_pos);
                 }
                 if (strcmp(tp_name, ptype) == @as(c_int, 0)) {
                     ArrayList_Str_set(&type_args, tp_i, atype);
                 }
-                tp_i = tp_i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                tp_i = tp_i + @as(c_longlong, 1);
             }
         }
-        arg_i = arg_i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        arg_i = arg_i + @as(c_longlong, 1);
     }
     var i: i64 = 0;
     _ = &i;
     while (i < ArrayList_Str_length(&type_args)) {
-        if (strlen(ArrayList_Str_get(&type_args, i)) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(ArrayList_Str_get(&type_args, i))))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             ArrayList_Str_set(&type_args, i, "Int");
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
     return type_args;
 }
@@ -12269,13 +10905,13 @@ pub export fn Codegen_setup_current_type_map(arg_self: [*c]Codegen, arg_type_par
         _ = &param_name;
         var arg_name: [*c]const u8 = Codegen_trim_spaces(self, ArrayList_Str_get(type_args, i));
         _ = &arg_name;
-        if (Codegen_str_contains(self, param_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 58))))))) {
-            var colon_pos: i64 = Codegen_str_find(self, param_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 58))))));
+        if (Codegen_str_contains(self, param_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58))))))) {
+            var colon_pos: i64 = Codegen_str_find(self, param_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58))))));
             _ = &colon_pos;
-            param_name = substring(param_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), colon_pos);
+            param_name = substring(param_name, @as(c_longlong, 0), colon_pos);
         }
         type_map_put(&self.*.current_type_map, param_name, arg_name);
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
 }
 pub export fn Codegen_monomorphize_struct(arg_self: [*c]Codegen, arg_stmt_idx: i64, arg_concrete_name: [*c]const u8, arg_type_args: [*c]ArrayList_Str) void {
@@ -12306,7 +10942,7 @@ pub export fn Codegen_monomorphize_struct(arg_self: [*c]Codegen, arg_stmt_idx: i
         var f_type: [*c]const u8 = Codegen_map_type(self, f.ftype);
         _ = &f_type;
         body = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(body, "    "), f_type), " "), f.name), ";\n");
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
     body = _kai_str_concat(body, "};\n");
     _ = StringBuilder_append(&self.*.struct_decls, body);
@@ -12341,7 +10977,7 @@ pub export fn Codegen_monomorphize_enum(arg_self: [*c]Codegen, arg_stmt_idx: i64
         var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, i);
         _ = &v;
         tags_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(tags_str, "    "), concrete_name), "_"), v.vname), "_TAG,\n");
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
     tags_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(tags_str, "} "), tags_name), ";\n");
     _ = StringBuilder_append(&self.*.struct_decls, tags_str);
@@ -12353,7 +10989,7 @@ pub export fn Codegen_monomorphize_enum(arg_self: [*c]Codegen, arg_stmt_idx: i64
     while (i < ArrayList_Variant_length(&stmt.enum_variants)) {
         var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, i);
         _ = &v;
-        if (ArrayList_Param_length(&v.params) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (ArrayList_Param_length(&v.params) > @as(c_longlong, 0)) {
             body = _kai_str_concat(body, "        struct {\n");
             var p_idx: i64 = 0;
             _ = &p_idx;
@@ -12361,11 +10997,11 @@ pub export fn Codegen_monomorphize_enum(arg_self: [*c]Codegen, arg_stmt_idx: i64
                 var p: Param = ArrayList_Param_get(&v.params, p_idx);
                 _ = &p;
                 body = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(body, "            "), Codegen_map_type(self, p.ptype)), " "), p.name), ";\n");
-                p_idx = p_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                p_idx = p_idx + @as(c_longlong, 1);
             }
             body = _kai_str_concat(_kai_str_concat(_kai_str_concat(body, "        } "), v.vname), ";\n");
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
     body = _kai_str_concat(body, "    } payload;\n");
     body = _kai_str_concat(body, "};\n");
@@ -12415,21 +11051,21 @@ pub export fn Codegen_monomorphize_methods(arg_self: [*c]Codegen, arg_base_struc
                     var p: Param = ArrayList_Param_get(&m_node.func_params, p_idx);
                     _ = &p;
                     if (strcmp(p.name, "self") != @as(c_int, 0)) {
-                        if (strlen(params_str) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                             params_str = _kai_str_concat(params_str, ", ");
                         }
                         params_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
                     }
-                    p_idx = p_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    p_idx = p_idx + @as(c_longlong, 1);
                 }
-                if (strlen(params_str) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                     params_str = "void";
                 }
                 var mangled_fn_name: [*c]const u8 = _kai_str_concat(_kai_str_concat(concrete_struct_name, "_"), method_name);
                 _ = &mangled_fn_name;
                 var concrete_ret: [*c]const u8 = m_node.func_return_type;
                 _ = &concrete_ret;
-                if (ArrayList_StrMapEntry_length(&self.*.current_type_map) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                if (ArrayList_StrMapEntry_length(&self.*.current_type_map) > @as(c_longlong, 0)) {
                     concrete_ret = Codegen_substitute_generic_type(self, concrete_ret);
                 }
                 type_map_put(&self.*.func_types, mangled_fn_name, concrete_ret);
@@ -12461,7 +11097,7 @@ pub export fn Codegen_monomorphize_methods(arg_self: [*c]Codegen, arg_base_struc
                     if (strcmp(p.name, "self") != @as(c_int, 0)) {
                         type_map_put(&self.*.var_types, p.name, p.ptype);
                     }
-                    p_idx2 = p_idx2 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    p_idx2 = p_idx2 + @as(c_longlong, 1);
                 }
                 var body_str: [*c]const u8 = Codegen_gen_stmt(self, m_node.func_body);
                 _ = &body_str;
@@ -12469,13 +11105,7 @@ pub export fn Codegen_monomorphize_methods(arg_self: [*c]Codegen, arg_base_struc
                     _ = ArrayList_StrMapEntry_pop(&self.*.var_types);
                 }
                 if (is_init) {
-                    var self_decl: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("    ", concrete_struct_name), " self = ("), concrete_struct_name), "){0};\n");
-                    _ = &self_decl;
-                    var self_ret: [*c]const u8 = "    return self;\n}";
-                    _ = &self_ret;
-                    var body_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(body_str))));
-                    _ = &body_len;
-                    body_str = _kai_str_concat(_kai_str_concat(_kai_str_concat("{\n", self_decl), substring(body_str, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2)))), body_len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))), self_ret);
+                    body_str = Codegen_add_init_return(self, body_str, concrete_struct_name);
                 }
                 var proto: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), mangled_fn_name), "("), params_str), ");\n");
                 _ = &proto;
@@ -12486,10 +11116,10 @@ pub export fn Codegen_monomorphize_methods(arg_self: [*c]Codegen, arg_base_struc
                 self.*.cur_func_name = old_fn;
                 self.*.cur_return_type = old_ret;
                 self.*.cur_method_is_init = old_init;
-                j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                j = j + @as(c_longlong, 1);
             }
         }
-        idx = idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        idx = idx + @as(c_longlong, 1);
     }
 }
 pub export fn Codegen_monomorphize_func(arg_self: [*c]Codegen, arg_func_stmt_idx: i64, arg_mangled_name: [*c]const u8, arg_type_args: [*c]ArrayList_Str) void {
@@ -12501,7 +11131,7 @@ pub export fn Codegen_monomorphize_func(arg_self: [*c]Codegen, arg_func_stmt_idx
     _ = &mangled_name;
     var type_args = arg_type_args;
     _ = &type_args;
-    if (strlist_find(&self.*.monomorphized_types, mangled_name) >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (strlist_find(&self.*.monomorphized_types, mangled_name) >= @as(c_longlong, 0)) {
         return;
     }
     ArrayList_Str_push(&self.*.monomorphized_types, mangled_name);
@@ -12522,15 +11152,15 @@ pub export fn Codegen_monomorphize_func(arg_self: [*c]Codegen, arg_func_stmt_idx
     while (p_idx < ArrayList_Param_length(&stmt.func_params)) {
         var p: Param = ArrayList_Param_get(&stmt.func_params, p_idx);
         _ = &p;
-        if (p_idx > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (p_idx > @as(c_longlong, 0)) {
             params_str = _kai_str_concat(params_str, ", ");
         }
         var concrete_ptype: [*c]const u8 = Codegen_substitute_generic_type(self, p.ptype);
         _ = &concrete_ptype;
         params_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(params_str, Codegen_map_type(self, concrete_ptype)), " "), p.name);
-        p_idx = p_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        p_idx = p_idx + @as(c_longlong, 1);
     }
-    if (strlen(params_str) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
         params_str = "void";
     }
     type_map_put(&self.*.func_types, mangled_name, concrete_ret_type);
@@ -12553,7 +11183,7 @@ pub export fn Codegen_monomorphize_func(arg_self: [*c]Codegen, arg_func_stmt_idx
         var concrete_ptype: [*c]const u8 = Codegen_substitute_generic_type(self, p.ptype);
         _ = &concrete_ptype;
         type_map_put(&self.*.var_types, p.name, concrete_ptype);
-        p_reg = p_reg + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        p_reg = p_reg + @as(c_longlong, 1);
     }
     var old_block_stack: ArrayList_Int = self.*.block_stack;
     _ = &old_block_stack;
@@ -12588,9 +11218,9 @@ pub export fn Codegen_extract_first_type_arg(arg_self: [*c]Codegen, arg_type_nam
     _ = &self;
     var type_name = arg_type_name;
     _ = &type_name;
-    var start: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    var start: i64 = -@as(c_longlong, 1);
     _ = &start;
-    var end: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    var end: i64 = -@as(c_longlong, 1);
     _ = &end;
     var i: i64 = 0;
     _ = &i;
@@ -12600,18 +11230,18 @@ pub export fn Codegen_extract_first_type_arg(arg_self: [*c]Codegen, arg_type_nam
             if (tmp >= 0) break :blk type_name + @as(usize, @intCast(tmp)) else break :blk type_name - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
         }).*;
         _ = &c;
-        if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 60))))))))) {
-            start = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
-        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 44))))))))) {
+        if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))))))) {
+            start = i + @as(c_longlong, 1);
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 44))))))))) {
             end = i;
             break;
-        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 62))))))))) {
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 62))))))))) {
             end = i;
             break;
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
-    if ((start >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) and (end >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))))) {
+    if ((start >= @as(c_longlong, 0)) and (end >= @as(c_longlong, 0))) {
         return substring(type_name, start, end);
     }
     return "Int";
@@ -12634,7 +11264,7 @@ pub export fn Codegen_build_func_types(arg_self: [*c]Codegen) void {
                 var p_key: [*c]const u8 = _kai_str_concat(_kai_str_concat(stmt.func_name, "_param_"), int_to_str(p_i));
                 _ = &p_key;
                 type_map_put(&self.*.func_param_types, p_key, p.ptype);
-                p_i = p_i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                p_i = p_i + @as(c_longlong, 1);
             }
         }
         if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_extern))) {
@@ -12647,7 +11277,7 @@ pub export fn Codegen_build_func_types(arg_self: [*c]Codegen) void {
                 var p_key: [*c]const u8 = _kai_str_concat(_kai_str_concat(stmt.extern_name, "_param_"), int_to_str(p_i));
                 _ = &p_key;
                 type_map_put(&self.*.func_param_types, p_key, p.ptype);
-                p_i = p_i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                p_i = p_i + @as(c_longlong, 1);
             }
         }
         if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_impl_block))) {
@@ -12676,9 +11306,9 @@ pub export fn Codegen_build_func_types(arg_self: [*c]Codegen) void {
                     var p_key: [*c]const u8 = _kai_str_concat(_kai_str_concat(key, "_param_"), int_to_str(p_i));
                     _ = &p_key;
                     type_map_put(&self.*.func_param_types, p_key, p.ptype);
-                    p_i = p_i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    p_i = p_i + @as(c_longlong, 1);
                 }
-                j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                j = j + @as(c_longlong, 1);
             }
         }
         if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) {
@@ -12714,14 +11344,14 @@ pub export fn Codegen_build_func_types(arg_self: [*c]Codegen) void {
                         var p_key: [*c]const u8 = _kai_str_concat(_kai_str_concat(key, "_param_"), int_to_str(p_i));
                         _ = &p_key;
                         type_map_put(&self.*.func_param_types, p_key, p.ptype);
-                        p_i = p_i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        p_i = p_i + @as(c_longlong, 1);
                     }
-                    j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    j = j + @as(c_longlong, 1);
                 }
-                ti = ti + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                ti = ti + @as(c_longlong, 1);
             }
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
 }
 pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]const u8 {
@@ -12729,7 +11359,7 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
     _ = &self;
     var expr_idx = arg_expr_idx;
     _ = &expr_idx;
-    if (expr_idx < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (expr_idx < @as(c_longlong, 0)) {
         return "Void";
     }
     var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr_idx);
@@ -12759,28 +11389,28 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
         _ = &name;
         var var_t: [*c]const u8 = type_map_get(&self.*.var_types, name);
         _ = &var_t;
-        if (strlen(var_t) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(var_t)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             return var_t;
         }
         var fn_t: [*c]const u8 = type_map_get(&self.*.func_types, name);
         _ = &fn_t;
-        if (strlen(fn_t) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fn_t)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             return fn_t;
         }
-        var first_char: u8 = name[@as(c_uint, @intCast(@as(c_int, 0)))];
+        var first_char: u8 = name[@as(usize, @intCast(@as(c_longlong, 0)))];
         _ = &first_char;
-        if ((@as(c_int, @bitCast(@as(c_uint, first_char))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 65))))))))) and (@as(c_int, @bitCast(@as(c_uint, first_char))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 90)))))))))) {
-            if (ArrayList_Str_length(&expr.ident_type_args) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if ((@as(c_int, @bitCast(@as(c_uint, first_char))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 65))))))))) and (@as(c_int, @bitCast(@as(c_uint, first_char))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 90)))))))))) {
+            if (ArrayList_Str_length(&expr.ident_type_args) > @as(c_longlong, 0)) {
                 var full_name: [*c]const u8 = _kai_str_concat(name, "<");
                 _ = &full_name;
                 var tai: i64 = 0;
                 _ = &tai;
                 while (tai < ArrayList_Str_length(&expr.ident_type_args)) {
-                    if (tai > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                    if (tai > @as(c_longlong, 0)) {
                         full_name = _kai_str_concat(full_name, ", ");
                     }
                     full_name = _kai_str_concat(full_name, ArrayList_Str_get(&expr.ident_type_args, tai));
-                    tai = tai + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    tai = tai + @as(c_longlong, 1);
                 }
                 full_name = _kai_str_concat(full_name, ">");
                 return full_name;
@@ -12809,7 +11439,7 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
         var name: [*c]const u8 = expr.func_name;
         _ = &name;
         if ((strcmp(name, "cast") == @as(c_int, 0)) or (strcmp(name, "as") == @as(c_int, 0))) {
-            return ArrayList_Str_get(&expr.func_type_args, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+            return ArrayList_Str_get(&expr.func_type_args, @as(c_longlong, 0));
         }
         if (strcmp(name, "size_of") == @as(c_int, 0)) {
             return "Int";
@@ -12827,30 +11457,30 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
             if ((stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) and (strcmp(stmt.struct_name, name) == @as(c_int, 0))) {
                 is_struct = @as(c_int, 1) != 0;
             }
-            s_idx = s_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            s_idx = s_idx + @as(c_longlong, 1);
         }
         if (((strcmp(name, "ArrayList") == @as(c_int, 0)) or (strcmp(name, "HashMap") == @as(c_int, 0))) or (strcmp(name, "StringBuilder") == @as(c_int, 0))) {
             is_struct = @as(c_int, 1) != 0;
         }
         if (is_struct) {
-            if (ArrayList_Str_length(&expr.func_type_args) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (ArrayList_Str_length(&expr.func_type_args) > @as(c_longlong, 0)) {
                 return _kai_str_concat(_kai_str_concat(_kai_str_concat(name, "<"), str_array_join(expr.func_type_args, ", ")), ">");
             }
             return name;
         }
         var gf_idx_str: [*c]const u8 = type_map_get(&self.*.generic_func_decls, name);
         _ = &gf_idx_str;
-        if (strlen(gf_idx_str) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(gf_idx_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             var gf_idx: i64 = Codegen_str_to_int(self, gf_idx_str);
             _ = &gf_idx;
             var type_args: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
             _ = &type_args;
-            if (ArrayList_Str_length(&expr.func_type_args) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (ArrayList_Str_length(&expr.func_type_args) > @as(c_longlong, 0)) {
                 var j: i64 = 0;
                 _ = &j;
                 while (j < ArrayList_Str_length(&expr.func_type_args)) {
                     ArrayList_Str_push(&type_args, ArrayList_Str_get(&expr.func_type_args, j));
-                    j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    j = j + @as(c_longlong, 1);
                 }
             } else {
                 type_args = Codegen_infer_type_args(self, gf_idx, expr_idx);
@@ -12868,7 +11498,7 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
         }
         var fn_t: [*c]const u8 = type_map_get(&self.*.func_types, name);
         _ = &fn_t;
-        if (strlen(fn_t) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fn_t)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             return fn_t;
         }
         return "Void";
@@ -12887,7 +11517,7 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
                 if (((stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_enum_decl))) and (strcmp(stmt.enum_name, base_node.ident_name) == @as(c_int, 0))) or ((stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_error_decl))) and (strcmp(stmt.error_name, base_node.ident_name) == @as(c_int, 0)))) {
                     is_static = @as(c_int, 1) != 0;
                 }
-                s_idx = s_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                s_idx = s_idx + @as(c_longlong, 1);
             }
             if (is_static) {
                 return base_node.ident_name;
@@ -12905,13 +11535,13 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
                 if (tmp >= 0) break :blk base_type + @as(usize, @intCast(tmp)) else break :blk base_type - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
             }).*;
             _ = &c;
-            if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38)))))))))) {
+            if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
                 clean_type = _kai_str_concat(clean_type, char_to_str(c));
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
-        if (strcmp(substring(clean_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))))), "mut ") == @as(c_int, 0)) {
-            clean_type = substring(clean_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
+        if (strcmp(substring(clean_type, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0)) {
+            clean_type = substring(clean_type, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
         }
         var s_idx: i64 = 0;
         _ = &s_idx;
@@ -12923,11 +11553,11 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
                 _ = &is_match;
                 if (strcmp(stmt.struct_name, clean_type) == @as(c_int, 0)) {
                     is_match = @as(c_int, 1) != 0;
-                } else if (Codegen_str_contains(self, clean_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 95))))))) {
-                    if (ArrayList_Str_length(&stmt.struct_type_params) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-                        var underscore_pos: i64 = Codegen_str_find(self, clean_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 95))))));
+                } else if (Codegen_str_contains(self, clean_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 95))))))) {
+                    if (ArrayList_Str_length(&stmt.struct_type_params) > @as(c_longlong, 0)) {
+                        var underscore_pos: i64 = Codegen_str_find(self, clean_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 95))))));
                         _ = &underscore_pos;
-                        var base_name: [*c]const u8 = substring(clean_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), underscore_pos);
+                        var base_name: [*c]const u8 = substring(clean_type, @as(c_longlong, 0), underscore_pos);
                         _ = &base_name;
                         if (strcmp(stmt.struct_name, base_name) == @as(c_int, 0)) {
                             is_match = @as(c_int, 1) != 0;
@@ -12943,16 +11573,16 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
                         if (strcmp(f.name, expr.field_name) == @as(c_int, 0)) {
                             var ftype: [*c]const u8 = f.ftype;
                             _ = &ftype;
-                            if (ArrayList_StrMapEntry_length(&self.*.current_type_map) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                            if (ArrayList_StrMapEntry_length(&self.*.current_type_map) > @as(c_longlong, 0)) {
                                 ftype = Codegen_substitute_generic_type(self, ftype);
                             }
                             return ftype;
                         }
-                        f_idx = f_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        f_idx = f_idx + @as(c_longlong, 1);
                     }
                 }
             }
-            s_idx = s_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            s_idx = s_idx + @as(c_longlong, 1);
         }
         return "Void";
     }
@@ -12962,8 +11592,8 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
         if (strcmp(base_type, "Str") == @as(c_int, 0)) {
             return "Char";
         }
-        if (@as(c_int, @bitCast(@as(c_uint, base_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) {
-            return substring(base_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        if (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) {
+            return substring(base_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
         }
         return "Void";
     }
@@ -12973,14 +11603,14 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_deref))) {
         var base_type: [*c]const u8 = Codegen_get_expr_type(self, expr.deref_expr);
         _ = &base_type;
-        if ((strlen(base_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 5))))) and (strcmp(substring(base_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5))))), "*mut ") == @as(c_int, 0))) {
-            return substring(base_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(substring(base_type, @as(c_longlong, 0), @as(c_longlong, 5)), "*mut ") == @as(c_int, 0))) {
+            return substring(base_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
         }
-        if ((strlen(base_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 5))))) and (strcmp(substring(base_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5))))), "&mut ") == @as(c_int, 0))) {
-            return substring(base_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 5)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(substring(base_type, @as(c_longlong, 0), @as(c_longlong, 5)), "&mut ") == @as(c_int, 0))) {
+            return substring(base_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
         }
-        if ((@as(c_int, @bitCast(@as(c_uint, base_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, base_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38)))))))))) {
-            return substring(base_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        if ((@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
+            return substring(base_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
         }
         return "Void";
     }
@@ -13004,22 +11634,22 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
                 if (tmp >= 0) break :blk rec_type + @as(usize, @intCast(tmp)) else break :blk rec_type - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
             }).*;
             _ = &c;
-            if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38)))))))))) {
+            if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
                 clean_type = _kai_str_concat(clean_type, char_to_str(c));
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
-        if (strcmp(substring(clean_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))))), "mut ") == @as(c_int, 0)) {
-            clean_type = substring(clean_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
+        if (strcmp(substring(clean_type, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0)) {
+            clean_type = substring(clean_type, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
         }
         var is_constructor: bool = @as(c_int, 0) != 0;
         _ = &is_constructor;
         if (receiver_node.kind == @as(c_uint, @bitCast(ExprKind_ek_identifier))) {
             var r_name: [*c]const u8 = receiver_node.ident_name;
             _ = &r_name;
-            var first_char: u8 = r_name[@as(c_uint, @intCast(@as(c_int, 0)))];
+            var first_char: u8 = r_name[@as(usize, @intCast(@as(c_longlong, 0)))];
             _ = &first_char;
-            if ((@as(c_int, @bitCast(@as(c_uint, first_char))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 65))))))))) and (@as(c_int, @bitCast(@as(c_uint, first_char))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 90)))))))))) {
+            if ((@as(c_int, @bitCast(@as(c_uint, first_char))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 65))))))))) and (@as(c_int, @bitCast(@as(c_uint, first_char))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 90)))))))))) {
                 is_constructor = @as(c_int, 1) != 0;
             }
         }
@@ -13030,7 +11660,7 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
         _ = &key;
         var ret: [*c]const u8 = type_map_get(&self.*.func_types, key);
         _ = &ret;
-        if (strlen(ret) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(ret)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             return ret;
         }
         var clean_rec: [*c]const u8 = rec_type;
@@ -13038,21 +11668,21 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
         var done: bool = @as(c_int, 0) != 0;
         _ = &done;
         while (!done) {
-            if ((strlen(clean_rec) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and ((@as(c_int, @bitCast(@as(c_uint, clean_rec[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, clean_rec[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38))))))))))) {
-                clean_rec = substring(clean_rec, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_rec)))));
+            if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clean_rec)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, clean_rec[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, clean_rec[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
+                clean_rec = substring(clean_rec, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_rec)))));
             } else {
                 done = @as(c_int, 1) != 0;
             }
         }
-        if (strcmp(substring(clean_rec, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))))), "mut ") == @as(c_int, 0)) {
-            clean_rec = substring(clean_rec, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_rec)))));
+        if (strcmp(substring(clean_rec, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0)) {
+            clean_rec = substring(clean_rec, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_rec)))));
         }
-        if (Codegen_str_contains(self, clean_rec, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 60))))))) {
-            var lt_pos: i64 = Codegen_str_find(self, clean_rec, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 60))))));
+        if (Codegen_str_contains(self, clean_rec, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))))) {
+            var lt_pos: i64 = Codegen_str_find(self, clean_rec, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))));
             _ = &lt_pos;
-            var base_struct: [*c]const u8 = substring(clean_rec, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), lt_pos);
+            var base_struct: [*c]const u8 = substring(clean_rec, @as(c_longlong, 0), lt_pos);
             _ = &base_struct;
-            var args_str: [*c]const u8 = substring(clean_rec, lt_pos + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_rec) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))))));
+            var args_str: [*c]const u8 = substring(clean_rec, lt_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clean_rec)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))));
             _ = &args_str;
             var args: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
             _ = &args;
@@ -13066,14 +11696,14 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
                     if (tmp >= 0) break :blk args_str + @as(usize, @intCast(tmp)) else break :blk args_str - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
                 _ = &c;
-                if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 44))))))))) {
+                if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 44))))))))) {
                     ArrayList_Str_push(&args, Codegen_trim_spaces(self, substring(args_str, start, ai)));
-                    start = ai + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    start = ai + @as(c_longlong, 1);
                 }
-                ai = ai + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                ai = ai + @as(c_longlong, 1);
             }
             ArrayList_Str_push(&args, Codegen_trim_spaces(self, substring(args_str, start, @as(i64, @bitCast(@as(c_ulonglong, strlen(args_str)))))));
-            var struct_idx: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+            var struct_idx: i64 = -@as(c_longlong, 1);
             _ = &struct_idx;
             var si: i64 = 0;
             _ = &si;
@@ -13083,9 +11713,9 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
                 if ((s.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) and (strcmp(s.struct_name, base_struct) == @as(c_int, 0))) {
                     struct_idx = si;
                 }
-                si = si + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                si = si + @as(c_longlong, 1);
             }
-            if (struct_idx >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (struct_idx >= @as(c_longlong, 0)) {
                 var s_decl: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, struct_idx);
                 _ = &s_decl;
                 var temp_map: ArrayList_StrMapEntry = ArrayList_StrMapEntry_init(self.*.allocator);
@@ -13095,15 +11725,15 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
                 while (pi < ArrayList_Str_length(&s_decl.struct_type_params)) {
                     var p_name: [*c]const u8 = Codegen_trim_spaces(self, ArrayList_Str_get(&s_decl.struct_type_params, pi));
                     _ = &p_name;
-                    if (Codegen_str_contains(self, p_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 58))))))) {
-                        var cp: i64 = Codegen_str_find(self, p_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 58))))));
+                    if (Codegen_str_contains(self, p_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58))))))) {
+                        var cp: i64 = Codegen_str_find(self, p_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58))))));
                         _ = &cp;
-                        p_name = substring(p_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), cp);
+                        p_name = substring(p_name, @as(c_longlong, 0), cp);
                     }
                     var a_name: [*c]const u8 = ArrayList_Str_get(&args, pi);
                     _ = &a_name;
                     type_map_put(&temp_map, p_name, a_name);
-                    pi = pi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    pi = pi + @as(c_longlong, 1);
                 }
                 var impl_idx: i64 = 0;
                 _ = &impl_idx;
@@ -13126,10 +11756,10 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
                                 self.*.current_type_map = old_type_map;
                                 return ret_t;
                             }
-                            mi = mi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                            mi = mi + @as(c_longlong, 1);
                         }
                     }
-                    impl_idx = impl_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    impl_idx = impl_idx + @as(c_longlong, 1);
                 }
             }
         }
@@ -13153,23 +11783,23 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_try))) {
         var inner_ty: [*c]const u8 = Codegen_get_expr_type(self, expr.try_expr);
         _ = &inner_ty;
-        var excl_pos: i64 = Codegen_str_find(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))));
+        var excl_pos: i64 = Codegen_str_find(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
         _ = &excl_pos;
-        if (excl_pos >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-            return substring(inner_ty, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), excl_pos);
+        if (excl_pos >= @as(c_longlong, 0)) {
+            return substring(inner_ty, @as(c_longlong, 0), excl_pos);
         }
         return inner_ty;
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_catch))) {
         var inner_ty: [*c]const u8 = Codegen_get_expr_type(self, expr.catch_expr);
         _ = &inner_ty;
-        if ((strlen(inner_ty) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, inner_ty[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63)))))))))) {
-            return substring(inner_ty, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner_ty)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, inner_ty[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
+            return substring(inner_ty, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
         }
-        var excl_pos: i64 = Codegen_str_find(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))));
+        var excl_pos: i64 = Codegen_str_find(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
         _ = &excl_pos;
-        if (excl_pos >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-            return substring(inner_ty, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), excl_pos);
+        if (excl_pos >= @as(c_longlong, 0)) {
+            return substring(inner_ty, @as(c_longlong, 0), excl_pos);
         }
         return inner_ty;
     }
@@ -13182,7 +11812,7 @@ pub export fn Codegen_gen_expr_with_expected_type(arg_self: [*c]Codegen, arg_exp
     _ = &expr_idx;
     var expected_type = arg_expected_type;
     _ = &expected_type;
-    if (expr_idx < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (expr_idx < @as(c_longlong, 0)) {
         return "";
     }
     var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr_idx);
@@ -13190,8 +11820,8 @@ pub export fn Codegen_gen_expr_with_expected_type(arg_self: [*c]Codegen, arg_exp
     var actual_type: [*c]const u8 = Codegen_get_expr_type(self, expr_idx);
     _ = &actual_type;
     if ((expr.kind == @as(c_uint, @bitCast(ExprKind_ek_literal))) and (strcmp(expr.lit_vkind, "NONE") == @as(c_int, 0))) {
-        if ((strlen(expected_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, expected_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63)))))))))) {
-            var val_type: [*c]const u8 = substring(expected_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(expected_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expected_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, expected_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
+            var val_type: [*c]const u8 = substring(expected_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(expected_type)))));
             _ = &val_type;
             if (Codegen_is_pointer_type(self, val_type)) {
                 return "NULL";
@@ -13202,8 +11832,8 @@ pub export fn Codegen_gen_expr_with_expected_type(arg_self: [*c]Codegen, arg_exp
     }
     var gen_val: [*c]const u8 = Codegen_gen_expr(self, expr_idx);
     _ = &gen_val;
-    if ((strlen(expected_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, expected_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63)))))))))) {
-        var val_type: [*c]const u8 = substring(expected_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(expected_type)))));
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expected_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, expected_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
+        var val_type: [*c]const u8 = substring(expected_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(expected_type)))));
         _ = &val_type;
         if (!Codegen_is_pointer_type(self, val_type) and (strcmp(actual_type, val_type) == @as(c_int, 0))) {
             return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", Codegen_map_type(self, expected_type)), "){ .has_value = true, .value = "), gen_val), " }");
@@ -13216,7 +11846,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
     _ = &self;
     var expr_idx = arg_expr_idx;
     _ = &expr_idx;
-    if (expr_idx < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (expr_idx < @as(c_longlong, 0)) {
         return "";
     }
     var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr_idx);
@@ -13224,14 +11854,14 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_try))) {
         var inner_ty: [*c]const u8 = Codegen_get_expr_type(self, expr.try_expr);
         _ = &inner_ty;
-        var excl_pos: i64 = Codegen_str_find(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))));
+        var excl_pos: i64 = Codegen_str_find(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
         _ = &excl_pos;
         var inner: [*c]const u8 = Codegen_gen_expr(self, expr.try_expr);
         _ = &inner;
-        if (excl_pos < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (excl_pos < @as(c_longlong, 0)) {
             return inner;
         }
-        var val_type: [*c]const u8 = substring(inner_ty, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), excl_pos);
+        var val_type: [*c]const u8 = substring(inner_ty, @as(c_longlong, 0), excl_pos);
         _ = &val_type;
         var result_ctype: [*c]const u8 = Codegen_map_type(self, inner_ty);
         _ = &result_ctype;
@@ -13255,13 +11885,15 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             if (@as(c_int, @bitCast(@as(c_uint, expr.lit_value.tag))) == TokenValue_tv_str_TAG) {
                 var v: [*c]const u8 = expr.lit_value.payload.tv_str.v;
                 _ = &v;
-                return v;
+                var s: [*c]const u8 = v;
+                _ = &s;
+                return _kai_str_concat(s, "LL");
             } else if (@as(c_int, @bitCast(@as(c_uint, expr.lit_value.tag))) == TokenValue_tv_int_TAG) {
                 var v: i64 = expr.lit_value.payload.tv_int.v;
                 _ = &v;
-                return int_to_str(v);
+                return _kai_str_concat(int_to_str(v), "LL");
             } else {
-                return "0";
+                return "0LL";
             }
         }
         if (strcmp(vkind, "FLOAT") == @as(c_int, 0)) {
@@ -13297,7 +11929,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 var is_true: bool = @as(c_int, 0) != 0;
                 _ = &is_true;
                 {
-                    if (strcmp(v, "true") == @as(c_int, 0)) {
+                    if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(v, "true")))) == @as(c_longlong, 0)) {
                         is_true = @as(c_int, 1) != 0;
                     }
                 }
@@ -13313,19 +11945,19 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             if (@as(c_int, @bitCast(@as(c_uint, expr.lit_value.tag))) == TokenValue_tv_char_TAG) {
                 var v: u8 = expr.lit_value.payload.tv_char.v;
                 _ = &v;
-                if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 10))))))))) {
+                if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
                     return "'\\n'";
                 }
-                if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 13))))))))) {
+                if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 13))))))))) {
                     return "'\\r'";
                 }
-                if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 9))))))))) {
+                if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9))))))))) {
                     return "'\\t'";
                 }
-                if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 92))))))))) {
+                if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 92))))))))) {
                     return "'\\\\'";
                 }
-                if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 39))))))))) {
+                if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 39))))))))) {
                     return "'\\''";
                 }
                 return _kai_str_concat(_kai_str_concat("'", char_to_str(v)), "'");
@@ -13339,7 +11971,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         return "0";
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_str_interp))) {
-        if (ArrayList_StrInterpPart_length(&expr.interp_parts) == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (ArrayList_StrInterpPart_length(&expr.interp_parts) == @as(c_longlong, 0)) {
             return "\"\"";
         }
         var result: [*c]const u8 = "";
@@ -13351,7 +11983,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             _ = &part;
             var part_str: [*c]const u8 = "";
             _ = &part_str;
-            if (part.kind == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (part.kind == @as(c_longlong, 0)) {
                 part_str = _kai_str_concat(_kai_str_concat("\"", Codegen_escape_string(self, part.str_val)), "\"");
             } else {
                 var expr_val: [*c]const u8 = Codegen_gen_expr(self, part.expr_idx);
@@ -13370,12 +12002,18 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                     part_str = expr_val;
                 }
             }
-            if (i == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (i == @as(c_longlong, 0)) {
                 result = part_str;
             } else {
-                result = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("_kai_str_concat(", result), ", "), part_str), ")");
+                var has_str: bool = (strlist_find(&self.*.loaded_modules, "std.lib.str") >= @as(c_longlong, 0)) or (strlist_find(&self.*.loaded_modules, "std.zero_ported.str") >= @as(c_longlong, 0));
+                _ = &has_str;
+                if (has_str) {
+                    result = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("__kai_std_str_concat_alloc(", result), ", "), part_str), ")");
+                } else {
+                    result = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("_kai_str_concat(", result), ", "), part_str), ")");
+                }
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         return result;
     }
@@ -13394,8 +12032,8 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         var rhs_type: [*c]const u8 = Codegen_get_expr_type(self, expr.binop_right);
         _ = &rhs_type;
         if ((strcmp(op, "==") == @as(c_int, 0)) or (strcmp(op, "!=") == @as(c_int, 0))) {
-            if (((strlen(lhs_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, lhs_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63)))))))))) and (strcmp(rhs, "NULL") == @as(c_int, 0))) {
-                var val_type: [*c]const u8 = substring(lhs_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(lhs_type)))));
+            if (((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(lhs_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, lhs_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) and (strcmp(rhs, "NULL") == @as(c_int, 0))) {
+                var val_type: [*c]const u8 = substring(lhs_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(lhs_type)))));
                 _ = &val_type;
                 if (Codegen_is_pointer_type(self, val_type)) {
                     return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", lhs), " "), op), " NULL)");
@@ -13405,8 +12043,8 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 }
                 return _kai_str_concat(_kai_str_concat("(", lhs), ".has_value)");
             }
-            if (((strlen(rhs_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, rhs_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63)))))))))) and (strcmp(lhs, "NULL") == @as(c_int, 0))) {
-                var val_type: [*c]const u8 = substring(rhs_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(rhs_type)))));
+            if (((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(rhs_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, rhs_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) and (strcmp(lhs, "NULL") == @as(c_int, 0))) {
+                var val_type: [*c]const u8 = substring(rhs_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(rhs_type)))));
                 _ = &val_type;
                 if (Codegen_is_pointer_type(self, val_type)) {
                     return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(NULL ", op), " "), rhs), ")");
@@ -13421,6 +12059,11 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         _ = &lhs_node;
         if (strcmp(lhs_type, "Str") == @as(c_int, 0)) {
             if (strcmp(op, "+") == @as(c_int, 0)) {
+                var has_str: bool = (strlist_find(&self.*.loaded_modules, "std.lib.str") >= @as(c_longlong, 0)) or (strlist_find(&self.*.loaded_modules, "std.zero_ported.str") >= @as(c_longlong, 0));
+                _ = &has_str;
+                if (has_str) {
+                    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("__kai_std_str_concat_alloc(", lhs), ", "), rhs), ")");
+                }
                 return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("_kai_str_concat(", lhs), ", "), rhs), ")");
             }
             if (strcmp(op, "==") == @as(c_int, 0)) {
@@ -13434,7 +12077,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             if (Codegen_enum_has_payload(self, lhs_type)) {
                 var is_ptr: bool = @as(c_int, 0) != 0;
                 _ = &is_ptr;
-                if ((@as(c_int, @bitCast(@as(c_uint, lhs_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, lhs_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38)))))))))) {
+                if ((@as(c_int, @bitCast(@as(c_uint, lhs_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, lhs_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
                     is_ptr = @as(c_int, 1) != 0;
                 }
                 var tag_op: [*c]const u8 = ".";
@@ -13446,7 +12089,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 _ = &rhs_type_1;
                 var rhs_is_ptr: bool = @as(c_int, 0) != 0;
                 _ = &rhs_is_ptr;
-                if ((@as(c_int, @bitCast(@as(c_uint, rhs_type_1[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, rhs_type_1[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38)))))))))) {
+                if ((@as(c_int, @bitCast(@as(c_uint, rhs_type_1[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, rhs_type_1[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
                     rhs_is_ptr = @as(c_int, 1) != 0;
                 }
                 var rhs_tag_op: [*c]const u8 = ".";
@@ -13473,20 +12116,31 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         var name: [*c]const u8 = expr.func_name;
         _ = &name;
         if ((strcmp(name, "cast") == @as(c_int, 0)) or (strcmp(name, "as") == @as(c_int, 0))) {
-            return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", Codegen_map_type(self, ArrayList_Str_get(&expr.func_type_args, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))))), ")("), Codegen_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))))), ")");
+            var target_type: [*c]const u8 = ArrayList_Str_get(&expr.func_type_args, @as(c_longlong, 0));
+            _ = &target_type;
+            var operand_type: [*c]const u8 = Codegen_get_expr_type(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)));
+            _ = &operand_type;
+            var is_target_ptr: bool = ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(target_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, target_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, target_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(target_type, "Str")))) == @as(c_longlong, 0));
+            _ = &is_target_ptr;
+            var is_operand_int: bool = ((@as(c_longlong, @bitCast(@as(c_longlong, strcmp(operand_type, "Int")))) == @as(c_longlong, 0)) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(operand_type, "Char")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(operand_type, "Bool")))) == @as(c_longlong, 0));
+            _ = &is_operand_int;
+            if ((@as(c_int, @intFromBool(is_target_ptr)) != 0) and (@as(c_int, @intFromBool(is_operand_int)) != 0)) {
+                return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", Codegen_map_type(self, target_type)), ")(unsigned long long)("), Codegen_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)))), ")");
+            }
+            return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", Codegen_map_type(self, target_type)), ")("), Codegen_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)))), ")");
         }
         if (strcmp(name, "size_of") == @as(c_int, 0)) {
-            return _kai_str_concat(_kai_str_concat("sizeof(", Codegen_map_type(self, ArrayList_Str_get(&expr.func_type_args, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))))), ")");
+            return _kai_str_concat(_kai_str_concat("sizeof(", Codegen_map_type(self, ArrayList_Str_get(&expr.func_type_args, @as(c_longlong, 0)))), ")");
         }
         if ((((strcmp(name, "Char") == @as(c_int, 0)) or (strcmp(name, "Int") == @as(c_int, 0))) or (strcmp(name, "Float") == @as(c_int, 0))) or (strcmp(name, "Bool") == @as(c_int, 0))) {
             var ctype: [*c]const u8 = Codegen_map_type(self, name);
             _ = &ctype;
-            var arg_val: [*c]const u8 = Codegen_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))));
+            var arg_val: [*c]const u8 = Codegen_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)));
             _ = &arg_val;
             return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("((", ctype), ")("), arg_val), "))");
         }
         if (strcmp(name, "length") == @as(c_int, 0)) {
-            var arg_val: [*c]const u8 = Codegen_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))));
+            var arg_val: [*c]const u8 = Codegen_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)));
             _ = &arg_val;
             return _kai_str_concat(_kai_str_concat("strlen(", arg_val), ")");
         }
@@ -13500,7 +12154,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             if ((stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) and (strcmp(stmt.struct_name, name) == @as(c_int, 0))) {
                 is_struct = @as(c_int, 1) != 0;
             }
-            s_idx = s_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            s_idx = s_idx + @as(c_longlong, 1);
         }
         if (((strcmp(name, "ArrayList") == @as(c_int, 0)) or (strcmp(name, "HashMap") == @as(c_int, 0))) or (strcmp(name, "StringBuilder") == @as(c_int, 0))) {
             is_struct = @as(c_int, 1) != 0;
@@ -13511,15 +12165,15 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         _ = &type_args;
         var gf_idx_str: [*c]const u8 = type_map_get(&self.*.generic_func_decls, name);
         _ = &gf_idx_str;
-        if (strlen(gf_idx_str) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(gf_idx_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             var gf_idx: i64 = Codegen_str_to_int(self, gf_idx_str);
             _ = &gf_idx;
-            if (ArrayList_Str_length(&expr.func_type_args) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (ArrayList_Str_length(&expr.func_type_args) > @as(c_longlong, 0)) {
                 var j: i64 = 0;
                 _ = &j;
                 while (j < ArrayList_Str_length(&expr.func_type_args)) {
                     ArrayList_Str_push(&type_args, ArrayList_Str_get(&expr.func_type_args, j));
-                    j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    j = j + @as(c_longlong, 1);
                 }
             } else {
                 type_args = Codegen_infer_type_args(self, gf_idx, expr_idx);
@@ -13528,15 +12182,15 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             _ = &j;
             while (j < ArrayList_Str_length(&type_args)) {
                 fn_name = _kai_str_concat(_kai_str_concat(fn_name, "_"), Codegen_clean_type_for_mangling(self, ArrayList_Str_get(&type_args, j)));
-                j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                j = j + @as(c_longlong, 1);
             }
             Codegen_monomorphize_func(self, gf_idx, fn_name, &type_args);
-        } else if (ArrayList_Str_length(&expr.func_type_args) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        } else if (ArrayList_Str_length(&expr.func_type_args) > @as(c_longlong, 0)) {
             var j: i64 = 0;
             _ = &j;
             while (j < ArrayList_Str_length(&expr.func_type_args)) {
                 fn_name = _kai_str_concat(_kai_str_concat(fn_name, "_"), Codegen_clean_type_for_mangling(self, ArrayList_Str_get(&expr.func_type_args, j)));
-                j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                j = j + @as(c_longlong, 1);
             }
         }
         if (is_struct) {
@@ -13547,20 +12201,20 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         var i: i64 = 0;
         _ = &i;
         while (i < ArrayList_Int_length(&expr.func_args)) {
-            if (i > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (i > @as(c_longlong, 0)) {
                 args_str = _kai_str_concat(args_str, ", ");
             }
             var p_idx: i64 = i;
             _ = &p_idx;
             if (is_struct) {
-                p_idx = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                p_idx = i + @as(c_longlong, 1);
             }
             var p_key: [*c]const u8 = _kai_str_concat(_kai_str_concat(fn_name, "_param_"), int_to_str(p_idx));
             _ = &p_key;
             var expected_type: [*c]const u8 = type_map_get(&self.*.func_param_types, p_key);
             _ = &expected_type;
             args_str = _kai_str_concat(args_str, Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&expr.func_args, i), expected_type));
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         return _kai_str_concat(_kai_str_concat(_kai_str_concat(fn_name, "("), args_str), ")");
     }
@@ -13586,7 +12240,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         _ = &is_ptr;
         var is_self_ptr: bool = ((base_node.kind == @as(c_uint, @bitCast(ExprKind_ek_identifier))) and (strcmp(base_node.ident_name, "self") == @as(c_int, 0))) and !self.*.cur_method_is_init;
         _ = &is_self_ptr;
-        if (((@as(c_int, @bitCast(@as(c_uint, base_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, base_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38)))))))))) or (@as(c_int, @intFromBool(is_self_ptr)) != 0)) {
+        if (((@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) or (@as(c_int, @intFromBool(is_self_ptr)) != 0)) {
             is_ptr = @as(c_int, 1) != 0;
         }
         var op: [*c]const u8 = ".";
@@ -13642,24 +12296,24 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         _ = &i;
         while (i < ArrayList_Int_length(&expr.arr_elements)) {
             ArrayList_Str_push(&elems, Codegen_gen_expr(self, ArrayList_Int_get(&expr.arr_elements, i)));
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         var elems_str: [*c]const u8 = str_array_join(elems, ", ");
         _ = &elems_str;
-        if (strlen(elems_str) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(elems_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             elems_str = "0";
         }
         var inner_ty: [*c]const u8 = "Int";
         _ = &inner_ty;
-        if ((strlen(expr.inferred_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 2))))) and (strcmp(substring(expr.inferred_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))))), "[]") == @as(c_int, 0))) {
-            inner_ty = substring(expr.inferred_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(substring(expr.inferred_type, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0))) {
+            inner_ty = substring(expr.inferred_type, @as(c_longlong, 2), @as(i64, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))));
         }
         var mapped_inner: [*c]const u8 = Codegen_map_type(self, inner_ty);
         _ = &mapped_inner;
         return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", mapped_inner), "[]){ "), elems_str), " }");
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_tuple))) {
-        if (strlen(expr.inferred_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             var mapped_ty: [*c]const u8 = Codegen_map_type(self, expr.inferred_type);
             _ = &mapped_ty;
             var elems: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
@@ -13668,7 +12322,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             _ = &i;
             while (i < ArrayList_Int_length(&expr.tup_elements)) {
                 ArrayList_Str_push(&elems, Codegen_gen_expr(self, ArrayList_Int_get(&expr.tup_elements, i)));
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", mapped_ty), "){ "), str_array_join(elems, ", ")), " }");
         }
@@ -13684,19 +12338,19 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         while (i < ArrayList_AsmOutput_length(&expr.asm_outputs)) {
             var out: AsmOutput = ArrayList_AsmOutput_get(&expr.asm_outputs, i);
             _ = &out;
-            if (strlen(out.type_name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(out.type_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 var mapped_type: [*c]const u8 = Codegen_map_type(self, out.type_name);
                 _ = &mapped_type;
                 var var_name: [*c]const u8 = _kai_str_concat("asm_ret_", int_to_str(i));
                 _ = &var_name;
                 ArrayList_Str_push(&decls, _kai_str_concat(_kai_str_concat(_kai_str_concat(mapped_type, " "), var_name), ";"));
                 ArrayList_Str_push(&out_ops, _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("[", out.name), "] \""), out.constraint), "\" ("), var_name), ")"));
-            } else if (out.expr_idx >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            } else if (out.expr_idx >= @as(c_longlong, 0)) {
                 var val_str: [*c]const u8 = Codegen_gen_expr(self, out.expr_idx);
                 _ = &val_str;
                 ArrayList_Str_push(&out_ops, _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("[", out.name), "] \""), out.constraint), "\" ("), val_str), ")"));
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         var in_ops: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
         _ = &in_ops;
@@ -13708,7 +12362,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             var val_str: [*c]const u8 = Codegen_gen_expr(self, inp.expr_idx);
             _ = &val_str;
             ArrayList_Str_push(&in_ops, _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("[", inp.name), "] \""), inp.constraint), "\" ("), val_str), ")"));
-            j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            j = j + @as(c_longlong, 1);
         }
         var clobs: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
         _ = &clobs;
@@ -13716,7 +12370,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         _ = &k;
         while (k < ArrayList_Str_length(&expr.asm_clobbers)) {
             ArrayList_Str_push(&clobs, _kai_str_concat(_kai_str_concat("\"", ArrayList_Str_get(&expr.asm_clobbers, k)), "\""));
-            k = k + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            k = k + @as(c_longlong, 1);
         }
         var volatile_prefix: [*c]const u8 = "";
         _ = &volatile_prefix;
@@ -13733,24 +12387,24 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 if (tmp >= 0) break :blk expr.asm_code + @as(usize, @intCast(tmp)) else break :blk expr.asm_code - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
             }).*;
             _ = &c;
-            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 10))))))))) {
+            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
                 escaped_asm = _kai_str_concat(escaped_asm, "\\n\\t");
-            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 34))))))))) {
+            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 34))))))))) {
                 escaped_asm = _kai_str_concat(escaped_asm, "\\\"");
             } else {
                 escaped_asm = _kai_str_concat(escaped_asm, char_to_str(c));
             }
-            c_idx = c_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            c_idx = c_idx + @as(c_longlong, 1);
         }
         var asm_stmt: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("__asm__ ", volatile_prefix), " (\""), escaped_asm), "\"");
         _ = &asm_stmt;
-        if (((ArrayList_Str_length(&out_ops) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (ArrayList_Str_length(&in_ops) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))))) or (ArrayList_Str_length(&clobs) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))))) {
+        if (((ArrayList_Str_length(&out_ops) > @as(c_longlong, 0)) or (ArrayList_Str_length(&in_ops) > @as(c_longlong, 0))) or (ArrayList_Str_length(&clobs) > @as(c_longlong, 0))) {
             asm_stmt = _kai_str_concat(_kai_str_concat(asm_stmt, " : "), str_array_join(out_ops, ", "));
         }
-        if ((ArrayList_Str_length(&in_ops) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (ArrayList_Str_length(&clobs) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))))) {
+        if ((ArrayList_Str_length(&in_ops) > @as(c_longlong, 0)) or (ArrayList_Str_length(&clobs) > @as(c_longlong, 0))) {
             asm_stmt = _kai_str_concat(_kai_str_concat(asm_stmt, " : "), str_array_join(in_ops, ", "));
         }
-        if (ArrayList_Str_length(&clobs) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (ArrayList_Str_length(&clobs) > @as(c_longlong, 0)) {
             asm_stmt = _kai_str_concat(_kai_str_concat(asm_stmt, " : "), str_array_join(clobs, ", "));
         }
         asm_stmt = _kai_str_concat(asm_stmt, ");");
@@ -13760,16 +12414,16 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         _ = &d_idx;
         while (d_idx < ArrayList_Str_length(&decls)) {
             res = _kai_str_concat(_kai_str_concat(_kai_str_concat(res, "    "), ArrayList_Str_get(&decls, d_idx)), "\n");
-            d_idx = d_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            d_idx = d_idx + @as(c_longlong, 1);
         }
         res = _kai_str_concat(_kai_str_concat(_kai_str_concat(res, "    "), asm_stmt), "\n");
-        if (ArrayList_AsmOutput_length(&expr.asm_outputs) == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))) {
-            var out0: AsmOutput = ArrayList_AsmOutput_get(&expr.asm_outputs, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+        if (ArrayList_AsmOutput_length(&expr.asm_outputs) == @as(c_longlong, 1)) {
+            var out0: AsmOutput = ArrayList_AsmOutput_get(&expr.asm_outputs, @as(c_longlong, 0));
             _ = &out0;
-            if (strlen(out0.type_name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(out0.type_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 res = _kai_str_concat(res, "    asm_ret_0;\n");
             }
-        } else if (ArrayList_AsmOutput_length(&expr.asm_outputs) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))) {
+        } else if (ArrayList_AsmOutput_length(&expr.asm_outputs) > @as(c_longlong, 1)) {
             var types: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
             _ = &types;
             var ti: i64 = 0;
@@ -13779,11 +12433,11 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             while (ti < ArrayList_AsmOutput_length(&expr.asm_outputs)) {
                 var out: AsmOutput = ArrayList_AsmOutput_get(&expr.asm_outputs, ti);
                 _ = &out;
-                if (strlen(out.type_name) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(out.type_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                     all_typed = @as(c_int, 0) != 0;
                 }
                 ArrayList_Str_push(&types, out.type_name);
-                ti = ti + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                ti = ti + @as(c_longlong, 1);
             }
             if (all_typed) {
                 var tuple_type: [*c]const u8 = _kai_str_concat(_kai_str_concat("(", str_array_join(types, ", ")), ")");
@@ -13796,7 +12450,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 _ = &vi;
                 while (vi < ArrayList_AsmOutput_length(&expr.asm_outputs)) {
                     ArrayList_Str_push(&vals, _kai_str_concat("asm_ret_", int_to_str(vi)));
-                    vi = vi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    vi = vi + @as(c_longlong, 1);
                 }
                 res = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(res, "    ("), mapped_tuple), "){ "), str_array_join(vals, ", ")), " };\n");
             }
@@ -13805,14 +12459,14 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         return res;
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_struct_init))) {
-        var is_enum: bool = (strlen(expr.struct_name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @intFromBool(Codegen_str_contains(self, expr.struct_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 46)))))))) != 0);
+        var is_enum: bool = (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.struct_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @intFromBool(Codegen_str_contains(self, expr.struct_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 46)))))))) != 0);
         _ = &is_enum;
         if (is_enum) {
-            var dot_pos: i64 = Codegen_str_find(self, expr.struct_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 46))))));
+            var dot_pos: i64 = Codegen_str_find(self, expr.struct_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 46))))));
             _ = &dot_pos;
-            var enum_part: [*c]const u8 = substring(expr.struct_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), dot_pos);
+            var enum_part: [*c]const u8 = substring(expr.struct_name, @as(c_longlong, 0), dot_pos);
             _ = &enum_part;
-            var variant_name: [*c]const u8 = substring(expr.struct_name, dot_pos + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(expr.struct_name)))));
+            var variant_name: [*c]const u8 = substring(expr.struct_name, dot_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(expr.struct_name)))));
             _ = &variant_name;
             var enum_name: [*c]const u8 = Codegen_map_type(self, enum_part);
             _ = &enum_name;
@@ -13823,15 +12477,15 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             while (i < ArrayList_FieldInit_length(&expr.struct_fields)) {
                 var f: FieldInit = ArrayList_FieldInit_get(&expr.struct_fields, i);
                 _ = &f;
-                if (i > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                if (i > @as(c_longlong, 0)) {
                     fields_str = _kai_str_concat(fields_str, ", ");
                 }
                 fields_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(fields_str, "."), f.name), " = "), Codegen_gen_expr(self, f.value));
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             var payload_str: [*c]const u8 = "";
             _ = &payload_str;
-            if (strlen(fields_str) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fields_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 payload_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(", .payload = { .", variant_name), " = { "), fields_str), " } }");
             }
             return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", enum_name), "){ .tag = "), enum_name), "_"), variant_name), "_TAG"), payload_str), " }");
@@ -13845,7 +12499,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             while (i < ArrayList_FieldInit_length(&expr.struct_fields)) {
                 var f: FieldInit = ArrayList_FieldInit_get(&expr.struct_fields, i);
                 _ = &f;
-                if (i > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                if (i > @as(c_longlong, 0)) {
                     fields_str = _kai_str_concat(fields_str, ", ");
                 }
                 var field_type: [*c]const u8 = "";
@@ -13864,13 +12518,13 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                             if (strcmp(sf.name, f.name) == @as(c_int, 0)) {
                                 field_type = sf.ftype;
                             }
-                            fi = fi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                            fi = fi + @as(c_longlong, 1);
                         }
                     }
-                    si = si + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    si = si + @as(c_longlong, 1);
                 }
                 fields_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(fields_str, "."), f.name), " = "), Codegen_gen_expr_with_expected_type(self, f.value, field_type));
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", struct_name), "){ "), fields_str), " }");
         }
@@ -13894,13 +12548,13 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 if (tmp >= 0) break :blk rec_type + @as(usize, @intCast(tmp)) else break :blk rec_type - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
             }).*;
             _ = &c;
-            if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38)))))))))) {
+            if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
                 clean_type = _kai_str_concat(clean_type, char_to_str(c));
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
-        if (strcmp(substring(clean_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))))), "mut ") == @as(c_int, 0)) {
-            clean_type = substring(clean_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
+        if (strcmp(substring(clean_type, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0)) {
+            clean_type = substring(clean_type, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
         }
         clean_type = Codegen_map_type(self, clean_type);
         var is_constructor: bool = @as(c_int, 0) != 0;
@@ -13908,19 +12562,19 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         if (receiver_node.kind == @as(c_uint, @bitCast(ExprKind_ek_identifier))) {
             var r_name: [*c]const u8 = receiver_node.ident_name;
             _ = &r_name;
-            var first_char: u8 = r_name[@as(c_uint, @intCast(@as(c_int, 0)))];
+            var first_char: u8 = r_name[@as(usize, @intCast(@as(c_longlong, 0)))];
             _ = &first_char;
-            if ((@as(c_int, @bitCast(@as(c_uint, first_char))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 65))))))))) and (@as(c_int, @bitCast(@as(c_uint, first_char))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 90)))))))))) {
+            if ((@as(c_int, @bitCast(@as(c_uint, first_char))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 65))))))))) and (@as(c_int, @bitCast(@as(c_uint, first_char))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 90)))))))))) {
                 is_constructor = @as(c_int, 1) != 0;
                 clean_type = Codegen_map_type(self, rec_type);
             }
         }
         var func_name: [*c]const u8 = _kai_str_concat(_kai_str_concat(clean_type, "_"), method_name);
         _ = &func_name;
-        if (type_map_find(&self.*.func_types, func_name) < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (type_map_find(&self.*.func_types, func_name) < @as(c_longlong, 0)) {
             _ = printf("error[E0023]: type '%s' has no method '%s'\n", rec_type, method_name);
             {
-                exit(@as(c_int, 1));
+                exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
             }
         }
         var args_str: [*c]const u8 = "";
@@ -13932,7 +12586,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             _ = &rec_inferred;
             var is_self_ptr: bool = ((receiver_node.kind == @as(c_uint, @bitCast(ExprKind_ek_identifier))) and (strcmp(receiver_node.ident_name, "self") == @as(c_int, 0))) and !self.*.cur_method_is_init;
             _ = &is_self_ptr;
-            if (((@as(c_int, @bitCast(@as(c_uint, rec_inferred[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, rec_inferred[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38)))))))))) or (@as(c_int, @intFromBool(is_self_ptr)) != 0)) {
+            if (((@as(c_int, @bitCast(@as(c_uint, rec_inferred[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, rec_inferred[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) or (@as(c_int, @intFromBool(is_self_ptr)) != 0)) {
                 args_str = rec_val;
             } else {
                 var is_complex: bool = (receiver_node.kind == @as(c_uint, @bitCast(ExprKind_ek_func_call))) or (receiver_node.kind == @as(c_uint, @bitCast(ExprKind_ek_method_call)));
@@ -13949,22 +12603,22 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         var ai: i64 = 0;
         _ = &ai;
         while (ai < ArrayList_Int_length(&expr.meth_args)) {
-            if (strlen(args_str) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(args_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 args_str = _kai_str_concat(args_str, ", ");
             }
-            var p_key: [*c]const u8 = _kai_str_concat(_kai_str_concat(func_name, "_param_"), int_to_str(ai + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))));
+            var p_key: [*c]const u8 = _kai_str_concat(_kai_str_concat(func_name, "_param_"), int_to_str(ai + @as(c_longlong, 1)));
             _ = &p_key;
             var expected_type: [*c]const u8 = type_map_get(&self.*.func_param_types, p_key);
             _ = &expected_type;
             args_str = _kai_str_concat(args_str, Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&expr.meth_args, ai), expected_type));
-            ai = ai + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            ai = ai + @as(c_longlong, 1);
         }
         if ((strcmp(method_name, "init") == @as(c_int, 0)) and !is_constructor) {
             var rec_val: [*c]const u8 = Codegen_gen_expr(self, receiver_idx);
             _ = &rec_val;
             var rec_inferred: [*c]const u8 = Codegen_get_expr_type(self, receiver_idx);
             _ = &rec_inferred;
-            if ((@as(c_int, @bitCast(@as(c_uint, rec_inferred[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, rec_inferred[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38)))))))))) {
+            if ((@as(c_int, @bitCast(@as(c_uint, rec_inferred[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, rec_inferred[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
                 return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("*(", rec_val), ") = "), func_name), "("), args_str), ")");
             }
             return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(rec_val, " = "), func_name), "("), args_str), ")");
@@ -13976,8 +12630,8 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         _ = &inner;
         var inner_ty: [*c]const u8 = Codegen_get_expr_type(self, expr.catch_expr);
         _ = &inner_ty;
-        if ((strlen(inner_ty) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, inner_ty[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 63)))))))))) {
-            var val_type: [*c]const u8 = substring(inner_ty, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner_ty)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, inner_ty[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
+            var val_type: [*c]const u8 = substring(inner_ty, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
             _ = &val_type;
             var val_ctype: [*c]const u8 = Codegen_map_type(self, val_type);
             _ = &val_ctype;
@@ -13987,7 +12641,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             _ = &fallback_code;
             var fallback_is_stmt2: bool = @as(c_int, 0) != 0;
             _ = &fallback_is_stmt2;
-            if (expr.catch_fallback >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (expr.catch_fallback >= @as(c_longlong, 0)) {
                 var fb_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, expr.catch_fallback);
                 _ = &fb_node;
                 if (fb_node.kind == @as(c_uint, @bitCast(StmtKind_sk_expr))) {
@@ -13995,10 +12649,10 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 } else if (fb_node.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) {
                     var is_single_expr: bool = @as(c_int, 0) != 0;
                     _ = &is_single_expr;
-                    var expr_idx_1: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+                    var expr_idx_1: i64 = -@as(c_longlong, 1);
                     _ = &expr_idx_1;
-                    if (ArrayList_Int_length(&fb_node.block_stmts) == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))) {
-                        var single_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, ArrayList_Int_get(&fb_node.block_stmts, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))));
+                    if (ArrayList_Int_length(&fb_node.block_stmts) == @as(c_longlong, 1)) {
+                        var single_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, ArrayList_Int_get(&fb_node.block_stmts, @as(c_longlong, 0)));
                         _ = &single_stmt;
                         if (single_stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_expr))) {
                             is_single_expr = @as(c_int, 1) != 0;
@@ -14041,12 +12695,12 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             }
             return catch_code;
         }
-        var excl_pos: i64 = Codegen_str_find(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))));
+        var excl_pos: i64 = Codegen_str_find(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
         _ = &excl_pos;
-        if (excl_pos < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (excl_pos < @as(c_longlong, 0)) {
             return inner;
         }
-        var val_type: [*c]const u8 = substring(inner_ty, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), excl_pos);
+        var val_type: [*c]const u8 = substring(inner_ty, @as(c_longlong, 0), excl_pos);
         _ = &val_type;
         var result_ctype: [*c]const u8 = Codegen_map_type(self, inner_ty);
         _ = &result_ctype;
@@ -14056,7 +12710,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         _ = &fallback_code;
         var fallback_is_stmt: bool = @as(c_int, 0) != 0;
         _ = &fallback_is_stmt;
-        if (expr.catch_fallback >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (expr.catch_fallback >= @as(c_longlong, 0)) {
             var fb_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, expr.catch_fallback);
             _ = &fb_node;
             if (fb_node.kind == @as(c_uint, @bitCast(StmtKind_sk_expr))) {
@@ -14064,10 +12718,10 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             } else if (fb_node.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) {
                 var is_single_expr: bool = @as(c_int, 0) != 0;
                 _ = &is_single_expr;
-                var expr_idx_1: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+                var expr_idx_1: i64 = -@as(c_longlong, 1);
                 _ = &expr_idx_1;
-                if (ArrayList_Int_length(&fb_node.block_stmts) == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))) {
-                    var single_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, ArrayList_Int_get(&fb_node.block_stmts, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))));
+                if (ArrayList_Int_length(&fb_node.block_stmts) == @as(c_longlong, 1)) {
+                    var single_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, ArrayList_Int_get(&fb_node.block_stmts, @as(c_longlong, 0)));
                     _ = &single_stmt;
                     if (single_stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_expr))) {
                         is_single_expr = @as(c_int, 1) != 0;
@@ -14091,14 +12745,14 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         _ = &catch_code;
         if (strcmp(val_type, "Void") == @as(c_int, 0)) {
             catch_code = _kai_str_concat(catch_code, "if (_kai_cr.tag != 0) { ");
-            if (strlen(expr.catch_var) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.catch_var)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
             }
             catch_code = _kai_str_concat(_kai_str_concat(catch_code, fallback_code), " } 0; })");
         } else {
             catch_code = _kai_str_concat(_kai_str_concat(catch_code, val_ctype), " _kai_cv; ");
             catch_code = _kai_str_concat(catch_code, "if (_kai_cr.tag != 0) { ");
-            if (strlen(expr.catch_var) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.catch_var)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
             }
             if (fallback_is_stmt) {
@@ -14128,7 +12782,7 @@ pub export fn Codegen_str_contains(arg_self: [*c]Codegen, arg_s: [*c]const u8, a
         }).*))) == @as(c_int, @bitCast(@as(c_uint, target)))) {
             return @as(c_int, 1) != 0;
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
     return @as(c_int, 0) != 0;
 }
@@ -14148,9 +12802,9 @@ pub export fn Codegen_str_find(arg_self: [*c]Codegen, arg_s: [*c]const u8, arg_t
         }).*))) == @as(c_int, @bitCast(@as(c_uint, target)))) {
             return i;
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
-    return @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    return -@as(c_longlong, 1);
 }
 pub export fn Codegen_is_standard_c_func(arg_self: [*c]Codegen, arg_name: [*c]const u8) bool {
     var self = arg_self;
@@ -14159,13 +12813,13 @@ pub export fn Codegen_is_standard_c_func(arg_self: [*c]Codegen, arg_name: [*c]co
     _ = &name;
     var l: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(name))));
     _ = &l;
-    if (l >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))))) {
-        var sub4: [*c]const u8 = substring(name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4)))));
+    if (l >= @as(c_longlong, 4)) {
+        var sub4: [*c]const u8 = substring(name, @as(c_longlong, 0), @as(c_longlong, 4));
         _ = &sub4;
         var is_llvm: bool = @as(c_int, 0) != 0;
         _ = &is_llvm;
         {
-            if (strcmp(sub4, "LLVM") == @as(c_int, 0)) {
+            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(sub4, "LLVM")))) == @as(c_longlong, 0)) {
                 is_llvm = @as(c_int, 1) != 0;
             }
         }
@@ -14173,13 +12827,13 @@ pub export fn Codegen_is_standard_c_func(arg_self: [*c]Codegen, arg_name: [*c]co
             return @as(c_int, 1) != 0;
         }
     }
-    if (l >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 8))))) {
-        var sub8: [*c]const u8 = substring(name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 8)))));
+    if (l >= @as(c_longlong, 8)) {
+        var sub8: [*c]const u8 = substring(name, @as(c_longlong, 0), @as(c_longlong, 8));
         _ = &sub8;
         var is_kai_llvm: bool = @as(c_int, 0) != 0;
         _ = &is_kai_llvm;
         {
-            if (strcmp(sub8, "kai_LLVM") == @as(c_int, 0)) {
+            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(sub8, "kai_LLVM")))) == @as(c_longlong, 0)) {
                 is_kai_llvm = @as(c_int, 1) != 0;
             }
         }
@@ -14197,12 +12851,6 @@ pub export fn Codegen_is_standard_c_func(arg_self: [*c]Codegen, arg_name: [*c]co
         return @as(c_int, 1) != 0;
     }
     if (strcmp(name, "calloc") == @as(c_int, 0)) {
-        return @as(c_int, 1) != 0;
-    }
-    if (strcmp(name, "mmap") == @as(c_int, 0)) {
-        return @as(c_int, 1) != 0;
-    }
-    if (strcmp(name, "munmap") == @as(c_int, 0)) {
         return @as(c_int, 1) != 0;
     }
     if (strcmp(name, "isdigit") == @as(c_int, 0)) {
@@ -14278,7 +12926,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
     _ = &self;
     var stmt_idx = arg_stmt_idx;
     _ = &stmt_idx;
-    if (stmt_idx < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (stmt_idx < @as(c_longlong, 0)) {
         return "";
     }
     var stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt_idx);
@@ -14293,10 +12941,10 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         while (i < ArrayList_Int_length(&stmt.block_stmts)) {
             var s: [*c]const u8 = Codegen_gen_stmt(self, ArrayList_Int_get(&stmt.block_stmts, i));
             _ = &s;
-            if (strlen(s) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 block_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(block_str, "    "), s), "\n");
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         var start_idx: i64 = ArrayList_Int_pop(&self.*.defer_depths);
         _ = &start_idx;
@@ -14307,7 +12955,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             _ = &def_node;
             var s: [*c]const u8 = Codegen_gen_stmt(self, def_node.defer_body);
             _ = &s;
-            if (strlen(s) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 block_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(block_str, "    "), s), "\n");
             }
         }
@@ -14317,7 +12965,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             var entry: DropVarEntry = ArrayList_DropVarEntry_get(&stmt.block_drop_vars, di);
             _ = &entry;
             block_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(block_str, "    "), entry.base_type), "_drop(&"), entry.name), ");\n");
-            di = di + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            di = di + @as(c_longlong, 1);
         }
         block_str = _kai_str_concat(block_str, "}");
         _ = ArrayList_Int_pop(&self.*.block_stack);
@@ -14332,7 +12980,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         _ = &name;
         var var_type_name: [*c]const u8 = stmt.vardecl_type;
         _ = &var_type_name;
-        if (strlen(var_type_name) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(var_type_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             var_type_name = Codegen_get_expr_type(self, stmt.vardecl_value);
         }
         var init_val: [*c]const u8 = Codegen_gen_expr_with_expected_type(self, stmt.vardecl_value, var_type_name);
@@ -14354,13 +13002,13 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         _ = &rhs;
         var op: [*c]const u8 = "=";
         _ = &op;
-        if (strlen(stmt.assign_op) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.assign_op)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             op = stmt.assign_op;
         }
         return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(lhs, " "), op), " "), rhs), ";");
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_func_decl))) {
-        if (ArrayList_Str_length(&stmt.func_type_params) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (ArrayList_Str_length(&stmt.func_type_params) > @as(c_longlong, 0)) {
             type_map_put(&self.*.generic_func_decls, stmt.func_name, int_to_str(stmt_idx));
             return "";
         }
@@ -14375,13 +13023,13 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         while (i < ArrayList_Param_length(&stmt.func_params)) {
             var p: Param = ArrayList_Param_get(&stmt.func_params, i);
             _ = &p;
-            if (i > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (i > @as(c_longlong, 0)) {
                 params_str = _kai_str_concat(params_str, ", ");
             }
             params_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
-        if (strlen(params_str) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             params_str = "void";
         }
         var old_fn: [*c]const u8 = self.*.cur_func_name;
@@ -14401,7 +13049,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             var p: Param = ArrayList_Param_get(&stmt.func_params, p_reg2);
             _ = &p;
             type_map_put(&self.*.var_types, p.name, p.ptype);
-            p_reg2 = p_reg2 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            p_reg2 = p_reg2 + @as(c_longlong, 1);
         }
         var body_str: [*c]const u8 = Codegen_gen_stmt(self, stmt.func_body);
         _ = &body_str;
@@ -14418,7 +13066,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             proto = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), name), "("), params_str), ");\n");
             impl_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), name), "("), params_str), ") "), body_str), "\n");
         }
-        if (strlen(proto) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(proto)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             _ = StringBuilder_append(&self.*.func_decls, proto);
         }
         _ = StringBuilder_append(&self.*.output, impl_str);
@@ -14428,7 +13076,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         return "";
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) {
-        if (ArrayList_Str_length(&stmt.struct_type_params) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (ArrayList_Str_length(&stmt.struct_type_params) > @as(c_longlong, 0)) {
             type_map_put(&self.*.generic_struct_decls, stmt.struct_name, int_to_str(stmt_idx));
             return "";
         }
@@ -14443,7 +13091,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             var f: StructField = ArrayList_StructField_get(&stmt.struct_fields, i);
             _ = &f;
             struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(struct_str, "    "), Codegen_map_type(self, f.ftype)), " "), f.name), ";\n");
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         struct_str = _kai_str_concat(struct_str, "};\n");
         _ = StringBuilder_append(&self.*.struct_decls, struct_str);
@@ -14453,7 +13101,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             var impl_idx: i64 = ArrayList_Int_get(&stmt.struct_trait_impls, ti);
             _ = &impl_idx;
             _ = Codegen_gen_stmt(self, impl_idx);
-            ti = ti + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            ti = ti + @as(c_longlong, 1);
         }
         return "";
     }
@@ -14465,11 +13113,11 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         while (mi < ArrayList_Int_length(&stmt.trait_methods)) {
             var m_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, ArrayList_Int_get(&stmt.trait_methods, mi));
             _ = &m_node;
-            if (mi > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (mi > @as(c_longlong, 0)) {
                 method_names = _kai_str_concat(method_names, ", ");
             }
             method_names = _kai_str_concat(method_names, m_node.func_name);
-            mi = mi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            mi = mi + @as(c_longlong, 1);
         }
         var comment: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("/* trait ", stmt.trait_name), ": "), method_names), " */\n");
         _ = &comment;
@@ -14487,8 +13135,8 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         while (j < ArrayList_Str_length(&stmt.error_variants)) {
             var vname: [*c]const u8 = ArrayList_Str_get(&stmt.error_variants, j);
             _ = &vname;
-            enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "    "), name), "_"), vname), " = "), int_to_str(j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))), ",\n");
-            j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "    "), name), "_"), vname), " = "), int_to_str(j + @as(c_longlong, 1))), ",\n");
+            j = j + @as(c_longlong, 1);
         }
         enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "} "), name), ";\n");
         _ = StringBuilder_append(&self.*.struct_decls, enum_str);
@@ -14496,7 +13144,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_enum_decl))) {
         type_map_put(&self.*.enum_decls, stmt.enum_name, int_to_str(stmt_idx));
-        if (ArrayList_Str_length(&stmt.enum_type_params) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (ArrayList_Str_length(&stmt.enum_type_params) > @as(c_longlong, 0)) {
             type_map_put(&self.*.generic_enum_decls, stmt.enum_name, int_to_str(stmt_idx));
             return "";
         }
@@ -14509,10 +13157,10 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         while (i < ArrayList_Variant_length(&stmt.enum_variants)) {
             var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, i);
             _ = &v;
-            if (ArrayList_Param_length(&v.params) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (ArrayList_Param_length(&v.params) > @as(c_longlong, 0)) {
                 has_payload = @as(c_int, 1) != 0;
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         var enum_str: [*c]const u8 = "";
         _ = &enum_str;
@@ -14524,7 +13172,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, j);
                 _ = &v;
                 enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "    "), name), "_"), v.vname), ",\n");
-                j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                j = j + @as(c_longlong, 1);
             }
             enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "} "), name), ";\n");
         } else {
@@ -14537,7 +13185,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, j);
                 _ = &v;
                 enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "    "), name), "_"), v.vname), "_TAG,\n");
-                j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                j = j + @as(c_longlong, 1);
             }
             enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "} "), tags_name), ";\n");
             enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "typedef struct "), name), " "), name), ";\n");
@@ -14549,7 +13197,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             while (k < ArrayList_Variant_length(&stmt.enum_variants)) {
                 var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, k);
                 _ = &v;
-                if (ArrayList_Param_length(&v.params) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                if (ArrayList_Param_length(&v.params) > @as(c_longlong, 0)) {
                     enum_str = _kai_str_concat(enum_str, "        struct {\n");
                     var p_idx: i64 = 0;
                     _ = &p_idx;
@@ -14557,11 +13205,11 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                         var p: Param = ArrayList_Param_get(&v.params, p_idx);
                         _ = &p;
                         enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "            "), Codegen_map_type(self, p.ptype)), " "), p.name), ";\n");
-                        p_idx = p_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        p_idx = p_idx + @as(c_longlong, 1);
                     }
                     enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "        } "), v.vname), ";\n");
                 }
-                k = k + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                k = k + @as(c_longlong, 1);
             }
             enum_str = _kai_str_concat(enum_str, "    } payload;\n");
             enum_str = _kai_str_concat(enum_str, "};\n");
@@ -14572,9 +13220,9 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_impl_block))) {
         var struct_name: [*c]const u8 = stmt.impl_struct_name;
         _ = &struct_name;
-        var has_generic_struct: bool = (strlen(type_map_get(&self.*.generic_struct_decls, struct_name)) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) or (strlen(type_map_get(&self.*.generic_enum_decls, struct_name)) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0)))));
+        var has_generic_struct: bool = (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(type_map_get(&self.*.generic_struct_decls, struct_name))))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) or (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(type_map_get(&self.*.generic_enum_decls, struct_name))))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0))));
         _ = &has_generic_struct;
-        if ((@as(c_int, @intFromBool(has_generic_struct)) != 0) or (@as(c_int, @intFromBool(Codegen_str_contains(self, struct_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 60)))))))) != 0)) {
+        if ((@as(c_int, @intFromBool(has_generic_struct)) != 0) or (@as(c_int, @intFromBool(Codegen_str_contains(self, struct_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60)))))))) != 0)) {
             type_map_put(&self.*.generic_impl_blocks, struct_name, int_to_str(stmt_idx));
             return "";
         }
@@ -14609,14 +13257,14 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 var p: Param = ArrayList_Param_get(&method_node.func_params, p_idx);
                 _ = &p;
                 if (strcmp(p.name, "self") != @as(c_int, 0)) {
-                    if (strlen(params_str) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                         params_str = _kai_str_concat(params_str, ", ");
                     }
                     params_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
                 }
-                p_idx = p_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                p_idx = p_idx + @as(c_longlong, 1);
             }
-            if (strlen(params_str) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 params_str = "void";
             }
             var mangled_fn_name: [*c]const u8 = _kai_str_concat(_kai_str_concat(mapped_struct_name, "_"), method_name);
@@ -14649,7 +13297,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 if (strcmp(p.name, "self") != @as(c_int, 0)) {
                     type_map_put(&self.*.var_types, p.name, p.ptype);
                 }
-                p_reg = p_reg + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                p_reg = p_reg + @as(c_longlong, 1);
             }
             var body_str: [*c]const u8 = Codegen_gen_stmt(self, method_node.func_body);
             _ = &body_str;
@@ -14657,13 +13305,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 _ = ArrayList_StrMapEntry_pop(&self.*.var_types);
             }
             if (is_init) {
-                var self_decl: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("    ", mapped_struct_name), " self = ("), mapped_struct_name), "){0};\n");
-                _ = &self_decl;
-                var self_ret: [*c]const u8 = "    return self;\n}";
-                _ = &self_ret;
-                var body_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(body_str))));
-                _ = &body_len;
-                body_str = _kai_str_concat(_kai_str_concat(_kai_str_concat("{\n", self_decl), substring(body_str, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2)))), body_len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))), self_ret);
+                body_str = Codegen_add_init_return(self, body_str, mapped_struct_name);
             }
             var proto: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), mangled_fn_name), "("), params_str), ");\n");
             _ = &proto;
@@ -14674,7 +13316,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             self.*.cur_func_name = old_fn;
             self.*.cur_return_type = old_ret;
             self.*.cur_method_is_init = old_init;
-            idx = idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            idx = idx + @as(c_longlong, 1);
         }
         return "";
     }
@@ -14683,18 +13325,18 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         _ = &cond_val;
         var cond_str: [*c]const u8 = "";
         _ = &cond_str;
-        if (((strlen(cond_val) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))) and (@as(c_int, @bitCast(@as(c_uint, cond_val[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 40)))))))))) and (@as(c_int, @bitCast(@as(c_uint, cond_val[strlen(cond_val) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 41)))))))))) {
+        if (((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(cond_val)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))) and (@as(c_int, @bitCast(@as(c_uint, cond_val[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 40)))))))))) and (@as(c_int, @bitCast(@as(c_uint, cond_val[@as(usize, @intCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(cond_val)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 41)))))))))) {
             cond_str = cond_val;
         } else {
             cond_str = _kai_str_concat(_kai_str_concat("(", cond_val), ")");
         }
         var if_str: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat("if ", cond_str), " "), Codegen_gen_stmt(self, stmt.if_then));
         _ = &if_str;
-        if (stmt.if_else >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (stmt.if_else >= @as(c_longlong, 0)) {
             var else_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt.if_else);
             _ = &else_node;
-            if ((else_node.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) and (ArrayList_Int_length(&else_node.block_stmts) == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))) {
-                var single_stmt_idx: i64 = ArrayList_Int_get(&else_node.block_stmts, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+            if ((else_node.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) and (ArrayList_Int_length(&else_node.block_stmts) == @as(c_longlong, 1))) {
+                var single_stmt_idx: i64 = ArrayList_Int_get(&else_node.block_stmts, @as(c_longlong, 0));
                 _ = &single_stmt_idx;
                 var single_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, single_stmt_idx);
                 _ = &single_stmt;
@@ -14714,7 +13356,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         _ = &cond_val;
         var cond_type: [*c]const u8 = Codegen_get_expr_type(self, stmt.iflet_expr);
         _ = &cond_type;
-        var unwrapped_type: [*c]const u8 = substring(cond_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(cond_type)))));
+        var unwrapped_type: [*c]const u8 = substring(cond_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(cond_type)))));
         _ = &unwrapped_type;
         var unwrapped_ctype: [*c]const u8 = Codegen_map_type(self, unwrapped_type);
         _ = &unwrapped_ctype;
@@ -14727,11 +13369,11 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         _ = &then_str;
         var else_str: [*c]const u8 = "";
         _ = &else_str;
-        if (stmt.iflet_else >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (stmt.iflet_else >= @as(c_longlong, 0)) {
             var else_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt.iflet_else);
             _ = &else_node;
-            if ((else_node.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) and (ArrayList_Int_length(&else_node.block_stmts) == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))) {
-                var single_stmt_idx: i64 = ArrayList_Int_get(&else_node.block_stmts, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+            if ((else_node.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) and (ArrayList_Int_length(&else_node.block_stmts) == @as(c_longlong, 1))) {
+                var single_stmt_idx: i64 = ArrayList_Int_get(&else_node.block_stmts, @as(c_longlong, 0));
                 _ = &single_stmt_idx;
                 var single_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, single_stmt_idx);
                 _ = &single_stmt;
@@ -14770,12 +13412,12 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         _ = &cond_val;
         var cond_str: [*c]const u8 = "";
         _ = &cond_str;
-        if (((strlen(cond_val) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))) and (@as(c_int, @bitCast(@as(c_uint, cond_val[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 40)))))))))) and (@as(c_int, @bitCast(@as(c_uint, cond_val[strlen(cond_val) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 41)))))))))) {
+        if (((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(cond_val)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))) and (@as(c_int, @bitCast(@as(c_uint, cond_val[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 40)))))))))) and (@as(c_int, @bitCast(@as(c_uint, cond_val[@as(usize, @intCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(cond_val)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 41)))))))))) {
             cond_str = cond_val;
         } else {
             cond_str = _kai_str_concat(_kai_str_concat("(", cond_val), ")");
         }
-        if (stmt.while_body >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (stmt.while_body >= @as(c_longlong, 0)) {
             var body_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt.while_body);
             _ = &body_stmt;
             body_stmt.block_is_loop_body = @as(c_int, 1) != 0;
@@ -14790,7 +13432,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         _ = &start;
         var end: [*c]const u8 = Codegen_gen_expr(self, stmt.for_end);
         _ = &end;
-        if (stmt.for_body >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (stmt.for_body >= @as(c_longlong, 0)) {
             var body_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt.for_body);
             _ = &body_stmt;
             body_stmt.block_is_loop_body = @as(c_int, 1) != 0;
@@ -14815,9 +13457,9 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_return))) {
         var drop_calls: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
         _ = &drop_calls;
-        var bi: i64 = ArrayList_Int_length(&self.*.block_stack) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        var bi: i64 = ArrayList_Int_length(&self.*.block_stack) - @as(c_longlong, 1);
         _ = &bi;
-        while (bi >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        while (bi >= @as(c_longlong, 0)) {
             var b_idx: i64 = ArrayList_Int_get(&self.*.block_stack, bi);
             _ = &b_idx;
             var b_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, b_idx);
@@ -14826,10 +13468,10 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             _ = &start_idx;
             var next_start_idx: i64 = ArrayList_Int_length(&self.*.defer_stack);
             _ = &next_start_idx;
-            if (bi < (ArrayList_Int_length(&self.*.block_stack) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))) {
-                next_start_idx = ArrayList_Int_get(&self.*.defer_depths, bi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))));
+            if (bi < (ArrayList_Int_length(&self.*.block_stack) - @as(c_longlong, 1))) {
+                next_start_idx = ArrayList_Int_get(&self.*.defer_depths, bi + @as(c_longlong, 1));
             }
-            var def_i: i64 = next_start_idx - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            var def_i: i64 = next_start_idx - @as(c_longlong, 1);
             _ = &def_i;
             while (def_i >= start_idx) {
                 var def_idx: i64 = ArrayList_Int_get(&self.*.defer_stack, def_i);
@@ -14838,10 +13480,10 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 _ = &def_node;
                 var s: [*c]const u8 = Codegen_gen_stmt(self, def_node.defer_body);
                 _ = &s;
-                if (strlen(s) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                     ArrayList_Str_push(&drop_calls, s);
                 }
-                def_i = def_i - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                def_i = def_i - @as(c_longlong, 1);
             }
             var di: i64 = 0;
             _ = &di;
@@ -14849,20 +13491,20 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 var entry: DropVarEntry = ArrayList_DropVarEntry_get(&b_node.block_drop_vars, di);
                 _ = &entry;
                 ArrayList_Str_push(&drop_calls, _kai_str_concat(_kai_str_concat(_kai_str_concat(entry.base_type, "_drop(&"), entry.name), ");"));
-                di = di + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                di = di + @as(c_longlong, 1);
             }
-            bi = bi - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            bi = bi - @as(c_longlong, 1);
         }
-        if (ArrayList_Str_length(&drop_calls) == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-            if (stmt.return_value >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-                var ret_excl_pos: i64 = Codegen_str_find(self, self.*.cur_return_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))));
+        if (ArrayList_Str_length(&drop_calls) == @as(c_longlong, 0)) {
+            if (stmt.return_value >= @as(c_longlong, 0)) {
+                var ret_excl_pos: i64 = Codegen_str_find(self, self.*.cur_return_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
                 _ = &ret_excl_pos;
-                if (ret_excl_pos >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                if (ret_excl_pos >= @as(c_longlong, 0)) {
                     var result_ctype: [*c]const u8 = Codegen_map_type(self, self.*.cur_return_type);
                     _ = &result_ctype;
-                    var val_payload_type: [*c]const u8 = substring(self.*.cur_return_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), ret_excl_pos);
+                    var val_payload_type: [*c]const u8 = substring(self.*.cur_return_type, @as(c_longlong, 0), ret_excl_pos);
                     _ = &val_payload_type;
-                    var err_type: [*c]const u8 = substring(self.*.cur_return_type, ret_excl_pos + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(self.*.cur_return_type)))));
+                    var err_type: [*c]const u8 = substring(self.*.cur_return_type, ret_excl_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(self.*.cur_return_type)))));
                     _ = &err_type;
                     var ret_node: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, stmt.return_value);
                     _ = &ret_node;
@@ -14881,9 +13523,9 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                     _ = &val_str;
                     var expr_ty: [*c]const u8 = Codegen_get_expr_type(self, stmt.return_value);
                     _ = &expr_ty;
-                    var expr_excl_pos: i64 = Codegen_str_find(self, expr_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))));
+                    var expr_excl_pos: i64 = Codegen_str_find(self, expr_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
                     _ = &expr_excl_pos;
-                    if (expr_excl_pos >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                    if (expr_excl_pos >= @as(c_longlong, 0)) {
                         return _kai_str_concat(_kai_str_concat("return ", val_str), ";");
                     }
                     if (is_error_variant) {
@@ -14898,7 +13540,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             }
             return "return;";
         }
-        if (stmt.return_value >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (stmt.return_value >= @as(c_longlong, 0)) {
             var val_str: [*c]const u8 = Codegen_gen_expr_with_expected_type(self, stmt.return_value, self.*.cur_return_type);
             _ = &val_str;
             var val_type: [*c]const u8 = Codegen_get_expr_type(self, stmt.return_value);
@@ -14910,16 +13552,16 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 _ = &ci;
                 while (ci < ArrayList_Str_length(&drop_calls)) {
                     res = _kai_str_concat(_kai_str_concat(res, ArrayList_Str_get(&drop_calls, ci)), " ");
-                    ci = ci + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    ci = ci + @as(c_longlong, 1);
                 }
                 return _kai_str_concat(res, "return;");
             }
-            var ret_excl_pos: i64 = Codegen_str_find(self, self.*.cur_return_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))));
+            var ret_excl_pos: i64 = Codegen_str_find(self, self.*.cur_return_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
             _ = &ret_excl_pos;
             var mapped_type: [*c]const u8 = Codegen_map_type(self, self.*.cur_return_type);
             _ = &mapped_type;
-            if (ret_excl_pos >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-                var val_payload_type: [*c]const u8 = substring(self.*.cur_return_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), ret_excl_pos);
+            if (ret_excl_pos >= @as(c_longlong, 0)) {
+                var val_payload_type: [*c]const u8 = substring(self.*.cur_return_type, @as(c_longlong, 0), ret_excl_pos);
                 _ = &val_payload_type;
                 var ret_node: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, stmt.return_value);
                 _ = &ret_node;
@@ -14938,11 +13580,11 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 _ = &raw_val;
                 var expr_ty: [*c]const u8 = Codegen_get_expr_type(self, stmt.return_value);
                 _ = &expr_ty;
-                var expr_excl_pos: i64 = Codegen_str_find(self, expr_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 33))))));
+                var expr_excl_pos: i64 = Codegen_str_find(self, expr_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
                 _ = &expr_excl_pos;
                 var ret_expr: [*c]const u8 = "";
                 _ = &ret_expr;
-                if (expr_excl_pos >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                if (expr_excl_pos >= @as(c_longlong, 0)) {
                     ret_expr = raw_val;
                 } else if (is_error_variant) {
                     ret_expr = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", mapped_type), "){ .tag = "), raw_val), " }");
@@ -14958,7 +13600,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 _ = &ci;
                 while (ci < ArrayList_Str_length(&drop_calls)) {
                     res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), ArrayList_Str_get(&drop_calls, ci)), "\n");
-                    ci = ci + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    ci = ci + @as(c_longlong, 1);
                 }
                 res_str = _kai_str_concat(res_str, "    return __ret_val;\n");
                 res_str = _kai_str_concat(res_str, "}");
@@ -14971,7 +13613,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             _ = &ci;
             while (ci < ArrayList_Str_length(&drop_calls)) {
                 res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), ArrayList_Str_get(&drop_calls, ci)), "\n");
-                ci = ci + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                ci = ci + @as(c_longlong, 1);
             }
             res_str = _kai_str_concat(res_str, "    return __ret_val;\n");
             res_str = _kai_str_concat(res_str, "}");
@@ -14983,7 +13625,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             _ = &ci;
             while (ci < ArrayList_Str_length(&drop_calls)) {
                 res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), ArrayList_Str_get(&drop_calls, ci)), "\n");
-                ci = ci + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                ci = ci + @as(c_longlong, 1);
             }
             res_str = _kai_str_concat(res_str, "    return;\n");
             res_str = _kai_str_concat(res_str, "}");
@@ -15023,6 +13665,9 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         if (Codegen_is_standard_c_func(self, name)) {
             return "";
         }
+        if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(name, "_kai_set_current_allocator")))) == @as(c_longlong, 0)) {
+            return "";
+        }
         var ret_type: [*c]const u8 = Codegen_map_type(self, stmt.extern_return);
         _ = &ret_type;
         var params_str: [*c]const u8 = "";
@@ -15032,13 +13677,13 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         while (i < ArrayList_Param_length(&stmt.extern_params)) {
             var p: Param = ArrayList_Param_get(&stmt.extern_params, i);
             _ = &p;
-            if (i > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (i > @as(c_longlong, 0)) {
                 params_str = _kai_str_concat(params_str, ", ");
             }
             params_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
-        if (strlen(params_str) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             params_str = "void";
         }
         var proto: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("extern ", ret_type), " "), name), "("), params_str), ");\n");
@@ -15049,7 +13694,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_cimport))) {
         var hdr: [*c]const u8 = stmt.cimport_header;
         _ = &hdr;
-        if (strlist_find(&self.*.cimport_headers, hdr) < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (strlist_find(&self.*.cimport_headers, hdr) < @as(c_longlong, 0)) {
             ArrayList_Str_push(&self.*.cimport_headers, hdr);
         }
         return "";
@@ -15062,16 +13707,16 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         var pi: i64 = 0;
         _ = &pi;
         while (pi < ArrayList_Str_length(&path)) {
-            if (pi > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (pi > @as(c_longlong, 0)) {
                 module_key = _kai_str_concat(module_key, ".");
             }
             module_key = _kai_str_concat(module_key, ArrayList_Str_get(&path, pi));
-            pi = pi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            pi = pi + @as(c_longlong, 1);
         }
         if (strcmp(module_key, "") == @as(c_int, 0)) {
             return "";
         }
-        if (strlist_find(&self.*.loaded_modules, module_key) >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (strlist_find(&self.*.loaded_modules, module_key) >= @as(c_longlong, 0)) {
             return "";
         }
         ArrayList_Str_push(&self.*.loaded_modules, module_key);
@@ -15079,17 +13724,17 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         _ = &has_source;
         var source: [*c]const u8 = "";
         _ = &source;
-        if ((ArrayList_Str_length(&path) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) and (strcmp(ArrayList_Str_get(&path, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))), "std") == @as(c_int, 0))) {
+        if ((ArrayList_Str_length(&path) > @as(c_longlong, 0)) and (strcmp(ArrayList_Str_get(&path, @as(c_longlong, 0)), "std") == @as(c_int, 0))) {
             var path_str: [*c]const u8 = "";
             _ = &path_str;
             var i: i64 = 0;
             _ = &i;
             while (i < ArrayList_Str_length(&path)) {
-                if (i > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                if (i > @as(c_longlong, 0)) {
                     path_str = _kai_str_concat(path_str, "/");
                 }
                 path_str = _kai_str_concat(path_str, ArrayList_Str_get(&path, i));
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             var rel_path: [*c]const u8 = _kai_str_concat(path_str, ".kai");
             _ = &rel_path;
@@ -15108,14 +13753,14 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 break :blk _kai_cv;
             };
             _ = &s1;
-            if (strlen(s1) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s1)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 source = s1;
                 has_source = @as(c_int, 1) != 0;
             } else {
                 {
-                    var buf: [*c]u8 = KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1024)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))));
+                    var buf: [*c]u8 = KaiAllocator_alloc(self.*.allocator, @as(c_longlong, 1024), @as(c_longlong, 1));
                     _ = &buf;
-                    if (get_exe_dir(buf, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1024))))) == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                    if (get_exe_dir(buf, @as(c_longlong, 1024)) == @as(c_longlong, 0)) {
                         var exe_dir: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast(buf)));
                         _ = &exe_dir;
                         var full_path: [*c]const u8 = _kai_str_concat(_kai_str_concat(exe_dir, "/"), rel_path);
@@ -15140,7 +13785,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                             break :blk _kai_cv;
                         };
                         _ = &s2;
-                        if (strlen(s2) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s2)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                             source = s2;
                             has_source = @as(c_int, 1) != 0;
                         } else {
@@ -15159,7 +13804,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                                 break :blk _kai_cv;
                             };
                             _ = &s3;
-                            if (strlen(s3) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s3)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                                 source = s3;
                                 has_source = @as(c_int, 1) != 0;
                             } else {
@@ -15178,7 +13823,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                                     break :blk _kai_cv;
                                 };
                                 _ = &s4;
-                                if (strlen(s4) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s4)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                                     source = s4;
                                     has_source = @as(c_int, 1) != 0;
                                 }
@@ -15189,7 +13834,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                     }
                 }
             }
-        } else if (ArrayList_Str_length(&path) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        } else if (ArrayList_Str_length(&path) > @as(c_longlong, 0)) {
             var file_path: [*c]const u8 = _kai_str_concat(_kai_str_concat("src/", module_key), ".kai");
             _ = &file_path;
             var s: [*c]const u8 = blk: {
@@ -15207,7 +13852,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 break :blk _kai_cv;
             };
             _ = &s;
-            if (strlen(s) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 source = s;
                 has_source = @as(c_int, 1) != 0;
             }
@@ -15223,7 +13868,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             _ = &parser;
             var program_idx: i64 = Parser_parse_program(&parser);
             _ = &program_idx;
-            if (program_idx >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (program_idx >= @as(c_longlong, 0)) {
                 Codegen_build_func_types(self);
                 _ = Codegen_gen_stmt(self, program_idx);
             }
@@ -15235,7 +13880,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_break))) {
         var drop_calls: ArrayList_Str = Codegen__collect_loop_drops(self);
         _ = &drop_calls;
-        if (ArrayList_Str_length(&drop_calls) == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (ArrayList_Str_length(&drop_calls) == @as(c_longlong, 0)) {
             return "break;";
         }
         var res_str: [*c]const u8 = "{\n";
@@ -15244,7 +13889,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         _ = &ci;
         while (ci < ArrayList_Str_length(&drop_calls)) {
             res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), ArrayList_Str_get(&drop_calls, ci)), "\n");
-            ci = ci + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            ci = ci + @as(c_longlong, 1);
         }
         res_str = _kai_str_concat(res_str, "    break;\n");
         res_str = _kai_str_concat(res_str, "}");
@@ -15253,7 +13898,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_continue))) {
         var drop_calls: ArrayList_Str = Codegen__collect_loop_drops(self);
         _ = &drop_calls;
-        if (ArrayList_Str_length(&drop_calls) == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (ArrayList_Str_length(&drop_calls) == @as(c_longlong, 0)) {
             return "continue;";
         }
         var res_str: [*c]const u8 = "{\n";
@@ -15262,7 +13907,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         _ = &ci;
         while (ci < ArrayList_Str_length(&drop_calls)) {
             res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), ArrayList_Str_get(&drop_calls, ci)), "\n");
-            ci = ci + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            ci = ci + @as(c_longlong, 1);
         }
         res_str = _kai_str_concat(res_str, "    continue;\n");
         res_str = _kai_str_concat(res_str, "}");
@@ -15283,7 +13928,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         _ = &is_self_ptr;
         var is_ptr: bool = @as(c_int, 0) != 0;
         _ = &is_ptr;
-        if (((@as(c_int, @bitCast(@as(c_uint, expr_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, expr_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38)))))))))) or (@as(c_int, @intFromBool(is_self_ptr)) != 0)) {
+        if (((@as(c_int, @bitCast(@as(c_uint, expr_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, expr_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) or (@as(c_int, @intFromBool(is_self_ptr)) != 0)) {
             is_ptr = @as(c_int, 1) != 0;
         }
         var op: [*c]const u8 = ".";
@@ -15328,15 +13973,15 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 } else if (@as(c_int, @bitCast(@as(c_uint, pat_node.lit_value.tag))) == TokenValue_tv_char_TAG) {
                     var v: u8 = pat_node.lit_value.payload.tv_char.v;
                     _ = &v;
-                    if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 10))))))))) {
+                    if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
                         lit_str = "'\\n'";
-                    } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 13))))))))) {
+                    } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 13))))))))) {
                         lit_str = "'\\r'";
-                    } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 9))))))))) {
+                    } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9))))))))) {
                         lit_str = "'\\t'";
-                    } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 92))))))))) {
+                    } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 92))))))))) {
                         lit_str = "'\\\\'";
-                    } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 39))))))))) {
+                    } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 39))))))))) {
                         lit_str = "'\\''";
                     } else {
                         lit_str = _kai_str_concat(_kai_str_concat("'", char_to_str(v)), "'");
@@ -15350,19 +13995,19 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 _ = &var_name;
                 var base_type: [*c]const u8 = mapped_expr_type;
                 _ = &base_type;
-                if ((strlen(base_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and ((@as(c_int, @bitCast(@as(c_uint, base_type[strlen(base_type) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, base_type[strlen(base_type) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38))))))))))) {
-                    base_type = substring(base_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))))));
+                if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
+                    base_type = substring(base_type, @as(c_longlong, 0), @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))));
                 }
-                if ((strlen(base_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(c_int, @bitCast(@as(c_uint, base_type[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42)))))))))) {
-                    base_type = substring(base_type, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+                if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42)))))))))) {
+                    base_type = substring(base_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
                 }
                 if (Codegen_enum_has_payload(self, expr_type)) {
                     cond = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(expr_val, op), "tag == "), base_type), "_"), var_name), "_TAG");
                 } else {
                     cond = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(expr_val, " == "), base_type), "_"), var_name);
                 }
-                if (ArrayList_Str_length(&pat_node.bindings) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-                    var bind_name: [*c]const u8 = ArrayList_Str_get(&pat_node.bindings, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))));
+                if (ArrayList_Str_length(&pat_node.bindings) > @as(c_longlong, 0)) {
+                    var bind_name: [*c]const u8 = ArrayList_Str_get(&pat_node.bindings, @as(c_longlong, 0));
                     _ = &bind_name;
                     if (strcmp(bind_name, "_") != @as(c_int, 0)) {
                         var bind_type: [*c]const u8 = "";
@@ -15372,7 +14017,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                         if (strcmp(var_name, "ok") == @as(c_int, 0)) {
                             var t_type: [*c]const u8 = type_map_get(&self.*.current_type_map, "T");
                             _ = &t_type;
-                            if (strlen(t_type) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(t_type)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                                 t_type = Codegen_extract_first_type_arg(self, expr_type);
                             }
                             bind_type = t_type;
@@ -15380,7 +14025,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                         } else if (strcmp(var_name, "err") == @as(c_int, 0)) {
                             var e_type: [*c]const u8 = type_map_get(&self.*.current_type_map, "E");
                             _ = &e_type;
-                            if (strlen(e_type) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(e_type)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                                 e_type = "Int";
                             }
                             bind_type = e_type;
@@ -15411,7 +14056,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             }
             var prefix: [*c]const u8 = "";
             _ = &prefix;
-            if (case_idx == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (case_idx == @as(c_longlong, 0)) {
                 prefix = _kai_str_concat(_kai_str_concat("if (", cond), ")");
             } else if (strcmp(cond, "true") == @as(c_int, 0)) {
                 prefix = "else";
@@ -15420,13 +14065,13 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             }
             var full_block: [*c]const u8 = block_str;
             _ = &full_block;
-            if (strlen(bindings_str) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(bindings_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 var body_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(block_str))));
                 _ = &body_len;
-                full_block = _kai_str_concat(_kai_str_concat("{\n", bindings_str), substring(block_str, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), body_len));
+                full_block = _kai_str_concat(_kai_str_concat("{\n", bindings_str), substring(block_str, @as(c_longlong, 1), body_len));
             }
             match_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(match_str, prefix), " "), full_block), " ");
-            case_idx = case_idx + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            case_idx = case_idx + @as(c_longlong, 1);
         }
         return match_str;
     }
@@ -15439,19 +14084,19 @@ pub export fn Codegen_clean_enum_name(arg_self: [*c]Codegen, arg_type_name: [*c]
     _ = &type_name;
     var base_name: [*c]const u8 = type_name;
     _ = &base_name;
-    if (Codegen_str_contains(self, type_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 60))))))) {
-        var lt_pos: i64 = Codegen_str_find(self, type_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 60))))));
+    if (Codegen_str_contains(self, type_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))))) {
+        var lt_pos: i64 = Codegen_str_find(self, type_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))));
         _ = &lt_pos;
-        base_name = substring(type_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), lt_pos);
+        base_name = substring(type_name, @as(c_longlong, 0), lt_pos);
     }
-    if (strcmp(substring(base_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))))), "mut ") == @as(c_int, 0)) {
-        base_name = substring(base_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_name)))));
+    if (strcmp(substring(base_name, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0)) {
+        base_name = substring(base_name, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_name)))));
     }
     var done: bool = @as(c_int, 0) != 0;
     _ = &done;
     while (!done) {
-        if ((strlen(base_name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) and ((@as(c_int, @bitCast(@as(c_uint, base_name[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, base_name[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38))))))))))) {
-            base_name = substring(base_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_name)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, base_name[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, base_name[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
+            base_name = substring(base_name, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_name)))));
         } else {
             done = @as(c_int, 1) != 0;
         }
@@ -15460,25 +14105,25 @@ pub export fn Codegen_clean_enum_name(arg_self: [*c]Codegen, arg_type_name: [*c]
     while (!done) {
         var l: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(base_name))));
         _ = &l;
-        if ((l > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) and ((@as(c_int, @bitCast(@as(c_uint, (blk: {
-            const tmp = l - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        if ((l > @as(c_longlong, 0)) and ((@as(c_int, @bitCast(@as(c_uint, (blk: {
+            const tmp = l - @as(c_longlong, 1);
             if (tmp >= 0) break :blk base_name + @as(usize, @intCast(tmp)) else break :blk base_name - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, (blk: {
-            const tmp = l - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, (blk: {
+            const tmp = l - @as(c_longlong, 1);
             if (tmp >= 0) break :blk base_name + @as(usize, @intCast(tmp)) else break :blk base_name - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 38))))))))))) {
-            base_name = substring(base_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), l - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))));
+        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
+            base_name = substring(base_name, @as(c_longlong, 0), l - @as(c_longlong, 1));
         } else {
             done = @as(c_int, 1) != 0;
         }
     }
-    if (strlen(type_map_get(&self.*.enum_decls, base_name)) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
-        if (Codegen_str_contains(self, base_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 95))))))) {
-            var underscore_pos: i64 = Codegen_str_find(self, base_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 95))))));
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(type_map_get(&self.*.enum_decls, base_name))))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+        if (Codegen_str_contains(self, base_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 95))))))) {
+            var underscore_pos: i64 = Codegen_str_find(self, base_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 95))))));
             _ = &underscore_pos;
-            var fallback_name: [*c]const u8 = substring(base_name, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), underscore_pos);
+            var fallback_name: [*c]const u8 = substring(base_name, @as(c_longlong, 0), underscore_pos);
             _ = &fallback_name;
-            if (strlen(type_map_get(&self.*.enum_decls, fallback_name)) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(type_map_get(&self.*.enum_decls, fallback_name))))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 return fallback_name;
             }
         }
@@ -15492,7 +14137,7 @@ pub export fn Codegen_is_enum_type(arg_self: [*c]Codegen, arg_type_name: [*c]con
     _ = &type_name;
     var clean_name: [*c]const u8 = Codegen_clean_enum_name(self, type_name);
     _ = &clean_name;
-    return strlen(type_map_get(&self.*.enum_decls, clean_name)) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))));
+    return @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(type_map_get(&self.*.enum_decls, clean_name))))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)));
 }
 pub export fn Codegen_enum_has_payload(arg_self: [*c]Codegen, arg_enum_name: [*c]const u8) bool {
     var self = arg_self;
@@ -15503,7 +14148,7 @@ pub export fn Codegen_enum_has_payload(arg_self: [*c]Codegen, arg_enum_name: [*c
     _ = &clean_name;
     var idx_str: [*c]const u8 = type_map_get(&self.*.enum_decls, clean_name);
     _ = &idx_str;
-    if (strlen(idx_str) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(idx_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
         return @as(c_int, 0) != 0;
     }
     var enum_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, Codegen_str_to_int(self, idx_str));
@@ -15518,10 +14163,10 @@ pub export fn Codegen_enum_has_payload(arg_self: [*c]Codegen, arg_enum_name: [*c
     while (vi < ArrayList_Variant_length(&enum_stmt.enum_variants)) {
         var v: Variant = ArrayList_Variant_get(&enum_stmt.enum_variants, vi);
         _ = &v;
-        if (ArrayList_Param_length(&v.params) > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (ArrayList_Param_length(&v.params) > @as(c_longlong, 0)) {
             has_payload = @as(c_int, 1) != 0;
         }
-        vi = vi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        vi = vi + @as(c_longlong, 1);
     }
     return has_payload;
 }
@@ -15540,20 +14185,20 @@ pub export fn Codegen_escape_string(arg_self: [*c]Codegen, arg_s: [*c]const u8) 
             if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
         }).*;
         _ = &c;
-        if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 10))))))))) {
+        if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
             res = _kai_str_concat(res, "\\n");
-        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 13))))))))) {
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 13))))))))) {
             res = _kai_str_concat(res, "\\r");
-        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 9))))))))) {
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9))))))))) {
             res = _kai_str_concat(res, "\\t");
-        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 92))))))))) {
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 92))))))))) {
             res = _kai_str_concat(res, "\\\\");
-        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 34))))))))) {
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 34))))))))) {
             res = _kai_str_concat(res, "\\\"");
         } else {
             res = _kai_str_concat(res, char_to_str(c));
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
     return res;
 }
@@ -15562,11 +14207,11 @@ pub export fn Codegen__collect_loop_drops(arg_self: [*c]Codegen) ArrayList_Str {
     _ = &self;
     var drop_calls: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
     _ = &drop_calls;
-    var bi: i64 = ArrayList_Int_length(&self.*.block_stack) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    var bi: i64 = ArrayList_Int_length(&self.*.block_stack) - @as(c_longlong, 1);
     _ = &bi;
     var done: bool = @as(c_int, 0) != 0;
     _ = &done;
-    while ((bi >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) and !done) {
+    while ((bi >= @as(c_longlong, 0)) and !done) {
         var b_idx: i64 = ArrayList_Int_get(&self.*.block_stack, bi);
         _ = &b_idx;
         var b_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, b_idx);
@@ -15575,10 +14220,10 @@ pub export fn Codegen__collect_loop_drops(arg_self: [*c]Codegen) ArrayList_Str {
         _ = &start_idx;
         var next_start_idx: i64 = ArrayList_Int_length(&self.*.defer_stack);
         _ = &next_start_idx;
-        if (bi < (ArrayList_Int_length(&self.*.block_stack) - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))))) {
-            next_start_idx = ArrayList_Int_get(&self.*.defer_depths, bi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))));
+        if (bi < (ArrayList_Int_length(&self.*.block_stack) - @as(c_longlong, 1))) {
+            next_start_idx = ArrayList_Int_get(&self.*.defer_depths, bi + @as(c_longlong, 1));
         }
-        var def_i: i64 = next_start_idx - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        var def_i: i64 = next_start_idx - @as(c_longlong, 1);
         _ = &def_i;
         while (def_i >= start_idx) {
             var def_idx: i64 = ArrayList_Int_get(&self.*.defer_stack, def_i);
@@ -15587,10 +14232,10 @@ pub export fn Codegen__collect_loop_drops(arg_self: [*c]Codegen) ArrayList_Str {
             _ = &def_node;
             var s: [*c]const u8 = Codegen_gen_stmt(self, def_node.defer_body);
             _ = &s;
-            if (strlen(s) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 ArrayList_Str_push(&drop_calls, s);
             }
-            def_i = def_i - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            def_i = def_i - @as(c_longlong, 1);
         }
         var di: i64 = 0;
         _ = &di;
@@ -15598,12 +14243,12 @@ pub export fn Codegen__collect_loop_drops(arg_self: [*c]Codegen) ArrayList_Str {
             var entry: DropVarEntry = ArrayList_DropVarEntry_get(&b_node.block_drop_vars, di);
             _ = &entry;
             ArrayList_Str_push(&drop_calls, _kai_str_concat(_kai_str_concat(_kai_str_concat(entry.base_type, "_drop(&"), entry.name), ");"));
-            di = di + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            di = di + @as(c_longlong, 1);
         }
         if (b_node.block_is_loop_body) {
             done = @as(c_int, 1) != 0;
         }
-        bi = bi - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        bi = bi - @as(c_longlong, 1);
     }
     return drop_calls;
 }
@@ -15622,18 +14267,14 @@ pub export fn Codegen_generate(arg_self: [*c]Codegen, arg_top_stmt_idx: i64) [*c
     final_code = _kai_str_concat(final_code, "#include <stdio.h>\n");
     final_code = _kai_str_concat(final_code, "#include <stdlib.h>\n");
     final_code = _kai_str_concat(final_code, "#include <string.h>\n");
-    final_code = _kai_str_concat(final_code, "#if !defined(_WIN32)\n");
-    final_code = _kai_str_concat(final_code, "#include <sys/mman.h>\n");
-    final_code = _kai_str_concat(final_code, "#endif\n");
-    final_code = _kai_str_concat(final_code, "#include <ctype.h>\n");
-    final_code = _kai_str_concat(final_code, "\n");
+    final_code = _kai_str_concat(final_code, "#ifndef NO_GET_EXE_DIR\n");
     final_code = _kai_str_concat(final_code, "#if defined(_WIN32)\n");
     final_code = _kai_str_concat(final_code, "#include <windows.h>\n");
-    final_code = _kai_str_concat(final_code, "#elif defined(__APPLE__)\n");
-    final_code = _kai_str_concat(final_code, "#include <mach-o/dyld.h>\n");
-    final_code = _kai_str_concat(final_code, "#include <limits.h>\n");
     final_code = _kai_str_concat(final_code, "#else\n");
-    final_code = _kai_str_concat(final_code, "#include <unistd.h>\n");
+    final_code = _kai_str_concat(final_code, "#ifndef _GNU_SOURCE\n");
+    final_code = _kai_str_concat(final_code, "#define _GNU_SOURCE\n");
+    final_code = _kai_str_concat(final_code, "#endif\n");
+    final_code = _kai_str_concat(final_code, "#include <dlfcn.h>\n");
     final_code = _kai_str_concat(final_code, "#include <limits.h>\n");
     final_code = _kai_str_concat(final_code, "#endif\n\n");
     final_code = _kai_str_concat(final_code, "int64_t get_exe_dir(char* out_buf, int64_t max_len) {\n");
@@ -15647,33 +14288,29 @@ pub export fn Codegen_generate(arg_self: [*c]Codegen, arg_top_stmt_idx: i64) [*c
     final_code = _kai_str_concat(final_code, "        }\n");
     final_code = _kai_str_concat(final_code, "    }\n");
     final_code = _kai_str_concat(final_code, "    return 0;\n");
-    final_code = _kai_str_concat(final_code, "#elif defined(__APPLE__)\n");
-    final_code = _kai_str_concat(final_code, "    char path[PATH_MAX];\n");
-    final_code = _kai_str_concat(final_code, "    uint32_t size = sizeof(path);\n");
-    final_code = _kai_str_concat(final_code, "    if (_NSGetExecutablePath(path, &size) != 0) return -1;\n");
-    final_code = _kai_str_concat(final_code, "    char real_path[PATH_MAX];\n");
-    final_code = _kai_str_concat(final_code, "    if (realpath(path, real_path) == NULL) return -1;\n");
-    final_code = _kai_str_concat(final_code, "    char* last_slash = strrchr(real_path, '/');\n");
-    final_code = _kai_str_concat(final_code, "    if (last_slash == NULL) return -1;\n");
-    final_code = _kai_str_concat(final_code, "    *last_slash = '\\0';\n");
-    final_code = _kai_str_concat(final_code, "    strncpy(out_buf, real_path, max_len);\n");
-    final_code = _kai_str_concat(final_code, "    out_buf[max_len - 1] = '\\0';\n");
-    final_code = _kai_str_concat(final_code, "    return 0;\n");
     final_code = _kai_str_concat(final_code, "#else\n");
-    final_code = _kai_str_concat(final_code, "    char path[PATH_MAX];\n");
-    final_code = _kai_str_concat(final_code, "    ssize_t len = readlink(\"/proc/self/exe\", path, sizeof(path) - 1);\n");
-    final_code = _kai_str_concat(final_code, "    if (len == -1) return -1;\n");
-    final_code = _kai_str_concat(final_code, "    path[len] = '\\0';\n");
-    final_code = _kai_str_concat(final_code, "    char real_path[PATH_MAX];\n");
-    final_code = _kai_str_concat(final_code, "    if (realpath(path, real_path) == NULL) return -1;\n");
-    final_code = _kai_str_concat(final_code, "    char* last_slash = strrchr(real_path, '/');\n");
-    final_code = _kai_str_concat(final_code, "    if (last_slash == NULL) return -1;\n");
-    final_code = _kai_str_concat(final_code, "    *last_slash = '\\0';\n");
-    final_code = _kai_str_concat(final_code, "    strncpy(out_buf, real_path, max_len);\n");
-    final_code = _kai_str_concat(final_code, "    out_buf[max_len - 1] = '\\0';\n");
-    final_code = _kai_str_concat(final_code, "    return 0;\n");
+    final_code = _kai_str_concat(final_code, "    Dl_info info;\n");
+    final_code = _kai_str_concat(final_code, "    char dummy = 0;\n");
+    final_code = _kai_str_concat(final_code, "    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {\n");
+    final_code = _kai_str_concat(final_code, "        char real_path[PATH_MAX];\n");
+    final_code = _kai_str_concat(final_code, "        if (realpath(info.dli_fname, real_path) != NULL) {\n");
+    final_code = _kai_str_concat(final_code, "            char* last_slash = strrchr(real_path, '/');\n");
+    final_code = _kai_str_concat(final_code, "            if (last_slash != NULL) {\n");
+    final_code = _kai_str_concat(final_code, "                *last_slash = '\\0';\n");
+    final_code = _kai_str_concat(final_code, "                int i = 0;\n");
+    final_code = _kai_str_concat(final_code, "                while (i < max_len - 1 && real_path[i] != '\\0') {\n");
+    final_code = _kai_str_concat(final_code, "                    out_buf[i] = real_path[i];\n");
+    final_code = _kai_str_concat(final_code, "                    i++;\n");
+    final_code = _kai_str_concat(final_code, "                }\n");
+    final_code = _kai_str_concat(final_code, "                out_buf[i] = '\\0';\n");
+    final_code = _kai_str_concat(final_code, "                return 0;\n");
+    final_code = _kai_str_concat(final_code, "            }\n");
+    final_code = _kai_str_concat(final_code, "        }\n");
+    final_code = _kai_str_concat(final_code, "    }\n");
+    final_code = _kai_str_concat(final_code, "    return -1;\n");
     final_code = _kai_str_concat(final_code, "#endif\n");
-    final_code = _kai_str_concat(final_code, "}\n\n");
+    final_code = _kai_str_concat(final_code, "}\n");
+    final_code = _kai_str_concat(final_code, "#endif\n\n");
     var ci: i64 = 0;
     _ = &ci;
     var has_cimports: bool = @as(c_int, 0) != 0;
@@ -15707,19 +14344,19 @@ pub export fn Codegen_generate(arg_self: [*c]Codegen, arg_top_stmt_idx: i64) [*c
             _ = &has_slash;
             var dot_start: bool = @as(c_int, 0) != 0;
             _ = &dot_start;
-            if (strlen(hdr) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(hdr)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 var hi: i64 = 0;
                 _ = &hi;
                 while (@as(c_ulonglong, @bitCast(hi)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(hdr))))) {
                     if (@as(c_int, @bitCast(@as(c_uint, (blk: {
                         const tmp = hi;
                         if (tmp >= 0) break :blk hdr + @as(usize, @intCast(tmp)) else break :blk hdr - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 47))))))))) {
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 47))))))))) {
                         has_slash = @as(c_int, 1) != 0;
                     }
-                    hi = hi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    hi = hi + @as(c_longlong, 1);
                 }
-                if (@as(c_int, @bitCast(@as(c_uint, hdr[@as(c_uint, @intCast(@as(c_int, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 46))))))))) {
+                if (@as(c_int, @bitCast(@as(c_uint, hdr[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 46))))))))) {
                     dot_start = @as(c_int, 1) != 0;
                 }
             }
@@ -15729,25 +14366,49 @@ pub export fn Codegen_generate(arg_self: [*c]Codegen, arg_top_stmt_idx: i64) [*c
                 final_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(final_code, "#include \""), hdr), "\"\n");
             }
         }
-        ci = ci + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        ci = ci + @as(c_longlong, 1);
     }
-    final_code = _kai_str_concat(final_code, "\n");
-    final_code = _kai_str_concat(final_code, "__thread void* _kai_current_allocator = NULL;\n");
-    final_code = _kai_str_concat(final_code, "void _kai_set_current_allocator(void* allocator);\n");
-    final_code = _kai_str_concat(final_code, "char* _kai_str_concat(const char* l, const char* r);\n\n");
+    final_code = _kai_str_concat(final_code, "static __thread void* _kai_current_allocator = NULL;\n\n");
+    final_code = _kai_str_concat(final_code, "static inline void _kai_set_current_allocator(void* allocator) {\n");
+    final_code = _kai_str_concat(final_code, "    _kai_current_allocator = allocator;\n");
+    final_code = _kai_str_concat(final_code, "}\n\n");
+    final_code = _kai_str_concat(final_code, "extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);\n");
+    final_code = _kai_str_concat(final_code, "extern int munmap(void* addr, unsigned long long length);\n\n");
+    final_code = _kai_str_concat(final_code, "static inline char* _kai_mmap(char* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {\n");
+    final_code = _kai_str_concat(final_code, "    return (char*)mmap(addr, (unsigned long long)length, prot, flags, fd, offset);\n");
+    final_code = _kai_str_concat(final_code, "}\n\n");
+    final_code = _kai_str_concat(final_code, "static inline int64_t _kai_munmap(char* addr, int64_t length) {\n");
+    final_code = _kai_str_concat(final_code, "    return munmap(addr, (unsigned long long)length);\n");
+    final_code = _kai_str_concat(final_code, "}\n\n");
+    var has_str: bool = (strlist_find(&self.*.loaded_modules, "std.lib.str") >= @as(c_longlong, 0)) or (strlist_find(&self.*.loaded_modules, "std.zero_ported.str") >= @as(c_longlong, 0));
+    _ = &has_str;
+    if (!has_str) {
+        final_code = _kai_str_concat(final_code, "static inline char* _kai_str_concat(const char* l, const char* r) {\n");
+        final_code = _kai_str_concat(final_code, "    unsigned long long l1 = 0;\n");
+        final_code = _kai_str_concat(final_code, "    while (l[l1] != '\\0') { l1++; }\n");
+        final_code = _kai_str_concat(final_code, "    unsigned long long l2 = 0;\n");
+        final_code = _kai_str_concat(final_code, "    while (r[l2] != '\\0') { l2++; }\n");
+        final_code = _kai_str_concat(final_code, "    if (l1 > 1000000ULL || l2 > 1000000ULL - l1) { return NULL; }\n");
+        final_code = _kai_str_concat(final_code, "    unsigned long long total = l1 + l2 + 1ULL;\n");
+        final_code = _kai_str_concat(final_code, "    char* buf = malloc(total);\n");
+        final_code = _kai_str_concat(final_code, "    if (buf) {\n");
+        final_code = _kai_str_concat(final_code, "        unsigned long long i = 0;\n");
+        final_code = _kai_str_concat(final_code, "        while (i < l1) {\n");
+        final_code = _kai_str_concat(final_code, "            buf[i] = l[i];\n");
+        final_code = _kai_str_concat(final_code, "            i++;\n");
+        final_code = _kai_str_concat(final_code, "        }\n");
+        final_code = _kai_str_concat(final_code, "        unsigned long long j = 0;\n");
+        final_code = _kai_str_concat(final_code, "        while (j < l2) {\n");
+        final_code = _kai_str_concat(final_code, "            buf[l1 + j] = r[j];\n");
+        final_code = _kai_str_concat(final_code, "            j++;\n");
+        final_code = _kai_str_concat(final_code, "        }\n");
+        final_code = _kai_str_concat(final_code, "        buf[l1 + l2] = '\\0';\n");
+        final_code = _kai_str_concat(final_code, "    }\n");
+        final_code = _kai_str_concat(final_code, "    return buf;\n");
+        final_code = _kai_str_concat(final_code, "}\n\n");
+    }
     final_code = _kai_str_concat(_kai_str_concat(final_code, StringBuilder_to_str(&self.*.struct_decls)), "\n");
     final_code = _kai_str_concat(_kai_str_concat(final_code, StringBuilder_to_str(&self.*.func_decls)), "\n");
-    final_code = _kai_str_concat(final_code, "void _kai_set_current_allocator(void* allocator) {\n");
-    final_code = _kai_str_concat(final_code, "    _kai_current_allocator = allocator;\n");
-    final_code = _kai_str_concat(final_code, "}\n");
-    final_code = _kai_str_concat(final_code, "char* _kai_str_concat(const char* l, const char* r) {\n");
-    final_code = _kai_str_concat(final_code, "    size_t l1 = strlen(l);\n");
-    final_code = _kai_str_concat(final_code, "    size_t l2 = strlen(r);\n");
-    final_code = _kai_str_concat(final_code, "    size_t total = l1 + l2 + 1;\n");
-    final_code = _kai_str_concat(final_code, "    char* buf = malloc(total);\n");
-    final_code = _kai_str_concat(final_code, "    if (buf) { strcpy(buf, l); strcat(buf, r); }\n");
-    final_code = _kai_str_concat(final_code, "    return buf;\n");
-    final_code = _kai_str_concat(final_code, "}\n\n");
     final_code = _kai_str_concat(final_code, StringBuilder_to_str(&self.*.output));
     return final_code;
 }
@@ -15794,7 +14455,7 @@ pub export fn fs_readdir(arg_dir: Dir) [*c]const u8 {
     {
         var name_ptr: [*c]u8 = kai_fs_readdir(dir.handle);
         _ = &name_ptr;
-        if (name_ptr == @as([*c]u8, @ptrFromInt(@as(c_int, 0)))) {
+        if (name_ptr == @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
             return "";
         }
         return @as([*c]const u8, @ptrCast(@alignCast(name_ptr)));
@@ -16014,18 +14675,18 @@ pub export fn find_last(arg_path: [*c]const u8, arg_c: u8) i64 {
     _ = &path;
     var c = arg_c;
     _ = &c;
-    var i: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(path) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))))));
+    var i: i64 = @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(path)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))));
     _ = &i;
-    while (i >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    while (i >= @as(c_longlong, 0)) {
         if (@as(c_int, @bitCast(@as(c_uint, (blk: {
             const tmp = i;
             if (tmp >= 0) break :blk path + @as(usize, @intCast(tmp)) else break :blk path - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
         }).*))) == @as(c_int, @bitCast(@as(c_uint, c)))) {
             return i;
         }
-        i = i - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i - @as(c_longlong, 1);
     }
-    return @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    return -@as(c_longlong, 1);
 }
 pub export fn mkdir_p(arg_path: [*c]const u8) bool {
     var path = arg_path;
@@ -16033,10 +14694,10 @@ pub export fn mkdir_p(arg_path: [*c]const u8) bool {
     if (fs_exists(path)) {
         return @as(c_int, 1) != 0;
     }
-    var slash_pos: i64 = find_last(path, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 47))))));
+    var slash_pos: i64 = find_last(path, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 47))))));
     _ = &slash_pos;
-    if (slash_pos > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-        var parent: [*c]const u8 = substring(path, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), slash_pos);
+    if (slash_pos > @as(c_longlong, 0)) {
+        var parent: [*c]const u8 = substring(path, @as(c_longlong, 0), slash_pos);
         _ = &parent;
         if (!mkdir_p(parent)) {
             return @as(c_int, 0) != 0;
@@ -16055,7 +14716,7 @@ pub export fn str_replace(arg_s: [*c]const u8, arg_old: [*c]const u8, arg_new_va
     _ = &s_len;
     var old_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(old))));
     _ = &old_len;
-    if (old_len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (old_len == @as(c_longlong, 0)) {
         return s;
     }
     var result: [*c]const u8 = "";
@@ -16080,14 +14741,14 @@ pub export fn str_replace(arg_s: [*c]const u8, arg_old: [*c]const u8, arg_new_va
                     break;
                 }
             }
-            j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            j = j + @as(c_longlong, 1);
         }
         if (matched) {
             result = _kai_str_concat(result, new_val);
             i = i + old_len;
         } else {
-            result = _kai_str_concat(result, substring(s, i, i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))));
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            result = _kai_str_concat(result, substring(s, i, i + @as(c_longlong, 1)));
+            i = i + @as(c_longlong, 1);
         }
     }
     return result;
@@ -16097,9 +14758,9 @@ pub export fn get_base_name(arg_allocator: [*c]KaiAllocator, arg_path: [*c]const
     _ = &allocator;
     var path = arg_path;
     _ = &path;
-    var last_slash: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    var last_slash: i64 = -@as(c_longlong, 1);
     _ = &last_slash;
-    var dot_pos: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+    var dot_pos: i64 = -@as(c_longlong, 1);
     _ = &dot_pos;
     var i: i64 = 0;
     _ = &i;
@@ -16111,17 +14772,17 @@ pub export fn get_base_name(arg_allocator: [*c]KaiAllocator, arg_path: [*c]const
             if (tmp >= 0) break :blk path + @as(usize, @intCast(tmp)) else break :blk path - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
         }).*;
         _ = &c;
-        if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 47))))))))) {
+        if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 47))))))))) {
             last_slash = i;
-        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 46))))))))) {
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 46))))))))) {
             dot_pos = i;
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
     var start: i64 = 0;
     _ = &start;
-    if (last_slash >= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
-        start = last_slash + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    if (last_slash >= @as(c_longlong, 0)) {
+        start = last_slash + @as(c_longlong, 1);
     }
     var end: i64 = l;
     _ = &end;
@@ -16144,7 +14805,7 @@ pub export fn ArrayList_Bool_init(arg_allocator: [*c]KaiAllocator) ArrayList_Boo
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]bool, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(bool)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+        self.data = @as([*c]bool, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(bool)))))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -16154,10 +14815,10 @@ pub export fn ArrayList_Bool_push(arg_self: [*c]ArrayList_Bool, arg_item: bool) 
     var item = arg_item;
     _ = &item;
     if (self.*.len == self.*.cap) {
-        var new_cap: i64 = self.*.cap * @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]bool = @as([*c]bool, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(bool)))))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))));
+            var new_data: [*c]bool = @as([*c]bool, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(bool)))))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -16169,7 +14830,7 @@ pub export fn ArrayList_Bool_push(arg_self: [*c]ArrayList_Bool, arg_item: bool) 
                     const tmp = i;
                     if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*;
-                i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                i = i + @as(c_longlong, 1);
             }
             KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
@@ -16180,16 +14841,16 @@ pub export fn ArrayList_Bool_push(arg_self: [*c]ArrayList_Bool, arg_item: bool) 
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
     }).* = item;
-    self.*.len = self.*.len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len + @as(c_longlong, 1);
 }
 pub export fn ArrayList_Bool_get(arg_self: [*c]ArrayList_Bool, arg_index_1: i64) bool {
     var self = arg_self;
     _ = &self;
     var index_1 = arg_index_1;
     _ = &index_1;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     return (blk: {
@@ -16204,9 +14865,9 @@ pub export fn ArrayList_Bool_set(arg_self: [*c]ArrayList_Bool, arg_index_1: i64,
     _ = &index_1;
     var item = arg_item;
     _ = &item;
-    if ((index_1 < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) or (index_1 >= self.*.len)) {
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
     (blk: {
@@ -16217,12 +14878,12 @@ pub export fn ArrayList_Bool_set(arg_self: [*c]ArrayList_Bool, arg_index_1: i64,
 pub export fn ArrayList_Bool_pop(arg_self: [*c]ArrayList_Bool) bool {
     var self = arg_self;
     _ = &self;
-    if (self.*.len == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (self.*.len == @as(c_longlong, 0)) {
         {
-            exit(@as(c_int, 1));
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
-    self.*.len = self.*.len - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+    self.*.len = self.*.len - @as(c_longlong, 1);
     return (blk: {
         const tmp = self.*.len;
         if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -16245,7 +14906,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     _ = &argc;
     var argv = arg_argv;
     _ = &argv;
-    if (argc < @as(c_int, 2)) {
+    if (@as(c_longlong, @bitCast(@as(c_longlong, argc))) < @as(c_longlong, 2)) {
         _ = printf("Usage: kai <command> [options]\n");
         _ = printf("Commands:\n");
         _ = printf("  init [path]     Create a new Kai project\n");
@@ -16267,24 +14928,24 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     var first_arg: [*c]const u8 = "";
     _ = &first_arg;
     {
-        first_arg = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(c_uint, @intCast(@as(c_int, 1)))])));
+        first_arg = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(usize, @intCast(@as(c_longlong, 1)))])));
     }
     var is_explain: bool = @as(c_int, 0) != 0;
     _ = &is_explain;
     {
-        if (strcmp(first_arg, "explain") == @as(c_int, 0)) {
+        if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(first_arg, "explain")))) == @as(c_longlong, 0)) {
             is_explain = @as(c_int, 1) != 0;
         }
     }
     if (is_explain) {
-        if (argc < @as(c_int, 3)) {
+        if (@as(c_longlong, @bitCast(@as(c_longlong, argc))) < @as(c_longlong, 3)) {
             _ = printf("Usage: kai explain <error-code>\n");
             return 1;
         }
         var code: [*c]const u8 = "";
         _ = &code;
         {
-            code = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(c_uint, @intCast(@as(c_int, 2)))])));
+            code = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(usize, @intCast(@as(c_longlong, 2)))])));
         }
         var info: ErrorInfo = get_error_info(code);
         _ = &info;
@@ -16296,14 +14957,14 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     var is_skills: bool = @as(c_int, 0) != 0;
     _ = &is_skills;
     {
-        if (strcmp(first_arg, "skills") == @as(c_int, 0)) {
+        if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(first_arg, "skills")))) == @as(c_longlong, 0)) {
             is_skills = @as(c_int, 1) != 0;
         }
     }
     if (is_skills) {
         var allocator: KaiAllocator = KaiAllocator{
-            .heads = @as([*c]u8, @ptrFromInt(@as(c_int, 0))),
-            .used = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
+            .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+            .used = @as(c_longlong, 0),
         };
         _ = &allocator;
         allocator = KaiAllocator_init();
@@ -16311,13 +14972,13 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
         var exe_dir: [*c]const u8 = "";
         _ = &exe_dir;
         {
-            var buf: [*c]u8 = KaiAllocator_alloc(&allocator, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1024)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))));
+            var buf: [*c]u8 = KaiAllocator_alloc(&allocator, @as(c_longlong, 1024), @as(c_longlong, 1));
             _ = &buf;
-            if (get_exe_dir(buf, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1024))))) == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (get_exe_dir(buf, @as(c_longlong, 1024)) == @as(c_longlong, 0)) {
                 exe_dir = @as([*c]const u8, @ptrCast(@alignCast(buf)));
             }
         }
-        if (argc < @as(c_int, 3)) {
+        if (@as(c_longlong, @bitCast(@as(c_longlong, argc))) < @as(c_longlong, 3)) {
             _ = printf("Available skills:\n");
             _ = printf("  agent       - Agent workflow guide\n");
             _ = printf("  diagnostics - Diagnostic reference for AI agents\n");
@@ -16327,30 +14988,30 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
         var sub: [*c]const u8 = "";
         _ = &sub;
         {
-            sub = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(c_uint, @intCast(@as(c_int, 2)))])));
+            sub = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(usize, @intCast(@as(c_longlong, 2)))])));
         }
         var is_get: bool = @as(c_int, 0) != 0;
         _ = &is_get;
         {
-            if (strcmp(sub, "get") == @as(c_int, 0)) {
+            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(sub, "get")))) == @as(c_longlong, 0)) {
                 is_get = @as(c_int, 1) != 0;
             }
         }
         if (is_get) {
-            if (argc < @as(c_int, 4)) {
+            if (@as(c_longlong, @bitCast(@as(c_longlong, argc))) < @as(c_longlong, 4)) {
                 _ = printf("Usage: kai skills get <topic>\n");
                 return 1;
             }
             var topic: [*c]const u8 = "";
             _ = &topic;
             {
-                topic = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(c_uint, @intCast(@as(c_int, 3)))])));
+                topic = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(usize, @intCast(@as(c_longlong, 3)))])));
             }
             var skill_path: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(exe_dir, "/skill-data/"), topic), ".md");
             _ = &skill_path;
             var res: Result_Str_IoError = read_to_string(&allocator, skill_path);
             _ = &res;
-            if (res.tag != @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (res.tag != @as(c_longlong, 0)) {
                 _ = printf("skill not found: '%s'\n", topic);
                 _ = printf("Available: agent, diagnostics\n");
                 return 1;
@@ -16366,7 +15027,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     var is_init: bool = @as(c_int, 0) != 0;
     _ = &is_init;
     {
-        if (strcmp(first_arg, "init") == @as(c_int, 0)) {
+        if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(first_arg, "init")))) == @as(c_longlong, 0)) {
             is_init = @as(c_int, 1) != 0;
         }
     }
@@ -16384,9 +15045,9 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
             }).*)));
             _ = &arg;
             {
-                if (strcmp(arg, "--template") == @as(c_int, 0)) {
-                    if ((i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))) < @as(i64, @bitCast(@as(c_longlong, argc)))) {
-                        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--template")))) == @as(c_longlong, 0)) {
+                    if ((i + @as(c_longlong, 1)) < @as(c_longlong, @bitCast(@as(c_longlong, argc)))) {
+                        i = i + @as(c_longlong, 1);
                         template = @as([*c]const u8, @ptrCast(@alignCast((blk: {
                             const tmp = i;
                             if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -16399,7 +15060,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                     project_path = arg;
                 }
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
         var src_dir: [*c]const u8 = _kai_str_concat(project_path, "/src");
         _ = &src_dir;
@@ -16412,7 +15073,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
             _ = &main_content;
             var write_res: Result_Bool_IoError = write_string(_kai_str_concat(src_dir, "/lib.kai"), main_content);
             _ = &write_res;
-            if (write_res.tag != @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (write_res.tag != @as(c_longlong, 0)) {
                 _ = printf("Error: Could not write lib.kai\n");
                 return 1;
             }
@@ -16421,7 +15082,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
             _ = &main_content;
             var write_res: Result_Bool_IoError = write_string(_kai_str_concat(src_dir, "/main.kai"), main_content);
             _ = &write_res;
-            if (write_res.tag != @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (write_res.tag != @as(c_longlong, 0)) {
                 _ = printf("Error: Could not write main.kai\n");
                 return 1;
             }
@@ -16432,12 +15093,12 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     var is_patch: bool = @as(c_int, 0) != 0;
     _ = &is_patch;
     {
-        if (strcmp(first_arg, "patch") == @as(c_int, 0)) {
+        if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(first_arg, "patch")))) == @as(c_longlong, 0)) {
             is_patch = @as(c_int, 1) != 0;
         }
     }
     if (is_patch) {
-        if (argc < @as(c_int, 4)) {
+        if (@as(c_longlong, @bitCast(@as(c_longlong, argc))) < @as(c_longlong, 4)) {
             _ = printf("Usage: kai patch <file> --op <operation> [args...]\n");
             _ = printf("Operations:\n");
             _ = printf("  addMain                    Append a main function\n");
@@ -16447,8 +15108,8 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
             return 1;
         }
         var allocator: KaiAllocator = KaiAllocator{
-            .heads = @as([*c]u8, @ptrFromInt(@as(c_int, 0))),
-            .used = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
+            .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+            .used = @as(c_longlong, 0),
         };
         _ = &allocator;
         allocator = KaiAllocator_init();
@@ -16472,27 +15133,27 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
             }).*)));
             _ = &arg;
             {
-                if (strcmp(arg, "--json") == @as(c_int, 0)) {
+                if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--json")))) == @as(c_longlong, 0)) {
                     json = @as(c_int, 1) != 0;
-                } else if (strcmp(arg, "--op") == @as(c_int, 0)) {
-                    if ((i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))) < @as(i64, @bitCast(@as(c_longlong, argc)))) {
-                        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--op")))) == @as(c_longlong, 0)) {
+                    if ((i + @as(c_longlong, 1)) < @as(c_longlong, @bitCast(@as(c_longlong, argc)))) {
+                        i = i + @as(c_longlong, 1);
                         operation = @as([*c]const u8, @ptrCast(@alignCast((blk: {
                             const tmp = i;
                             if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                         }).*)));
                     }
-                } else if (strcmp(arg, "--old") == @as(c_int, 0)) {
-                    if ((i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))) < @as(i64, @bitCast(@as(c_longlong, argc)))) {
-                        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--old")))) == @as(c_longlong, 0)) {
+                    if ((i + @as(c_longlong, 1)) < @as(c_longlong, @bitCast(@as(c_longlong, argc)))) {
+                        i = i + @as(c_longlong, 1);
                         op_arg1 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
                             const tmp = i;
                             if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                         }).*)));
                     }
-                } else if (strcmp(arg, "--new") == @as(c_int, 0)) {
-                    if ((i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))) < @as(i64, @bitCast(@as(c_longlong, argc)))) {
-                        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--new")))) == @as(c_longlong, 0)) {
+                    if ((i + @as(c_longlong, 1)) < @as(c_longlong, @bitCast(@as(c_longlong, argc)))) {
+                        i = i + @as(c_longlong, 1);
                         op_arg2 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
                             const tmp = i;
                             if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -16502,19 +15163,19 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                     patch_file = arg;
                 }
             }
-            i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            i = i + @as(c_longlong, 1);
         }
-        if (strlen(patch_file) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(patch_file)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             _ = printf("Error: No input file specified\n");
             return 1;
         }
-        if (strlen(operation) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(operation)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             _ = printf("Error: No operation specified (use --op)\n");
             return 1;
         }
         var source_res: Result_Str_IoError = read_to_string(&allocator, patch_file);
         _ = &source_res;
-        if (source_res.tag != @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (source_res.tag != @as(c_longlong, 0)) {
             _ = printf("Error: Could not read '%s'\n", patch_file);
             return 1;
         }
@@ -16525,12 +15186,12 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
         var op_name: [*c]const u8 = operation;
         _ = &op_name;
         {
-            if (strcmp(op_name, "addMain") == @as(c_int, 0)) {
+            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(op_name, "addMain")))) == @as(c_longlong, 0)) {
                 modified = _kai_str_concat(source, "\nfn main() Int {\n    printf(\"hello\\n\")\n    return 0\n}\n");
-            } else if (strcmp(op_name, "addFn") == @as(c_int, 0)) {
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(op_name, "addFn")))) == @as(c_longlong, 0)) {
                 var fn_name: [*c]const u8 = op_arg1;
                 _ = &fn_name;
-                if (strlen(fn_name) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fn_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                     var j: i64 = 3;
                     _ = &j;
                     while (j < @as(i64, @bitCast(@as(c_longlong, argc)))) {
@@ -16540,29 +15201,29 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                                 if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                             }).*)));
                             _ = &a;
-                            var is_flag: bool = (((strcmp(a, "--op") == @as(c_int, 0)) or (strcmp(a, "--json") == @as(c_int, 0))) or (strcmp(a, "--old") == @as(c_int, 0))) or (strcmp(a, "--new") == @as(c_int, 0));
+                            var is_flag: bool = (((@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--op")))) == @as(c_longlong, 0)) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--json")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--old")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--new")))) == @as(c_longlong, 0));
                             _ = &is_flag;
-                            if (((((!is_flag and (strcmp(a, patch_file) != @as(c_int, 0))) and (strcmp(a, "addMain") != @as(c_int, 0))) and (strcmp(a, "addFn") != @as(c_int, 0))) and (strcmp(a, "setConst") != @as(c_int, 0))) and (strcmp(a, "replaceText") != @as(c_int, 0))) {
+                            if (((((!is_flag and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, patch_file)))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "addMain")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "addFn")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "setConst")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "replaceText")))) != @as(c_longlong, 0))) {
                                 if (strcmp(fn_name, "") == @as(c_int, 0)) {
                                     fn_name = a;
                                 }
                             }
                         }
-                        j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        j = j + @as(c_longlong, 1);
                     }
                 }
-                if (strlen(fn_name) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fn_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                     _ = printf("Error: addFn requires a function name\n");
                     _ = printf("Usage: kai patch <file> --op addFn <name>\n");
                     return 1;
                 }
                 modified = _kai_str_concat(_kai_str_concat(_kai_str_concat(source, "\nfn "), fn_name), "() Void {\n\n}\n");
-            } else if (strcmp(op_name, "setConst") == @as(c_int, 0)) {
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(op_name, "setConst")))) == @as(c_longlong, 0)) {
                 var const_name: [*c]const u8 = op_arg1;
                 _ = &const_name;
                 var const_val: [*c]const u8 = op_arg2;
                 _ = &const_val;
-                if ((strlen(const_name) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) or (strlen(const_val) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0)))))) {
+                if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(const_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) or (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(const_val)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) {
                     var j: i64 = 3;
                     _ = &j;
                     while (j < @as(i64, @bitCast(@as(c_longlong, argc)))) {
@@ -16572,9 +15233,9 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                                 if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                             }).*)));
                             _ = &a;
-                            var is_flag: bool = (((strcmp(a, "--op") == @as(c_int, 0)) or (strcmp(a, "--json") == @as(c_int, 0))) or (strcmp(a, "--old") == @as(c_int, 0))) or (strcmp(a, "--new") == @as(c_int, 0));
+                            var is_flag: bool = (((@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--op")))) == @as(c_longlong, 0)) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--json")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--old")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--new")))) == @as(c_longlong, 0));
                             _ = &is_flag;
-                            if (((((!is_flag and (strcmp(a, patch_file) != @as(c_int, 0))) and (strcmp(a, "setConst") != @as(c_int, 0))) and (strcmp(a, "addMain") != @as(c_int, 0))) and (strcmp(a, "addFn") != @as(c_int, 0))) and (strcmp(a, "replaceText") != @as(c_int, 0))) {
+                            if (((((!is_flag and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, patch_file)))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "setConst")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "addMain")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "addFn")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "replaceText")))) != @as(c_longlong, 0))) {
                                 if (strcmp(const_name, "") == @as(c_int, 0)) {
                                     const_name = a;
                                 } else if (strcmp(const_val, "") == @as(c_int, 0)) {
@@ -16582,10 +15243,10 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                                 }
                             }
                         }
-                        j = j + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        j = j + @as(c_longlong, 1);
                     }
                 }
-                if ((strlen(const_name) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) or (strlen(const_val) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0)))))) {
+                if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(const_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) or (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(const_val)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) {
                     _ = printf("Error: setConst requires <name> and <value>\n");
                     _ = printf("Usage: kai patch <file> --op setConst <name> <value>\n");
                     return 1;
@@ -16618,7 +15279,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                                 break;
                             }
                         }
-                        j2 = j2 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        j2 = j2 + @as(c_longlong, 1);
                     }
                     if (matched_c) {
                         var end: i64 = pos_c + pattern_len;
@@ -16630,13 +15291,13 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                                     if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                                 }).*;
                                 _ = &c;
-                                if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 10))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 59)))))))))) {
+                                if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 59)))))))))) {
                                     break;
                                 }
                             }
-                            end = end + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                            end = end + @as(c_longlong, 1);
                         }
-                        var before: [*c]const u8 = substring(source, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))), pos_c + pattern_len);
+                        var before: [*c]const u8 = substring(source, @as(c_longlong, 0), pos_c + pattern_len);
                         _ = &before;
                         var after: [*c]const u8 = substring(source, end, src_len);
                         _ = &after;
@@ -16644,18 +15305,18 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                         found_const = @as(c_int, 1) != 0;
                         break;
                     }
-                    pos_c = pos_c + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    pos_c = pos_c + @as(c_longlong, 1);
                 }
                 if (!found_const) {
                     _ = printf("Error: const '%s' not found in '%s'\n", const_name, patch_file);
                     return 1;
                 }
-            } else if (strcmp(op_name, "replaceText") == @as(c_int, 0)) {
-                if (strlen(op_arg1) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(op_name, "replaceText")))) == @as(c_longlong, 0)) {
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(op_arg1)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                     _ = printf("Error: replaceText requires --old <text>\n");
                     return 1;
                 }
-                if (strlen(op_arg2) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(op_arg2)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                     _ = printf("Error: replaceText requires --new <text>\n");
                     return 1;
                 }
@@ -16668,7 +15329,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
         }
         var write_res: Result_Bool_IoError = write_string(patch_file, modified);
         _ = &write_res;
-        if (write_res.tag != @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (write_res.tag != @as(c_longlong, 0)) {
             _ = printf("Error: Could not write '%s'\n", patch_file);
             return 1;
         }
@@ -16680,7 +15341,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     var is_fix: bool = @as(c_int, 0) != 0;
     _ = &is_fix;
     {
-        if (strcmp(first_arg, "fix") == @as(c_int, 0)) {
+        if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(first_arg, "fix")))) == @as(c_longlong, 0)) {
             is_fix = @as(c_int, 1) != 0;
         }
     }
@@ -16700,34 +15361,34 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                     if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*)));
                 _ = &a;
-                if (strcmp(a, "--plan") == @as(c_int, 0)) {
+                if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--plan")))) == @as(c_longlong, 0)) {
                     fix_mode = "plan";
-                } else if (strcmp(a, "--patch") == @as(c_int, 0)) {
+                } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--patch")))) == @as(c_longlong, 0)) {
                     fix_mode = "patch";
-                } else if (strcmp(a, "--apply") == @as(c_int, 0)) {
+                } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--apply")))) == @as(c_longlong, 0)) {
                     fix_mode = "apply";
-                } else if (strcmp(a, "--json") == @as(c_int, 0)) {
+                } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--json")))) == @as(c_longlong, 0)) {
                     json = @as(c_int, 1) != 0;
                 } else if (strcmp(fix_file, "") == @as(c_int, 0)) {
                     fix_file = a;
                 }
             }
-            @"i2" = @"i2" + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            @"i2" = @"i2" + @as(c_longlong, 1);
         }
-        if (strlen(fix_file) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fix_file)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             _ = printf("Usage: kai fix (--plan|--patch|--apply) [--json] <file>\n");
             return 1;
         }
         var fix_alloc: KaiAllocator = KaiAllocator{
-            .heads = @as([*c]u8, @ptrFromInt(@as(c_int, 0))),
-            .used = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
+            .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+            .used = @as(c_longlong, 0),
         };
         _ = &fix_alloc;
         fix_alloc = KaiAllocator_init();
         _kai_set_current_allocator(@as(?*anyopaque, @ptrCast(&fix_alloc)));
         var src_res: Result_Str_IoError = read_to_string(&fix_alloc, fix_file);
         _ = &src_res;
-        if (src_res.tag != @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (src_res.tag != @as(c_longlong, 0)) {
             _ = printf("Error: Could not read '%s'\n", fix_file);
             return 1;
         }
@@ -16753,18 +15414,18 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                     if (@as(c_int, @bitCast(@as(c_uint, (blk: {
                         const tmp = line_end;
                         if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 10))))))))) {
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
                         break;
                     }
                 }
-                line_end = line_end + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                line_end = line_end + @as(c_longlong, 1);
             }
             if (line_end > src_len_val) {
                 line_end = src_len_val;
             }
             var line_len: i64 = line_end - line_start;
             _ = &line_len;
-            if (line_len > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (line_len > @as(c_longlong, 0)) {
                 var line: [*c]const u8 = substring(source, line_start, line_end);
                 _ = &line;
                 var li: i64 = 0;
@@ -16776,28 +15437,28 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                             if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                         }).*;
                         _ = &c;
-                        if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 9)))))))))) {
+                        if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
                             break;
                         }
                     }
-                    li = li + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    li = li + @as(c_longlong, 1);
                 }
-                if ((li + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))))) <= line_len) {
+                if ((li + @as(c_longlong, 4)) <= line_len) {
                     {
                         if ((((@as(c_int, @bitCast(@as(c_uint, (blk: {
                             const tmp = li;
                             if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 108))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                            const tmp = li + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 108))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                            const tmp = li + @as(c_longlong, 1);
                             if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 101)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                            const tmp = li + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+                        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 101)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                            const tmp = li + @as(c_longlong, 2);
                             if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 116)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                            const tmp = li + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 3))));
+                        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 116)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                            const tmp = li + @as(c_longlong, 3);
                             if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 32)))))))))) {
-                            var vstart: i64 = li + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))));
+                        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32)))))))))) {
+                            var vstart: i64 = li + @as(c_longlong, 4);
                             _ = &vstart;
                             var vend: i64 = vstart;
                             _ = &vend;
@@ -16808,11 +15469,11 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                                         if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                                     }).*;
                                     _ = &c;
-                                    if ((((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 32))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 61)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 58)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 9)))))))))) {
+                                    if ((((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 61)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
                                         break;
                                     }
                                 }
-                                vend = vend + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                                vend = vend + @as(c_longlong, 1);
                             }
                             if (vend > vstart) {
                                 var vname: [*c]const u8 = substring(line, vstart, vend);
@@ -16833,14 +15494,14 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                             if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                         }).*;
                         _ = &c;
-                        if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 9)))))))))) {
+                        if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
                             break;
                         }
                     }
-                    ai = ai + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    ai = ai + @as(c_longlong, 1);
                 }
                 if (ai < line_len) {
-                    var eq_pos: i64 = @as(i64, @bitCast(@as(c_longlong, -@as(c_int, 1))));
+                    var eq_pos: i64 = -@as(c_longlong, 1);
                     _ = &eq_pos;
                     var vi: i64 = ai;
                     _ = &vi;
@@ -16849,37 +15510,37 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                             if (@as(c_int, @bitCast(@as(c_uint, (blk: {
                                 const tmp = vi;
                                 if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 61))))))))) {
+                            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 61))))))))) {
                                 eq_pos = vi;
                                 break;
                             }
                         }
-                        vi = vi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        vi = vi + @as(c_longlong, 1);
                     }
                     if (eq_pos > ai) {
                         var has_let_prefix: bool = @as(c_int, 0) != 0;
                         _ = &has_let_prefix;
                         {
-                            if ((ai + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 4))))) <= eq_pos) {
+                            if ((ai + @as(c_longlong, 4)) <= eq_pos) {
                                 if ((((@as(c_int, @bitCast(@as(c_uint, (blk: {
                                     const tmp = ai;
                                     if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 108))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                                    const tmp = ai + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 108))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                                    const tmp = ai + @as(c_longlong, 1);
                                     if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 101)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                                    const tmp = ai + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 2))));
+                                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 101)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                                    const tmp = ai + @as(c_longlong, 2);
                                     if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 116)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                                    const tmp = ai + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 3))));
+                                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 116)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                                    const tmp = ai + @as(c_longlong, 3);
                                     if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 32)))))))))) {
+                                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32)))))))))) {
                                     has_let_prefix = @as(c_int, 1) != 0;
                                 }
                             }
                         }
-                        if (!has_let_prefix and (eq_pos > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))))) {
-                            var before_eq: i64 = eq_pos - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        if (!has_let_prefix and (eq_pos > @as(c_longlong, 0))) {
+                            var before_eq: i64 = eq_pos - @as(c_longlong, 1);
                             _ = &before_eq;
                             while (before_eq >= ai) {
                                 {
@@ -16888,11 +15549,11 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                                         if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                                     }).*;
                                     _ = &c;
-                                    if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 9)))))))))) {
+                                    if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
                                         break;
                                     }
                                 }
-                                before_eq = before_eq - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                                before_eq = before_eq - @as(c_longlong, 1);
                             }
                             var assign_start: i64 = before_eq;
                             _ = &assign_start;
@@ -16903,33 +15564,33 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                                         if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                                     }).*;
                                     _ = &c;
-                                    if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 32))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 9)))))))))) {
+                                    if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
                                         break;
                                     }
                                 }
-                                assign_start = assign_start - @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                                assign_start = assign_start - @as(c_longlong, 1);
                             }
-                            assign_start = assign_start + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                            assign_start = assign_start + @as(c_longlong, 1);
                             if (assign_start <= before_eq) {
-                                var assign_var: [*c]const u8 = substring(line, assign_start, before_eq + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))));
+                                var assign_var: [*c]const u8 = substring(line, assign_start, before_eq + @as(c_longlong, 1));
                                 _ = &assign_var;
                                 var vi2: i64 = 0;
                                 _ = &vi2;
                                 while (vi2 < ArrayList_Str_length(&vars)) {
                                     {
-                                        if ((strcmp(assign_var, ArrayList_Str_get(&vars, vi2)) == @as(c_int, 0)) and !ArrayList_Bool_get(&var_mut, vi2)) {
+                                        if ((@as(c_longlong, @bitCast(@as(c_longlong, strcmp(assign_var, ArrayList_Str_get(&vars, vi2))))) == @as(c_longlong, 0)) and !ArrayList_Bool_get(&var_mut, vi2)) {
                                             ArrayList_Bool_set(&var_mut, vi2, @as(c_int, 1) != 0);
                                         }
                                     }
-                                    vi2 = vi2 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                                    vi2 = vi2 + @as(c_longlong, 1);
                                 }
                             }
                         }
                     }
                 }
             }
-            line_start = line_end + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
-            line_num = line_num + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            line_start = line_end + @as(c_longlong, 1);
+            line_num = line_num + @as(c_longlong, 1);
         }
         var fix_count: i64 = 0;
         _ = &fix_count;
@@ -16942,19 +15603,19 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
         _ = &vi3;
         while (vi3 < ArrayList_Str_length(&vars)) {
             if (ArrayList_Bool_get(&var_mut, vi3)) {
-                fix_count = fix_count + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                fix_count = fix_count + @as(c_longlong, 1);
                 var vname_val: [*c]const u8 = ArrayList_Str_get(&vars, vi3);
                 _ = &vname_val;
                 var vline: i64 = ArrayList_Int_get(&var_lines, vi3);
                 _ = &vline;
                 if (json) {
-                    if (fix_count > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))) {
+                    if (fix_count > @as(c_longlong, 1)) {
                         fix_text = _kai_str_concat(fix_text, ",");
                     }
                     fix_text = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(fix_text, "{\"name\":\""), vname_val), "\",\"line\":"), vname_val), ",\"fix\":\"let->var\",\"safety\":\"behavior-preserving\"}");
                 }
             }
-            vi3 = vi3 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            vi3 = vi3 + @as(c_longlong, 1);
         }
         if (json) {
             fix_text = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(fix_text, "],\"mode\":\""), fix_mode), "\",\"count\":"), fix_text), "}");
@@ -16965,21 +15626,21 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
             _ = &vi4;
             while (vi4 < ArrayList_Str_length(&vars)) {
                 if (ArrayList_Bool_get(&var_mut, vi4)) {
-                    if (count_added > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                    if (count_added > @as(c_longlong, 0)) {
                         fix_text = _kai_str_concat(fix_text, ",");
                     }
                     var vname_val: [*c]const u8 = ArrayList_Str_get(&vars, vi4);
                     _ = &vname_val;
                     fix_text = _kai_str_concat(_kai_str_concat(fix_text, "{\"name\":\""), vname_val);
                     fix_text = _kai_str_concat(fix_text, "\",\"fix\":\"let->var\",\"safety\":\"behavior-preserving\"}");
-                    count_added = count_added + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    count_added = count_added + @as(c_longlong, 1);
                 }
-                vi4 = vi4 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                vi4 = vi4 + @as(c_longlong, 1);
             }
             fix_text = _kai_str_concat(_kai_str_concat(_kai_str_concat(fix_text, "],\"total\":"), fix_text), "}");
             fix_text = "";
         }
-        if (fix_count == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (fix_count == @as(c_longlong, 0)) {
             if (json) {
                 _ = printf("{\"file\":\"%s\",\"fixes\":[],\"total\":0}\n", fix_file);
             } else {
@@ -16996,7 +15657,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                     if (ArrayList_Bool_get(&var_mut, vi5)) {
                         _ = printf("  [behavior-preserving] variable '%s': change 'let' to 'var' (E0008)\n", ArrayList_Str_get(&vars, vi5));
                     }
-                    vi5 = vi5 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    vi5 = vi5 + @as(c_longlong, 1);
                 }
                 _ = printf("\nApply with: kai fix --apply '%s'\n", fix_file);
             } else {
@@ -17013,7 +15674,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                         _ = printf("{\"name\":\"%s\",\"fix\":\"let->var\",\"safety\":\"behavior-preserving\"}", ArrayList_Str_get(&vars, vi6));
                         first_fix = @as(c_int, 0) != 0;
                     }
-                    vi6 = vi6 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    vi6 = vi6 + @as(c_longlong, 1);
                 }
                 _ = printf("],\"total\":%lld}\n", fix_count);
             }
@@ -17033,11 +15694,11 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                     if (@as(c_int, @bitCast(@as(c_uint, (blk: {
                         const tmp = line_end2;
                         if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 10))))))))) {
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
                         break;
                     }
                 }
-                line_end2 = line_end2 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                line_end2 = line_end2 + @as(c_longlong, 1);
             }
             if (line_end2 > src_len_val) {
                 line_end2 = src_len_val;
@@ -17052,7 +15713,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                 if ((ArrayList_Int_get(&var_lines, vi8) == current_line_num) and (@as(c_int, @intFromBool(ArrayList_Bool_get(&var_mut, vi8))) != 0)) {
                     apply_fix_to_line = @as(c_int, 1) != 0;
                 }
-                vi8 = vi8 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                vi8 = vi8 + @as(c_longlong, 1);
             }
             if (apply_fix_to_line) {
                 var line_text: [*c]const u8 = substring(source, line_start2, line_end2);
@@ -17071,17 +15732,17 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                                 if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                             }).*;
                             _ = &c;
-                            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 34))))))))) {
+                            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 34))))))))) {
                                 _ = printf("\\\"");
-                            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 92))))))))) {
+                            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 92))))))))) {
                                 _ = printf("\\\\");
-                            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 10))))))))) {
+                            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
                                 _ = printf("\\n");
                             } else {
                                 _ = printf("%c", @as(c_int, @bitCast(@as(c_uint, c))));
                             }
                         }
-                        li2 = li2 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        li2 = li2 + @as(c_longlong, 1);
                     }
                     _ = printf("\",\"new\":\"");
                     var li3: i64 = 0;
@@ -17093,17 +15754,17 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                                 if (tmp >= 0) break :blk fixed_line_text + @as(usize, @intCast(tmp)) else break :blk fixed_line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                             }).*;
                             _ = &c;
-                            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 34))))))))) {
+                            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 34))))))))) {
                                 _ = printf("\\\"");
-                            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 92))))))))) {
+                            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 92))))))))) {
                                 _ = printf("\\\\");
-                            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 10))))))))) {
+                            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
                                 _ = printf("\\n");
                             } else {
                                 _ = printf("%c", @as(c_int, @bitCast(@as(c_uint, c))));
                             }
                         }
-                        li3 = li3 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        li3 = li3 + @as(c_longlong, 1);
                     }
                     _ = printf("\"}\n");
                 }
@@ -17115,13 +15776,13 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
             if (!is_last_line) {
                 modified_source = _kai_str_concat(modified_source, "\n");
             }
-            line_start2 = line_end2 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
-            line_num2 = line_num2 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            line_start2 = line_end2 + @as(c_longlong, 1);
+            line_num2 = line_num2 + @as(c_longlong, 1);
         }
         if (strcmp(fix_mode, "apply") == @as(c_int, 0)) {
             var write_res: Result_Bool_IoError = write_string(fix_file, modified_source);
             _ = &write_res;
-            if (write_res.tag != @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+            if (write_res.tag != @as(c_longlong, 0)) {
                 _ = printf("Error: Could not write '%s'\n", fix_file);
                 return 1;
             }
@@ -17139,12 +15800,12 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     var is_graph: bool = @as(c_int, 0) != 0;
     _ = &is_graph;
     {
-        if (strcmp(first_arg, "graph") == @as(c_int, 0)) {
+        if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(first_arg, "graph")))) == @as(c_longlong, 0)) {
             is_graph = @as(c_int, 1) != 0;
         }
     }
     if (is_graph) {
-        if (argc < @as(c_int, 3)) {
+        if (@as(c_longlong, @bitCast(@as(c_longlong, argc))) < @as(c_longlong, 3)) {
             _ = printf("Usage: kai graph (export|query) <file> [options]\n");
             _ = printf("  export <file>    Export AST as JSON\n");
             _ = printf("  query <file>     Query program structure\n");
@@ -17153,7 +15814,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
         var graph_sub: [*c]const u8 = "";
         _ = &graph_sub;
         {
-            graph_sub = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(c_uint, @intCast(@as(c_int, 2)))])));
+            graph_sub = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(usize, @intCast(@as(c_longlong, 2)))])));
         }
         var graph_file: [*c]const u8 = "";
         _ = &graph_file;
@@ -17170,11 +15831,11 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                     if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
                 }).*)));
                 _ = &a;
-                if (strcmp(a, "--json") == @as(c_int, 0)) {
+                if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--json")))) == @as(c_longlong, 0)) {
                     graph_json = @as(c_int, 1) != 0;
-                } else if (strcmp(a, "--fn") == @as(c_int, 0)) {
-                    if ((@"i3" + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))) < @as(i64, @bitCast(@as(c_longlong, argc)))) {
-                        @"i3" = @"i3" + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--fn")))) == @as(c_longlong, 0)) {
+                    if ((@"i3" + @as(c_longlong, 1)) < @as(c_longlong, @bitCast(@as(c_longlong, argc)))) {
+                        @"i3" = @"i3" + @as(c_longlong, 1);
                         graph_fn = @as([*c]const u8, @ptrCast(@alignCast((blk: {
                             const tmp = @"i3";
                             if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -17184,22 +15845,22 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                     graph_file = a;
                 }
             }
-            @"i3" = @"i3" + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            @"i3" = @"i3" + @as(c_longlong, 1);
         }
-        if (strlen(graph_file) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(graph_file)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             _ = printf("Error: No input file specified\n");
             return 1;
         }
         var graph_alloc: KaiAllocator = KaiAllocator{
-            .heads = @as([*c]u8, @ptrFromInt(@as(c_int, 0))),
-            .used = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
+            .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+            .used = @as(c_longlong, 0),
         };
         _ = &graph_alloc;
         graph_alloc = KaiAllocator_init();
         _kai_set_current_allocator(@as(?*anyopaque, @ptrCast(&graph_alloc)));
         var src_res2: Result_Str_IoError = read_to_string(&graph_alloc, graph_file);
         _ = &src_res2;
-        if (src_res2.tag != @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (src_res2.tag != @as(c_longlong, 0)) {
             _ = printf("Error: Could not read '%s'\n", graph_file);
             return 1;
         }
@@ -17216,12 +15877,12 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
         _ = &graph_parser;
         var graph_program_idx: i64 = Parser_parse_program(&graph_parser);
         _ = &graph_program_idx;
-        if (graph_program_idx < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (graph_program_idx < @as(c_longlong, 0)) {
             _ = printf("Error: Parse error in '%s'\n", graph_file);
             return 1;
         }
         {
-            if (strcmp(graph_sub, "export") == @as(c_int, 0)) {
+            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(graph_sub, "export")))) == @as(c_longlong, 0)) {
                 _ = printf("{\"file\":\"%s\",\"stmts\":[\n", graph_file);
                 var si: i64 = 0;
                 _ = &si;
@@ -17230,85 +15891,85 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                 while (si < stmt_count) {
                     var stmt: StmtNode = ArrayList_StmtNode_get(graph_parser.stmt_pool, si);
                     _ = &stmt;
-                    if (si > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                    if (si > @as(c_longlong, 0)) {
                         _ = printf(",\n");
                     }
                     _ = printf("{\"id\":%lld,\"kind\":", si);
                     var sk: StmtKind = stmt.kind;
                     _ = &sk;
-                    if (sk == @as(c_uint, @bitCast(@as(c_int, 0)))) {
+                    if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 0)) {
                         _ = printf("\"none\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 1)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 1)) {
                         _ = printf("\"block\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 2)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 2)) {
                         _ = printf("\"var_decl\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 3)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 3)) {
                         _ = printf("\"assignment\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 4)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 4)) {
                         _ = printf("\"func_decl\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 5)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 5)) {
                         _ = printf("\"struct_decl\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 6)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 6)) {
                         _ = printf("\"impl_block\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 7)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 7)) {
                         _ = printf("\"trait_decl\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 8)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 8)) {
                         _ = printf("\"enum_decl\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 9)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 9)) {
                         _ = printf("\"if\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 10)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 10)) {
                         _ = printf("\"if_let\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 11)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 11)) {
                         _ = printf("\"while\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 12)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 12)) {
                         _ = printf("\"for\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 13)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 13)) {
                         _ = printf("\"return\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 14)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 14)) {
                         _ = printf("\"print\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 15)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 15)) {
                         _ = printf("\"expr\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 16)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 16)) {
                         _ = printf("\"defer\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 17)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 17)) {
                         _ = printf("\"unsafe\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 18)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 18)) {
                         _ = printf("\"extern\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 19)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 19)) {
                         _ = printf("\"import\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 20)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 20)) {
                         _ = printf("\"cimport\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 21)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 21)) {
                         _ = printf("\"match\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 22)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 22)) {
                         _ = printf("\"error_decl\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 23)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 23)) {
                         _ = printf("\"break\"");
-                    } else if (sk == @as(c_uint, @bitCast(@as(c_int, 24)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 24)) {
                         _ = printf("\"continue\"");
                     } else {
                         _ = printf("\"unknown\"");
                     }
-                    if (strlen(stmt.func_name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.func_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                         _ = printf(",\"name\":\"%s\"", stmt.func_name);
                     }
-                    if (strlen(stmt.struct_name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.struct_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                         _ = printf(",\"name\":\"%s\"", stmt.struct_name);
                     }
-                    if (strlen(stmt.enum_name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.enum_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                         _ = printf(",\"name\":\"%s\"", stmt.enum_name);
                     }
-                    if (strlen(stmt.vardecl_name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.vardecl_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                         _ = printf(",\"var\":\"%s\"", stmt.vardecl_name);
                     }
-                    if (strlen(stmt.vardecl_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.vardecl_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                         _ = printf(",\"type\":\"%s\"", stmt.vardecl_type);
                     }
-                    if (strlen(stmt.func_return_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.func_return_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                         _ = printf(",\"return_type\":\"%s\"", stmt.func_return_type);
                     }
                     _ = printf("}");
-                    si = si + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    si = si + @as(c_longlong, 1);
                 }
                 _ = printf("],\n\"exprs\":[\n");
                 var ei: i64 = 0;
@@ -17318,81 +15979,81 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                 while (ei < expr_count) {
                     var expr: ExprNode = ArrayList_ExprNode_get(graph_parser.expr_pool, ei);
                     _ = &expr;
-                    if (ei > @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+                    if (ei > @as(c_longlong, 0)) {
                         _ = printf(",\n");
                     }
                     _ = printf("{\"id\":%lld,\"kind\":", ei);
                     var ek: ExprKind = expr.kind;
                     _ = &ek;
-                    if (ek == @as(c_uint, @bitCast(@as(c_int, 0)))) {
+                    if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 0)) {
                         _ = printf("\"none\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 1)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 1)) {
                         _ = printf("\"literal\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 2)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 2)) {
                         _ = printf("\"str_interp\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 3)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 3)) {
                         _ = printf("\"identifier\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 4)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 4)) {
                         _ = printf("\"binary_op\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 5)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 5)) {
                         _ = printf("\"unary_op\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 6)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 6)) {
                         _ = printf("\"func_call\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 7)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 7)) {
                         _ = printf("\"struct_init\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 8)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 8)) {
                         _ = printf("\"field_access\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 9)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 9)) {
                         _ = printf("\"method_call\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 10)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 10)) {
                         _ = printf("\"index\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 11)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 11)) {
                         _ = printf("\"check\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 12)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 12)) {
                         _ = printf("\"slice\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 13)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 13)) {
                         _ = printf("\"range\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 14)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 14)) {
                         _ = printf("\"array\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 15)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 15)) {
                         _ = printf("\"tuple\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 16)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 16)) {
                         _ = printf("\"borrow\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 17)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 17)) {
                         _ = printf("\"deref\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 18)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 18)) {
                         _ = printf("\"try\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 19)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 19)) {
                         _ = printf("\"catch\"");
-                    } else if (ek == @as(c_uint, @bitCast(@as(c_int, 20)))) {
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 20)) {
                         _ = printf("\"asm\"");
                     } else {
                         _ = printf("\"unknown\"");
                     }
-                    if (strlen(expr.ident_name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.ident_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                         _ = printf(",\"name\":\"%s\"", expr.ident_name);
                     }
-                    if (strlen(expr.func_name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.func_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                         _ = printf(",\"func\":\"%s\"", expr.func_name);
                     }
-                    if (strlen(expr.struct_name) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.struct_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                         _ = printf(",\"struct\":\"%s\"", expr.struct_name);
                     }
-                    if (strlen(expr.inferred_type) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                         _ = printf(",\"type\":\"%s\"", expr.inferred_type);
                     }
-                    if (strlen(expr.binop_op) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.binop_op)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                         _ = printf(",\"op\":\"%s\"", expr.binop_op);
                     }
-                    if (strlen(expr.unop_op) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.unop_op)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                         _ = printf(",\"op\":\"%s\"", expr.unop_op);
                     }
                     _ = printf("}");
-                    ei = ei + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                    ei = ei + @as(c_longlong, 1);
                 }
                 _ = printf("]}\n");
-            } else if (strcmp(graph_sub, "query") == @as(c_int, 0)) {
-                if (strlen(graph_fn) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(graph_sub, "query")))) == @as(c_longlong, 0)) {
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(graph_fn)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                     var found: bool = @as(c_int, 0) != 0;
                     _ = &found;
                     var si2: i64 = 0;
@@ -17402,7 +16063,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                     while (si2 < stmt_count2) {
                         var stmt2: StmtNode = ArrayList_StmtNode_get(graph_parser.stmt_pool, si2);
                         _ = &stmt2;
-                        if ((stmt2.kind == @as(c_uint, @bitCast(@as(c_int, 4)))) and (strcmp(stmt2.func_name, graph_fn) == @as(c_int, 0))) {
+                        if ((@as(c_longlong, @bitCast(@as(c_ulonglong, stmt2.kind))) == @as(c_longlong, 4)) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(stmt2.func_name, graph_fn)))) == @as(c_longlong, 0))) {
                             _ = printf("function: %s\n", stmt2.func_name);
                             _ = printf("  return: %s\n", stmt2.func_return_type);
                             _ = printf("  params: ");
@@ -17414,7 +16075,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                                 var p: Param = ArrayList_Param_get(&stmt2.func_params, pi);
                                 _ = &p;
                                 _ = printf("%s: %s", p.name, p.ptype);
-                                pi = pi + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                                pi = pi + @as(c_longlong, 1);
                                 if (pi < param_count) {
                                     _ = printf(", ");
                                 }
@@ -17422,7 +16083,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                             _ = printf("\n");
                             found = @as(c_int, 1) != 0;
                         }
-                        si2 = si2 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        si2 = si2 + @as(c_longlong, 1);
                     }
                     if (!found) {
                         _ = printf("function '%s' not found\n", graph_fn);
@@ -17438,18 +16099,18 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                         _ = &idx;
                         var stmt3: StmtNode = ArrayList_StmtNode_get(graph_parser.stmt_pool, idx);
                         _ = &stmt3;
-                        if (stmt3.kind == @as(c_uint, @bitCast(@as(c_int, 4)))) {
+                        if (@as(c_longlong, @bitCast(@as(c_ulonglong, stmt3.kind))) == @as(c_longlong, 4)) {
                             _ = printf("  fn %s(%s) %s\n", stmt3.func_name, "", stmt3.func_return_type);
-                        } else if (stmt3.kind == @as(c_uint, @bitCast(@as(c_int, 5)))) {
+                        } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, stmt3.kind))) == @as(c_longlong, 5)) {
                             _ = printf("  struct %s\n", stmt3.struct_name);
-                        } else if (stmt3.kind == @as(c_uint, @bitCast(@as(c_int, 8)))) {
+                        } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, stmt3.kind))) == @as(c_longlong, 8)) {
                             _ = printf("  enum %s\n", stmt3.enum_name);
-                        } else if (stmt3.kind == @as(c_uint, @bitCast(@as(c_int, 22)))) {
+                        } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, stmt3.kind))) == @as(c_longlong, 22)) {
                             _ = printf("  error %s\n", stmt3.error_name);
-                        } else if (stmt3.kind == @as(c_uint, @bitCast(@as(c_int, 2)))) {
+                        } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, stmt3.kind))) == @as(c_longlong, 2)) {
                             _ = printf("  var %s: %s\n", stmt3.vardecl_name, stmt3.vardecl_type);
                         }
-                        si3 = si3 + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+                        si3 = si3 + @as(c_longlong, 1);
                     }
                 }
             } else {
@@ -17465,18 +16126,18 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     var is_run: bool = @as(c_int, 0) != 0;
     _ = &is_run;
     {
-        if (strcmp(first_arg, "run") == @as(c_int, 0)) {
+        if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(first_arg, "run")))) == @as(c_longlong, 0)) {
             is_run = @as(c_int, 1) != 0;
         }
     }
     if (is_run) {
-        if (argc < @as(c_int, 3)) {
+        if (@as(c_longlong, @bitCast(@as(c_longlong, argc))) < @as(c_longlong, 3)) {
             _ = printf("Error: No input file specified\n");
             _ = printf("Usage: kai run <file>\n");
             return 1;
         }
         {
-            input_file = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(c_uint, @intCast(@as(c_int, 2)))])));
+            input_file = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(usize, @intCast(@as(c_longlong, 2)))])));
         }
     } else {
         input_file = first_arg;
@@ -17505,11 +16166,11 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
         var matched: bool = @as(c_int, 1) != 0;
         _ = &matched;
         {
-            if (strcmp(arg, "-c") == @as(c_int, 0)) {
+            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "-c")))) == @as(c_longlong, 0)) {
                 emit_c_only = @as(c_int, 1) != 0;
-            } else if (strcmp(arg, "-o") == @as(c_int, 0)) {
-                if ((i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))) < @as(i64, @bitCast(@as(c_longlong, argc)))) {
-                    i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "-o")))) == @as(c_longlong, 0)) {
+                if ((i + @as(c_longlong, 1)) < @as(c_longlong, @bitCast(@as(c_longlong, argc)))) {
+                    i = i + @as(c_longlong, 1);
                     output_bin = @as([*c]const u8, @ptrCast(@alignCast((blk: {
                         const tmp = i;
                         if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -17518,19 +16179,19 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                     _ = printf("Error: -o requires an argument\n");
                     return 1;
                 }
-            } else if (strcmp(arg, "-O0") == @as(c_int, 0)) {
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "-O0")))) == @as(c_longlong, 0)) {
                 opt_level = "-O0";
-            } else if (strcmp(arg, "-O1") == @as(c_int, 0)) {
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "-O1")))) == @as(c_longlong, 0)) {
                 opt_level = "-O1";
-            } else if (strcmp(arg, "-O2") == @as(c_int, 0)) {
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "-O2")))) == @as(c_longlong, 0)) {
                 opt_level = "-O2";
-            } else if (strcmp(arg, "-O3") == @as(c_int, 0)) {
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "-O3")))) == @as(c_longlong, 0)) {
                 opt_level = "-O3";
-            } else if (strcmp(arg, "-Os") == @as(c_int, 0)) {
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "-Os")))) == @as(c_longlong, 0)) {
                 opt_level = "-Os";
-            } else if (strcmp(arg, "--json") == @as(c_int, 0)) {
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--json")))) == @as(c_longlong, 0)) {
                 json_mode = @as(c_int, 1) != 0;
-            } else if (strcmp(arg, "check") == @as(c_int, 0)) {
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "check")))) == @as(c_longlong, 0)) {
                 check_only = @as(c_int, 1) != 0;
             } else {
                 matched = @as(c_int, 0) != 0;
@@ -17539,15 +16200,15 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
         if ((@as(c_int, @intFromBool(matched)) == @as(c_int, 0)) and !is_run) {
             input_file = arg;
         }
-        i = i + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))));
+        i = i + @as(c_longlong, 1);
     }
-    if (strlen(input_file) == @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(input_file)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
         _ = printf("Error: No input file specified\n");
         return 1;
     }
     var allocator: KaiAllocator = KaiAllocator{
-        .heads = @as([*c]u8, @ptrFromInt(@as(c_int, 0))),
-        .used = @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0)))),
+        .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .used = @as(c_longlong, 0),
     };
     _ = &allocator;
     allocator = KaiAllocator_init();
@@ -17559,9 +16220,9 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     var runtime_path: [*c]const u8 = "";
     _ = &runtime_path;
     {
-        var buf: [*c]u8 = KaiAllocator_alloc(&allocator, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1024)))), @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1)))));
+        var buf: [*c]u8 = KaiAllocator_alloc(&allocator, @as(c_longlong, 1024), @as(c_longlong, 1));
         _ = &buf;
-        if (get_exe_dir(buf, @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1024))))) == @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        if (get_exe_dir(buf, @as(c_longlong, 1024)) == @as(c_longlong, 0)) {
             exe_dir = @as([*c]const u8, @ptrCast(@alignCast(buf)));
             exe_include_flag = _kai_str_concat("-I", exe_dir);
             runtime_path = _kai_str_concat(exe_dir, "/kai_runtime.c");
@@ -17571,14 +16232,14 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     _ = &base;
     var bin_name: [*c]const u8 = base;
     _ = &bin_name;
-    if (strlen(output_bin) > @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))))) {
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(output_bin)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
         bin_name = output_bin;
     }
     var c_file: [*c]const u8 = _kai_str_concat(base, ".c");
     _ = &c_file;
     var source_res: Result_Str_IoError = read_to_string(&allocator, input_file);
     _ = &source_res;
-    if (source_res.tag != @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (source_res.tag != @as(c_longlong, 0)) {
         if (json_mode) {
             _ = printf("{\"messages\":[{\"code\":\"E0099\",\"message\":\"Failed to read input file: '%s'\"}]}\n", input_file);
         }
@@ -17599,7 +16260,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     _ = &parser;
     var program_idx: i64 = Parser_parse_program(&parser);
     _ = &program_idx;
-    if (program_idx < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (program_idx < @as(c_longlong, 0)) {
         if (json_mode) {
             _ = printf("{\"messages\":[{\"code\":\"E0101\",\"message\":\"Parse error\",\"file\":\"%s\"}],\"error\":true}\n", input_file);
         }
@@ -17627,7 +16288,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     _ = &output;
     var write_res: Result_Bool_IoError = write_string(c_file, output);
     _ = &write_res;
-    if (write_res.tag != @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+    if (write_res.tag != @as(c_longlong, 0)) {
         return 5;
     }
     if (emit_c_only) {
@@ -18134,6 +16795,7 @@ pub const __STDC_UTF_32__ = @as(c_int, 1);
 pub const __STDC_EMBED_NOT_FOUND__ = @as(c_int, 0);
 pub const __STDC_EMBED_FOUND__ = @as(c_int, 1);
 pub const __STDC_EMBED_EMPTY__ = @as(c_int, 2);
+pub const NO_GET_EXE_DIR = @as(c_int, 1);
 pub const __GCC_HAVE_DWARF2_CFI_ASM = @as(c_int, 1);
 pub const __CLANG_STDINT_H = "";
 pub const _STDINT_H_ = "";
@@ -23791,1680 +22453,6 @@ pub const __strcat_chk_func = @compileError("unable to translate C expr: expecte
 // /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/secure/_string.h:181:9
 pub const __strncat_chk_func = @compileError("unable to translate C expr: expected ')' instead got '...'");
 // /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/secure/_string.h:187:9
-pub const _SYS_MMAN_H_ = "";
-pub const PROT_NONE = @as(c_int, 0x00);
-pub const PROT_READ = @as(c_int, 0x01);
-pub const PROT_WRITE = @as(c_int, 0x02);
-pub const PROT_EXEC = @as(c_int, 0x04);
-pub const MAP_SHARED = @as(c_int, 0x0001);
-pub const MAP_PRIVATE = @as(c_int, 0x0002);
-pub const MAP_COPY = MAP_PRIVATE;
-pub const MAP_FIXED = @as(c_int, 0x0010);
-pub const MAP_RENAME = @as(c_int, 0x0020);
-pub const MAP_NORESERVE = @as(c_int, 0x0040);
-pub const MAP_RESERVED0080 = @as(c_int, 0x0080);
-pub const MAP_NOEXTEND = @as(c_int, 0x0100);
-pub const MAP_HASSEMAPHORE = @as(c_int, 0x0200);
-pub const MAP_NOCACHE = @as(c_int, 0x0400);
-pub const MAP_JIT = @as(c_int, 0x0800);
-pub const MAP_FILE = @as(c_int, 0x0000);
-pub const MAP_ANON = @as(c_int, 0x1000);
-pub const MAP_ANONYMOUS = MAP_ANON;
-pub const MAP_RESILIENT_CODESIGN = @as(c_int, 0x2000);
-pub const MAP_RESILIENT_MEDIA = @as(c_int, 0x4000);
-pub const MAP_32BIT = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x8000, .hex);
-pub const MAP_TRANSLATED_ALLOW_EXECUTE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x20000, .hex);
-pub const MAP_UNIX03 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x40000, .hex);
-pub const MAP_TPRO = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x80000, .hex);
-pub const MCL_CURRENT = @as(c_int, 0x0001);
-pub const MCL_FUTURE = @as(c_int, 0x0002);
-pub const MAP_FAILED = @import("std").zig.c_translation.cast(?*anyopaque, -@as(c_int, 1));
-pub const MS_ASYNC = @as(c_int, 0x0001);
-pub const MS_INVALIDATE = @as(c_int, 0x0002);
-pub const MS_SYNC = @as(c_int, 0x0010);
-pub const MS_KILLPAGES = @as(c_int, 0x0004);
-pub const MS_DEACTIVATE = @as(c_int, 0x0008);
-pub const POSIX_MADV_NORMAL = @as(c_int, 0);
-pub const POSIX_MADV_RANDOM = @as(c_int, 1);
-pub const POSIX_MADV_SEQUENTIAL = @as(c_int, 2);
-pub const POSIX_MADV_WILLNEED = @as(c_int, 3);
-pub const POSIX_MADV_DONTNEED = @as(c_int, 4);
-pub const MADV_NORMAL = POSIX_MADV_NORMAL;
-pub const MADV_RANDOM = POSIX_MADV_RANDOM;
-pub const MADV_SEQUENTIAL = POSIX_MADV_SEQUENTIAL;
-pub const MADV_WILLNEED = POSIX_MADV_WILLNEED;
-pub const MADV_DONTNEED = POSIX_MADV_DONTNEED;
-pub const MADV_FREE = @as(c_int, 5);
-pub const MADV_ZERO_WIRED_PAGES = @as(c_int, 6);
-pub const MADV_FREE_REUSABLE = @as(c_int, 7);
-pub const MADV_FREE_REUSE = @as(c_int, 8);
-pub const MADV_CAN_REUSE = @as(c_int, 9);
-pub const MADV_PAGEOUT = @as(c_int, 10);
-pub const MADV_ZERO = @as(c_int, 11);
-pub const MINCORE_INCORE = @as(c_int, 0x1);
-pub const MINCORE_REFERENCED = @as(c_int, 0x2);
-pub const MINCORE_MODIFIED = @as(c_int, 0x4);
-pub const MINCORE_REFERENCED_OTHER = @as(c_int, 0x8);
-pub const MINCORE_MODIFIED_OTHER = @as(c_int, 0x10);
-pub const MINCORE_PAGED_OUT = @as(c_int, 0x20);
-pub const MINCORE_COPIED = @as(c_int, 0x40);
-pub const MINCORE_ANONYMOUS = @as(c_int, 0x80);
-pub const _MMAP = "";
-pub const _CTYPE_H_ = "";
-pub const __CTYPE_H_ = "";
-pub const _RUNETYPE_H_ = "";
-pub const _WINT_T = "";
-pub const _CACHED_RUNES = @as(c_int, 1) << @as(c_int, 8);
-pub const _CRMASK = ~(_CACHED_RUNES - @as(c_int, 1));
-pub const _RUNE_MAGIC_A = "RuneMagA";
-pub const _CTYPE_A = @as(c_long, 0x00000100);
-pub const _CTYPE_C = @as(c_long, 0x00000200);
-pub const _CTYPE_D = @as(c_long, 0x00000400);
-pub const _CTYPE_G = @as(c_long, 0x00000800);
-pub const _CTYPE_L = @as(c_long, 0x00001000);
-pub const _CTYPE_P = @as(c_long, 0x00002000);
-pub const _CTYPE_S = @as(c_long, 0x00004000);
-pub const _CTYPE_U = @as(c_long, 0x00008000);
-pub const _CTYPE_X = @as(c_long, 0x00010000);
-pub const _CTYPE_B = @as(c_long, 0x00020000);
-pub const _CTYPE_R = @as(c_long, 0x00040000);
-pub const _CTYPE_I = @as(c_long, 0x00080000);
-pub const _CTYPE_T = @as(c_long, 0x00100000);
-pub const _CTYPE_Q = @as(c_long, 0x00200000);
-pub const _CTYPE_SW0 = @as(c_long, 0x20000000);
-pub const _CTYPE_SW1 = @as(c_long, 0x40000000);
-pub const _CTYPE_SW2 = @import("std").zig.c_translation.promoteIntLiteral(c_long, 0x80000000, .hex);
-pub const _CTYPE_SW3 = @import("std").zig.c_translation.promoteIntLiteral(c_long, 0xc0000000, .hex);
-pub const _CTYPE_SWM = @import("std").zig.c_translation.promoteIntLiteral(c_long, 0xe0000000, .hex);
-pub const _CTYPE_SWS = @as(c_int, 30);
-pub const __DARWIN_CTYPE_inline = __header_inline;
-pub const __DARWIN_CTYPE_TOP_inline = __header_inline;
-pub inline fn _tolower(c: anytype) @TypeOf(__tolower(c)) {
-    _ = &c;
-    return __tolower(c);
-}
-pub inline fn _toupper(c: anytype) @TypeOf(__toupper(c)) {
-    _ = &c;
-    return __toupper(c);
-}
-pub const _MACH_O_DYLD_H_ = "";
-pub const __need_ptrdiff_t = "";
-pub const __need_size_t = "";
-pub const __need_rsize_t = "";
-pub const __need_wchar_t = "";
-pub const __need_NULL = "";
-pub const __need_max_align_t = "";
-pub const __need_offsetof = "";
-pub const __STDDEF_H = "";
-pub const _PTRDIFF_T = "";
-pub const __CLANG_MAX_ALIGN_T_DEFINED = "";
-pub const offsetof = @compileError("unable to translate C expr: unexpected token 'an identifier'");
-// /opt/homebrew/Cellar/zig@0.15/0.15.2/lib/zig/include/__stddef_offsetof.h:16:9
-pub const _MACHO_LOADER_H_ = "";
-pub const _MACH_MACHINE_H_ = "";
-pub const _MACH_MACHINE_VM_TYPES_H_ = "";
-pub const _MACH_ARM_VM_TYPES_H_ = "";
-pub const MACH_MSG_TYPE_INTEGER_T = @compileError("unable to translate macro: undefined identifier `MACH_MSG_TYPE_INTEGER_32`");
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/arm/vm_types.h:158:9
-pub const _MACH_BOOLEAN_H_ = "";
-pub const _MACH_MACHINE_BOOLEAN_H_ = "";
-pub const _MACH_ARM_BOOLEAN_H_ = "";
-pub const CPU_STATE_MAX = @as(c_int, 4);
-pub const CPU_STATE_USER = @as(c_int, 0);
-pub const CPU_STATE_SYSTEM = @as(c_int, 1);
-pub const CPU_STATE_IDLE = @as(c_int, 2);
-pub const CPU_STATE_NICE = @as(c_int, 3);
-pub const CPU_ARCH_MASK = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xff000000, .hex);
-pub const CPU_ARCH_ABI64 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x01000000, .hex);
-pub const CPU_ARCH_ABI64_32 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x02000000, .hex);
-pub const CPU_TYPE_ANY = @import("std").zig.c_translation.cast(cpu_type_t, -@as(c_int, 1));
-pub const CPU_TYPE_VAX = @import("std").zig.c_translation.cast(cpu_type_t, @as(c_int, 1));
-pub const CPU_TYPE_MC680x0 = @import("std").zig.c_translation.cast(cpu_type_t, @as(c_int, 6));
-pub const CPU_TYPE_X86 = @import("std").zig.c_translation.cast(cpu_type_t, @as(c_int, 7));
-pub const CPU_TYPE_I386 = CPU_TYPE_X86;
-pub const CPU_TYPE_X86_64 = CPU_TYPE_X86 | CPU_ARCH_ABI64;
-pub const CPU_TYPE_MC98000 = @import("std").zig.c_translation.cast(cpu_type_t, @as(c_int, 10));
-pub const CPU_TYPE_HPPA = @import("std").zig.c_translation.cast(cpu_type_t, @as(c_int, 11));
-pub const CPU_TYPE_ARM = @import("std").zig.c_translation.cast(cpu_type_t, @as(c_int, 12));
-pub const CPU_TYPE_ARM64 = CPU_TYPE_ARM | CPU_ARCH_ABI64;
-pub const CPU_TYPE_ARM64_32 = CPU_TYPE_ARM | CPU_ARCH_ABI64_32;
-pub const CPU_TYPE_MC88000 = @import("std").zig.c_translation.cast(cpu_type_t, @as(c_int, 13));
-pub const CPU_TYPE_SPARC = @import("std").zig.c_translation.cast(cpu_type_t, @as(c_int, 14));
-pub const CPU_TYPE_I860 = @import("std").zig.c_translation.cast(cpu_type_t, @as(c_int, 15));
-pub const CPU_TYPE_POWERPC = @import("std").zig.c_translation.cast(cpu_type_t, @as(c_int, 18));
-pub const CPU_TYPE_POWERPC64 = CPU_TYPE_POWERPC | CPU_ARCH_ABI64;
-pub const CPU_SUBTYPE_MASK = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xff000000, .hex);
-pub const CPU_SUBTYPE_LIB64 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x80000000, .hex);
-pub const CPU_SUBTYPE_PTRAUTH_ABI = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x80000000, .hex);
-pub const CPU_SUBTYPE_ANY = @import("std").zig.c_translation.cast(cpu_subtype_t, -@as(c_int, 1));
-pub const CPU_SUBTYPE_MULTIPLE = @import("std").zig.c_translation.cast(cpu_subtype_t, -@as(c_int, 1));
-pub const CPU_SUBTYPE_LITTLE_ENDIAN = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 0));
-pub const CPU_SUBTYPE_BIG_ENDIAN = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 1));
-pub const CPU_THREADTYPE_NONE = @import("std").zig.c_translation.cast(cpu_threadtype_t, @as(c_int, 0));
-pub const CPU_SUBTYPE_VAX_ALL = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 0));
-pub const CPU_SUBTYPE_VAX780 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 1));
-pub const CPU_SUBTYPE_VAX785 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 2));
-pub const CPU_SUBTYPE_VAX750 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 3));
-pub const CPU_SUBTYPE_VAX730 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 4));
-pub const CPU_SUBTYPE_UVAXI = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 5));
-pub const CPU_SUBTYPE_UVAXII = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 6));
-pub const CPU_SUBTYPE_VAX8200 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 7));
-pub const CPU_SUBTYPE_VAX8500 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 8));
-pub const CPU_SUBTYPE_VAX8600 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 9));
-pub const CPU_SUBTYPE_VAX8650 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 10));
-pub const CPU_SUBTYPE_VAX8800 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 11));
-pub const CPU_SUBTYPE_UVAXIII = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 12));
-pub const CPU_SUBTYPE_MC680x0_ALL = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 1));
-pub const CPU_SUBTYPE_MC68030 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 1));
-pub const CPU_SUBTYPE_MC68040 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 2));
-pub const CPU_SUBTYPE_MC68030_ONLY = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 3));
-pub inline fn CPU_SUBTYPE_INTEL(f: anytype, m: anytype) @TypeOf(@import("std").zig.c_translation.cast(cpu_subtype_t, f) + (m << @as(c_int, 4))) {
-    _ = &f;
-    _ = &m;
-    return @import("std").zig.c_translation.cast(cpu_subtype_t, f) + (m << @as(c_int, 4));
-}
-pub const CPU_SUBTYPE_I386_ALL = CPU_SUBTYPE_INTEL(@as(c_int, 3), @as(c_int, 0));
-pub const CPU_SUBTYPE_386 = CPU_SUBTYPE_INTEL(@as(c_int, 3), @as(c_int, 0));
-pub const CPU_SUBTYPE_486 = CPU_SUBTYPE_INTEL(@as(c_int, 4), @as(c_int, 0));
-pub const CPU_SUBTYPE_486SX = CPU_SUBTYPE_INTEL(@as(c_int, 4), @as(c_int, 8));
-pub const CPU_SUBTYPE_586 = CPU_SUBTYPE_INTEL(@as(c_int, 5), @as(c_int, 0));
-pub const CPU_SUBTYPE_PENT = CPU_SUBTYPE_INTEL(@as(c_int, 5), @as(c_int, 0));
-pub const CPU_SUBTYPE_PENTPRO = CPU_SUBTYPE_INTEL(@as(c_int, 6), @as(c_int, 1));
-pub const CPU_SUBTYPE_PENTII_M3 = CPU_SUBTYPE_INTEL(@as(c_int, 6), @as(c_int, 3));
-pub const CPU_SUBTYPE_PENTII_M5 = CPU_SUBTYPE_INTEL(@as(c_int, 6), @as(c_int, 5));
-pub const CPU_SUBTYPE_CELERON = CPU_SUBTYPE_INTEL(@as(c_int, 7), @as(c_int, 6));
-pub const CPU_SUBTYPE_CELERON_MOBILE = CPU_SUBTYPE_INTEL(@as(c_int, 7), @as(c_int, 7));
-pub const CPU_SUBTYPE_PENTIUM_3 = CPU_SUBTYPE_INTEL(@as(c_int, 8), @as(c_int, 0));
-pub const CPU_SUBTYPE_PENTIUM_3_M = CPU_SUBTYPE_INTEL(@as(c_int, 8), @as(c_int, 1));
-pub const CPU_SUBTYPE_PENTIUM_3_XEON = CPU_SUBTYPE_INTEL(@as(c_int, 8), @as(c_int, 2));
-pub const CPU_SUBTYPE_PENTIUM_M = CPU_SUBTYPE_INTEL(@as(c_int, 9), @as(c_int, 0));
-pub const CPU_SUBTYPE_PENTIUM_4 = CPU_SUBTYPE_INTEL(@as(c_int, 10), @as(c_int, 0));
-pub const CPU_SUBTYPE_PENTIUM_4_M = CPU_SUBTYPE_INTEL(@as(c_int, 10), @as(c_int, 1));
-pub const CPU_SUBTYPE_ITANIUM = CPU_SUBTYPE_INTEL(@as(c_int, 11), @as(c_int, 0));
-pub const CPU_SUBTYPE_ITANIUM_2 = CPU_SUBTYPE_INTEL(@as(c_int, 11), @as(c_int, 1));
-pub const CPU_SUBTYPE_XEON = CPU_SUBTYPE_INTEL(@as(c_int, 12), @as(c_int, 0));
-pub const CPU_SUBTYPE_XEON_MP = CPU_SUBTYPE_INTEL(@as(c_int, 12), @as(c_int, 1));
-pub inline fn CPU_SUBTYPE_INTEL_FAMILY(x: anytype) @TypeOf(x & @as(c_int, 15)) {
-    _ = &x;
-    return x & @as(c_int, 15);
-}
-pub const CPU_SUBTYPE_INTEL_FAMILY_MAX = @as(c_int, 15);
-pub inline fn CPU_SUBTYPE_INTEL_MODEL(x: anytype) @TypeOf(x >> @as(c_int, 4)) {
-    _ = &x;
-    return x >> @as(c_int, 4);
-}
-pub const CPU_SUBTYPE_INTEL_MODEL_ALL = @as(c_int, 0);
-pub const CPU_SUBTYPE_X86_ALL = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 3));
-pub const CPU_SUBTYPE_X86_64_ALL = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 3));
-pub const CPU_SUBTYPE_X86_ARCH1 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 4));
-pub const CPU_SUBTYPE_X86_64_H = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 8));
-pub const CPU_THREADTYPE_INTEL_HTT = @import("std").zig.c_translation.cast(cpu_threadtype_t, @as(c_int, 1));
-pub const CPU_SUBTYPE_MIPS_ALL = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 0));
-pub const CPU_SUBTYPE_MIPS_R2300 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 1));
-pub const CPU_SUBTYPE_MIPS_R2600 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 2));
-pub const CPU_SUBTYPE_MIPS_R2800 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 3));
-pub const CPU_SUBTYPE_MIPS_R2000a = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 4));
-pub const CPU_SUBTYPE_MIPS_R2000 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 5));
-pub const CPU_SUBTYPE_MIPS_R3000a = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 6));
-pub const CPU_SUBTYPE_MIPS_R3000 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 7));
-pub const CPU_SUBTYPE_MC98000_ALL = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 0));
-pub const CPU_SUBTYPE_MC98601 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 1));
-pub const CPU_SUBTYPE_HPPA_ALL = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 0));
-pub const CPU_SUBTYPE_HPPA_7100 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 0));
-pub const CPU_SUBTYPE_HPPA_7100LC = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 1));
-pub const CPU_SUBTYPE_MC88000_ALL = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 0));
-pub const CPU_SUBTYPE_MC88100 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 1));
-pub const CPU_SUBTYPE_MC88110 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 2));
-pub const CPU_SUBTYPE_SPARC_ALL = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 0));
-pub const CPU_SUBTYPE_I860_ALL = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 0));
-pub const CPU_SUBTYPE_I860_860 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 1));
-pub const CPU_SUBTYPE_POWERPC_ALL = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 0));
-pub const CPU_SUBTYPE_POWERPC_601 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 1));
-pub const CPU_SUBTYPE_POWERPC_602 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 2));
-pub const CPU_SUBTYPE_POWERPC_603 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 3));
-pub const CPU_SUBTYPE_POWERPC_603e = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 4));
-pub const CPU_SUBTYPE_POWERPC_603ev = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 5));
-pub const CPU_SUBTYPE_POWERPC_604 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 6));
-pub const CPU_SUBTYPE_POWERPC_604e = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 7));
-pub const CPU_SUBTYPE_POWERPC_620 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 8));
-pub const CPU_SUBTYPE_POWERPC_750 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 9));
-pub const CPU_SUBTYPE_POWERPC_7400 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 10));
-pub const CPU_SUBTYPE_POWERPC_7450 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 11));
-pub const CPU_SUBTYPE_POWERPC_970 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 100));
-pub const CPU_SUBTYPE_ARM_ALL = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 0));
-pub const CPU_SUBTYPE_ARM_V4T = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 5));
-pub const CPU_SUBTYPE_ARM_V6 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 6));
-pub const CPU_SUBTYPE_ARM_V5TEJ = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 7));
-pub const CPU_SUBTYPE_ARM_XSCALE = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 8));
-pub const CPU_SUBTYPE_ARM_V7 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 9));
-pub const CPU_SUBTYPE_ARM_V7F = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 10));
-pub const CPU_SUBTYPE_ARM_V7S = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 11));
-pub const CPU_SUBTYPE_ARM_V7K = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 12));
-pub const CPU_SUBTYPE_ARM_V8 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 13));
-pub const CPU_SUBTYPE_ARM_V6M = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 14));
-pub const CPU_SUBTYPE_ARM_V7M = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 15));
-pub const CPU_SUBTYPE_ARM_V7EM = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 16));
-pub const CPU_SUBTYPE_ARM_V8M = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 17));
-pub const CPU_SUBTYPE_ARM_V8M_MAIN = CPU_SUBTYPE_ARM_V8M;
-pub const CPU_SUBTYPE_ARM_V8M_BASE = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 18));
-pub const CPU_SUBTYPE_ARM_V8_1M_MAIN = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 19));
-pub const CPU_SUBTYPE_ARM64_ALL = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 0));
-pub const CPU_SUBTYPE_ARM64_V8 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 1));
-pub const CPU_SUBTYPE_ARM64E = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 2));
-pub const CPU_SUBTYPE_ARM64_PTR_AUTH_MASK = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x0f000000, .hex);
-pub inline fn CPU_SUBTYPE_ARM64_PTR_AUTH_VERSION(x: anytype) @TypeOf((x & CPU_SUBTYPE_ARM64_PTR_AUTH_MASK) >> @as(c_int, 24)) {
-    _ = &x;
-    return (x & CPU_SUBTYPE_ARM64_PTR_AUTH_MASK) >> @as(c_int, 24);
-}
-pub const CPU_SUBTYPE_ARM64_32_ALL = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 0));
-pub const CPU_SUBTYPE_ARM64_32_V8 = @import("std").zig.c_translation.cast(cpu_subtype_t, @as(c_int, 1));
-pub const CPUFAMILY_UNKNOWN = @as(c_int, 0);
-pub const CPUFAMILY_POWERPC_G3 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xcee41549, .hex);
-pub const CPUFAMILY_POWERPC_G4 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x77c184ae, .hex);
-pub const CPUFAMILY_POWERPC_G5 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xed76d8aa, .hex);
-pub const CPUFAMILY_INTEL_6_13 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xaa33392b, .hex);
-pub const CPUFAMILY_INTEL_PENRYN = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x78ea4fbc, .hex);
-pub const CPUFAMILY_INTEL_NEHALEM = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x6b5a4cd2, .hex);
-pub const CPUFAMILY_INTEL_WESTMERE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x573b5eec, .hex);
-pub const CPUFAMILY_INTEL_SANDYBRIDGE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x5490b78c, .hex);
-pub const CPUFAMILY_INTEL_IVYBRIDGE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1f65e835, .hex);
-pub const CPUFAMILY_INTEL_HASWELL = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10b282dc, .hex);
-pub const CPUFAMILY_INTEL_BROADWELL = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x582ed09c, .hex);
-pub const CPUFAMILY_INTEL_SKYLAKE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x37fc219f, .hex);
-pub const CPUFAMILY_INTEL_KABYLAKE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x0f817246, .hex);
-pub const CPUFAMILY_INTEL_ICELAKE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x38435547, .hex);
-pub const CPUFAMILY_INTEL_COMETLAKE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1cf8a03e, .hex);
-pub const CPUFAMILY_ARM_9 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xe73283ae, .hex);
-pub const CPUFAMILY_ARM_11 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x8ff620d8, .hex);
-pub const CPUFAMILY_ARM_XSCALE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x53b005f5, .hex);
-pub const CPUFAMILY_ARM_12 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xbd1b0ae9, .hex);
-pub const CPUFAMILY_ARM_13 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x0cc90e64, .hex);
-pub const CPUFAMILY_ARM_14 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x96077ef1, .hex);
-pub const CPUFAMILY_ARM_15 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xa8511bca, .hex);
-pub const CPUFAMILY_ARM_SWIFT = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1e2d6381, .hex);
-pub const CPUFAMILY_ARM_CYCLONE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x37a09642, .hex);
-pub const CPUFAMILY_ARM_TYPHOON = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x2c91a47e, .hex);
-pub const CPUFAMILY_ARM_TWISTER = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x92fb37c8, .hex);
-pub const CPUFAMILY_ARM_HURRICANE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x67ceee93, .hex);
-pub const CPUFAMILY_ARM_MONSOON_MISTRAL = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xe81e7ef6, .hex);
-pub const CPUFAMILY_ARM_VORTEX_TEMPEST = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x07d34b9f, .hex);
-pub const CPUFAMILY_ARM_LIGHTNING_THUNDER = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x462504d2, .hex);
-pub const CPUFAMILY_ARM_FIRESTORM_ICESTORM = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1b588bb3, .hex);
-pub const CPUFAMILY_ARM_BLIZZARD_AVALANCHE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xda33d83d, .hex);
-pub const CPUFAMILY_ARM_EVEREST_SAWTOOTH = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x8765edea, .hex);
-pub const CPUFAMILY_ARM_IBIZA = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xfa33415e, .hex);
-pub const CPUFAMILY_ARM_PALMA = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x72015832, .hex);
-pub const CPUFAMILY_ARM_COLL = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x2876f5b5, .hex);
-pub const CPUFAMILY_ARM_LOBOS = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x5f4dea93, .hex);
-pub const CPUFAMILY_ARM_DONAN = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x6f5129ac, .hex);
-pub const CPUFAMILY_ARM_BRAVA = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x17d5b93a, .hex);
-pub const CPUFAMILY_ARM_TAHITI = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x75d4acb9, .hex);
-pub const CPUFAMILY_ARM_TUPAI = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x204526d0, .hex);
-pub const CPUFAMILY_ARM_HIDRA = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1d5a87e8, .hex);
-pub const CPUFAMILY_ARM_SOTRA = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xf76c5b1a, .hex);
-pub const CPUFAMILY_ARM_THERA = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xab345f09, .hex);
-pub const CPUFAMILY_ARM_TILOS = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x01d7a72b, .hex);
-pub const CPUSUBFAMILY_UNKNOWN = @as(c_int, 0);
-pub const CPUSUBFAMILY_ARM_HP = @as(c_int, 1);
-pub const CPUSUBFAMILY_ARM_HG = @as(c_int, 2);
-pub const CPUSUBFAMILY_ARM_M = @as(c_int, 3);
-pub const CPUSUBFAMILY_ARM_HS = @as(c_int, 4);
-pub const CPUSUBFAMILY_ARM_HC_HD = @as(c_int, 5);
-pub const CPUSUBFAMILY_ARM_HA = @as(c_int, 6);
-pub const CPUFAMILY_INTEL_6_23 = CPUFAMILY_INTEL_PENRYN;
-pub const CPUFAMILY_INTEL_6_26 = CPUFAMILY_INTEL_NEHALEM;
-pub const _MACH_VM_PROT_H_ = "";
-pub const VM_PROT_NONE = @import("std").zig.c_translation.cast(vm_prot_t, @as(c_int, 0x00));
-pub const VM_PROT_READ = @import("std").zig.c_translation.cast(vm_prot_t, @as(c_int, 0x01));
-pub const VM_PROT_WRITE = @import("std").zig.c_translation.cast(vm_prot_t, @as(c_int, 0x02));
-pub const VM_PROT_EXECUTE = @import("std").zig.c_translation.cast(vm_prot_t, @as(c_int, 0x04));
-pub const VM_PROT_DEFAULT = VM_PROT_READ | VM_PROT_WRITE;
-pub const VM_PROT_ALL = (VM_PROT_READ | VM_PROT_WRITE) | VM_PROT_EXECUTE;
-pub const VM_PROT_NO_CHANGE_LEGACY = @import("std").zig.c_translation.cast(vm_prot_t, @as(c_int, 0x08));
-pub const VM_PROT_NO_CHANGE = @import("std").zig.c_translation.cast(vm_prot_t, @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x01000000, .hex));
-pub const VM_PROT_COPY = @import("std").zig.c_translation.cast(vm_prot_t, @as(c_int, 0x10));
-pub const VM_PROT_WANTS_COPY = @import("std").zig.c_translation.cast(vm_prot_t, @as(c_int, 0x10));
-pub const VM_PROT_IS_MASK = @import("std").zig.c_translation.cast(vm_prot_t, @as(c_int, 0x40));
-pub const VM_PROT_STRIP_READ = @import("std").zig.c_translation.cast(vm_prot_t, @as(c_int, 0x80));
-pub const VM_PROT_EXECUTE_ONLY = VM_PROT_EXECUTE | VM_PROT_STRIP_READ;
-pub const VM_PROT_TPRO = @import("std").zig.c_translation.cast(vm_prot_t, @as(c_int, 0x200));
-pub const VM_PROT_ALLEXEC = VM_PROT_EXECUTE;
-pub const _MACH_MACHINE_THREAD_STATUS_H_ = "";
-pub const _ARM_THREAD_STATUS_H_ = "";
-pub const _MACH_MACHINE_THREAD_STATE_H_ = "";
-pub const _MACH_ARM_THREAD_STATE_H_ = "";
-pub const ARM_THREAD_STATE_MAX = @as(c_int, 1296);
-pub const THREAD_STATE_MAX = @as(c_int, 1296);
-pub const _MACH_MESSAGE_H_ = "";
-pub const _BSD_MACHINE_LIMITS_H_ = "";
-pub const _ARM_LIMITS_H_ = "";
-pub const _ARM__LIMITS_H_ = "";
-pub const __DARWIN_CLK_TCK = @as(c_int, 100);
-pub const USE_CLANG_LIMITS = @as(c_int, 0);
-pub const MB_LEN_MAX = @as(c_int, 6);
-pub const CLK_TCK = __DARWIN_CLK_TCK;
-pub const CHAR_BIT = @as(c_int, 8);
-pub const SCHAR_MAX = @as(c_int, 127);
-pub const SCHAR_MIN = -@as(c_int, 128);
-pub const UCHAR_MAX = @as(c_int, 255);
-pub const CHAR_MAX = @as(c_int, 127);
-pub const CHAR_MIN = -@as(c_int, 128);
-pub const USHRT_MAX = @import("std").zig.c_translation.promoteIntLiteral(c_int, 65535, .decimal);
-pub const SHRT_MAX = @as(c_int, 32767);
-pub const SHRT_MIN = -@import("std").zig.c_translation.promoteIntLiteral(c_int, 32768, .decimal);
-pub const UINT_MAX = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xffffffff, .hex);
-pub const INT_MAX = @import("std").zig.c_translation.promoteIntLiteral(c_int, 2147483647, .decimal);
-pub const INT_MIN = -@import("std").zig.c_translation.promoteIntLiteral(c_int, 2147483647, .decimal) - @as(c_int, 1);
-pub const ULONG_MAX = @import("std").zig.c_translation.promoteIntLiteral(c_ulong, 0xffffffffffffffff, .hex);
-pub const LONG_MAX = @import("std").zig.c_translation.promoteIntLiteral(c_long, 0x7fffffffffffffff, .hex);
-pub const LONG_MIN = -@import("std").zig.c_translation.promoteIntLiteral(c_long, 0x7fffffffffffffff, .hex) - @as(c_int, 1);
-pub const ULLONG_MAX = @as(c_ulonglong, 0xffffffffffffffff);
-pub const LLONG_MAX = @as(c_longlong, 0x7fffffffffffffff);
-pub const LLONG_MIN = -@as(c_longlong, 0x7fffffffffffffff) - @as(c_int, 1);
-pub const LONG_BIT = @as(c_int, 64);
-pub const SSIZE_MAX = LONG_MAX;
-pub const WORD_BIT = @as(c_int, 32);
-pub const SIZE_T_MAX = ULONG_MAX;
-pub const UQUAD_MAX = ULLONG_MAX;
-pub const QUAD_MAX = LLONG_MAX;
-pub const QUAD_MIN = LLONG_MIN;
-pub const _MACH_PORT_H_ = "";
-pub const xnu_static_assert_struct_size = @compileError("unable to translate C expr: unexpected token '_Static_assert'");
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/port.h:100:9
-pub inline fn xnu_static_assert_struct_size_kernel_user(name: anytype, expected_kernel_size: anytype, expected_user_size: anytype) @TypeOf(xnu_static_assert_struct_size(name, expected_user_size)) {
-    _ = &name;
-    _ = &expected_kernel_size;
-    _ = &expected_user_size;
-    return xnu_static_assert_struct_size(name, expected_user_size);
-}
-pub inline fn xnu_static_assert_struct_size_kernel_user64_user32(name: anytype, _kern_size: anytype, expected_user64_size: anytype, _u32_size: anytype) @TypeOf(xnu_static_assert_struct_size(name, expected_user64_size)) {
-    _ = &name;
-    _ = &_kern_size;
-    _ = &expected_user64_size;
-    _ = &_u32_size;
-    return xnu_static_assert_struct_size(name, expected_user64_size);
-}
-pub const _MACH_PORT_T = "";
-pub const MACH_PORT_NULL = @as(c_int, 0);
-pub const MACH_PORT_DEAD = @import("std").zig.c_translation.cast(mach_port_name_t, ~@as(c_int, 0));
-pub inline fn MACH_PORT_VALID(name: anytype) @TypeOf((name != MACH_PORT_NULL) and (name != MACH_PORT_DEAD)) {
-    _ = &name;
-    return (name != MACH_PORT_NULL) and (name != MACH_PORT_DEAD);
-}
-pub inline fn MACH_PORT_INDEX(name: anytype) @TypeOf(name >> @as(c_int, 8)) {
-    _ = &name;
-    return name >> @as(c_int, 8);
-}
-pub inline fn MACH_PORT_GEN(name: anytype) @TypeOf((name & @as(c_int, 0xff)) << @as(c_int, 24)) {
-    _ = &name;
-    return (name & @as(c_int, 0xff)) << @as(c_int, 24);
-}
-pub inline fn MACH_PORT_MAKE(index_1: anytype, gen: anytype) @TypeOf((index_1 << @as(c_int, 8)) | (gen >> @as(c_int, 24))) {
-    _ = &index_1;
-    _ = &gen;
-    return (index_1 << @as(c_int, 8)) | (gen >> @as(c_int, 24));
-}
-pub const MACH_PORT_RIGHT_SEND = @import("std").zig.c_translation.cast(mach_port_right_t, @as(c_int, 0));
-pub const MACH_PORT_RIGHT_RECEIVE = @import("std").zig.c_translation.cast(mach_port_right_t, @as(c_int, 1));
-pub const MACH_PORT_RIGHT_SEND_ONCE = @import("std").zig.c_translation.cast(mach_port_right_t, @as(c_int, 2));
-pub const MACH_PORT_RIGHT_PORT_SET = @import("std").zig.c_translation.cast(mach_port_right_t, @as(c_int, 3));
-pub const MACH_PORT_RIGHT_DEAD_NAME = @import("std").zig.c_translation.cast(mach_port_right_t, @as(c_int, 4));
-pub const MACH_PORT_RIGHT_LABELH = @import("std").zig.c_translation.cast(mach_port_right_t, @as(c_int, 5));
-pub const MACH_PORT_RIGHT_NUMBER = @import("std").zig.c_translation.cast(mach_port_right_t, @as(c_int, 6));
-pub inline fn MACH_PORT_TYPE(right: anytype) mach_port_type_t {
-    _ = &right;
-    return @import("std").zig.c_translation.cast(mach_port_type_t, @import("std").zig.c_translation.cast(mach_port_type_t, @as(c_int, 1)) << (right + @import("std").zig.c_translation.cast(mach_port_right_t, @as(c_int, 16))));
-}
-pub const MACH_PORT_TYPE_NONE = @import("std").zig.c_translation.cast(mach_port_type_t, @as(c_long, 0));
-pub const MACH_PORT_TYPE_SEND = MACH_PORT_TYPE(MACH_PORT_RIGHT_SEND);
-pub const MACH_PORT_TYPE_RECEIVE = MACH_PORT_TYPE(MACH_PORT_RIGHT_RECEIVE);
-pub const MACH_PORT_TYPE_SEND_ONCE = MACH_PORT_TYPE(MACH_PORT_RIGHT_SEND_ONCE);
-pub const MACH_PORT_TYPE_PORT_SET = MACH_PORT_TYPE(MACH_PORT_RIGHT_PORT_SET);
-pub const MACH_PORT_TYPE_DEAD_NAME = MACH_PORT_TYPE(MACH_PORT_RIGHT_DEAD_NAME);
-pub const MACH_PORT_TYPE_LABELH = MACH_PORT_TYPE(MACH_PORT_RIGHT_LABELH);
-pub const MACH_PORT_TYPE_DNREQUEST = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x80000000, .hex);
-pub const MACH_PORT_TYPE_SPREQUEST = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x40000000, .hex);
-pub const MACH_PORT_TYPE_SPREQUEST_DELAYED = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x20000000, .hex);
-pub const MACH_PORT_TYPE_SEND_RECEIVE = MACH_PORT_TYPE_SEND | MACH_PORT_TYPE_RECEIVE;
-pub const MACH_PORT_TYPE_SEND_RIGHTS = MACH_PORT_TYPE_SEND | MACH_PORT_TYPE_SEND_ONCE;
-pub const MACH_PORT_TYPE_PORT_RIGHTS = MACH_PORT_TYPE_SEND_RIGHTS | MACH_PORT_TYPE_RECEIVE;
-pub const MACH_PORT_TYPE_PORT_OR_DEAD = MACH_PORT_TYPE_PORT_RIGHTS | MACH_PORT_TYPE_DEAD_NAME;
-pub const MACH_PORT_TYPE_ALL_RIGHTS = MACH_PORT_TYPE_PORT_OR_DEAD | MACH_PORT_TYPE_PORT_SET;
-pub const MACH_PORT_SRIGHTS_NONE = @as(c_int, 0);
-pub const MACH_PORT_SRIGHTS_PRESENT = @as(c_int, 1);
-pub const MACH_PORT_QLIMIT_ZERO = @as(c_int, 0);
-pub const MACH_PORT_QLIMIT_BASIC = @as(c_int, 5);
-pub const MACH_PORT_QLIMIT_SMALL = @as(c_int, 16);
-pub const MACH_PORT_QLIMIT_LARGE = @as(c_int, 1024);
-pub const MACH_PORT_QLIMIT_KERNEL = @import("std").zig.c_translation.promoteIntLiteral(c_int, 65534, .decimal);
-pub const MACH_PORT_QLIMIT_MIN = MACH_PORT_QLIMIT_ZERO;
-pub const MACH_PORT_QLIMIT_DEFAULT = MACH_PORT_QLIMIT_BASIC;
-pub const MACH_PORT_QLIMIT_MAX = MACH_PORT_QLIMIT_LARGE;
-pub const MACH_PORT_STATUS_FLAG_TEMPOWNER = @as(c_int, 0x01);
-pub const MACH_PORT_STATUS_FLAG_GUARDED = @as(c_int, 0x02);
-pub const MACH_PORT_STATUS_FLAG_STRICT_GUARD = @as(c_int, 0x04);
-pub const MACH_PORT_STATUS_FLAG_IMP_DONATION = @as(c_int, 0x08);
-pub const MACH_PORT_STATUS_FLAG_REVIVE = @as(c_int, 0x10);
-pub const MACH_PORT_STATUS_FLAG_TASKPTR = @as(c_int, 0x20);
-pub const MACH_PORT_STATUS_FLAG_GUARD_IMMOVABLE_RECEIVE = @as(c_int, 0x40);
-pub const MACH_PORT_STATUS_FLAG_NO_GRANT = @as(c_int, 0x80);
-pub const MACH_PORT_LIMITS_INFO = @as(c_int, 1);
-pub const MACH_PORT_RECEIVE_STATUS = @as(c_int, 2);
-pub const MACH_PORT_DNREQUESTS_SIZE = @as(c_int, 3);
-pub const MACH_PORT_TEMPOWNER = @as(c_int, 4);
-pub const MACH_PORT_IMPORTANCE_RECEIVER = @as(c_int, 5);
-pub const MACH_PORT_DENAP_RECEIVER = @as(c_int, 6);
-pub const MACH_PORT_INFO_EXT = @as(c_int, 7);
-pub const MACH_PORT_GUARD_INFO = @as(c_int, 8);
-pub const MACH_PORT_SERVICE_THROTTLED = @as(c_int, 9);
-pub const MACH_PORT_LIMITS_INFO_COUNT = @import("std").zig.c_translation.cast(natural_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(mach_port_limits_t), @import("std").zig.c_translation.sizeof(natural_t)));
-pub const MACH_PORT_RECEIVE_STATUS_COUNT = @import("std").zig.c_translation.cast(natural_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(mach_port_status_t), @import("std").zig.c_translation.sizeof(natural_t)));
-pub const MACH_PORT_DNREQUESTS_SIZE_COUNT = @as(c_int, 1);
-pub const MACH_PORT_INFO_EXT_COUNT = @import("std").zig.c_translation.cast(natural_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(mach_port_info_ext_t), @import("std").zig.c_translation.sizeof(natural_t)));
-pub const MACH_PORT_GUARD_INFO_COUNT = @import("std").zig.c_translation.cast(natural_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(mach_port_guard_info_t), @import("std").zig.c_translation.sizeof(natural_t)));
-pub const MACH_PORT_SERVICE_THROTTLED_COUNT = @as(c_int, 1);
-pub const MACH_SERVICE_PORT_INFO_STRING_NAME_MAX_BUF_LEN = @as(c_int, 255);
-pub const MACH_SERVICE_PORT_INFO_COUNT = @import("std").zig.c_translation.cast(u8, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(mach_service_port_info_data_t), @import("std").zig.c_translation.sizeof(u8)));
-pub const MACH_PORT_CONNECTION_PORT_WITH_PORT_ARRAY = "com.apple.developer.allow-connection-port-with-port-array";
-pub const MACH_PORT_WEAK_REPLY_ENTITLEMENT = "com.apple.private.allow-weak-reply-port";
-pub const MPO_CONTEXT_AS_GUARD = @as(c_int, 0x01);
-pub const MPO_QLIMIT = @as(c_int, 0x02);
-pub const MPO_TEMPOWNER = @as(c_int, 0x04);
-pub const MPO_IMPORTANCE_RECEIVER = @as(c_int, 0x08);
-pub const MPO_INSERT_SEND_RIGHT = @as(c_int, 0x10);
-pub const MPO_STRICT = @as(c_int, 0x20);
-pub const MPO_DENAP_RECEIVER = @as(c_int, 0x40);
-pub const MPO_IMMOVABLE_RECEIVE = @as(c_int, 0x80);
-pub const MPO_FILTER_MSG = @as(c_int, 0x100);
-pub const MPO_TG_BLOCK_TRACKING = @as(c_int, 0x200);
-pub const MPO_ENFORCE_REPLY_PORT_SEMANTICS = @as(c_int, 0x2000);
-pub const MPO_STRICT_SERVICE_PORT = MPO_SERVICE_PORT | MPO_ENFORCE_REPLY_PORT_SEMANTICS;
-pub const MPO_OPTIONS_MASK = (((((((((MPO_CONTEXT_AS_GUARD | MPO_QLIMIT) | MPO_TEMPOWNER) | MPO_IMPORTANCE_RECEIVER) | MPO_INSERT_SEND_RIGHT) | MPO_STRICT) | MPO_DENAP_RECEIVER) | MPO_IMMOVABLE_RECEIVE) | MPO_FILTER_MSG) | MPO_TG_BLOCK_TRACKING) | MPO_ENFORCE_REPLY_PORT_SEMANTICS;
-pub inline fn MPO_MAKE_PORT_TYPE(a: anytype, b: anytype) @TypeOf(((a & @as(c_int, 0x7)) << @as(c_int, 14)) | ((b & @as(c_int, 0x7)) << @as(c_int, 10))) {
-    _ = &a;
-    _ = &b;
-    return ((a & @as(c_int, 0x7)) << @as(c_int, 14)) | ((b & @as(c_int, 0x7)) << @as(c_int, 10));
-}
-pub const MPO_PORT_TYPE_MASK = MPO_MAKE_PORT_TYPE(@as(c_int, 0x7), @as(c_int, 0x7));
-pub const MPO_PROVISIONAL_REPLY_PORT = MPO_WEAK_REPLY_PORT;
-pub const MPO_UNUSED_BITS = ~(MPO_OPTIONS_MASK | MPO_PORT_TYPE_MASK);
-pub const MPO_ANONYMOUS_SERVICE = MACH_PORT_DEAD - @as(c_int, 1);
-pub const GUARD_TYPE_MACH_PORT = @as(c_int, 0x1);
-pub const MAX_FATAL_kGUARD_EXC_CODE = kGUARD_EXC_MSG_FILTERED;
-pub const MAX_OPTIONAL_kGUARD_EXC_CODE = kGUARD_EXC_RCV_INVALID_NAME;
-pub const kGUARD_EXC_PROVISIONAL_REPLY_PORT = kGUARD_EXC_WEAK_REPLY_PORT;
-pub const kGUARD_EXC_MOVE_PROVISIONAL_REPLY_PORT = kGUARD_EXC_MOVE_WEAK_REPLY_PORT;
-pub const MPG_FLAGS_NONE = @as(c_int, 0x00);
-pub const MPG_FLAGS_STRICT_REPLY_INVALID_VOUCHER = @as(c_int, 0x04);
-pub const MPG_FLAGS_STRICT_REPLY_MISMATCHED_PERSONA = @as(c_int, 0x10);
-pub const MPG_FLAGS_MOD_REFS_PINNED_DEALLOC = @as(c_int, 0x01);
-pub const MPG_FLAGS_MOD_REFS_PINNED_DESTROY = @as(c_int, 0x02);
-pub const MPG_FLAGS_MOD_REFS_PINNED_COPYIN = @as(c_int, 0x03);
-pub const MPG_FLAGS_INVALID_RIGHT_RECV = @as(c_int, 0x01);
-pub const MPG_FLAGS_INVALID_RIGHT_DELTA = @as(c_int, 0x02);
-pub const MPG_FLAGS_INVALID_RIGHT_DESTRUCT = @as(c_int, 0x03);
-pub const MPG_FLAGS_INVALID_RIGHT_COPYIN = @as(c_int, 0x04);
-pub const MPG_FLAGS_INVALID_RIGHT_DEALLOC = @as(c_int, 0x05);
-pub const MPG_FLAGS_INVALID_RIGHT_DEALLOC_KERNEL = @as(c_int, 0x06);
-pub const MPG_FLAGS_INVALID_RIGHT_TRANSLATE_PORT = @as(c_int, 0x07);
-pub const MPG_FLAGS_INVALID_RIGHT_TRANSLATE_PSET = @as(c_int, 0x08);
-pub const MPG_FLAGS_INVALID_VALUE_PEEK = @as(c_int, 0x01);
-pub const MPG_FLAGS_INVALID_VALUE_DELTA = @as(c_int, 0x02);
-pub const MPG_FLAGS_INVALID_VALUE_DESTRUCT = @as(c_int, 0x03);
-pub const MPG_FLAGS_KERN_FAILURE_TASK = @as(c_int, 0x01);
-pub const MPG_FLAGS_KERN_FAILURE_NOTIFY_TYPE = @as(c_int, 0x02);
-pub const MPG_FLAGS_KERN_FAILURE_NOTIFY_RECV = @as(c_int, 0x03);
-pub const MPG_FLAGS_KERN_FAILURE_MULTI_NOTI = @as(c_int, 0x04);
-pub const MPG_FLAGS_SEND_INVALID_RIGHT_PORT = @as(c_int, 0x01);
-pub const MPG_FLAGS_SEND_INVALID_RIGHT_OOL_PORT = @as(c_int, 0x02);
-pub const MPG_FLAGS_SEND_INVALID_RIGHT_GUARDED = @as(c_int, 0x03);
-pub const MPG_FLAGS_INVALID_OPTIONS_OOL_DISP = @as(c_int, 0x01);
-pub const MPG_FLAGS_INVALID_OPTIONS_OOL_ARRAYS = @as(c_int, 0x02);
-pub const MPG_FLAGS_INVALID_OPTIONS_OOL_RIGHT = @as(c_int, 0x03);
-pub const MPG_STRICT = @as(c_int, 0x01);
-pub const MPG_IMMOVABLE_RECEIVE = @as(c_int, 0x02);
-pub const _MACH_KERN_RETURN_H_ = "";
-pub const _MACH_MACHINE_KERN_RETURN_H_ = "";
-pub const _MACH_ARM_KERN_RETURN_H_ = "";
-pub const KERN_SUCCESS = @as(c_int, 0);
-pub const KERN_INVALID_ADDRESS = @as(c_int, 1);
-pub const KERN_PROTECTION_FAILURE = @as(c_int, 2);
-pub const KERN_NO_SPACE = @as(c_int, 3);
-pub const KERN_INVALID_ARGUMENT = @as(c_int, 4);
-pub const KERN_FAILURE = @as(c_int, 5);
-pub const KERN_RESOURCE_SHORTAGE = @as(c_int, 6);
-pub const KERN_NOT_RECEIVER = @as(c_int, 7);
-pub const KERN_NO_ACCESS = @as(c_int, 8);
-pub const KERN_MEMORY_FAILURE = @as(c_int, 9);
-pub const KERN_MEMORY_ERROR = @as(c_int, 10);
-pub const KERN_ALREADY_IN_SET = @as(c_int, 11);
-pub const KERN_NOT_IN_SET = @as(c_int, 12);
-pub const KERN_NAME_EXISTS = @as(c_int, 13);
-pub const KERN_ABORTED = @as(c_int, 14);
-pub const KERN_INVALID_NAME = @as(c_int, 15);
-pub const KERN_INVALID_TASK = @as(c_int, 16);
-pub const KERN_INVALID_RIGHT = @as(c_int, 17);
-pub const KERN_INVALID_VALUE = @as(c_int, 18);
-pub const KERN_UREFS_OVERFLOW = @as(c_int, 19);
-pub const KERN_INVALID_CAPABILITY = @as(c_int, 20);
-pub const KERN_RIGHT_EXISTS = @as(c_int, 21);
-pub const KERN_INVALID_HOST = @as(c_int, 22);
-pub const KERN_MEMORY_PRESENT = @as(c_int, 23);
-pub const KERN_MEMORY_DATA_MOVED = @as(c_int, 24);
-pub const KERN_MEMORY_RESTART_COPY = @as(c_int, 25);
-pub const KERN_INVALID_PROCESSOR_SET = @as(c_int, 26);
-pub const KERN_POLICY_LIMIT = @as(c_int, 27);
-pub const KERN_INVALID_POLICY = @as(c_int, 28);
-pub const KERN_INVALID_OBJECT = @as(c_int, 29);
-pub const KERN_ALREADY_WAITING = @as(c_int, 30);
-pub const KERN_DEFAULT_SET = @as(c_int, 31);
-pub const KERN_EXCEPTION_PROTECTED = @as(c_int, 32);
-pub const KERN_INVALID_LEDGER = @as(c_int, 33);
-pub const KERN_INVALID_MEMORY_CONTROL = @as(c_int, 34);
-pub const KERN_INVALID_SECURITY = @as(c_int, 35);
-pub const KERN_NOT_DEPRESSED = @as(c_int, 36);
-pub const KERN_TERMINATED = @as(c_int, 37);
-pub const KERN_LOCK_SET_DESTROYED = @as(c_int, 38);
-pub const KERN_LOCK_UNSTABLE = @as(c_int, 39);
-pub const KERN_LOCK_OWNED = @as(c_int, 40);
-pub const KERN_LOCK_OWNED_SELF = @as(c_int, 41);
-pub const KERN_SEMAPHORE_DESTROYED = @as(c_int, 42);
-pub const KERN_RPC_SERVER_TERMINATED = @as(c_int, 43);
-pub const KERN_RPC_TERMINATE_ORPHAN = @as(c_int, 44);
-pub const KERN_RPC_CONTINUE_ORPHAN = @as(c_int, 45);
-pub const KERN_NOT_SUPPORTED = @as(c_int, 46);
-pub const KERN_NODE_DOWN = @as(c_int, 47);
-pub const KERN_NOT_WAITING = @as(c_int, 48);
-pub const KERN_OPERATION_TIMED_OUT = @as(c_int, 49);
-pub const KERN_CODESIGN_ERROR = @as(c_int, 50);
-pub const KERN_POLICY_STATIC = @as(c_int, 51);
-pub const KERN_INSUFFICIENT_BUFFER_SIZE = @as(c_int, 52);
-pub const KERN_DENIED = @as(c_int, 53);
-pub const KERN_MISSING_KC = @as(c_int, 54);
-pub const KERN_INVALID_KC = @as(c_int, 55);
-pub const KERN_NOT_FOUND = @as(c_int, 56);
-pub const KERN_INVALID_GUARD_OBJECT_SLOT = @as(c_int, 57);
-pub const KERN_RETURN_MAX = @as(c_int, 0x100);
-pub const MACH_MSG_TIMEOUT_NONE = @import("std").zig.c_translation.cast(mach_msg_timeout_t, @as(c_int, 0));
-pub const MACH_MSGH_BITS_ZERO = @as(c_int, 0x00000000);
-pub const MACH_MSGH_BITS_REMOTE_MASK = @as(c_int, 0x0000001f);
-pub const MACH_MSGH_BITS_LOCAL_MASK = @as(c_int, 0x00001f00);
-pub const MACH_MSGH_BITS_VOUCHER_MASK = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x001f0000, .hex);
-pub const MACH_MSGH_BITS_PORTS_MASK = (MACH_MSGH_BITS_REMOTE_MASK | MACH_MSGH_BITS_LOCAL_MASK) | MACH_MSGH_BITS_VOUCHER_MASK;
-pub const MACH_MSGH_BITS_COMPLEX = @import("std").zig.c_translation.promoteIntLiteral(c_uint, 0x80000000, .hex);
-pub const MACH_MSGH_BITS_USER = @import("std").zig.c_translation.promoteIntLiteral(c_uint, 0x801f1f1f, .hex);
-pub const MACH_MSGH_BITS_RAISEIMP = @import("std").zig.c_translation.promoteIntLiteral(c_uint, 0x20000000, .hex);
-pub const MACH_MSGH_BITS_DENAP = MACH_MSGH_BITS_RAISEIMP;
-pub const MACH_MSGH_BITS_IMPHOLDASRT = @import("std").zig.c_translation.promoteIntLiteral(c_uint, 0x10000000, .hex);
-pub const MACH_MSGH_BITS_DENAPHOLDASRT = MACH_MSGH_BITS_IMPHOLDASRT;
-pub const MACH_MSGH_BITS_CIRCULAR = @import("std").zig.c_translation.promoteIntLiteral(c_uint, 0x10000000, .hex);
-pub const MACH_MSGH_BITS_USED = @import("std").zig.c_translation.promoteIntLiteral(c_uint, 0xb01f1f1f, .hex);
-pub inline fn MACH_MSGH_BITS(remote: anytype, local: anytype) @TypeOf(remote | (local << @as(c_int, 8))) {
-    _ = &remote;
-    _ = &local;
-    return remote | (local << @as(c_int, 8));
-}
-pub inline fn MACH_MSGH_BITS_SET_PORTS(remote: anytype, local: anytype, voucher: anytype) @TypeOf(((remote & MACH_MSGH_BITS_REMOTE_MASK) | ((local << @as(c_int, 8)) & MACH_MSGH_BITS_LOCAL_MASK)) | ((voucher << @as(c_int, 16)) & MACH_MSGH_BITS_VOUCHER_MASK)) {
-    _ = &remote;
-    _ = &local;
-    _ = &voucher;
-    return ((remote & MACH_MSGH_BITS_REMOTE_MASK) | ((local << @as(c_int, 8)) & MACH_MSGH_BITS_LOCAL_MASK)) | ((voucher << @as(c_int, 16)) & MACH_MSGH_BITS_VOUCHER_MASK);
-}
-pub inline fn MACH_MSGH_BITS_SET(remote: anytype, local: anytype, voucher: anytype, other: anytype) @TypeOf(MACH_MSGH_BITS_SET_PORTS(remote, local, voucher) | (other & ~MACH_MSGH_BITS_PORTS_MASK)) {
-    _ = &remote;
-    _ = &local;
-    _ = &voucher;
-    _ = &other;
-    return MACH_MSGH_BITS_SET_PORTS(remote, local, voucher) | (other & ~MACH_MSGH_BITS_PORTS_MASK);
-}
-pub inline fn MACH_MSGH_BITS_REMOTE(bits: anytype) @TypeOf(bits & MACH_MSGH_BITS_REMOTE_MASK) {
-    _ = &bits;
-    return bits & MACH_MSGH_BITS_REMOTE_MASK;
-}
-pub inline fn MACH_MSGH_BITS_LOCAL(bits: anytype) @TypeOf((bits & MACH_MSGH_BITS_LOCAL_MASK) >> @as(c_int, 8)) {
-    _ = &bits;
-    return (bits & MACH_MSGH_BITS_LOCAL_MASK) >> @as(c_int, 8);
-}
-pub inline fn MACH_MSGH_BITS_VOUCHER(bits: anytype) @TypeOf((bits & MACH_MSGH_BITS_VOUCHER_MASK) >> @as(c_int, 16)) {
-    _ = &bits;
-    return (bits & MACH_MSGH_BITS_VOUCHER_MASK) >> @as(c_int, 16);
-}
-pub inline fn MACH_MSGH_BITS_PORTS(bits: anytype) @TypeOf(bits & MACH_MSGH_BITS_PORTS_MASK) {
-    _ = &bits;
-    return bits & MACH_MSGH_BITS_PORTS_MASK;
-}
-pub inline fn MACH_MSGH_BITS_OTHER(bits: anytype) @TypeOf(bits & ~MACH_MSGH_BITS_PORTS_MASK) {
-    _ = &bits;
-    return bits & ~MACH_MSGH_BITS_PORTS_MASK;
-}
-pub inline fn MACH_MSGH_BITS_HAS_REMOTE(bits: anytype) @TypeOf(MACH_MSGH_BITS_REMOTE(bits) != MACH_MSGH_BITS_ZERO) {
-    _ = &bits;
-    return MACH_MSGH_BITS_REMOTE(bits) != MACH_MSGH_BITS_ZERO;
-}
-pub inline fn MACH_MSGH_BITS_HAS_LOCAL(bits: anytype) @TypeOf(MACH_MSGH_BITS_LOCAL(bits) != MACH_MSGH_BITS_ZERO) {
-    _ = &bits;
-    return MACH_MSGH_BITS_LOCAL(bits) != MACH_MSGH_BITS_ZERO;
-}
-pub inline fn MACH_MSGH_BITS_HAS_VOUCHER(bits: anytype) @TypeOf(MACH_MSGH_BITS_VOUCHER(bits) != MACH_MSGH_BITS_ZERO) {
-    _ = &bits;
-    return MACH_MSGH_BITS_VOUCHER(bits) != MACH_MSGH_BITS_ZERO;
-}
-pub inline fn MACH_MSGH_BITS_IS_COMPLEX(bits: anytype) @TypeOf((bits & MACH_MSGH_BITS_COMPLEX) != MACH_MSGH_BITS_ZERO) {
-    _ = &bits;
-    return (bits & MACH_MSGH_BITS_COMPLEX) != MACH_MSGH_BITS_ZERO;
-}
-pub inline fn MACH_MSGH_BITS_RAISED_IMPORTANCE(bits: anytype) @TypeOf((bits & MACH_MSGH_BITS_RAISEIMP) != MACH_MSGH_BITS_ZERO) {
-    _ = &bits;
-    return (bits & MACH_MSGH_BITS_RAISEIMP) != MACH_MSGH_BITS_ZERO;
-}
-pub inline fn MACH_MSGH_BITS_HOLDS_IMPORTANCE_ASSERTION(bits: anytype) @TypeOf((bits & MACH_MSGH_BITS_IMPHOLDASRT) != MACH_MSGH_BITS_ZERO) {
-    _ = &bits;
-    return (bits & MACH_MSGH_BITS_IMPHOLDASRT) != MACH_MSGH_BITS_ZERO;
-}
-pub const MACH_MSG_SIZE_NULL = @import("std").zig.c_translation.cast([*c]mach_msg_size_t, @as(c_int, 0));
-pub const MACH_MSG_PRIORITY_UNSPECIFIED = @import("std").zig.c_translation.cast(mach_msg_priority_t, @as(c_int, 0));
-pub const MACH_MSG_TYPE_MOVE_RECEIVE = @as(c_int, 16);
-pub const MACH_MSG_TYPE_MOVE_SEND = @as(c_int, 17);
-pub const MACH_MSG_TYPE_MOVE_SEND_ONCE = @as(c_int, 18);
-pub const MACH_MSG_TYPE_COPY_SEND = @as(c_int, 19);
-pub const MACH_MSG_TYPE_MAKE_SEND = @as(c_int, 20);
-pub const MACH_MSG_TYPE_MAKE_SEND_ONCE = @as(c_int, 21);
-pub const MACH_MSG_TYPE_COPY_RECEIVE = @as(c_int, 22);
-pub const MACH_MSG_TYPE_DISPOSE_RECEIVE = @as(c_int, 24);
-pub const MACH_MSG_TYPE_DISPOSE_SEND = @as(c_int, 25);
-pub const MACH_MSG_TYPE_DISPOSE_SEND_ONCE = @as(c_int, 26);
-pub const MACH_MSG_PHYSICAL_COPY = @as(c_int, 0);
-pub const MACH_MSG_VIRTUAL_COPY = @as(c_int, 1);
-pub const MACH_MSG_ALLOCATE = @as(c_int, 2);
-pub const MACH_MSG_OVERWRITE = @as(c_int, 3);
-pub const MACH_MSG_GUARD_FLAGS_NONE = @as(c_int, 0x0000);
-pub const MACH_MSG_GUARD_FLAGS_IMMOVABLE_RECEIVE = @as(c_int, 0x0001);
-pub const MACH_MSG_GUARD_FLAGS_UNGUARDED_ON_SEND = @as(c_int, 0x0002);
-pub const MACH_MSG_GUARD_FLAGS_MASK = @as(c_int, 0x0003);
-pub const MACH_MSG_PORT_DESCRIPTOR = @as(c_int, 0);
-pub const MACH_MSG_OOL_DESCRIPTOR = @as(c_int, 1);
-pub const MACH_MSG_OOL_PORTS_DESCRIPTOR = @as(c_int, 2);
-pub const MACH_MSG_OOL_VOLATILE_DESCRIPTOR = @as(c_int, 3);
-pub const MACH_MSG_GUARDED_PORT_DESCRIPTOR = @as(c_int, 4);
-pub const MACH_MSG_DESCRIPTOR_MAX = MACH_MSG_GUARDED_PORT_DESCRIPTOR;
-pub const __ipc_desc_sign = @compileError("unable to translate C expr: unexpected token ''");
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:289:9
-pub const MACH_MSG_BODY_NULL = @import("std").zig.c_translation.cast([*c]mach_msg_body_t, @as(c_int, 0));
-pub const MACH_MSG_DESCRIPTOR_NULL = @import("std").zig.c_translation.cast([*c]mach_msg_descriptor_t, @as(c_int, 0));
-pub const msgh_reserved = @compileError("unable to translate macro: undefined identifier `msgh_voucher_port`");
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:446:9
-pub const MACH_MSG_NULL = @import("std").zig.c_translation.cast([*c]mach_msg_header_t, @as(c_int, 0));
-pub const MACH_MSG_TRAILER_FORMAT_0 = @as(c_int, 0);
-pub const INVALID_AUDIT_TOKEN_VALUE = @compileError("unable to translate C expr: unexpected token '{'");
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:522:9
-pub const MACH_MSG_FILTER_POLICY_ALLOW = @import("std").zig.c_translation.cast(mach_msg_filter_id, @as(c_int, 0));
-pub const MACH_MSG_TRAILER_MINIMUM_SIZE = @import("std").zig.c_translation.sizeof(mach_msg_trailer_t);
-pub const MAX_TRAILER_SIZE = @import("std").zig.c_translation.cast(mach_msg_size_t, @import("std").zig.c_translation.sizeof(mach_msg_max_trailer_t));
-pub const MACH_MSG_TRAILER_FORMAT_0_SIZE = @import("std").zig.c_translation.sizeof(mach_msg_format_0_trailer_t);
-pub const KERNEL_SECURITY_TOKEN_VALUE = @compileError("unable to translate C expr: unexpected token '{'");
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:601:11
-pub const KERNEL_AUDIT_TOKEN_VALUE = @compileError("unable to translate C expr: unexpected token '{'");
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:604:11
-pub const MACH_MSG_HEADER_EMPTY = @compileError("unable to translate C expr: unexpected token '}'");
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:609:9
-pub inline fn round_msg(x: anytype) @TypeOf(((@import("std").zig.c_translation.cast(mach_msg_size_t, x) + @import("std").zig.c_translation.sizeof(natural_t)) - @as(c_int, 1)) & ~(@import("std").zig.c_translation.sizeof(natural_t) - @as(c_int, 1))) {
-    _ = &x;
-    return ((@import("std").zig.c_translation.cast(mach_msg_size_t, x) + @import("std").zig.c_translation.sizeof(natural_t)) - @as(c_int, 1)) & ~(@import("std").zig.c_translation.sizeof(natural_t) - @as(c_int, 1));
-}
-pub const MACH_MSG_SIZE_MAX = @import("std").zig.c_translation.cast(mach_msg_size_t, ~@as(c_int, 0));
-pub const MACH_MSG_SIZE_RELIABLE = @import("std").zig.c_translation.cast(mach_msg_size_t, @as(c_int, 256)) * @as(c_int, 1024);
-pub const MACH_MSGH_KIND_NORMAL = @as(c_int, 0x00000000);
-pub const MACH_MSGH_KIND_NOTIFICATION = @as(c_int, 0x00000001);
-pub const msgh_kind = @compileError("unable to translate macro: undefined identifier `msgh_seqno`");
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/message.h:654:9
-pub const mach_msg_kind_t = mach_port_seqno_t;
-pub const MACH_MSG_TYPE_PORT_NONE = @as(c_int, 0);
-pub const MACH_MSG_TYPE_PORT_NAME = @as(c_int, 15);
-pub const MACH_MSG_TYPE_PORT_RECEIVE = MACH_MSG_TYPE_MOVE_RECEIVE;
-pub const MACH_MSG_TYPE_PORT_SEND = MACH_MSG_TYPE_MOVE_SEND;
-pub const MACH_MSG_TYPE_PORT_SEND_ONCE = MACH_MSG_TYPE_MOVE_SEND_ONCE;
-pub const MACH_MSG_TYPE_LAST = @as(c_int, 22);
-pub const MACH_MSG_TYPE_POLYMORPHIC = @import("std").zig.c_translation.cast(mach_msg_type_name_t, -@as(c_int, 1));
-pub inline fn MACH_MSG_TYPE_PORT_ANY(x: anytype) @TypeOf((x >= MACH_MSG_TYPE_MOVE_RECEIVE) and (x <= MACH_MSG_TYPE_MAKE_SEND_ONCE)) {
-    _ = &x;
-    return (x >= MACH_MSG_TYPE_MOVE_RECEIVE) and (x <= MACH_MSG_TYPE_MAKE_SEND_ONCE);
-}
-pub inline fn MACH_MSG_TYPE_PORT_ANY_SEND(x: anytype) @TypeOf((x >= MACH_MSG_TYPE_MOVE_SEND) and (x <= MACH_MSG_TYPE_MAKE_SEND_ONCE)) {
-    _ = &x;
-    return (x >= MACH_MSG_TYPE_MOVE_SEND) and (x <= MACH_MSG_TYPE_MAKE_SEND_ONCE);
-}
-pub inline fn MACH_MSG_TYPE_PORT_ANY_SEND_ONCE(x: anytype) @TypeOf((x == MACH_MSG_TYPE_MOVE_SEND_ONCE) or (x == MACH_MSG_TYPE_MAKE_SEND_ONCE)) {
-    _ = &x;
-    return (x == MACH_MSG_TYPE_MOVE_SEND_ONCE) or (x == MACH_MSG_TYPE_MAKE_SEND_ONCE);
-}
-pub inline fn MACH_MSG_TYPE_PORT_ANY_RIGHT(x: anytype) @TypeOf((x >= MACH_MSG_TYPE_MOVE_RECEIVE) and (x <= MACH_MSG_TYPE_MOVE_SEND_ONCE)) {
-    _ = &x;
-    return (x >= MACH_MSG_TYPE_MOVE_RECEIVE) and (x <= MACH_MSG_TYPE_MOVE_SEND_ONCE);
-}
-pub const MACH_MSG_OPTION_NONE = @as(c_int, 0x00000000);
-pub const MACH_SEND_MSG = @as(c_int, 0x00000001);
-pub const MACH_RCV_MSG = @as(c_int, 0x00000002);
-pub const MACH_RCV_LARGE = @as(c_int, 0x00000004);
-pub const MACH_RCV_LARGE_IDENTITY = @as(c_int, 0x00000008);
-pub const MACH_SEND_TIMEOUT = @as(c_int, 0x00000010);
-pub const MACH_SEND_OVERRIDE = @as(c_int, 0x00000020);
-pub const MACH_SEND_INTERRUPT = @as(c_int, 0x00000040);
-pub const MACH_SEND_NOTIFY = @as(c_int, 0x00000080);
-pub const MACH_SEND_ALWAYS = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x00010000, .hex);
-pub const MACH_SEND_FILTER_NONFATAL = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x00010000, .hex);
-pub const MACH_SEND_TRAILER = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x00020000, .hex);
-pub const MACH_SEND_NOIMPORTANCE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x00040000, .hex);
-pub const MACH_SEND_NODENAP = MACH_SEND_NOIMPORTANCE;
-pub const MACH_SEND_IMPORTANCE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x00080000, .hex);
-pub const MACH_SEND_SYNC_OVERRIDE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x00100000, .hex);
-pub const MACH_SEND_PROPAGATE_QOS = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x00200000, .hex);
-pub const MACH_SEND_SYNC_USE_THRPRI = MACH_SEND_PROPAGATE_QOS;
-pub const MACH_SEND_KERNEL = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x00400000, .hex);
-pub const MACH_SEND_SYNC_BOOTSTRAP_CHECKIN = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x00800000, .hex);
-pub const MACH_RCV_TIMEOUT = @as(c_int, 0x00000100);
-pub const MACH_RCV_NOTIFY = @as(c_int, 0x00000000);
-pub const MACH_RCV_INTERRUPT = @as(c_int, 0x00000400);
-pub const MACH_RCV_VOUCHER = @as(c_int, 0x00000800);
-pub const MACH_RCV_OVERWRITE = @as(c_int, 0x00000000);
-pub const MACH_RCV_GUARDED_DESC = @as(c_int, 0x00001000);
-pub const MACH_RCV_SYNC_WAIT = @as(c_int, 0x00004000);
-pub const MACH_RCV_SYNC_PEEK = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x00008000, .hex);
-pub const MACH_MSG_STRICT_REPLY = @as(c_int, 0x00000200);
-pub const MACH_RCV_TRAILER_NULL = @as(c_int, 0);
-pub const MACH_RCV_TRAILER_SEQNO = @as(c_int, 1);
-pub const MACH_RCV_TRAILER_SENDER = @as(c_int, 2);
-pub const MACH_RCV_TRAILER_AUDIT = @as(c_int, 3);
-pub const MACH_RCV_TRAILER_CTX = @as(c_int, 4);
-pub const MACH_RCV_TRAILER_AV = @as(c_int, 7);
-pub const MACH_RCV_TRAILER_LABELS = @as(c_int, 8);
-pub inline fn MACH_RCV_TRAILER_TYPE(x: anytype) @TypeOf((x & @as(c_int, 0xf)) << @as(c_int, 28)) {
-    _ = &x;
-    return (x & @as(c_int, 0xf)) << @as(c_int, 28);
-}
-pub inline fn MACH_RCV_TRAILER_ELEMENTS(x: anytype) @TypeOf((x & @as(c_int, 0xf)) << @as(c_int, 24)) {
-    _ = &x;
-    return (x & @as(c_int, 0xf)) << @as(c_int, 24);
-}
-pub const MACH_RCV_TRAILER_MASK = @as(c_int, 0xf) << @as(c_int, 24);
-pub inline fn GET_RCV_ELEMENTS(y: anytype) @TypeOf((y >> @as(c_int, 24)) & @as(c_int, 0xf)) {
-    _ = &y;
-    return (y >> @as(c_int, 24)) & @as(c_int, 0xf);
-}
-pub inline fn REQUESTED_TRAILER_SIZE_NATIVE(y: anytype) mach_msg_trailer_size_t {
-    _ = &y;
-    return @import("std").zig.c_translation.cast(mach_msg_trailer_size_t, if (GET_RCV_ELEMENTS(y) == MACH_RCV_TRAILER_NULL) @import("std").zig.c_translation.sizeof(mach_msg_trailer_t) else if (GET_RCV_ELEMENTS(y) == MACH_RCV_TRAILER_SEQNO) @import("std").zig.c_translation.sizeof(mach_msg_seqno_trailer_t) else if (GET_RCV_ELEMENTS(y) == MACH_RCV_TRAILER_SENDER) @import("std").zig.c_translation.sizeof(mach_msg_security_trailer_t) else if (GET_RCV_ELEMENTS(y) == MACH_RCV_TRAILER_AUDIT) @import("std").zig.c_translation.sizeof(mach_msg_audit_trailer_t) else if (GET_RCV_ELEMENTS(y) == MACH_RCV_TRAILER_CTX) @import("std").zig.c_translation.sizeof(mach_msg_context_trailer_t) else if (GET_RCV_ELEMENTS(y) == MACH_RCV_TRAILER_AV) @import("std").zig.c_translation.sizeof(mach_msg_mac_trailer_t) else @import("std").zig.c_translation.sizeof(mach_msg_max_trailer_t));
-}
-pub inline fn REQUESTED_TRAILER_SIZE(y: anytype) @TypeOf(REQUESTED_TRAILER_SIZE_NATIVE(y)) {
-    _ = &y;
-    return REQUESTED_TRAILER_SIZE_NATIVE(y);
-}
-pub const MACH_MSG_SUCCESS = @as(c_int, 0x00000000);
-pub const MACH_MSG_MASK = @as(c_int, 0x00003e00);
-pub const MACH_MSG_IPC_SPACE = @as(c_int, 0x00002000);
-pub const MACH_MSG_VM_SPACE = @as(c_int, 0x00001000);
-pub const MACH_MSG_IPC_KERNEL = @as(c_int, 0x00000800);
-pub const MACH_MSG_VM_KERNEL = @as(c_int, 0x00000400);
-pub const MACH_SEND_IN_PROGRESS = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000001, .hex);
-pub const MACH_SEND_INVALID_DATA = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000002, .hex);
-pub const MACH_SEND_INVALID_DEST = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000003, .hex);
-pub const MACH_SEND_TIMED_OUT = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000004, .hex);
-pub const MACH_SEND_INVALID_VOUCHER = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000005, .hex);
-pub const MACH_SEND_INTERRUPTED = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000007, .hex);
-pub const MACH_SEND_MSG_TOO_SMALL = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000008, .hex);
-pub const MACH_SEND_INVALID_REPLY = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000009, .hex);
-pub const MACH_SEND_INVALID_RIGHT = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1000000a, .hex);
-pub const MACH_SEND_INVALID_NOTIFY = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1000000b, .hex);
-pub const MACH_SEND_INVALID_MEMORY = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1000000c, .hex);
-pub const MACH_SEND_NO_BUFFER = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1000000d, .hex);
-pub const MACH_SEND_TOO_LARGE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1000000e, .hex);
-pub const MACH_SEND_INVALID_TYPE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1000000f, .hex);
-pub const MACH_SEND_INVALID_HEADER = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000010, .hex);
-pub const MACH_SEND_INVALID_TRAILER = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000011, .hex);
-pub const MACH_SEND_INVALID_CONTEXT = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000012, .hex);
-pub const MACH_SEND_INVALID_OPTIONS = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000013, .hex);
-pub const MACH_SEND_INVALID_RT_OOL_SIZE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000015, .hex);
-pub const MACH_SEND_NO_GRANT_DEST = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000016, .hex);
-pub const MACH_SEND_MSG_FILTERED = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000017, .hex);
-pub const MACH_SEND_AUX_TOO_SMALL = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000018, .hex);
-pub const MACH_SEND_AUX_TOO_LARGE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000019, .hex);
-pub const MACH_RCV_IN_PROGRESS = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10004001, .hex);
-pub const MACH_RCV_INVALID_NAME = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10004002, .hex);
-pub const MACH_RCV_TIMED_OUT = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10004003, .hex);
-pub const MACH_RCV_TOO_LARGE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10004004, .hex);
-pub const MACH_RCV_INTERRUPTED = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10004005, .hex);
-pub const MACH_RCV_PORT_CHANGED = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10004006, .hex);
-pub const MACH_RCV_INVALID_NOTIFY = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10004007, .hex);
-pub const MACH_RCV_INVALID_DATA = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10004008, .hex);
-pub const MACH_RCV_PORT_DIED = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10004009, .hex);
-pub const MACH_RCV_IN_SET = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1000400a, .hex);
-pub const MACH_RCV_HEADER_ERROR = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1000400b, .hex);
-pub const MACH_RCV_BODY_ERROR = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1000400c, .hex);
-pub const MACH_RCV_INVALID_TYPE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1000400d, .hex);
-pub const MACH_RCV_SCATTER_SMALL = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1000400e, .hex);
-pub const MACH_RCV_INVALID_TRAILER = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1000400f, .hex);
-pub const MACH_RCV_IN_PROGRESS_TIMED = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10004011, .hex);
-pub const MACH_RCV_INVALID_REPLY = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10004012, .hex);
-pub const MACH_RCV_INVALID_ARGUMENTS = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10004013, .hex);
-pub const _MACH_VM_TYPES_H_ = "";
-pub const _MACH_ERROR_H_ = "";
-pub const err_none = @import("std").zig.c_translation.cast(mach_error_t, @as(c_int, 0));
-pub const ERR_SUCCESS = @import("std").zig.c_translation.cast(mach_error_t, @as(c_int, 0));
-pub const ERR_ROUTINE_NIL = @import("std").zig.c_translation.cast(mach_error_fn_t, @as(c_int, 0));
-pub inline fn err_system(x: anytype) c_int {
-    _ = &x;
-    return @import("std").zig.c_translation.cast(c_int, (@import("std").zig.c_translation.cast(c_uint, x) & @as(c_int, 0x3f)) << @as(c_int, 26));
-}
-pub inline fn err_sub(x: anytype) @TypeOf((x & @as(c_int, 0xfff)) << @as(c_int, 14)) {
-    _ = &x;
-    return (x & @as(c_int, 0xfff)) << @as(c_int, 14);
-}
-pub inline fn err_get_system(err: anytype) @TypeOf((err >> @as(c_int, 26)) & @as(c_int, 0x3f)) {
-    _ = &err;
-    return (err >> @as(c_int, 26)) & @as(c_int, 0x3f);
-}
-pub inline fn err_get_sub(err: anytype) @TypeOf((err >> @as(c_int, 14)) & @as(c_int, 0xfff)) {
-    _ = &err;
-    return (err >> @as(c_int, 14)) & @as(c_int, 0xfff);
-}
-pub inline fn err_get_code(err: anytype) @TypeOf(err & @as(c_int, 0x3fff)) {
-    _ = &err;
-    return err & @as(c_int, 0x3fff);
-}
-pub const system_emask = err_system(@as(c_int, 0x3f));
-pub const sub_emask = err_sub(@as(c_int, 0xfff));
-pub const code_emask = @as(c_int, 0x3fff);
-pub const err_kern = err_system(@as(c_int, 0x0));
-pub const err_us = err_system(@as(c_int, 0x1));
-pub const err_server = err_system(@as(c_int, 0x2));
-pub const err_ipc = err_system(@as(c_int, 0x3));
-pub const err_mach_ipc = err_system(@as(c_int, 0x4));
-pub const err_dipc = err_system(@as(c_int, 0x7));
-pub const err_vm = err_system(@as(c_int, 0x8));
-pub const err_local = err_system(@as(c_int, 0x3e));
-pub const err_ipc_compat = err_system(@as(c_int, 0x3f));
-pub const err_max_system = @as(c_int, 0x3f);
-pub inline fn unix_err(errno: anytype) @TypeOf((err_kern | err_sub(@as(c_int, 3))) | errno) {
-    _ = &errno;
-    return (err_kern | err_sub(@as(c_int, 3))) | errno;
-}
-pub inline fn err_vm_reclaim(e: anytype) @TypeOf((err_vm | err_sub(@as(c_int, 1))) | e) {
-    _ = &e;
-    return (err_vm | err_sub(@as(c_int, 1))) | e;
-}
-pub const PPNUM_MAX = UINT32_MAX;
-pub const VM_OFFSET_LIST_MAX = @as(c_int, 1024);
-pub const VM_MAP_NULL = @import("std").zig.c_translation.cast(vm_map_t, @as(c_int, 0));
-pub const VM_MAP_INSPECT_NULL = @import("std").zig.c_translation.cast(vm_map_inspect_t, @as(c_int, 0));
-pub const VM_MAP_READ_NULL = @import("std").zig.c_translation.cast(vm_map_read_t, @as(c_int, 0));
-pub const UPL_NULL = @import("std").zig.c_translation.cast(upl_t, @as(c_int, 0));
-pub const VM_NAMED_ENTRY_NULL = @import("std").zig.c_translation.cast(vm_named_entry_t, @as(c_int, 0));
-pub const MACH_VM_RANGE_FLAVOR_DEFAULT = MACH_VM_RANGE_FLAVOR_V1;
-pub const ARM_THREAD_STATE = @as(c_int, 1);
-pub const ARM_UNIFIED_THREAD_STATE = ARM_THREAD_STATE;
-pub const ARM_VFP_STATE = @as(c_int, 2);
-pub const ARM_EXCEPTION_STATE = @as(c_int, 3);
-pub const ARM_DEBUG_STATE = @as(c_int, 4);
-pub const THREAD_STATE_NONE = @as(c_int, 5);
-pub const ARM_THREAD_STATE64 = @as(c_int, 6);
-pub const ARM_EXCEPTION_STATE64 = @as(c_int, 7);
-pub const ARM_THREAD_STATE32 = @as(c_int, 9);
-pub const ARM_EXCEPTION_STATE64_V2 = @as(c_int, 10);
-pub const ARM_DEBUG_STATE32 = @as(c_int, 14);
-pub const ARM_DEBUG_STATE64 = @as(c_int, 15);
-pub const ARM_NEON_STATE = @as(c_int, 16);
-pub const ARM_NEON_STATE64 = @as(c_int, 17);
-pub const ARM_CPMU_STATE64 = @as(c_int, 18);
-pub const ARM_PAGEIN_STATE = @as(c_int, 27);
-pub const ARM_SME_STATE = @as(c_int, 28);
-pub const ARM_SVE_Z_STATE1 = @as(c_int, 29);
-pub const ARM_SVE_Z_STATE2 = @as(c_int, 30);
-pub const ARM_SVE_P_STATE = @as(c_int, 31);
-pub const ARM_SME_ZA_STATE1 = @as(c_int, 32);
-pub const ARM_SME_ZA_STATE2 = @as(c_int, 33);
-pub const ARM_SME_ZA_STATE3 = @as(c_int, 34);
-pub const ARM_SME_ZA_STATE4 = @as(c_int, 35);
-pub const ARM_SME_ZA_STATE5 = @as(c_int, 36);
-pub const ARM_SME_ZA_STATE6 = @as(c_int, 37);
-pub const ARM_SME_ZA_STATE7 = @as(c_int, 38);
-pub const ARM_SME_ZA_STATE8 = @as(c_int, 39);
-pub const ARM_SME_ZA_STATE9 = @as(c_int, 40);
-pub const ARM_SME_ZA_STATE10 = @as(c_int, 41);
-pub const ARM_SME_ZA_STATE11 = @as(c_int, 42);
-pub const ARM_SME_ZA_STATE12 = @as(c_int, 43);
-pub const ARM_SME_ZA_STATE13 = @as(c_int, 44);
-pub const ARM_SME_ZA_STATE14 = @as(c_int, 45);
-pub const ARM_SME_ZA_STATE15 = @as(c_int, 46);
-pub const ARM_SME_ZA_STATE16 = @as(c_int, 47);
-pub const ARM_SME2_STATE = @as(c_int, 48);
-pub const THREAD_STATE_FLAVORS = @as(c_int, 50);
-pub inline fn ARM_STATE_FLAVOR_IS_OTHER_VALID(_flavor_: anytype) @TypeOf(@as(c_int, 0)) {
-    _ = &_flavor_;
-    return @as(c_int, 0);
-}
-pub inline fn FLAVOR_MODIFIES_CORE_CPU_REGISTERS(x: anytype) @TypeOf(((x == ARM_THREAD_STATE) or (x == ARM_THREAD_STATE32)) or (x == ARM_THREAD_STATE64)) {
-    _ = &x;
-    return ((x == ARM_THREAD_STATE) or (x == ARM_THREAD_STATE32)) or (x == ARM_THREAD_STATE64);
-}
-pub inline fn VALID_THREAD_STATE_FLAVOR(x: anytype) @TypeOf(((((((((((((((x == ARM_THREAD_STATE) or (x == ARM_VFP_STATE)) or (x == ARM_EXCEPTION_STATE)) or (x == ARM_DEBUG_STATE)) or (x == THREAD_STATE_NONE)) or (x == ARM_THREAD_STATE32)) or (x == ARM_THREAD_STATE64)) or (x == ARM_EXCEPTION_STATE64)) or (x == ARM_EXCEPTION_STATE64_V2)) or (x == ARM_NEON_STATE)) or (x == ARM_NEON_STATE64)) or (x == ARM_DEBUG_STATE32)) or (x == ARM_DEBUG_STATE64)) or (x == ARM_PAGEIN_STATE)) or (ARM_STATE_FLAVOR_IS_OTHER_VALID(x) != 0)) {
-    _ = &x;
-    return ((((((((((((((x == ARM_THREAD_STATE) or (x == ARM_VFP_STATE)) or (x == ARM_EXCEPTION_STATE)) or (x == ARM_DEBUG_STATE)) or (x == THREAD_STATE_NONE)) or (x == ARM_THREAD_STATE32)) or (x == ARM_THREAD_STATE64)) or (x == ARM_EXCEPTION_STATE64)) or (x == ARM_EXCEPTION_STATE64_V2)) or (x == ARM_NEON_STATE)) or (x == ARM_NEON_STATE64)) or (x == ARM_DEBUG_STATE32)) or (x == ARM_DEBUG_STATE64)) or (x == ARM_PAGEIN_STATE)) or (ARM_STATE_FLAVOR_IS_OTHER_VALID(x) != 0);
-}
-pub inline fn arm_thread_state64_get_pc(ts: anytype) @TypeOf(__darwin_arm_thread_state64_get_pc(ts)) {
-    _ = &ts;
-    return __darwin_arm_thread_state64_get_pc(ts);
-}
-pub inline fn arm_thread_state64_get_pc_fptr(ts: anytype) @TypeOf(__darwin_arm_thread_state64_get_pc_fptr(ts)) {
-    _ = &ts;
-    return __darwin_arm_thread_state64_get_pc_fptr(ts);
-}
-pub inline fn arm_thread_state64_set_pc_fptr(ts: anytype, fptr: anytype) @TypeOf(__darwin_arm_thread_state64_set_pc_fptr(ts, fptr)) {
-    _ = &ts;
-    _ = &fptr;
-    return __darwin_arm_thread_state64_set_pc_fptr(ts, fptr);
-}
-pub inline fn arm_thread_state64_set_pc_presigned_fptr(ts: anytype, fptr: anytype) @TypeOf(__darwin_arm_thread_state64_set_pc_presigned_fptr(ts, fptr)) {
-    _ = &ts;
-    _ = &fptr;
-    return __darwin_arm_thread_state64_set_pc_presigned_fptr(ts, fptr);
-}
-pub inline fn arm_thread_state64_get_lr(ts: anytype) @TypeOf(__darwin_arm_thread_state64_get_lr(ts)) {
-    _ = &ts;
-    return __darwin_arm_thread_state64_get_lr(ts);
-}
-pub inline fn arm_thread_state64_get_lr_fptr(ts: anytype) @TypeOf(__darwin_arm_thread_state64_get_lr_fptr(ts)) {
-    _ = &ts;
-    return __darwin_arm_thread_state64_get_lr_fptr(ts);
-}
-pub inline fn arm_thread_state64_set_lr_fptr(ts: anytype, fptr: anytype) @TypeOf(__darwin_arm_thread_state64_set_lr_fptr(ts, fptr)) {
-    _ = &ts;
-    _ = &fptr;
-    return __darwin_arm_thread_state64_set_lr_fptr(ts, fptr);
-}
-pub inline fn arm_thread_state64_set_lr_presigned_fptr(ts: anytype, fptr: anytype) @TypeOf(__darwin_arm_thread_state64_set_lr_presigned_fptr(ts, fptr)) {
-    _ = &ts;
-    _ = &fptr;
-    return __darwin_arm_thread_state64_set_lr_presigned_fptr(ts, fptr);
-}
-pub inline fn arm_thread_state64_get_sp(ts: anytype) @TypeOf(__darwin_arm_thread_state64_get_sp(ts)) {
-    _ = &ts;
-    return __darwin_arm_thread_state64_get_sp(ts);
-}
-pub inline fn arm_thread_state64_set_sp(ts: anytype, ptr: anytype) @TypeOf(__darwin_arm_thread_state64_set_sp(ts, ptr)) {
-    _ = &ts;
-    _ = &ptr;
-    return __darwin_arm_thread_state64_set_sp(ts, ptr);
-}
-pub inline fn arm_thread_state64_get_fp(ts: anytype) @TypeOf(__darwin_arm_thread_state64_get_fp(ts)) {
-    _ = &ts;
-    return __darwin_arm_thread_state64_get_fp(ts);
-}
-pub inline fn arm_thread_state64_set_fp(ts: anytype, ptr: anytype) @TypeOf(__darwin_arm_thread_state64_set_fp(ts, ptr)) {
-    _ = &ts;
-    _ = &ptr;
-    return __darwin_arm_thread_state64_set_fp(ts, ptr);
-}
-pub inline fn arm_thread_state64_ptrauth_strip(ts: anytype) @TypeOf(__darwin_arm_thread_state64_ptrauth_strip(ts)) {
-    _ = &ts;
-    return __darwin_arm_thread_state64_ptrauth_strip(ts);
-}
-pub const ts_32 = @compileError("unable to translate macro: undefined identifier `uts`");
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/arm/thread_status.h:199:9
-pub const ts_64 = @compileError("unable to translate macro: undefined identifier `uts`");
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach/arm/thread_status.h:200:9
-pub const ARM_THREAD_STATE_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_thread_state_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_THREAD_STATE32_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_thread_state32_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_THREAD_STATE64_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_thread_state64_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_UNIFIED_THREAD_STATE_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_unified_thread_state_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_VFP_STATE_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_vfp_state_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_EXCEPTION_STATE_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_exception_state_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_EXCEPTION_STATE64_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_exception_state64_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_EXCEPTION_STATE64_V2_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_exception_state64_v2_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_DEBUG_STATE_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_debug_state_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_DEBUG_STATE32_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_debug_state32_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_PAGEIN_STATE_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_pagein_state_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_DEBUG_STATE64_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_debug_state64_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_NEON_STATE_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_neon_state_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_NEON_STATE64_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_neon_state64_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_SME_STATE_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_sme_state_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_SVE_Z_STATE_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_sve_z_state_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_SVE_P_STATE_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_sve_p_state_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_SME_ZA_STATE_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_sme_za_state_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const ARM_SME2_STATE_COUNT = @import("std").zig.c_translation.cast(mach_msg_type_number_t, @import("std").zig.c_translation.MacroArithmetic.div(@import("std").zig.c_translation.sizeof(arm_sme2_state_t), @import("std").zig.c_translation.sizeof(u32)));
-pub const MACHINE_THREAD_STATE = ARM_THREAD_STATE;
-pub const MACHINE_THREAD_STATE_COUNT = ARM_UNIFIED_THREAD_STATE_COUNT;
-pub const THREAD_MACHINE_STATE_MAX = THREAD_STATE_MAX;
-pub const _ARCHITECTURE_BYTE_ORDER_H_ = "";
-pub const _OS_OSBYTEORDER_H = "";
-pub inline fn OSSwapConstInt16(x: anytype) @TypeOf(__DARWIN_OSSwapConstInt16(x)) {
-    _ = &x;
-    return __DARWIN_OSSwapConstInt16(x);
-}
-pub inline fn OSSwapConstInt32(x: anytype) @TypeOf(__DARWIN_OSSwapConstInt32(x)) {
-    _ = &x;
-    return __DARWIN_OSSwapConstInt32(x);
-}
-pub inline fn OSSwapConstInt64(x: anytype) @TypeOf(__DARWIN_OSSwapConstInt64(x)) {
-    _ = &x;
-    return __DARWIN_OSSwapConstInt64(x);
-}
-pub const _OS_OSBYTEORDERARM_H = "";
-pub const OS_INLINE = @compileError("unable to translate C expr: unexpected token 'static'");
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/_types/_os_inline.h:30:17
-pub const _ARM_ARCH_H = "";
-pub inline fn OSSwapInt16(x: anytype) @TypeOf(__DARWIN_OSSwapInt16(x)) {
-    _ = &x;
-    return __DARWIN_OSSwapInt16(x);
-}
-pub inline fn OSSwapInt32(x: anytype) @TypeOf(__DARWIN_OSSwapInt32(x)) {
-    _ = &x;
-    return __DARWIN_OSSwapInt32(x);
-}
-pub inline fn OSSwapInt64(x: anytype) @TypeOf(__DARWIN_OSSwapInt64(x)) {
-    _ = &x;
-    return __DARWIN_OSSwapInt64(x);
-}
-pub inline fn OSReadBigInt(x: anytype, y: anytype) @TypeOf(OSReadBigInt32(x, y)) {
-    _ = &x;
-    _ = &y;
-    return OSReadBigInt32(x, y);
-}
-pub inline fn OSWriteBigInt(x: anytype, y: anytype, z: anytype) @TypeOf(OSWriteBigInt32(x, y, z)) {
-    _ = &x;
-    _ = &y;
-    _ = &z;
-    return OSWriteBigInt32(x, y, z);
-}
-pub inline fn OSSwapBigToHostInt(x: anytype) @TypeOf(OSSwapBigToHostInt32(x)) {
-    _ = &x;
-    return OSSwapBigToHostInt32(x);
-}
-pub inline fn OSSwapHostToBigInt(x: anytype) @TypeOf(OSSwapHostToBigInt32(x)) {
-    _ = &x;
-    return OSSwapHostToBigInt32(x);
-}
-pub inline fn OSReadLittleInt(x: anytype, y: anytype) @TypeOf(OSReadLittleInt32(x, y)) {
-    _ = &x;
-    _ = &y;
-    return OSReadLittleInt32(x, y);
-}
-pub inline fn OSWriteLittleInt(x: anytype, y: anytype, z: anytype) @TypeOf(OSWriteLittleInt32(x, y, z)) {
-    _ = &x;
-    _ = &y;
-    _ = &z;
-    return OSWriteLittleInt32(x, y, z);
-}
-pub inline fn OSSwapHostToLittleInt(x: anytype) @TypeOf(OSSwapHostToLittleInt32(x)) {
-    _ = &x;
-    return OSSwapHostToLittleInt32(x);
-}
-pub inline fn OSSwapLittleToHostInt(x: anytype) @TypeOf(OSSwapLittleToHostInt32(x)) {
-    _ = &x;
-    return OSSwapLittleToHostInt32(x);
-}
-pub inline fn OSReadBigInt16(base: anytype, byteOffset: anytype) @TypeOf(OSReadSwapInt16(base, byteOffset)) {
-    _ = &base;
-    _ = &byteOffset;
-    return OSReadSwapInt16(base, byteOffset);
-}
-pub inline fn OSReadBigInt32(base: anytype, byteOffset: anytype) @TypeOf(OSReadSwapInt32(base, byteOffset)) {
-    _ = &base;
-    _ = &byteOffset;
-    return OSReadSwapInt32(base, byteOffset);
-}
-pub inline fn OSReadBigInt64(base: anytype, byteOffset: anytype) @TypeOf(OSReadSwapInt64(base, byteOffset)) {
-    _ = &base;
-    _ = &byteOffset;
-    return OSReadSwapInt64(base, byteOffset);
-}
-pub inline fn OSWriteBigInt16(base: anytype, byteOffset: anytype, data: anytype) @TypeOf(OSWriteSwapInt16(base, byteOffset, data)) {
-    _ = &base;
-    _ = &byteOffset;
-    _ = &data;
-    return OSWriteSwapInt16(base, byteOffset, data);
-}
-pub inline fn OSWriteBigInt32(base: anytype, byteOffset: anytype, data: anytype) @TypeOf(OSWriteSwapInt32(base, byteOffset, data)) {
-    _ = &base;
-    _ = &byteOffset;
-    _ = &data;
-    return OSWriteSwapInt32(base, byteOffset, data);
-}
-pub inline fn OSWriteBigInt64(base: anytype, byteOffset: anytype, data: anytype) @TypeOf(OSWriteSwapInt64(base, byteOffset, data)) {
-    _ = &base;
-    _ = &byteOffset;
-    _ = &data;
-    return OSWriteSwapInt64(base, byteOffset, data);
-}
-pub inline fn OSReadLittleInt16(base: anytype, byteOffset: anytype) @TypeOf(_OSReadInt16(base, byteOffset)) {
-    _ = &base;
-    _ = &byteOffset;
-    return _OSReadInt16(base, byteOffset);
-}
-pub inline fn OSReadLittleInt32(base: anytype, byteOffset: anytype) @TypeOf(_OSReadInt32(base, byteOffset)) {
-    _ = &base;
-    _ = &byteOffset;
-    return _OSReadInt32(base, byteOffset);
-}
-pub inline fn OSReadLittleInt64(base: anytype, byteOffset: anytype) @TypeOf(_OSReadInt64(base, byteOffset)) {
-    _ = &base;
-    _ = &byteOffset;
-    return _OSReadInt64(base, byteOffset);
-}
-pub inline fn OSWriteLittleInt16(base: anytype, byteOffset: anytype, data: anytype) @TypeOf(_OSWriteInt16(base, byteOffset, data)) {
-    _ = &base;
-    _ = &byteOffset;
-    _ = &data;
-    return _OSWriteInt16(base, byteOffset, data);
-}
-pub inline fn OSWriteLittleInt32(base: anytype, byteOffset: anytype, data: anytype) @TypeOf(_OSWriteInt32(base, byteOffset, data)) {
-    _ = &base;
-    _ = &byteOffset;
-    _ = &data;
-    return _OSWriteInt32(base, byteOffset, data);
-}
-pub inline fn OSWriteLittleInt64(base: anytype, byteOffset: anytype, data: anytype) @TypeOf(_OSWriteInt64(base, byteOffset, data)) {
-    _ = &base;
-    _ = &byteOffset;
-    _ = &data;
-    return _OSWriteInt64(base, byteOffset, data);
-}
-pub inline fn OSSwapHostToBigConstInt16(x: anytype) @TypeOf(OSSwapConstInt16(x)) {
-    _ = &x;
-    return OSSwapConstInt16(x);
-}
-pub inline fn OSSwapHostToBigConstInt32(x: anytype) @TypeOf(OSSwapConstInt32(x)) {
-    _ = &x;
-    return OSSwapConstInt32(x);
-}
-pub inline fn OSSwapHostToBigConstInt64(x: anytype) @TypeOf(OSSwapConstInt64(x)) {
-    _ = &x;
-    return OSSwapConstInt64(x);
-}
-pub inline fn OSSwapHostToBigInt16(x: anytype) @TypeOf(OSSwapInt16(x)) {
-    _ = &x;
-    return OSSwapInt16(x);
-}
-pub inline fn OSSwapHostToBigInt32(x: anytype) @TypeOf(OSSwapInt32(x)) {
-    _ = &x;
-    return OSSwapInt32(x);
-}
-pub inline fn OSSwapHostToBigInt64(x: anytype) @TypeOf(OSSwapInt64(x)) {
-    _ = &x;
-    return OSSwapInt64(x);
-}
-pub inline fn OSSwapHostToLittleConstInt16(x: anytype) u16 {
-    _ = &x;
-    return @import("std").zig.c_translation.cast(u16, x);
-}
-pub inline fn OSSwapHostToLittleConstInt32(x: anytype) u32 {
-    _ = &x;
-    return @import("std").zig.c_translation.cast(u32, x);
-}
-pub inline fn OSSwapHostToLittleConstInt64(x: anytype) u64 {
-    _ = &x;
-    return @import("std").zig.c_translation.cast(u64, x);
-}
-pub inline fn OSSwapHostToLittleInt16(x: anytype) u16 {
-    _ = &x;
-    return @import("std").zig.c_translation.cast(u16, x);
-}
-pub inline fn OSSwapHostToLittleInt32(x: anytype) u32 {
-    _ = &x;
-    return @import("std").zig.c_translation.cast(u32, x);
-}
-pub inline fn OSSwapHostToLittleInt64(x: anytype) u64 {
-    _ = &x;
-    return @import("std").zig.c_translation.cast(u64, x);
-}
-pub inline fn OSSwapBigToHostConstInt16(x: anytype) @TypeOf(OSSwapConstInt16(x)) {
-    _ = &x;
-    return OSSwapConstInt16(x);
-}
-pub inline fn OSSwapBigToHostConstInt32(x: anytype) @TypeOf(OSSwapConstInt32(x)) {
-    _ = &x;
-    return OSSwapConstInt32(x);
-}
-pub inline fn OSSwapBigToHostConstInt64(x: anytype) @TypeOf(OSSwapConstInt64(x)) {
-    _ = &x;
-    return OSSwapConstInt64(x);
-}
-pub inline fn OSSwapBigToHostInt16(x: anytype) @TypeOf(OSSwapInt16(x)) {
-    _ = &x;
-    return OSSwapInt16(x);
-}
-pub inline fn OSSwapBigToHostInt32(x: anytype) @TypeOf(OSSwapInt32(x)) {
-    _ = &x;
-    return OSSwapInt32(x);
-}
-pub inline fn OSSwapBigToHostInt64(x: anytype) @TypeOf(OSSwapInt64(x)) {
-    _ = &x;
-    return OSSwapInt64(x);
-}
-pub inline fn OSSwapLittleToHostConstInt16(x: anytype) u16 {
-    _ = &x;
-    return @import("std").zig.c_translation.cast(u16, x);
-}
-pub inline fn OSSwapLittleToHostConstInt32(x: anytype) u32 {
-    _ = &x;
-    return @import("std").zig.c_translation.cast(u32, x);
-}
-pub inline fn OSSwapLittleToHostConstInt64(x: anytype) u64 {
-    _ = &x;
-    return @import("std").zig.c_translation.cast(u64, x);
-}
-pub inline fn OSSwapLittleToHostInt16(x: anytype) u16 {
-    _ = &x;
-    return @import("std").zig.c_translation.cast(u16, x);
-}
-pub inline fn OSSwapLittleToHostInt32(x: anytype) u32 {
-    _ = &x;
-    return @import("std").zig.c_translation.cast(u32, x);
-}
-pub inline fn OSSwapLittleToHostInt64(x: anytype) u64 {
-    _ = &x;
-    return @import("std").zig.c_translation.cast(u64, x);
-}
-pub const MH_MAGIC = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xfeedface, .hex);
-pub const MH_CIGAM = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xcefaedfe, .hex);
-pub const MH_MAGIC_64 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xfeedfacf, .hex);
-pub const MH_CIGAM_64 = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xcffaedfe, .hex);
-pub const MH_OBJECT = @as(c_int, 0x1);
-pub const MH_EXECUTE = @as(c_int, 0x2);
-pub const MH_FVMLIB = @as(c_int, 0x3);
-pub const MH_CORE = @as(c_int, 0x4);
-pub const MH_PRELOAD = @as(c_int, 0x5);
-pub const MH_DYLIB = @as(c_int, 0x6);
-pub const MH_DYLINKER = @as(c_int, 0x7);
-pub const MH_BUNDLE = @as(c_int, 0x8);
-pub const MH_DYLIB_STUB = @as(c_int, 0x9);
-pub const MH_DSYM = @as(c_int, 0xa);
-pub const MH_KEXT_BUNDLE = @as(c_int, 0xb);
-pub const MH_FILESET = @as(c_int, 0xc);
-pub const MH_GPU_EXECUTE = @as(c_int, 0xd);
-pub const MH_GPU_DYLIB = @as(c_int, 0xe);
-pub const MH_NOUNDEFS = @as(c_int, 0x1);
-pub const MH_INCRLINK = @as(c_int, 0x2);
-pub const MH_DYLDLINK = @as(c_int, 0x4);
-pub const MH_BINDATLOAD = @as(c_int, 0x8);
-pub const MH_PREBOUND = @as(c_int, 0x10);
-pub const MH_SPLIT_SEGS = @as(c_int, 0x20);
-pub const MH_LAZY_INIT = @as(c_int, 0x40);
-pub const MH_TWOLEVEL = @as(c_int, 0x80);
-pub const MH_FORCE_FLAT = @as(c_int, 0x100);
-pub const MH_NOMULTIDEFS = @as(c_int, 0x200);
-pub const MH_NOFIXPREBINDING = @as(c_int, 0x400);
-pub const MH_PREBINDABLE = @as(c_int, 0x800);
-pub const MH_ALLMODSBOUND = @as(c_int, 0x1000);
-pub const MH_SUBSECTIONS_VIA_SYMBOLS = @as(c_int, 0x2000);
-pub const MH_CANONICAL = @as(c_int, 0x4000);
-pub const MH_WEAK_DEFINES = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x8000, .hex);
-pub const MH_BINDS_TO_WEAK = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000, .hex);
-pub const MH_ALLOW_STACK_EXECUTION = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x20000, .hex);
-pub const MH_ROOT_SAFE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x40000, .hex);
-pub const MH_SETUID_SAFE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x80000, .hex);
-pub const MH_NO_REEXPORTED_DYLIBS = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x100000, .hex);
-pub const MH_PIE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x200000, .hex);
-pub const MH_DEAD_STRIPPABLE_DYLIB = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x400000, .hex);
-pub const MH_HAS_TLV_DESCRIPTORS = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x800000, .hex);
-pub const MH_NO_HEAP_EXECUTION = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1000000, .hex);
-pub const MH_APP_EXTENSION_SAFE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x02000000, .hex);
-pub const MH_NLIST_OUTOFSYNC_WITH_DYLDINFO = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x04000000, .hex);
-pub const MH_SIM_SUPPORT = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x08000000, .hex);
-pub const MH_IMPLICIT_PAGEZERO = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000000, .hex);
-pub const MH_DYLIB_IN_CACHE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x80000000, .hex);
-pub const LC_REQ_DYLD = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x80000000, .hex);
-pub const LC_SEGMENT = @as(c_int, 0x1);
-pub const LC_SYMTAB = @as(c_int, 0x2);
-pub const LC_SYMSEG = @as(c_int, 0x3);
-pub const LC_THREAD = @as(c_int, 0x4);
-pub const LC_UNIXTHREAD = @as(c_int, 0x5);
-pub const LC_LOADFVMLIB = @as(c_int, 0x6);
-pub const LC_IDFVMLIB = @as(c_int, 0x7);
-pub const LC_IDENT = @as(c_int, 0x8);
-pub const LC_FVMFILE = @as(c_int, 0x9);
-pub const LC_PREPAGE = @as(c_int, 0xa);
-pub const LC_DYSYMTAB = @as(c_int, 0xb);
-pub const LC_LOAD_DYLIB = @as(c_int, 0xc);
-pub const LC_ID_DYLIB = @as(c_int, 0xd);
-pub const LC_LOAD_DYLINKER = @as(c_int, 0xe);
-pub const LC_ID_DYLINKER = @as(c_int, 0xf);
-pub const LC_PREBOUND_DYLIB = @as(c_int, 0x10);
-pub const LC_ROUTINES = @as(c_int, 0x11);
-pub const LC_SUB_FRAMEWORK = @as(c_int, 0x12);
-pub const LC_SUB_UMBRELLA = @as(c_int, 0x13);
-pub const LC_SUB_CLIENT = @as(c_int, 0x14);
-pub const LC_SUB_LIBRARY = @as(c_int, 0x15);
-pub const LC_TWOLEVEL_HINTS = @as(c_int, 0x16);
-pub const LC_PREBIND_CKSUM = @as(c_int, 0x17);
-pub const LC_LOAD_WEAK_DYLIB = @as(c_int, 0x18) | LC_REQ_DYLD;
-pub const LC_SEGMENT_64 = @as(c_int, 0x19);
-pub const LC_ROUTINES_64 = @as(c_int, 0x1a);
-pub const LC_UUID = @as(c_int, 0x1b);
-pub const LC_RPATH = @as(c_int, 0x1c) | LC_REQ_DYLD;
-pub const LC_CODE_SIGNATURE = @as(c_int, 0x1d);
-pub const LC_SEGMENT_SPLIT_INFO = @as(c_int, 0x1e);
-pub const LC_REEXPORT_DYLIB = @as(c_int, 0x1f) | LC_REQ_DYLD;
-pub const LC_LAZY_LOAD_DYLIB = @as(c_int, 0x20);
-pub const LC_ENCRYPTION_INFO = @as(c_int, 0x21);
-pub const LC_DYLD_INFO = @as(c_int, 0x22);
-pub const LC_DYLD_INFO_ONLY = @as(c_int, 0x22) | LC_REQ_DYLD;
-pub const LC_LOAD_UPWARD_DYLIB = @as(c_int, 0x23) | LC_REQ_DYLD;
-pub const LC_VERSION_MIN_MACOSX = @as(c_int, 0x24);
-pub const LC_VERSION_MIN_IPHONEOS = @as(c_int, 0x25);
-pub const LC_FUNCTION_STARTS = @as(c_int, 0x26);
-pub const LC_DYLD_ENVIRONMENT = @as(c_int, 0x27);
-pub const LC_MAIN = @as(c_int, 0x28) | LC_REQ_DYLD;
-pub const LC_DATA_IN_CODE = @as(c_int, 0x29);
-pub const LC_SOURCE_VERSION = @as(c_int, 0x2A);
-pub const LC_DYLIB_CODE_SIGN_DRS = @as(c_int, 0x2B);
-pub const LC_ENCRYPTION_INFO_64 = @as(c_int, 0x2C);
-pub const LC_LINKER_OPTION = @as(c_int, 0x2D);
-pub const LC_LINKER_OPTIMIZATION_HINT = @as(c_int, 0x2E);
-pub const LC_VERSION_MIN_TVOS = @as(c_int, 0x2F);
-pub const LC_VERSION_MIN_WATCHOS = @as(c_int, 0x30);
-pub const LC_NOTE = @as(c_int, 0x31);
-pub const LC_BUILD_VERSION = @as(c_int, 0x32);
-pub const LC_DYLD_EXPORTS_TRIE = @as(c_int, 0x33) | LC_REQ_DYLD;
-pub const LC_DYLD_CHAINED_FIXUPS = @as(c_int, 0x34) | LC_REQ_DYLD;
-pub const LC_FILESET_ENTRY = @as(c_int, 0x35) | LC_REQ_DYLD;
-pub const LC_ATOM_INFO = @as(c_int, 0x36);
-pub const LC_FUNCTION_VARIANTS = @as(c_int, 0x37);
-pub const LC_FUNCTION_VARIANT_FIXUPS = @as(c_int, 0x38);
-pub const LC_TARGET_TRIPLE = @as(c_int, 0x39);
-pub const LC_LAZY_LOAD_DYLIB_INFO = @as(c_int, 0x3A);
-pub const SG_HIGHVM = @as(c_int, 0x1);
-pub const SG_FVMLIB = @as(c_int, 0x2);
-pub const SG_NORELOC = @as(c_int, 0x4);
-pub const SG_PROTECTED_VERSION_1 = @as(c_int, 0x8);
-pub const SG_READ_ONLY = @as(c_int, 0x10);
-pub const SECTION_TYPE = @as(c_int, 0x000000ff);
-pub const SECTION_ATTRIBUTES = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xffffff00, .hex);
-pub const S_REGULAR = @as(c_int, 0x0);
-pub const S_ZEROFILL = @as(c_int, 0x1);
-pub const S_CSTRING_LITERALS = @as(c_int, 0x2);
-pub const S_4BYTE_LITERALS = @as(c_int, 0x3);
-pub const S_8BYTE_LITERALS = @as(c_int, 0x4);
-pub const S_LITERAL_POINTERS = @as(c_int, 0x5);
-pub const S_NON_LAZY_SYMBOL_POINTERS = @as(c_int, 0x6);
-pub const S_LAZY_SYMBOL_POINTERS = @as(c_int, 0x7);
-pub const S_SYMBOL_STUBS = @as(c_int, 0x8);
-pub const S_MOD_INIT_FUNC_POINTERS = @as(c_int, 0x9);
-pub const S_MOD_TERM_FUNC_POINTERS = @as(c_int, 0xa);
-pub const S_COALESCED = @as(c_int, 0xb);
-pub const S_GB_ZEROFILL = @as(c_int, 0xc);
-pub const S_INTERPOSING = @as(c_int, 0xd);
-pub const S_16BYTE_LITERALS = @as(c_int, 0xe);
-pub const S_DTRACE_DOF = @as(c_int, 0xf);
-pub const S_LAZY_DYLIB_SYMBOL_POINTERS = @as(c_int, 0x10);
-pub const S_THREAD_LOCAL_REGULAR = @as(c_int, 0x11);
-pub const S_THREAD_LOCAL_ZEROFILL = @as(c_int, 0x12);
-pub const S_THREAD_LOCAL_VARIABLES = @as(c_int, 0x13);
-pub const S_THREAD_LOCAL_VARIABLE_POINTERS = @as(c_int, 0x14);
-pub const S_THREAD_LOCAL_INIT_FUNCTION_POINTERS = @as(c_int, 0x15);
-pub const S_INIT_FUNC_OFFSETS = @as(c_int, 0x16);
-pub const SECTION_ATTRIBUTES_USR = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xff000000, .hex);
-pub const S_ATTR_PURE_INSTRUCTIONS = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x80000000, .hex);
-pub const S_ATTR_NO_TOC = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x40000000, .hex);
-pub const S_ATTR_STRIP_STATIC_SYMS = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x20000000, .hex);
-pub const S_ATTR_NO_DEAD_STRIP = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x10000000, .hex);
-pub const S_ATTR_LIVE_SUPPORT = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x08000000, .hex);
-pub const S_ATTR_SELF_MODIFYING_CODE = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x04000000, .hex);
-pub const S_ATTR_DEBUG = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x02000000, .hex);
-pub const SECTION_ATTRIBUTES_SYS = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x00ffff00, .hex);
-pub const S_ATTR_SOME_INSTRUCTIONS = @as(c_int, 0x00000400);
-pub const S_ATTR_EXT_RELOC = @as(c_int, 0x00000200);
-pub const S_ATTR_LOC_RELOC = @as(c_int, 0x00000100);
-pub const SEG_PAGEZERO = "__PAGEZERO";
-pub const SEG_TEXT = "__TEXT";
-pub const SECT_TEXT = "__text";
-pub const SECT_FVMLIB_INIT0 = "__fvmlib_init0";
-pub const SECT_FVMLIB_INIT1 = "__fvmlib_init1";
-pub const SEG_DATA = "__DATA";
-pub const SECT_DATA = "__data";
-pub const SECT_BSS = "__bss";
-pub const SECT_COMMON = "__common";
-pub const SEG_OBJC = "__OBJC";
-pub const SECT_OBJC_SYMBOLS = "__symbol_table";
-pub const SECT_OBJC_MODULES = "__module_info";
-pub const SECT_OBJC_STRINGS = "__selector_strs";
-pub const SECT_OBJC_REFS = "__selector_refs";
-pub const SEG_ICON = "__ICON";
-pub const SECT_ICON_HEADER = "__header";
-pub const SECT_ICON_TIFF = "__tiff";
-pub const SEG_LINKEDIT = "__LINKEDIT";
-pub const SEG_UNIXSTACK = "__UNIXSTACK";
-pub const SEG_IMPORT = "__IMPORT";
-pub const DYLIB_USE_WEAK_LINK = @as(c_int, 0x01);
-pub const DYLIB_USE_REEXPORT = @as(c_int, 0x02);
-pub const DYLIB_USE_UPWARD = @as(c_int, 0x04);
-pub const DYLIB_USE_DELAYED_INIT = @as(c_int, 0x08);
-pub const DYLIB_USE_MARKER = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x1a741800, .hex);
-pub const INDIRECT_SYMBOL_LOCAL = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x80000000, .hex);
-pub const INDIRECT_SYMBOL_ABS = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0x40000000, .hex);
-pub const PLATFORM_UNKNOWN = @as(c_int, 0);
-pub const PLATFORM_ANY = @import("std").zig.c_translation.promoteIntLiteral(c_int, 0xFFFFFFFF, .hex);
-pub const PLATFORM_MACOS = @as(c_int, 1);
-pub const PLATFORM_IOS = @as(c_int, 2);
-pub const PLATFORM_TVOS = @as(c_int, 3);
-pub const PLATFORM_WATCHOS = @as(c_int, 4);
-pub const PLATFORM_BRIDGEOS = @as(c_int, 5);
-pub const PLATFORM_MACCATALYST = @as(c_int, 6);
-pub const PLATFORM_IOSSIMULATOR = @as(c_int, 7);
-pub const PLATFORM_TVOSSIMULATOR = @as(c_int, 8);
-pub const PLATFORM_WATCHOSSIMULATOR = @as(c_int, 9);
-pub const PLATFORM_DRIVERKIT = @as(c_int, 10);
-pub const PLATFORM_VISIONOS = @as(c_int, 11);
-pub const PLATFORM_VISIONOSSIMULATOR = @as(c_int, 12);
-pub const PLATFORM_FIRMWARE = @as(c_int, 13);
-pub const PLATFORM_SEPOS = @as(c_int, 14);
-pub const PLATFORM_MACOS_EXCLAVECORE = @as(c_int, 15);
-pub const PLATFORM_MACOS_EXCLAVEKIT = @as(c_int, 16);
-pub const PLATFORM_IOS_EXCLAVECORE = @as(c_int, 17);
-pub const PLATFORM_IOS_EXCLAVEKIT = @as(c_int, 18);
-pub const PLATFORM_TVOS_EXCLAVECORE = @as(c_int, 19);
-pub const PLATFORM_TVOS_EXCLAVEKIT = @as(c_int, 20);
-pub const PLATFORM_WATCHOS_EXCLAVECORE = @as(c_int, 21);
-pub const PLATFORM_WATCHOS_EXCLAVEKIT = @as(c_int, 22);
-pub const PLATFORM_VISIONOS_EXCLAVECORE = @as(c_int, 23);
-pub const PLATFORM_VISIONOS_EXCLAVEKIT = @as(c_int, 24);
-pub const TOOL_CLANG = @as(c_int, 1);
-pub const TOOL_SWIFT = @as(c_int, 2);
-pub const TOOL_LD = @as(c_int, 3);
-pub const TOOL_LLD = @as(c_int, 4);
-pub const TOOL_METAL = @as(c_int, 1024);
-pub const TOOL_AIRLLD = @as(c_int, 1025);
-pub const TOOL_AIRNT = @as(c_int, 1026);
-pub const TOOL_AIRNT_PLUGIN = @as(c_int, 1027);
-pub const TOOL_AIRPACK = @as(c_int, 1028);
-pub const TOOL_GPUARCHIVER = @as(c_int, 1031);
-pub const TOOL_METAL_FRAMEWORK = @as(c_int, 1032);
-pub const REBASE_TYPE_POINTER = @as(c_int, 1);
-pub const REBASE_TYPE_TEXT_ABSOLUTE32 = @as(c_int, 2);
-pub const REBASE_TYPE_TEXT_PCREL32 = @as(c_int, 3);
-pub const REBASE_OPCODE_MASK = @as(c_int, 0xF0);
-pub const REBASE_IMMEDIATE_MASK = @as(c_int, 0x0F);
-pub const REBASE_OPCODE_DONE = @as(c_int, 0x00);
-pub const REBASE_OPCODE_SET_TYPE_IMM = @as(c_int, 0x10);
-pub const REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB = @as(c_int, 0x20);
-pub const REBASE_OPCODE_ADD_ADDR_ULEB = @as(c_int, 0x30);
-pub const REBASE_OPCODE_ADD_ADDR_IMM_SCALED = @as(c_int, 0x40);
-pub const REBASE_OPCODE_DO_REBASE_IMM_TIMES = @as(c_int, 0x50);
-pub const REBASE_OPCODE_DO_REBASE_ULEB_TIMES = @as(c_int, 0x60);
-pub const REBASE_OPCODE_DO_REBASE_ADD_ADDR_ULEB = @as(c_int, 0x70);
-pub const REBASE_OPCODE_DO_REBASE_ULEB_TIMES_SKIPPING_ULEB = @as(c_int, 0x80);
-pub const BIND_TYPE_POINTER = @as(c_int, 1);
-pub const BIND_TYPE_TEXT_ABSOLUTE32 = @as(c_int, 2);
-pub const BIND_TYPE_TEXT_PCREL32 = @as(c_int, 3);
-pub const BIND_SPECIAL_DYLIB_SELF = @as(c_int, 0);
-pub const BIND_SPECIAL_DYLIB_MAIN_EXECUTABLE = -@as(c_int, 1);
-pub const BIND_SPECIAL_DYLIB_FLAT_LOOKUP = -@as(c_int, 2);
-pub const BIND_SPECIAL_DYLIB_WEAK_LOOKUP = -@as(c_int, 3);
-pub const BIND_SYMBOL_FLAGS_WEAK_IMPORT = @as(c_int, 0x1);
-pub const BIND_SYMBOL_FLAGS_NON_WEAK_DEFINITION = @as(c_int, 0x8);
-pub const BIND_OPCODE_MASK = @as(c_int, 0xF0);
-pub const BIND_IMMEDIATE_MASK = @as(c_int, 0x0F);
-pub const BIND_OPCODE_DONE = @as(c_int, 0x00);
-pub const BIND_OPCODE_SET_DYLIB_ORDINAL_IMM = @as(c_int, 0x10);
-pub const BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB = @as(c_int, 0x20);
-pub const BIND_OPCODE_SET_DYLIB_SPECIAL_IMM = @as(c_int, 0x30);
-pub const BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM = @as(c_int, 0x40);
-pub const BIND_OPCODE_SET_TYPE_IMM = @as(c_int, 0x50);
-pub const BIND_OPCODE_SET_ADDEND_SLEB = @as(c_int, 0x60);
-pub const BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB = @as(c_int, 0x70);
-pub const BIND_OPCODE_ADD_ADDR_ULEB = @as(c_int, 0x80);
-pub const BIND_OPCODE_DO_BIND = @as(c_int, 0x90);
-pub const BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB = @as(c_int, 0xA0);
-pub const BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED = @as(c_int, 0xB0);
-pub const BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB = @as(c_int, 0xC0);
-pub const BIND_OPCODE_THREADED = @as(c_int, 0xD0);
-pub const BIND_SUBOPCODE_THREADED_SET_BIND_ORDINAL_TABLE_SIZE_ULEB = @as(c_int, 0x00);
-pub const BIND_SUBOPCODE_THREADED_APPLY = @as(c_int, 0x01);
-pub const EXPORT_SYMBOL_FLAGS_KIND_MASK = @as(c_int, 0x03);
-pub const EXPORT_SYMBOL_FLAGS_KIND_REGULAR = @as(c_int, 0x00);
-pub const EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL = @as(c_int, 0x01);
-pub const EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE = @as(c_int, 0x02);
-pub const EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION = @as(c_int, 0x04);
-pub const EXPORT_SYMBOL_FLAGS_REEXPORT = @as(c_int, 0x08);
-pub const EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER = @as(c_int, 0x10);
-pub const EXPORT_SYMBOL_FLAGS_STATIC_RESOLVER = @as(c_int, 0x20);
-pub const DICE_KIND_DATA = @as(c_int, 0x0001);
-pub const DICE_KIND_JUMP_TABLE8 = @as(c_int, 0x0002);
-pub const DICE_KIND_JUMP_TABLE16 = @as(c_int, 0x0003);
-pub const DICE_KIND_JUMP_TABLE32 = @as(c_int, 0x0004);
-pub const DICE_KIND_ABS_JUMP_TABLE32 = @as(c_int, 0x0005);
-pub const __TARGETCONDITIONALS__ = "";
-pub const TARGET_OS_RTKIT = @as(c_int, 0);
-pub const TARGET_RT_LITTLE_ENDIAN = @as(c_int, 1);
-pub const TARGET_RT_BIG_ENDIAN = @as(c_int, 0);
-pub const TARGET_RT_64_BIT = @as(c_int, 1);
-pub const TARGET_RT_MAC_CFM = @as(c_int, 0);
-pub const TARGET_RT_MAC_MACHO = @as(c_int, 1);
-pub const TARGET_CPU_ARM64 = @as(c_int, 1);
-pub const TARGET_CPU_PPC = @as(c_int, 0);
-pub const TARGET_CPU_PPC64 = @as(c_int, 0);
-pub const TARGET_CPU_68K = @as(c_int, 0);
-pub const TARGET_CPU_X86 = @as(c_int, 0);
-pub const TARGET_CPU_X86_64 = @as(c_int, 0);
-pub const TARGET_CPU_ARM = @as(c_int, 0);
-pub const TARGET_CPU_MIPS = @as(c_int, 0);
-pub const TARGET_CPU_SPARC = @as(c_int, 0);
-pub const TARGET_CPU_ALPHA = @as(c_int, 0);
-pub const TARGET_ABI_USES_IOS_VALUES = !(TARGET_CPU_X86_64 != 0) or ((TARGET_OS_IPHONE != 0) and !(TARGET_OS_MACCATALYST != 0));
-pub const DYLD_DRIVERKIT_UNAVAILABLE = @compileError("unable to translate macro: undefined identifier `driverkit`");
-// /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach-o/dyld.h:39:10
-pub const DYLD_EXCLAVEKIT_UNAVAILABLE = "";
-pub const ENUM_DYLD_BOOL = "";
-pub const NSLINKMODULE_OPTION_NONE = @as(c_int, 0x0);
-pub const NSLINKMODULE_OPTION_BINDNOW = @as(c_int, 0x1);
-pub const NSLINKMODULE_OPTION_PRIVATE = @as(c_int, 0x2);
-pub const NSLINKMODULE_OPTION_RETURN_ON_ERROR = @as(c_int, 0x4);
-pub const NSLINKMODULE_OPTION_DONT_CALL_MOD_INIT_ROUTINES = @as(c_int, 0x8);
-pub const NSLINKMODULE_OPTION_TRAILING_PHYS_NAME = @as(c_int, 0x10);
-pub const NSUNLINKMODULE_OPTION_NONE = @as(c_int, 0x0);
-pub const NSUNLINKMODULE_OPTION_KEEP_MEMORY_MAPPED = @as(c_int, 0x1);
-pub const NSUNLINKMODULE_OPTION_RESET_LAZY_REFERENCES = @as(c_int, 0x2);
-pub const NSLOOKUPSYMBOLINIMAGE_OPTION_BIND = @as(c_int, 0x0);
-pub const NSLOOKUPSYMBOLINIMAGE_OPTION_BIND_NOW = @as(c_int, 0x1);
-pub const NSLOOKUPSYMBOLINIMAGE_OPTION_BIND_FULLY = @as(c_int, 0x2);
-pub const NSLOOKUPSYMBOLINIMAGE_OPTION_RETURN_ON_ERROR = @as(c_int, 0x4);
-pub const NSADDIMAGE_OPTION_NONE = @as(c_int, 0x0);
-pub const NSADDIMAGE_OPTION_RETURN_ON_ERROR = @as(c_int, 0x1);
-pub const NSADDIMAGE_OPTION_WITH_SEARCHING = @as(c_int, 0x2);
-pub const NSADDIMAGE_OPTION_RETURN_ONLY_IF_LOADED = @as(c_int, 0x4);
-pub const NSADDIMAGE_OPTION_MATCH_FILENAME_BY_INSTALLNAME = @as(c_int, 0x8);
-pub const __CLANG_LIMITS_H = "";
-pub const _GCC_LIMITS_H_ = "";
-pub const _LIMITS_H_ = "";
-pub const _SYS_SYSLIMITS_H_ = "";
-pub const ARG_MAX = @as(c_int, 1024) * @as(c_int, 1024);
-pub const CHILD_MAX = @as(c_int, 266);
-pub const GID_MAX = @import("std").zig.c_translation.promoteIntLiteral(c_uint, 2147483647, .decimal);
-pub const LINK_MAX = @as(c_int, 32767);
-pub const MAX_CANON = @as(c_int, 1024);
-pub const MAX_INPUT = @as(c_int, 1024);
-pub const NAME_MAX = @as(c_int, 255);
-pub const NGROUPS_MAX = @as(c_int, 16);
-pub const UID_MAX = @import("std").zig.c_translation.promoteIntLiteral(c_uint, 2147483647, .decimal);
-pub const OPEN_MAX = @as(c_int, 10240);
-pub const PATH_MAX = @as(c_int, 1024);
-pub const PIPE_BUF = @as(c_int, 512);
-pub const BC_BASE_MAX = @as(c_int, 99);
-pub const BC_DIM_MAX = @as(c_int, 2048);
-pub const BC_SCALE_MAX = @as(c_int, 99);
-pub const BC_STRING_MAX = @as(c_int, 1000);
-pub const CHARCLASS_NAME_MAX = @as(c_int, 14);
-pub const COLL_WEIGHTS_MAX = @as(c_int, 2);
-pub const EQUIV_CLASS_MAX = @as(c_int, 2);
-pub const EXPR_NEST_MAX = @as(c_int, 32);
-pub const LINE_MAX = @as(c_int, 2048);
-pub const RE_DUP_MAX = @as(c_int, 255);
-pub const NZERO = @as(c_int, 20);
-pub const _POSIX_ARG_MAX = @as(c_int, 4096);
-pub const _POSIX_CHILD_MAX = @as(c_int, 25);
-pub const _POSIX_LINK_MAX = @as(c_int, 8);
-pub const _POSIX_MAX_CANON = @as(c_int, 255);
-pub const _POSIX_MAX_INPUT = @as(c_int, 255);
-pub const _POSIX_NAME_MAX = @as(c_int, 14);
-pub const _POSIX_NGROUPS_MAX = @as(c_int, 8);
-pub const _POSIX_OPEN_MAX = @as(c_int, 20);
-pub const _POSIX_PATH_MAX = @as(c_int, 256);
-pub const _POSIX_PIPE_BUF = @as(c_int, 512);
-pub const _POSIX_SSIZE_MAX = @as(c_int, 32767);
-pub const _POSIX_STREAM_MAX = @as(c_int, 8);
-pub const _POSIX_TZNAME_MAX = @as(c_int, 6);
-pub const _POSIX2_BC_BASE_MAX = @as(c_int, 99);
-pub const _POSIX2_BC_DIM_MAX = @as(c_int, 2048);
-pub const _POSIX2_BC_SCALE_MAX = @as(c_int, 99);
-pub const _POSIX2_BC_STRING_MAX = @as(c_int, 1000);
-pub const _POSIX2_EQUIV_CLASS_MAX = @as(c_int, 2);
-pub const _POSIX2_EXPR_NEST_MAX = @as(c_int, 32);
-pub const _POSIX2_LINE_MAX = @as(c_int, 2048);
-pub const _POSIX2_RE_DUP_MAX = @as(c_int, 255);
-pub const _POSIX_AIO_LISTIO_MAX = @as(c_int, 2);
-pub const _POSIX_AIO_MAX = @as(c_int, 1);
-pub const _POSIX_DELAYTIMER_MAX = @as(c_int, 32);
-pub const _POSIX_MQ_OPEN_MAX = @as(c_int, 8);
-pub const _POSIX_MQ_PRIO_MAX = @as(c_int, 32);
-pub const _POSIX_RTSIG_MAX = @as(c_int, 8);
-pub const _POSIX_SEM_NSEMS_MAX = @as(c_int, 256);
-pub const _POSIX_SEM_VALUE_MAX = @as(c_int, 32767);
-pub const _POSIX_SIGQUEUE_MAX = @as(c_int, 32);
-pub const _POSIX_TIMER_MAX = @as(c_int, 32);
-pub const _POSIX_CLOCKRES_MIN = @import("std").zig.c_translation.promoteIntLiteral(c_int, 20000000, .decimal);
-pub const _POSIX_THREAD_DESTRUCTOR_ITERATIONS = @as(c_int, 4);
-pub const _POSIX_THREAD_KEYS_MAX = @as(c_int, 128);
-pub const _POSIX_THREAD_THREADS_MAX = @as(c_int, 64);
-pub const PTHREAD_DESTRUCTOR_ITERATIONS = @as(c_int, 4);
-pub const PTHREAD_KEYS_MAX = @as(c_int, 512);
-pub const PTHREAD_STACK_MIN = @as(c_int, 16384);
-pub const _POSIX_HOST_NAME_MAX = @as(c_int, 255);
-pub const _POSIX_LOGIN_NAME_MAX = @as(c_int, 9);
-pub const _POSIX_SS_REPL_MAX = @as(c_int, 4);
-pub const _POSIX_SYMLINK_MAX = @as(c_int, 255);
-pub const _POSIX_SYMLOOP_MAX = @as(c_int, 8);
-pub const _POSIX_TRACE_EVENT_NAME_MAX = @as(c_int, 30);
-pub const _POSIX_TRACE_NAME_MAX = @as(c_int, 8);
-pub const _POSIX_TRACE_SYS_MAX = @as(c_int, 8);
-pub const _POSIX_TRACE_USER_EVENT_MAX = @as(c_int, 32);
-pub const _POSIX_TTY_NAME_MAX = @as(c_int, 9);
-pub const _POSIX2_CHARCLASS_NAME_MAX = @as(c_int, 14);
-pub const _POSIX2_COLL_WEIGHTS_MAX = @as(c_int, 2);
-pub const _POSIX_RE_DUP_MAX = _POSIX2_RE_DUP_MAX;
-pub const OFF_MIN = LLONG_MIN;
-pub const OFF_MAX = LLONG_MAX;
-pub const PASS_MAX = @as(c_int, 128);
-pub const NL_ARGMAX = @as(c_int, 9);
-pub const NL_LANGMAX = @as(c_int, 14);
-pub const NL_MSGMAX = @as(c_int, 32767);
-pub const NL_NMAX = @as(c_int, 1);
-pub const NL_SETMAX = @as(c_int, 255);
-pub const NL_TEXTMAX = @as(c_int, 2048);
-pub const _XOPEN_IOV_MAX = @as(c_int, 16);
-pub const IOV_MAX = @as(c_int, 1024);
-pub const _XOPEN_NAME_MAX = @as(c_int, 255);
-pub const _XOPEN_PATH_MAX = @as(c_int, 1024);
-pub const LONG_LONG_MAX = __LONG_LONG_MAX__;
-pub const LONG_LONG_MIN = -__LONG_LONG_MAX__ - @as(c_longlong, 1);
-pub const ULONG_LONG_MAX = (__LONG_LONG_MAX__ * @as(c_ulonglong, 2)) + @as(c_ulonglong, 1);
 pub const KAI_FS_H = "";
 pub const _SYS_STAT_H_ = "";
 pub const _STRUCT_TIMESPEC = struct_timespec;
@@ -25733,6 +22721,7 @@ pub const _SYS_UNISTD_H_ = "";
 pub const _POSIX_VERSION = @as(c_long, 200112);
 pub const _POSIX2_VERSION = @as(c_long, 200112);
 pub const _POSIX_VDISABLE = @import("std").zig.c_translation.cast(u8, '\xff');
+pub const _POSIX_THREAD_KEYS_MAX = @as(c_int, 128);
 pub const F_OK = @as(c_int, 0);
 pub const X_OK = @as(c_int, 1) << @as(c_int, 0);
 pub const W_OK = @as(c_int, 1) << @as(c_int, 1);
@@ -26104,76 +23093,6 @@ pub const rusage_info_v6 = struct_rusage_info_v6;
 pub const rlimit = struct_rlimit;
 pub const proc_rlimit_control_wakeupmon = struct_proc_rlimit_control_wakeupmon;
 pub const _malloc_zone_t = struct__malloc_zone_t;
-pub const mach_port_status = struct_mach_port_status;
-pub const mach_port_limits = struct_mach_port_limits;
-pub const mach_port_info_ext = struct_mach_port_info_ext;
-pub const mach_port_guard_info = struct_mach_port_guard_info;
-pub const mach_port_qos = struct_mach_port_qos;
-pub const mach_service_port_info = struct_mach_service_port_info;
-pub const mach_port_options = struct_mach_port_options;
-pub const mach_port_guard_exception_codes = enum_mach_port_guard_exception_codes;
-pub const mach_vm_range = struct_mach_vm_range;
-pub const arm_state_hdr = struct_arm_state_hdr;
-pub const arm_unified_thread_state = struct_arm_unified_thread_state;
-pub const _OSUnalignedU16 = struct__OSUnalignedU16;
-pub const _OSUnalignedU32 = struct__OSUnalignedU32;
-pub const _OSUnalignedU64 = struct__OSUnalignedU64;
-pub const NXByteOrder = enum_NXByteOrder;
-pub const mach_header = struct_mach_header;
-pub const mach_header_64 = struct_mach_header_64;
-pub const load_command = struct_load_command;
-pub const lc_str = union_lc_str;
-pub const segment_command = struct_segment_command;
-pub const segment_command_64 = struct_segment_command_64;
-pub const section = struct_section;
-pub const section_64 = struct_section_64;
-pub const fvmlib = struct_fvmlib;
-pub const fvmlib_command = struct_fvmlib_command;
-pub const dylib = struct_dylib;
-pub const dylib_command = struct_dylib_command;
-pub const dylib_use_command = struct_dylib_use_command;
-pub const sub_framework_command = struct_sub_framework_command;
-pub const sub_client_command = struct_sub_client_command;
-pub const sub_umbrella_command = struct_sub_umbrella_command;
-pub const sub_library_command = struct_sub_library_command;
-pub const prebound_dylib_command = struct_prebound_dylib_command;
-pub const dylinker_command = struct_dylinker_command;
-pub const thread_command = struct_thread_command;
-pub const routines_command = struct_routines_command;
-pub const routines_command_64 = struct_routines_command_64;
-pub const symtab_command = struct_symtab_command;
-pub const dysymtab_command = struct_dysymtab_command;
-pub const dylib_table_of_contents = struct_dylib_table_of_contents;
-pub const dylib_module = struct_dylib_module;
-pub const dylib_module_64 = struct_dylib_module_64;
-pub const dylib_reference = struct_dylib_reference;
-pub const twolevel_hints_command = struct_twolevel_hints_command;
-pub const twolevel_hint = struct_twolevel_hint;
-pub const prebind_cksum_command = struct_prebind_cksum_command;
-pub const uuid_command = struct_uuid_command;
-pub const rpath_command = struct_rpath_command;
-pub const target_triple_command = struct_target_triple_command;
-pub const linkedit_data_command = struct_linkedit_data_command;
-pub const encryption_info_command = struct_encryption_info_command;
-pub const encryption_info_command_64 = struct_encryption_info_command_64;
-pub const version_min_command = struct_version_min_command;
-pub const build_version_command = struct_build_version_command;
-pub const build_tool_version = struct_build_tool_version;
-pub const dyld_info_command = struct_dyld_info_command;
-pub const linker_option_command = struct_linker_option_command;
-pub const symseg_command = struct_symseg_command;
-pub const ident_command = struct_ident_command;
-pub const fvmfile_command = struct_fvmfile_command;
-pub const entry_point_command = struct_entry_point_command;
-pub const source_version_command = struct_source_version_command;
-pub const data_in_code_entry = struct_data_in_code_entry;
-pub const tlv_descriptor = struct_tlv_descriptor;
-pub const note_command = struct_note_command;
-pub const fileset_entry_command = struct_fileset_entry_command;
-pub const DYLD_BOOL = enum_DYLD_BOOL;
-pub const __NSObjectFileImage = struct___NSObjectFileImage;
-pub const __NSModule = struct___NSModule;
-pub const __NSSymbol = struct___NSSymbol;
 pub const timespec = struct_timespec;
 pub const ostat = struct_ostat;
 pub const _filesec = struct__filesec;
@@ -26182,3 +23101,4 @@ pub const _telldir = struct__telldir;
 pub const accessx_descriptor = struct_accessx_descriptor;
 pub const fssearchblock = struct_fssearchblock;
 pub const searchstate = struct_searchstate;
+comptime { _ = @import("windows_compat.zig"); }

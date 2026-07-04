@@ -1,0 +1,79 @@
+import length from std.core.string
+import substring from std.core.string
+import fs_exists from std.fs.fs
+import fs_mkdir from std.fs.fs
+
+fn find_last(path: Str, c: Char) -> Int {
+    var i = length(path) - 1
+    while i >= 0 {
+        if path[i] == c { return i }
+        i = i - 1
+    }
+    return -1
+}
+
+fn mkdir_p(path: Str) -> Bool {
+    if fs_exists(path) { return true }
+    let slash_pos = find_last(path, Char(47))
+    if slash_pos > 0 {
+        let parent = substring(path, 0, slash_pos)
+        if !mkdir_p(parent) { return false }
+    }
+    return fs_mkdir(path)
+}
+
+fn str_replace(s: Str, old: Str, new_val: Str) -> Str {
+    let s_len = length(s)
+    let old_len = length(old)
+    if old_len == 0 {
+        return s
+    }
+    var result = ""
+    var i = 0
+    while i < s_len {
+        var j = 0
+        var matched = true
+        while j < old_len {
+            unsafe {
+                if s[i + j] != old[j] {
+                    matched = false
+                    break
+                }
+            }
+            j = j + 1
+        }
+        if matched {
+            result = result + new_val
+            i = i + old_len
+        } else {
+            result = result + substring(s, i, i + 1)
+            i = i + 1
+        }
+    }
+    return result
+}
+
+fn get_base_name(path: Str) -> Str {
+    var last_slash = -1
+    var dot_pos = -1
+    var i = 0
+    let l = length(path)
+    while i < l {
+        let c = path[i]
+        if c == Char(47) {
+            last_slash = i
+        } else if c == Char(46) {
+            dot_pos = i
+        }
+        i = i + 1
+    }
+    var start = 0
+    if last_slash >= 0 {
+        start = last_slash + 1
+    }
+    var end = l
+    if dot_pos > last_slash {
+        end = dot_pos
+    }
+    return substring(path, start, end)
+}

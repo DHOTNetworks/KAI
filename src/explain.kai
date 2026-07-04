@@ -1,0 +1,18 @@
+import std.io.print
+import get_error_info from error_registry
+
+extern fn strcmp(s1: Str, s2: Str) -> Int
+
+fn run_explain(argc: Int, argv: **Char) -> Int {
+    if argc < 3 {
+        printf("Usage: kai explain <error-code>\n")
+        return 1
+    }
+    var code = ""
+    unsafe { code = argv[2] as Str }
+    let info = get_error_info(code)
+    printf("error[%s]: %s\n", code, info.title)
+    printf("  %s\n", info.description)
+    printf("  Suggested fix: %s\n", info.fix)
+    return 0
+}
