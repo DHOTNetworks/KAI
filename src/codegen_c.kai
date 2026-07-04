@@ -1,0 +1,361 @@
+import Allocator from std.core.allocator
+import ArrayList from std.core.array
+import length from std.core.string
+
+struct CCodeBuilder {
+    output: ArrayList<Str>
+    indent_level: Int
+    block_stack: ArrayList<Int>
+    pending_errdefers: ArrayList<Str>
+    pending_defers: ArrayList<Str>
+    defer_depths: ArrayList<Int>
+    errdefer_depths: ArrayList<Int>
+}
+
+impl CCodeBuilder {
+
+fn init(self, allocator: *Allocator) {
+    self.output = ArrayList<Str>(allocator)
+    self.indent_level = 0
+    self.block_stack = ArrayList<Int>(allocator)
+    self.pending_errdefers = ArrayList<Str>(allocator)
+    self.pending_defers = ArrayList<Str>(allocator)
+    self.defer_depths = ArrayList<Int>(allocator)
+    self.errdefer_depths = ArrayList<Int>(allocator)
+}
+
+fn reset(self) {
+    let allocator = self.output.allocator
+    self.output = ArrayList<Str>(allocator)
+    self.indent_level = 0
+    self.block_stack = ArrayList<Int>(allocator)
+    self.pending_errdefers = ArrayList<Str>(allocator)
+    self.pending_defers = ArrayList<Str>(allocator)
+    self.defer_depths = ArrayList<Int>(allocator)
+    self.errdefer_depths = ArrayList<Int>(allocator)
+}
+
+fn clear_pending(self) {
+    self.pending_errdefers = ArrayList<Str>(self.output.allocator)
+    self.pending_defers = ArrayList<Str>(self.output.allocator)
+    self.defer_depths = ArrayList<Int>(self.output.allocator)
+    self.errdefer_depths = ArrayList<Int>(self.output.allocator)
+}
+
+fn drain_pending(self) {
+    self.pending_errdefers = ArrayList<Str>(self.output.allocator)
+    self.pending_defers = ArrayList<Str>(self.output.allocator)
+}
+
+fn emit_raw(self, code: Str) {
+    self.output.push(code)
+}
+
+fn emit(self, code: Str) {
+    var indent_str = ""
+    var i = 0
+    while i < self.indent_level {
+        indent_str = indent_str + "    "
+        i = i + 1
+    }
+    self.output.push(indent_str + code)
+}
+
+fn emit_blank(self) {
+    self.output.push("")
+}
+
+fn begin_block(self) {
+    self.emit("{")
+    self.indent()
+    self.block_stack.push(self.indent_level)
+}
+
+fn end_block(self) {
+    self.dedent()
+    self.emit("}")
+    if self.block_stack.length() > 0 {
+        let _ = self.block_stack.pop()
+    }
+}
+
+fn indent(self) {
+    self.indent_level = self.indent_level + 1
+}
+
+fn dedent(self) {
+    if self.indent_level > 0 {
+        self.indent_level = self.indent_level - 1
+    }
+}
+
+fn enter_scope(self) {
+    self.defer_depths.push(self.pending_defers.length())
+    self.errdefer_depths.push(self.pending_errdefers.length())
+}
+
+fn exit_scope(self, emit_defers: Bool) {
+    let errdefer_start = self.errdefer_depths.pop()
+    let defer_start = self.defer_depths.pop()
+    if emit_defers {
+        while self.pending_defers.length() > defer_start {
+            let body = self.pending_defers.pop()
+            self._emit_multiline_body(body)
+        }
+    } else {
+        while self.pending_defers.length() > defer_start {
+            let _ = self.pending_defers.pop()
+        }
+    }
+    while self.pending_errdefers.length() > errdefer_start {
+        let _ = self.pending_errdefers.pop()
+    }
+}
+
+fn push_defer(self, body: Str) {
+    self.pending_defers.push(body)
+}
+
+fn push_errdefer(self, body: Str) {
+    self.pending_errdefers.push(body)
+}
+
+fn errdefer_count(self) -> Int {
+    return self.pending_errdefers.length()
+}
+
+fn defer_count(self) -> Int {
+    return self.pending_defers.length()
+}
+
+fn emit_stmt_body(self, s: Str) {
+    let len = length(s)
+    if len == 0 { return }
+    if s[0] == Char(123) {
+        let inner = s[1..len - 1]
+        self.emit("{")
+        self.indent()
+        self._emit_multiline_body(inner)
+        self.dedent()
+        self.emit("}")
+    } else {
+        self.emit(s)
+    }
+}
+
+fn emit_stmts(self, stmts: ArrayList<Str>) {
+    var i = 0
+    while i < stmts.length() {
+        self.emit(stmts.get(i))
+        i = i + 1
+    }
+}
+
+fn emit_block(self, stmts: ArrayList<Str>) {
+    self.begin_block()
+    var i = 0
+    while i < stmts.length() {
+        self.emit(stmts.get(i))
+        i = i + 1
+    }
+    self.end_block()
+}
+
+fn emit_drop_call(self, base_type: Str, name: Str) {
+    self.emit(base_type + "_drop(&" + name + ");")
+}
+
+fn emit_return(self, val: Str) {
+    if length(val) > 0 {
+        self.emit("return " + val + ";")
+    } else {
+        self.emit("return;")
+    }
+}
+
+fn emit_var_decl(self, type_name: Str, var_name: Str, init: Str) {
+    if length(init) > 0 {
+        self.emit(type_name + " " + var_name + " = " + init + ";")
+    } else {
+        self.emit(type_name + " " + var_name + ";")
+    }
+}
+
+fn emit_expr_stmt(self, expr: Str) {
+    self.emit(expr + ";")
+}
+
+fn emit_cleanup_section(self, result_type: Str) {
+    // Emit full cleanup section: run errdefers then return error
+    while self.pending_errdefers.length() > 0 {
+        let body = self.pending_errdefers.pop()
+        self._emit_multiline_body(body)
+    }
+    while self.pending_defers.length() > 0 {
+        let body = self.pending_defers.pop()
+        self._emit_multiline_body(body)
+    }
+}
+
+fn emit_err_goto(self, var_name: Str, label: Str) {
+    self.emit("goto " + label + ";")
+}
+
+fn emit_err_return(self, var_name: Str, result_type: Str) {
+    self.emit("return " + self.make_result_error(result_type, var_name) + ";")
+}
+
+fn emit_try_stmt(self, result_ctype: Str, init_expr: Str, ret_ctype: Str, has_val: Bool, cleanup: ArrayList<Str>) {
+    self.begin_block()
+    self.emit_var_decl(result_ctype, "_kai_res", init_expr)
+    self.emit("if (_kai_res.tag != 0) {")
+    self.indent()
+    self.emit("// cleanup on error")
+    var ci = 0
+    while ci < cleanup.length() {
+        self.emit(cleanup.get(ci))
+        ci = ci + 1
+    }
+    self.emit("return " + self.make_result_error(ret_ctype, "_kai_res.tag") + ";")
+    self.dedent()
+    self.emit("}")
+    self.dedent()
+    self.emit("}")
+}
+
+fn emit_catch_result_stmt(self, result_ctype: Str, init_expr: Str, val_ctype: Str, err_var: Str, fallback_body: Str, cleanup: ArrayList<Str>) {
+    self.begin_block()
+    self.emit_var_decl(result_ctype, "_kai_cr", init_expr)
+    self.emit("if (_kai_cr.tag != 0) {")
+    self.indent()
+    var ci = 0
+    while ci < cleanup.length() {
+        self.emit(cleanup.get(ci))
+        ci = ci + 1
+    }
+    if length(err_var) > 0 {
+        self.emit_var_decl("int64_t", err_var, "_kai_cr.tag")
+    }
+    if length(fallback_body) > 0 {
+        self._emit_multiline_body(fallback_body)
+    }
+    self.dedent()
+    self.emit("}")
+    if length(val_ctype) > 0 {
+        self.emit_var_decl(val_ctype, "_kai_cv", "_kai_cr.value")
+        self.emit("_kai_cv;")
+    }
+    self.dedent()
+    self.emit("}")
+}
+
+fn emit_catch_optional_stmt(self, opt_ctype: Str, init_expr: Str, val_ctype: Str, fallback_body: Str) {
+    self.begin_block()
+    self.emit_var_decl(opt_ctype, "_kai_opt", init_expr)
+    self.emit("if (_kai_opt.has_value) {")
+    self.indent()
+    self.emit_var_decl(val_ctype, "_kai_cv", "_kai_opt.value")
+    self.dedent()
+    self.emit("} else {")
+    self.indent()
+    if length(fallback_body) > 0 {
+        self._emit_multiline_body(fallback_body)
+    }
+    self.dedent()
+    self.emit("}")
+    self.dedent()
+    self.emit("}")
+}
+
+fn make_result_success(self, result_type: Str, val: Str) -> Str {
+    return "(" + result_type + "){ .tag = 0, .value = " + val + " }"
+}
+
+fn make_result_error(self, result_type: Str, tag: Str) -> Str {
+    return "(" + result_type + "){ .tag = " + tag + " }"
+}
+
+fn make_try_expr(self, result_ctype: Str, init_expr: Str, ret_ctype: Str, has_val: Bool, cleanup: ArrayList<Str>) -> Str {
+    var result = "({ " + result_ctype + " _kai_res = (" + init_expr + "); "
+    result = result + "if (_kai_res.tag != 0) { "
+    var ci = 0
+    while ci < cleanup.length() {
+        result = result + cleanup.get(ci) + " "
+        ci = ci + 1
+    }
+    result = result + ret_ctype + " _kai_err_ret; _kai_err_ret.tag = _kai_res.tag; "
+    result = result + "return _kai_err_ret; } "
+    if has_val {
+        result = result + "_kai_res.value; })"
+    } else {
+        result = result + "0; })"
+    }
+    return result
+}
+
+fn make_catch_expr(self, result_ctype: Str, init_expr: Str, val_ctype: Str, err_var: Str, fallback_expr: Str, cleanup: ArrayList<Str>) -> Str {
+    var result = "({ " + result_ctype + " _kai_cr = (" + init_expr + "); "
+    result = result + val_ctype + " _kai_cv; "
+    result = result + "if (_kai_cr.tag != 0) { "
+    var ci = 0
+    while ci < cleanup.length() {
+        result = result + cleanup.get(ci) + " "
+        ci = ci + 1
+    }
+    if length(err_var) > 0 {
+        result = result + "int64_t " + err_var + " = _kai_cr.tag; "
+    }
+    result = result + "_kai_cv = (" + fallback_expr + "); "
+    result = result + "} else { _kai_cv = _kai_cr.value; } _kai_cv; })"
+    return result
+}
+
+fn make_catch_optional_expr(self, opt_ctype: Str, init_expr: Str, val_ctype: Str, fallback_expr: Str) -> Str {
+    var result = "({ " + opt_ctype + " _kai_opt = (" + init_expr + "); "
+    result = result + val_ctype + " _kai_cv; "
+    result = result + "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } "
+    result = result + "else { _kai_cv = (" + fallback_expr + "); } _kai_cv; })"
+    return result
+}
+
+fn get_output(self) -> Str {
+    var result = ""
+    var i = 0
+    while i < self.output.length() {
+        if i > 0 {
+            result = result + "\n"
+        }
+        result = result + self.output.get(i)
+        i = i + 1
+    }
+    return result
+}
+
+fn get_output_nl(self) -> Str {
+    return self.get_output() + "\n"
+}
+
+fn line_count(self) -> Int {
+    return self.output.length()
+}
+
+fn _emit_multiline_body(self, body: Str) {
+    let len = length(body)
+    if len == 0 { return }
+    var start = 0
+    var i = 0
+    while i < len {
+        if body[i] == Char(10) {
+            if i > start {
+                self.emit(body[start..i])
+            }
+            start = i + 1
+        }
+        i = i + 1
+    }
+    if start < len {
+        self.emit(body[start..len])
+    }
+}
+
+}

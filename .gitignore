@@ -14,7 +14,7 @@ kai_bootstrap_new
 language_roadmap.md
 walkthrough.md
 traits-comptime.md
-codegen*
+#codegen*
 #*.md
 *.ll
 *.py
