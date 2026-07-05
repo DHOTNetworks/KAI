@@ -45,16 +45,12 @@ import cexpr_new_char from codegen_c_ast
 import cexpr_new_ident from codegen_c_ast
 import cexpr_new_binary from codegen_c_ast
 import cexpr_new_unary from codegen_c_ast
-import cexpr_new_field from codegen_c_ast
-import cexpr_new_arrow from codegen_c_ast
-import cexpr_new_index from codegen_c_ast
-import cexpr_new_cast from codegen_c_ast
 import cexpr_new_compound from codegen_c_ast
-import cexpr_new_ternary from codegen_c_ast
 import cexpr_new_call from codegen_c_ast
 import cstmt_new_expr from codegen_c_ast
 import cstmt_new_block from codegen_c_ast
 import ctype_new from codegen_c_ast
+import cdecl_new_func from codegen_c_ast
 
 extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn strstr(haystack: Str, needle: Str) -> *Char
@@ -678,7 +674,31 @@ fn monomorphize_methods_for_struct(self, base_struct_name: Str, concrete_name: S
                 if strlen(params_str) == 0 { params_str = "void" }
 
                 cgb_map_put(&self.func_types, mangled_fn, ret)
-                self.func_decls.append(ret_type + " " + mangled_fn + "(" + params_str + ");\n")
+                var mono_params = ArrayList<Str>(self.allocator)
+                if !is_init {
+                    mono_params.push(concrete_name + "* self")
+                }
+                var pi_mono = 0
+                while pi_mono < m_node.func_params.length() {
+                    let p = m_node.func_params.get(pi_mono)
+                    var is_self2 = false
+                    unsafe { if strcmp(p.name, "self") == 0 { is_self2 = true } }
+                    if !is_self2 {
+                        var ptype = p.ptype
+                        if param_names.length() > 0 {
+                            ptype = self.substitute_type_params(ptype, param_names, type_args)
+                        }
+                        mono_params.push(self.map_type(ptype) + " " + p.name)
+                    }
+                    pi_mono = pi_mono + 1
+                }
+                if mono_params.length() == 0 { mono_params.push("void") }
+                var mono_decl = cdecl_new_func(mangled_fn, ret_type, mono_params, false, false)
+                var local_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
+                local_builder.init(self.allocator)
+                var printer = CPrinter(builder: &local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+                printer.print_decl(mono_decl)
+                self.func_decls.append(local_builder.to_str())
 
                 let body_idx = m_node.func_body
                 if body_idx >= 0 {
@@ -1203,25 +1223,19 @@ fn push_expr(self, node: CExprNode) -> Int {
     return idx
 }
 
-fn push_stmt(self, node: CStmtNode) -> Int {
-    let idx = self.c_stmts.length()
-    self.c_stmts.push(node)
-    return idx
-}
-
 // Convenience: generate expression and immediately print it to a Str.
 // Use when a Str is needed for string concatenation (e.g. inside gen_stmt emit_line calls).
 fn gen_expr_str(self, expr_idx: Int) -> Str {
     let c_idx = self.gen_expr(expr_idx)
     if c_idx < 0 { return "" }
-    var printer = CPrinter(builder: self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+    var printer = CPrinter(builder: &self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
     return printer.print_expr(c_idx)
 }
 
 // Convenience: print an already-pushed C-AST expr node to Str.
 fn expr_to_str(self, c_idx: Int) -> Str {
     if c_idx < 0 { return "" }
-    var printer = CPrinter(builder: self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+    var printer = CPrinter(builder: &self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
     return printer.print_expr(c_idx)
 }
 
@@ -2062,12 +2076,12 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     if stmt.kind == StmtKind.sk_var_decl {
         let var_type = stmt.vardecl_type
         let var_name = stmt.vardecl_name
-        let var_value = stmt.vardecl_value
-        if strlen(var_type) == 0 && var_value >= 0 {
-            let expr = self.expr_pool.get(var_value)
-            if expr.kind != ExprKind.ek_identifier && expr.kind != ExprKind.ek_literal {
-                self.builder.emit_line(self.gen_expr_str(var_value) + ";")
-            }
+        var var_value = stmt.vardecl_value
+        var is_discard = var_value >= 0 && (var_name == "_" || (strlen(var_type) == 0 && (self.get_expr_type(var_value) == "Void" || self.get_expr_type(var_value) == "NoneType")))
+        if is_discard {
+            self.builder.emit_line("(void)(" + self.gen_expr_str(var_value) + ");")
+            cgb_map_put(&self.var_types, var_name, "Void")
+            return
         }
 
         if strlen(var_type) == 0 {
@@ -2324,7 +2338,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
             )
             let c_idx = self.c_stmts.length()
             self.c_stmts.push(cnode)
-            var printer = CPrinter(builder: self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+            var printer = CPrinter(builder: &self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
             printer.print_stmt(c_idx)
         } else {
             self.builder.begin_block()
@@ -2381,7 +2395,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
             )
             let c_idx = self.c_stmts.length()
             self.c_stmts.push(cnode)
-            var printer = CPrinter(builder: self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+            var printer = CPrinter(builder: &self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
             printer.print_stmt(c_idx)
         } else {
             self.builder.begin_block()
@@ -2568,7 +2582,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
                 let c_stmt = cstmt_new_expr(c_expr_idx)
                 let c_stmt_idx = self.c_stmts.length()
                 self.c_stmts.push(c_stmt)
-                var printer = CPrinter(builder: self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+                var printer = CPrinter(builder: &self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
                 printer.print_stmt(c_stmt_idx)
             }
         }
@@ -2723,13 +2737,14 @@ fn build_func_types(self) -> Void {
                 func_vararg: false, func_body: ArrayList<Int>(self.allocator), is_extern: false, var_type: ctype_void(),
                 var_name: "", var_init: -1, is_struct: false, struct_name: "", struct_fields: ArrayList<Str>(self.allocator),
                 is_enum: false, enum_name: "", enum_variants: ArrayList<Str>(self.allocator), is_tagged_enum: false,
-                tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_typedef: true, typedef_alias: cname,
+                tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_tagged_union_struct: false,
+                is_typedef: true, typedef_alias: cname,
                 typedef_def: ctype_new("struct " + cname, 0, false, false)
             )
             
             var local_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
             local_builder.init(self.allocator)
-            var printer = CPrinter(builder: local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+            var printer = CPrinter(builder: &local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
             printer.print_decl(struct_decl)
             self.type_defs.append(local_builder.to_str())
         }
@@ -2757,13 +2772,14 @@ fn build_func_types(self) -> Void {
                     func_vararg: false, func_body: ArrayList<Int>(self.allocator), is_extern: false, var_type: ctype_void(),
                     var_name: "", var_init: -1, is_struct: false, struct_name: "", struct_fields: ArrayList<Str>(self.allocator),
                     is_enum: true, enum_name: cename, enum_variants: variants_list, is_tagged_enum: false,
-                    tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_typedef: false, typedef_alias: "",
+                    tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_tagged_union_struct: false,
+                    is_typedef: false, typedef_alias: "",
                     typedef_def: ctype_void()
                 )
                 
                 var local_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
                 local_builder.init(self.allocator)
-                var printer = CPrinter(builder: local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+                var printer = CPrinter(builder: &local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
                 printer.print_decl(enum_decl)
                 self.type_defs.append(local_builder.to_str())
             } else {
@@ -2781,13 +2797,14 @@ fn build_func_types(self) -> Void {
                     func_vararg: false, func_body: ArrayList<Int>(self.allocator), is_extern: false, var_type: ctype_void(),
                     var_name: "", var_init: -1, is_struct: false, struct_name: "", struct_fields: ArrayList<Str>(self.allocator),
                     is_enum: true, enum_name: tags_name, enum_variants: variants_list, is_tagged_enum: false,
-                    tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_typedef: false, typedef_alias: "",
+                    tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_tagged_union_struct: false,
+                    is_typedef: false, typedef_alias: "",
                     typedef_def: ctype_void()
                 )
                 
                 var local_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
                 local_builder.init(self.allocator)
-                var printer = CPrinter(builder: local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+                var printer = CPrinter(builder: &local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
                 printer.print_decl(enum_decl)
                 self.type_defs.append(local_builder.to_str())
 
@@ -2797,13 +2814,14 @@ fn build_func_types(self) -> Void {
                     func_vararg: false, func_body: ArrayList<Int>(self.allocator), is_extern: false, var_type: ctype_void(),
                     var_name: "", var_init: -1, is_struct: false, struct_name: "", struct_fields: ArrayList<Str>(self.allocator),
                     is_enum: false, enum_name: "", enum_variants: ArrayList<Str>(self.allocator), is_tagged_enum: false,
-                    tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_typedef: true, typedef_alias: cename,
+                    tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_tagged_union_struct: false,
+                    is_typedef: true, typedef_alias: cename,
                     typedef_def: ctype_new("struct " + cename, 0, false, false)
                 )
                 
                 var local_builder2 = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
                 local_builder2.init(self.allocator)
-                var printer2 = CPrinter(builder: local_builder2, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+                var printer2 = CPrinter(builder: &local_builder2, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
                 printer2.print_decl(struct_decl)
                 self.type_defs.append(local_builder2.to_str())
             }
@@ -2823,13 +2841,14 @@ fn build_func_types(self) -> Void {
                 func_vararg: false, func_body: ArrayList<Int>(self.allocator), is_extern: false, var_type: ctype_void(),
                 var_name: "", var_init: -1, is_struct: false, struct_name: "", struct_fields: ArrayList<Str>(self.allocator),
                 is_enum: true, enum_name: cename, enum_variants: variants_list, is_tagged_enum: false,
-                tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_typedef: false, typedef_alias: "",
+                tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_tagged_union_struct: false,
+                is_typedef: false, typedef_alias: "",
                 typedef_def: ctype_void()
             )
             
             var local_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
             local_builder.init(self.allocator)
-            var printer = CPrinter(builder: local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+            var printer = CPrinter(builder: &local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
             printer.print_decl(enum_decl)
             self.type_defs.append(local_builder.to_str())
         }
@@ -2955,7 +2974,19 @@ fn build_func_types(self) -> Void {
                 }
 
                 if !is_main {
-                    self.func_decls.append(decl_ret + " " + stmt.func_name + "(" + decl_params + ");\n")
+                    var params_list = ArrayList<Str>(self.allocator)
+                    var pi3 = 0
+                    while pi3 < stmt.func_params.length() {
+                        let p = stmt.func_params.get(pi3)
+                        params_list.push(self.map_type(p.ptype) + " " + p.name)
+                        pi3 = pi3 + 1
+                    }
+                    var func_decl = cdecl_new_func(stmt.func_name, decl_ret, params_list, false, false)
+                    var local_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
+                    local_builder.init(self.allocator)
+                    var printer = CPrinter(builder: &local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+                    printer.print_decl(func_decl)
+                    self.func_decls.append(local_builder.to_str())
                 }
 
                 let body_idx = stmt.func_body
@@ -2985,7 +3016,19 @@ fn build_func_types(self) -> Void {
                             pi3 = pi3 + 1
                         }
                         let ret_type = self.map_type(stmt.extern_return)
-                        self.func_decls.append("extern " + ret_type + " " + stmt.extern_name + "(" + params_str + ");\n")
+                        var ex_params = ArrayList<Str>(self.allocator)
+                        var pi4 = 0
+                        while pi4 < stmt.extern_params.length() {
+                            let p = stmt.extern_params.get(pi4)
+                            ex_params.push(self.map_type(p.ptype) + " " + p.name)
+                            pi4 = pi4 + 1
+                        }
+                        var ext_decl = cdecl_new_func(stmt.extern_name, ret_type, ex_params, true, false)
+                        var local_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
+                        local_builder.init(self.allocator)
+                        var printer = CPrinter(builder: &local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+                        printer.print_decl(ext_decl)
+                        self.func_decls.append(local_builder.to_str())
                     }
                 }
             }
@@ -2993,6 +3036,7 @@ fn build_func_types(self) -> Void {
         if stmt.kind == StmtKind.sk_impl_block {
             let struct_name = stmt.impl_struct_name
             if cgb_map_find(&self.generic_struct_decls, struct_name) >= 0 || cgb_map_find(&self.generic_enum_decls, struct_name) >= 0 {
+                i2 = i2 + 1
                 continue
             }
             let mapped_name = self.map_type(struct_name)
@@ -3037,7 +3081,27 @@ fn build_func_types(self) -> Void {
                 self.cur_return_type = ret
                 self.cur_method_is_init = is_init
 
-                self.func_decls.append(ret_type + " " + mangled_fn + "(" + params_str + ");\n")
+                var impl_params = ArrayList<Str>(self.allocator)
+                if !is_init {
+                    impl_params.push(mapped_name + "* self")
+                }
+                var pi3 = 0
+                while pi3 < m_node.func_params.length() {
+                    let p = m_node.func_params.get(pi3)
+                    var is_self2 = false
+                    unsafe { if strcmp(p.name, "self") == 0 { is_self2 = true } }
+                    if !is_self2 {
+                        impl_params.push(self.map_type(p.ptype) + " " + p.name)
+                    }
+                    pi3 = pi3 + 1
+                }
+                if impl_params.length() == 0 { impl_params.push("void") }
+                var impl_decl = cdecl_new_func(mangled_fn, ret_type, impl_params, false, false)
+                var local_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
+                local_builder.init(self.allocator)
+                var printer = CPrinter(builder: &local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+                printer.print_decl(impl_decl)
+                self.func_decls.append(local_builder.to_str())
 
                 let body_idx = m_node.func_body
                 if body_idx >= 0 {
@@ -3090,26 +3154,37 @@ fn build_func_types(self) -> Void {
                     vi = vi + 1
                 }
                 if has_payload {
-                    self.struct_decls.append("struct " + cename + " {\n")
-                    self.struct_decls.append("    uint8_t tag;\n")
-                    self.struct_decls.append("    union {\n")
+                    var variants_list = ArrayList<Str>(self.allocator)
                     var vi4 = 0
                     while vi4 < stmt.enum_variants.length() {
                         let v = stmt.enum_variants.get(vi4)
                         if v.params.length() > 0 {
-                            self.struct_decls.append("        struct {\n")
+                            var variant_str = "struct { "
                             var pi3 = 0
                             while pi3 < v.params.length() {
+                                if pi3 > 0 { variant_str = variant_str + " " }
                                 let p = v.params.get(pi3)
-                                self.struct_decls.append("            " + self.map_type(p.ptype) + " " + p.name + ";\n")
+                                variant_str = variant_str + self.map_type(p.ptype) + " " + p.name + ";"
                                 pi3 = pi3 + 1
                             }
-                            self.struct_decls.append("        } " + v.vname + ";\n")
+                            variant_str = variant_str + " } " + v.vname + ";"
+                            variants_list.push(variant_str)
                         }
                         vi4 = vi4 + 1
                     }
-                    self.struct_decls.append("    };\n")
-                    self.struct_decls.append("};\n")
+                    var union_decl = CDeclNode(
+                        is_function: false, func_ret: ctype_void(), func_name: "", func_params: ArrayList<Str>(self.allocator),
+                        func_vararg: false, func_body: ArrayList<Int>(self.allocator), is_extern: false, var_type: ctype_void(),
+                        var_name: "", var_init: -1, is_struct: false, struct_name: cename, struct_fields: ArrayList<Str>(self.allocator),
+                        is_enum: false, enum_name: "", enum_variants: ArrayList<Str>(self.allocator), is_tagged_enum: false,
+                        tagged_name: "", tagged_variants: variants_list, is_tagged_union_struct: true,
+                        is_typedef: false, typedef_alias: "", typedef_def: ctype_void()
+                    )
+                    var local_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
+                    local_builder.init(self.allocator)
+                    var printer = CPrinter(builder: &local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+                    printer.print_decl(union_decl)
+                    self.struct_decls.append(local_builder.to_str())
                 }
             }
         }
@@ -3151,17 +3226,27 @@ fn emit_struct_body_with_deps(self, stmt_idx: Int, emitted: *ArrayList<Str>) {
         fi = fi + 1
     }
 
-    // Now emit this struct's body
-    var body_buf = StrBuf(self.allocator)
-    body_buf.append("struct " + cname + " {\n")
+    // Now emit this struct's body via CDeclNode
+    var fields = ArrayList<Str>(self.allocator)
     var fi2 = 0
     while fi2 < stmt.struct_fields.length() {
         let f = stmt.struct_fields.get(fi2)
-        body_buf.append("    " + self.map_type(f.ftype) + " " + f.name + ";\n")
+        fields.push(self.map_type(f.ftype) + " " + f.name + ";")
         fi2 = fi2 + 1
     }
-    body_buf.append("};\n")
-    self.struct_decls.append(body_buf.to_str())
+    var body_decl = CDeclNode(
+        is_function: false, func_ret: ctype_void(), func_name: "", func_params: ArrayList<Str>(self.allocator),
+        func_vararg: false, func_body: ArrayList<Int>(self.allocator), is_extern: false, var_type: ctype_void(),
+        var_name: "", var_init: -1, is_struct: true, struct_name: cname, struct_fields: fields,
+        is_enum: false, enum_name: "", enum_variants: ArrayList<Str>(self.allocator), is_tagged_enum: false,
+        tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_tagged_union_struct: false,
+        is_typedef: false, typedef_alias: "", typedef_def: ctype_void()
+    )
+    var local_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
+    local_builder.init(self.allocator)
+    var printer = CPrinter(builder: &local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+    printer.print_decl(body_decl)
+    self.struct_decls.append(local_builder.to_str())
 
     // Process trait impls
     var ti = 0
@@ -3211,189 +3296,11 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     self.build_func_types()
 
     var result = StrBuf(self.allocator)
-    result.append("/* BUILDER CODEGEN ACTIVE */\n")
-    result.append("#ifndef _GNU_SOURCE\n")
-    result.append("#define _GNU_SOURCE\n")
-    result.append("#endif\n")
-    result.append("#include <stdint.h>\n")
-    result.append("#include <stdbool.h>\n")
-    result.append("#include <stdio.h>\n")
-    result.append("#include <stdlib.h>\n")
-    result.append("#include <string.h>\n")
-    result.append("#include <inttypes.h>\n")
-
-    //== Runtime: get_exe_dir (platform-conditional)
-    result.append("#ifndef NO_GET_EXE_DIR\n")
-    result.append("#if defined(_WIN32)\n")
-    result.append("#include <windows.h>\n")
-    result.append("#else\n")
-    result.append("#include <dlfcn.h>\n")
-    result.append("#include <limits.h>\n")
-    result.append("#endif\n\n")
-    result.append("int64_t get_exe_dir(char* out_buf, int64_t max_len) {\n")
-    result.append("#if defined(_WIN32)\n")
-    result.append("    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);\n")
-    result.append("    if (len == 0 || len >= max_len) return -1;\n")
-    result.append("    for (int i = len - 1; i >= 0; i--) {\n")
-    result.append("        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {\n")
-    result.append("            out_buf[i] = '\\0';\n")
-    result.append("            break;\n")
-    result.append("        }\n")
-    result.append("    }\n")
-    result.append("    return 0;\n")
-    result.append("#else\n")
-    result.append("    Dl_info info;\n")
-    result.append("    char dummy = 0;\n")
-    result.append("    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {\n")
-    result.append("        char real_path[PATH_MAX];\n")
-    result.append("        if (realpath(info.dli_fname, real_path) != NULL) {\n")
-    result.append("            char* last_slash = strrchr(real_path, '/');\n")
-    result.append("            if (last_slash != NULL) {\n")
-    result.append("                *last_slash = '\\0';\n")
-    result.append("                int i = 0;\n")
-    result.append("                while (i < max_len - 1 && real_path[i] != '\\0') {\n")
-    result.append("                    out_buf[i] = real_path[i];\n")
-    result.append("                    i++;\n")
-    result.append("                }\n")
-    result.append("                out_buf[i] = '\\0';\n")
-    result.append("                return 0;\n")
-    result.append("            }\n")
-    result.append("        }\n")
-    result.append("    }\n")
-    result.append("    return -1;\n")
-    result.append("#endif\n")
-    result.append("}\n")
-    result.append("#endif\n")
-    result.append("\n")
-
-    //== Runtime: __kai_str_sub / __kai_arr_sub
-    result.append("static char* __kai_str_sub(const char* s, int64_t start, int64_t end) {\n")
-    result.append("    int64_t len = strlen(s);\n")
-    result.append("    if (end > len) end = len;\n")
-    result.append("    if (start < 0) start = 0;\n")
-    result.append("    if (start >= end) {\n")
-    result.append("        char* empty = malloc(1);\n")
-    result.append("        if (empty) empty[0] = '\\0';\n")
-    result.append("        return empty;\n")
-    result.append("    }\n")
-    result.append("    int64_t sub_len = end - start;\n")
-    result.append("    char* buf = malloc(sub_len + 1);\n")
-    result.append("    if (buf) {\n")
-    result.append("        memcpy(buf, s + start, sub_len);\n")
-    result.append("        buf[sub_len] = '\\0';\n")
-    result.append("    }\n")
-    result.append("    return buf;\n")
-    result.append("}\n")
-    result.append("\n")
-    result.append("static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t elem_size) {\n")
-    result.append("    int64_t count = end - start;\n")
-    result.append("    if (count <= 0) return NULL;\n")
-    result.append("    size_t total = (size_t)count * (size_t)elem_size;\n")
-    result.append("    void* buf = malloc(total);\n")
-    result.append("    if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);\n")
-    result.append("    return buf;\n")
-    result.append("}\n")
-    result.append("\n")
-
-    //== Runtime: __kai_std_str_concat_alloc
-    result.append("static char* __kai_std_str_concat_alloc(const char* left, const char* right) {\n")
-    result.append("    size_t left_len = strlen(left);\n")
-    result.append("    size_t right_len = strlen(right);\n")
-    result.append("    size_t total = left_len + right_len + 1;\n")
-    result.append("    char* buf = (char*)malloc(total);\n")
-    result.append("    if (buf) {\n")
-    result.append("        memcpy(buf, left, left_len);\n")
-    result.append("        memcpy(buf + left_len, right, right_len);\n")
-    result.append("        buf[total - 1] = '\\0';\n")
-    result.append("    }\n")
-    result.append("    return buf;\n")
-    result.append("}\n")
-    result.append("\n")
-
-    //== Phase: User C FFI imports (non-baseline headers)
-    var ci = 0
-    var has_cimports = false
-    while ci < self.cimport_headers.length() {
-        let hdr = self.cimport_headers.get(ci)
-        var is_baseline = false
-        if hdr == "stdint.h" { is_baseline = true }
-        else if hdr == "stdbool.h" { is_baseline = true }
-        else if hdr == "stdio.h" { is_baseline = true }
-        else if hdr == "stdlib.h" { is_baseline = true }
-        else if hdr == "string.h" { is_baseline = true }
-        else if hdr == "sys/mman.h" { is_baseline = true }
-        else if hdr == "ctype.h" { is_baseline = true }
-        if !is_baseline {
-            if !has_cimports {
-                result.append("/* C FFI Imports */\n")
-                has_cimports = true
-            }
-            var has_slash = false
-            var dot_start = false
-            if strlen(hdr) > 0 {
-                var hi = 0
-                while hi < strlen(hdr) {
-                    if hdr[hi] == Char(47) { has_slash = true }
-                    hi = hi + 1
-                }
-                if hdr[0] == Char(46) { dot_start = true }
-            }
-            if !has_slash && !dot_start {
-                result.append("#include <" + hdr + ">\n")
-            } else {
-                result.append("#include \"" + hdr + "\"\n")
-            }
-        }
-        ci = ci + 1
-    }
-
-    //== Phase: Allocator + runtime glue
-    result.append("#ifndef MAP_FAILED\n")
-    result.append("#define MAP_FAILED ((void*)-1)\n")
-    result.append("#endif\n")
-    result.append("#ifndef MAP_PRIVATE\n")
-    result.append("#define MAP_PRIVATE 2\n")
-    result.append("#endif\n")
-    result.append("#ifndef MAP_ANONYMOUS\n")
-    result.append("#ifdef __APPLE__\n")
-    result.append("#define MAP_ANONYMOUS 0x1000\n")
-    result.append("#else\n")
-    result.append("#define MAP_ANONYMOUS 0x20\n")
-    result.append("#endif\n")
-    result.append("#endif\n")
-    result.append("extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);\n")
-    result.append("extern int munmap(void* addr, unsigned long long length);\n")
-    result.append("\n")
-    result.append("static __thread void* _kai_current_allocator = NULL;\n")
-    result.append("\n")
-    result.append("static inline void _kai_set_current_allocator(void* allocator) {\n")
-    result.append("    _kai_current_allocator = allocator;\n")
-    result.append("}\n")
-    result.append("\n")
-    result.append("void __kai_print_int(int64_t v) {\n")
-    result.append("    printf(\"%lld\\n\", (long long)(v));\n")
-    result.append("}\n")
-    result.append("\n")
-    result.append("void __kai_print_float(double v) {\n")
-    result.append("    printf(\"%f\\n\", (double)(v));\n")
-    result.append("}\n")
-    result.append("\n")
-    result.append("static inline uint8_t* _kai_mmap(uint8_t* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {\n")
-    result.append("    return (uint8_t*)mmap(addr, length, prot, MAP_PRIVATE | MAP_ANONYMOUS, fd, offset);\n")
-    result.append("}\n")
-    result.append("\n")
-    result.append("static inline int64_t _kai_munmap(uint8_t* addr, int64_t length) {\n")
-    result.append("    return munmap(addr, length);\n")
-    result.append("}\n")
-    result.append("\n")
-    result.append("extern void __kai_panic(const char* msg);\n")
-    result.append("#ifndef __KAI_NO_PANIC\n")
-    result.append("void __kai_panic(const char* msg) {\n")
-    result.append("    fprintf(stderr, \"KAI PANIC: %s\\n\", msg);\n")
-    result.append("    fflush(stderr);\n")
-    result.append("    abort();\n")
-    result.append("}\n")
-    result.append("#endif\n")
+    var preamble_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
+    preamble_builder.init(self.allocator)
+    var preamble_printer = CPrinter(builder: &preamble_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+    preamble_printer.emit_runtime_preamble(&self.cimport_headers)
+    result.append(preamble_builder.to_str())
     result.append("\n")
 
     //== Phase: User struct/enum/trait declarations

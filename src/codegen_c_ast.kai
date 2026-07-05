@@ -249,6 +249,7 @@ struct CDeclNode {
     is_tagged_enum: Bool
     tagged_name: Str
     tagged_variants: ArrayList<Str>
+    is_tagged_union_struct: Bool
     is_typedef: Bool
     typedef_alias: Str
     typedef_def: CType
@@ -423,62 +424,6 @@ fn cexpr_new_unary(op: Str, operand: Int, is_prefix: Bool) -> CExprNode {
     )
 }
 
-fn cexpr_new_field(base: Int, name: Str) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
-    return CExprNode(
-        kind: CExprKind.ck_field, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
-        ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
-        call_func: -1, call_args: args, callee_name: "", field_expr: base, field_name: name, idx_expr: -1, idx_index: -1,
-        cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
-        tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
-        assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
-    )
-}
-
-fn cexpr_new_arrow(base: Int, name: Str) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
-    return CExprNode(
-        kind: CExprKind.ck_arrow, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
-        ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
-        call_func: -1, call_args: args, callee_name: "", field_expr: base, field_name: name, idx_expr: -1, idx_index: -1,
-        cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
-        tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
-        assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
-    )
-}
-
-fn cexpr_new_index(base: Int, idx_val: Int) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
-    return CExprNode(
-        kind: CExprKind.ck_index, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
-        ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
-        call_func: -1, call_args: args, callee_name: "", field_expr: -1, field_name: "", idx_expr: base, idx_index: idx_val,
-        cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
-        tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
-        assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
-    )
-}
-
-fn cexpr_new_cast(t: CType, cast_e: Int) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
-    return CExprNode(
-        kind: CExprKind.ck_cast, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
-        ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
-        call_func: -1, call_args: args, callee_name: "", field_expr: -1, field_name: "", idx_expr: -1, idx_index: -1,
-        cast_type: t, cast_expr: cast_e, compound_type: ctype_void(), compound_fields: fields,
-        tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
-        assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
-    )
-}
-
 fn cexpr_new_compound(t: CType, compound_fs: ArrayList<Str>) -> CExprNode {
     var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
     return CExprNode(
@@ -492,17 +437,20 @@ fn cexpr_new_compound(t: CType, compound_fs: ArrayList<Str>) -> CExprNode {
     )
 }
 
-fn cexpr_new_ternary(cond: Int, then_e: Int, else_e: Int) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
-    return CExprNode(
-        kind: CExprKind.ck_ternary, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
-        ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
-        call_func: -1, call_args: args, callee_name: "", field_expr: -1, field_name: "", idx_expr: -1, idx_index: -1,
-        cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
-        tern_cond: cond, tern_then: then_e, tern_else: else_e, sizeof_type: ctype_void(), sizeof_expr: -1,
-        assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+//== 10. CDeclNode Constructors
+
+fn cdecl_new_func(name: Str, ret_type: Str, params: ArrayList<Str>, is_extern: Bool, is_vararg: Bool) -> CDeclNode {
+    var empty_stmts = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var empty_strs = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    return CDeclNode(
+        is_function: true, func_ret: ctype_new(ret_type, 0, false, false), func_name: name,
+        func_params: params, func_vararg: is_vararg, func_body: empty_stmts,
+        is_extern: is_extern, var_type: ctype_void(), var_name: "", var_init: -1,
+        is_struct: false, struct_name: "", struct_fields: empty_strs,
+        is_enum: false, enum_name: "", enum_variants: empty_strs,
+        is_tagged_enum: false, tagged_name: "", tagged_variants: empty_strs,
+        is_tagged_union_struct: false,
+        is_typedef: false, typedef_alias: "", typedef_def: ctype_void()
     )
 }
 
