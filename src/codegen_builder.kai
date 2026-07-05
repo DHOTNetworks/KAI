@@ -1,9 +1,6 @@
 import ArrayList from std.core.array
 import Allocator from std.core.allocator
-import StringBuilder from std.core.string
-import int_to_str from std.core.string
-import char_to_str from std.core.string
-import length from std.core.string
+import read_to_string from std.io.file
 
 import ExprKind from ast_nodes
 import ExprNode from ast_nodes
@@ -19,12 +16,46 @@ import MatchCase from ast_nodes
 import AsmOutput from ast_nodes
 import AsmInput from ast_nodes
 import TokenValue from token_defs
+import Lexer from lexer
+import Parser from parser
 import CCodeBuilder from codegen_c_builder
+import cgb_char_to_str from codegen_c_builder
+import cgb_int_to_str from codegen_c_builder
 import std.io.print
 
 extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn strstr(haystack: Str, needle: Str) -> *Char
 extern fn malloc(size: Int) -> *Char
+extern fn strlen(s: Str) -> Int
+extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
+
+//== Minimal string builder (replaces buggy StringBuilder from std.core.string)
+
+struct StrBuf {
+    alloc: *Allocator
+    parts: ArrayList<Str>
+}
+
+impl StrBuf {
+    fn init(self, a: *Allocator) {
+        self.alloc = a
+        self.parts.init(a)
+    }
+
+    fn append(self, s: Str) {
+        self.parts.push(s)
+    }
+
+    fn to_str(self) -> Str {
+        var result = ""
+        var i = 0
+        while i < self.parts.length() {
+            result = result + self.parts.get(i)
+            i = i + 1
+        }
+        return result
+    }
+}
 
 //== Type Map Entry (cgb_ prefix to avoid conflict with codegen.kai)
 
@@ -40,9 +71,9 @@ struct CodegenBuilder {
     pattern_pool: *ArrayList<PatternNode>
 
     builder: CCodeBuilder
-    struct_decls: StringBuilder
-    func_decls: StringBuilder
-    output_body: StringBuilder
+    struct_decls: StrBuf
+    func_decls: StrBuf
+    output_body: StrBuf
 
     cur_func_name: Str
     cur_return_type: Str
@@ -65,6 +96,7 @@ struct CodegenBuilder {
     defer_stack: ArrayList<Int>
     defer_depths: ArrayList<Int>
     func_param_types: ArrayList<CgbMapEntry>
+    type_defs: StrBuf
 }
 
 //== Type Map Helpers (cgb_ prefix to avoid conflict with codegen.kai)
@@ -88,7 +120,7 @@ fn cgb_map_put(arr: *ArrayList<CgbMapEntry>, key: Str, value: Str) {
     arr.push(CgbMapEntry(key: key, value: value))
 }
 
-fn cgb_cgb_strlist_find(arr: *ArrayList<Str>, key: Str) -> Int {
+fn cgb_strlist_find(arr: *ArrayList<Str>, key: Str) -> Int {
     var i = 0
     while i < arr.length() {
         if arr.get(i) == key { return i }
@@ -101,23 +133,51 @@ impl CodegenBuilder {
 
 fn add_init_return(self, body_str: Str, struct_name: Str) -> Str {
     let self_decl = "    " + struct_name + " self = (" + struct_name + "){0};\n"
-    let body_len = length(body_str)
-    var stripped_body = body_str[2..body_len - 1]
+    // body_str starts with "{\n...\n}\n" — strip outer braces
+    var content = body_str
+    if strlen(content) >= 3 && content[0] == Char(123) {
+        var end_pos = strlen(content) - 1
+        var done_trim = false
+        while !done_trim {
+            if end_pos <= 0 { done_trim = true }
+            else {
+                let ec = content[end_pos]
+                if ec == Char(10) || ec == Char(13) || ec == Char(32) { end_pos = end_pos - 1 }
+                else { done_trim = true }
+            }
+        }
+        if end_pos > 0 && content[end_pos] == Char(125) { end_pos = end_pos - 1 }
+        done_trim = false
+        while !done_trim {
+            if end_pos <= 0 { done_trim = true }
+            else {
+                let ec = content[end_pos]
+                if ec == Char(10) || ec == Char(13) || ec == Char(32) { end_pos = end_pos - 1 }
+                else { done_trim = true }
+            }
+        }
+        var first_nl = 1
+        var found_nl = false
+        while first_nl < end_pos && !found_nl {
+            if content[first_nl] == Char(10) { found_nl = true }
+            else { first_nl = first_nl + 1 }
+        }
+        if found_nl { content = content[(first_nl + 1)..(end_pos + 1)] }
+    }
     var ends_with_return = false
     unsafe {
-        let ret_ptr = strstr(stripped_body, "return self;")
+        let ret_ptr = strstr(content, "return self;")
         if ret_ptr != (0 as *Char) {
-            let offset = (ret_ptr as Int) - (stripped_body as Int)
-            if offset >= length(stripped_body) - 20 {
+            let offset = (ret_ptr as Int) - (content as Int)
+            if offset >= strlen(content) - 25 {
                 ends_with_return = true
             }
         }
     }
     if ends_with_return {
-        return "{\n" + self_decl + stripped_body + "}"
+        return "{\n" + self_decl + content + "}"
     }
-    let self_ret = "    return self;\n}"
-    return "{\n" + self_decl + stripped_body + self_ret
+    return "{\n" + self_decl + content + "    return self;\n}"
 }
 
 fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>) {
@@ -126,37 +186,38 @@ fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool:
     self.expr_pool = expr_pool
     self.pattern_pool = pattern_pool
     self.builder.init(allocator)
-    self.struct_decls = StringBuilder(allocator)
-    self.func_decls = StringBuilder(allocator)
-    self.output_body = StringBuilder(allocator)
+    self.struct_decls.init(allocator)
+    self.func_decls.init(allocator)
+    self.output_body.init(allocator)
     self.cur_func_name = ""
     self.cur_return_type = ""
     self.cur_method_is_init = false
-    self.func_types = ArrayList<CgbMapEntry>(allocator)
-    self.var_types = ArrayList<CgbMapEntry>(allocator)
-    self.loaded_modules = ArrayList<Str>(allocator)
-    self.cimport_headers = ArrayList<Str>(allocator)
-    self.block_stack = ArrayList<Int>(allocator)
-    self.generic_struct_decls = ArrayList<CgbMapEntry>(allocator)
-    self.generic_enum_decls = ArrayList<CgbMapEntry>(allocator)
-    self.generic_func_decls = ArrayList<CgbMapEntry>(allocator)
-    self.generic_impl_blocks = ArrayList<CgbMapEntry>(allocator)
-    self.monomorphized_types = ArrayList<Str>(allocator)
-    self.current_type_map = ArrayList<CgbMapEntry>(allocator)
-    self.enum_decls = ArrayList<CgbMapEntry>(allocator)
-    self.result_definitions = ArrayList<Str>(allocator)
-    self.defer_stack = ArrayList<Int>(allocator)
-    self.defer_depths = ArrayList<Int>(allocator)
-    self.func_param_types = ArrayList<CgbMapEntry>(allocator)
+    self.func_types.init(allocator)
+    self.var_types.init(allocator)
+    self.loaded_modules.init(allocator)
+    self.cimport_headers.init(allocator)
+    self.block_stack.init(allocator)
+    self.generic_struct_decls.init(allocator)
+    self.generic_enum_decls.init(allocator)
+    self.generic_func_decls.init(allocator)
+    self.generic_impl_blocks.init(allocator)
+    self.monomorphized_types.init(allocator)
+    self.current_type_map.init(allocator)
+    self.enum_decls.init(allocator)
+    self.result_definitions.init(allocator)
+    self.defer_stack.init(allocator)
+    self.defer_depths.init(allocator)
+    self.func_param_types.init(allocator)
+    self.type_defs.init(allocator)
 }
 
 //== Type Query Helpers
 
 fn is_pointer_type(self, t: Str) -> Bool {
-    if length(t) == 0 { return false }
+    if strlen(t) == 0 { return false }
     if t[0] == Char(42) || t[0] == Char(38) { return true }
     if t == "Str" { return true }
-    if length(t) >= 2 && t[0..2] == "[]" { return true }
+    if strlen(t) >= 2 && t[0..2] == "[]" { return true }
     return false
 }
 
@@ -183,7 +244,7 @@ fn is_copy_type(self, type_name: Str) -> Bool {
     if type_name == "Str" { return true }
     if type_name == "Void" { return true }
     if type_name == "NoneType" { return true }
-    if length(type_name) > 0 && (type_name[0] == Char(42) || type_name[0] == Char(38)) { return true }
+    if strlen(type_name) > 0 && (type_name[0] == Char(42) || type_name[0] == Char(38)) { return true }
     return false
 }
 
@@ -222,41 +283,97 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
     }
     if expr.kind == ExprKind.ek_func_call {
         let name = expr.func_name
-        if name == "cast" || name == "as" || name == "Int" || name == "Float" || name == "Bool" || name == "Char" {
-            if expr.func_args.length() >= 2 { return "_cast" }
-            return "Int"
+        if name == "cast" || name == "as" {
+            if expr.func_type_args.length() > 0 { return expr.func_type_args.get(0) }
+            return "Void"
         }
+        if name == "Int" || name == "Float" || name == "Bool" || name == "Char" { return "Int" }
         if name == "size_of" { return "Int" }
+        if name == "length" { return "Int" }
+        var is_struct = false
+        var si = 0
+        while si < self.stmt_pool.length() {
+            let s = self.stmt_pool.get(si)
+            if s.kind == StmtKind.sk_struct_decl && s.struct_name == name { is_struct = true }
+            si = si + 1
+        }
+        if name == "ArrayList" || name == "HashMap" || name == "StringBuilder" { is_struct = true }
+        if is_struct { return name }
         let fidx = cgb_map_find(&self.func_types, name)
         if fidx >= 0 {
             let func_type = self.func_types.get(fidx).value
             var colon_pos = 0
-            while colon_pos < length(func_type) {
+            while colon_pos < strlen(func_type) {
                 if func_type[colon_pos] == Char(58) {
-                    return func_type[(colon_pos + 1)..length(func_type)]
+                    return func_type[(colon_pos + 1)..strlen(func_type)]
                 }
                 colon_pos = colon_pos + 1
             }
+            // No colon found — whole value is the return type (for extern and impl methods)
+            if strlen(func_type) > 0 { return func_type }
         }
         return "Void"
     }
     if expr.kind == ExprKind.ek_index {
         let base_type = self.get_expr_type(expr.idx_expr)
         if base_type == "Str" { return "Char" }
-        if length(base_type) >= 2 && base_type[0..2] == "[]" {
-            return base_type[2..length(base_type)]
+        if strlen(base_type) >= 2 && base_type[0..2] == "[]" {
+            return base_type[2..strlen(base_type)]
         }
-        if length(base_type) > 0 && base_type[0] == Char(42) {
-            return base_type[1..length(base_type)]
+        if strlen(base_type) > 0 && base_type[0] == Char(42) {
+            return base_type[1..strlen(base_type)]
         }
+        return "Void"
+    }
+    if expr.kind == ExprKind.ek_field_access {
+        let base_type = self.get_expr_type(expr.field_expr)
+        var clean_base = base_type
+        var done_strip = false
+        while !done_strip {
+            if strlen(clean_base) > 0 && (clean_base[0] == Char(42) || clean_base[0] == Char(38)) { clean_base = clean_base[1..strlen(clean_base)] }
+            else if strlen(clean_base) > 5 && clean_base[0..5] == "*mut " { clean_base = clean_base[5..strlen(clean_base)] }
+            else { done_strip = true }
+        }
+        // Look up field type from struct definition
+        var fi = 0
+        while fi < self.stmt_pool.length() {
+            let s = self.stmt_pool.get(fi)
+            if s.kind == StmtKind.sk_struct_decl && s.struct_name == clean_base {
+                var ff = 0
+                while ff < s.struct_fields.length() {
+                    if s.struct_fields.get(ff).name == expr.field_name {
+                        return s.struct_fields.get(ff).ftype
+                    }
+                    ff = ff + 1
+                }
+            }
+            fi = fi + 1
+        }
+        return "Void"
+    }
+    if expr.kind == ExprKind.ek_struct_init { return expr.struct_name }
+    if expr.kind == ExprKind.ek_method_call {
+        let rec_type = self.get_expr_type(expr.meth_expr)
+        var clean_type = ""
+        var ci = 0
+        while ci < strlen(rec_type) {
+            let c = rec_type[ci]
+            if c != Char(42) && c != Char(38) { clean_type = clean_type + cgb_char_to_str(c) }
+            ci = ci + 1
+        }
+        if strlen(clean_type) >= 4 && clean_type[0..4] == "mut " { clean_type = clean_type[4..strlen(clean_type)] }
+        clean_type = self.map_type(clean_type)
+        let key = clean_type + "_" + expr.meth_name
+        let fidx = cgb_map_find(&self.func_types, key)
+        if fidx >= 0 { return self.func_types.get(fidx).value }
         return "Void"
     }
     if expr.kind == ExprKind.ek_borrow { return "&" + self.get_expr_type(expr.borrow_expr) }
     if expr.kind == ExprKind.ek_deref {
         let base_type = self.get_expr_type(expr.deref_expr)
-        if length(base_type) > 5 && base_type[0..5] == "*mut " { return base_type[5..length(base_type)] }
-        if length(base_type) > 5 && base_type[0..5] == "&mut " { return base_type[5..length(base_type)] }
-        if base_type[0] == Char(42) || base_type[0] == Char(38) { return base_type[1..length(base_type)] }
+        if strlen(base_type) > 5 && base_type[0..5] == "*mut " { return base_type[5..strlen(base_type)] }
+        if strlen(base_type) > 5 && base_type[0..5] == "&mut " { return base_type[5..strlen(base_type)] }
+        if base_type[0] == Char(42) || base_type[0] == Char(38) { return base_type[1..strlen(base_type)] }
         return "Void"
     }
     return "Void"
@@ -265,14 +382,14 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
 fn escape_string(self, s: Str) -> Str {
     var res = ""
     var i = 0
-    while i < length(s) {
+    while i < strlen(s) {
         let c = s[i]
         if c == Char(10) { res = res + "\\n" }
         else if c == Char(13) { res = res + "\\r" }
         else if c == Char(9) { res = res + "\\t" }
         else if c == Char(92) { res = res + "\\\\" }
         else if c == Char(34) { res = res + "\\\"" }
-        else { res = res + char_to_str(c) }
+        else { res = res + cgb_char_to_str(c) }
         i = i + 1
     }
     return res
@@ -281,7 +398,7 @@ fn escape_string(self, s: Str) -> Str {
 fn str_to_int(self, s: Str) -> Int {
     var res = 0
     var i = 0
-    while i < length(s) {
+    while i < strlen(s) {
         let c = s[i]
         if c >= Char(48) && c <= Char(57) {
             res = res * 10 + (Int(c) - 48)
@@ -291,40 +408,376 @@ fn str_to_int(self, s: Str) -> Int {
     return res
 }
 
+fn cgb_clean_type_for_mangling(self, s: Str) -> Str {
+    var result = ""
+    var i = 0
+    while i < strlen(s) {
+        let c = s[i]
+        if c == Char(42) { result = result + "ptr" }
+        else if c == Char(38) { result = result + "ref" }
+        else if c == Char(32) { result = result + "_" }
+        else if c == Char(60) || c == Char(62) || c == Char(44) || c == Char(33) || c == Char(63) {
+            result = result + "_"
+        }
+        else { result = result + cgb_char_to_str(c) }
+        i = i + 1
+    }
+    return result
+}
+
+fn monomorphize_struct(self, struct_name: Str, concrete_name: Str, type_args: *ArrayList<Str>) {
+    var stmt_idx_str = cgb_map_get(&self.generic_struct_decls, struct_name)
+    if strlen(stmt_idx_str) == 0 { return }
+    let stmt_idx = self.str_to_int_safe(stmt_idx_str)
+    if stmt_idx < 0 { return }
+    let stmt = self.stmt_pool.get(stmt_idx)
+    self.struct_decls.append("typedef struct " + concrete_name + " " + concrete_name + ";\n")
+    self.struct_decls.append("struct " + concrete_name + " {\n")
+    var fi = 0
+    while fi < stmt.struct_fields.length() {
+        let f = stmt.struct_fields.get(fi)
+        let resolved_ftype = self.substitute_type_params(f.ftype, &stmt.struct_type_params, type_args)
+        self.struct_decls.append("    " + self.map_type(resolved_ftype) + " " + f.name + ";\n")
+        fi = fi + 1
+    }
+    self.struct_decls.append("};\n")
+}
+
+fn monomorphize_enum(self, enum_name: Str, concrete_name: Str, type_args: *ArrayList<Str>) {
+    var stmt_idx_str = cgb_map_get(&self.generic_enum_decls, enum_name)
+    if strlen(stmt_idx_str) == 0 { return }
+    let stmt_idx = self.str_to_int_safe(stmt_idx_str)
+    if stmt_idx < 0 { return }
+}
+
+fn str_to_int_safe(self, s: Str) -> Int {
+    var result = 0
+    var i = 0
+    var neg = false
+    if strlen(s) > 0 && s[0] == Char(45) { neg = true; i = 1 }
+    while i < strlen(s) {
+        let c = s[i]
+        if c >= Char(48) && c <= Char(57) {
+            result = result * 10 + (Int(c) - 48)
+        } else { return -1 }
+        i = i + 1
+    }
+    if neg { result = -result }
+    return result
+}
+
+fn substitute_type_params(self, type_name: Str, param_names: *ArrayList<Str>, arg_types: *ArrayList<Str>) -> Str {
+    if param_names.length() == 0 { return type_name }
+    var result = type_name
+    var i = 0
+    while i < param_names.length() {
+        let pn = param_names.get(i)
+        let arg = arg_types.get(i)
+        unsafe {
+            if strstr(result, pn) != 0 as *Char {
+                var ri = 0
+                var new_res = ""
+                var pn_len = strlen(pn)
+                while ri < strlen(result) {
+                    var matches = true
+                    var mi = 0
+                    while mi < pn_len {
+                        if (ri + mi) >= strlen(result) { matches = false; break }
+                        if result[ri + mi] != pn[mi] { matches = false; break }
+                        mi = mi + 1
+                    }
+                    if matches {
+                        new_res = new_res + arg
+                        ri = ri + pn_len
+                    } else {
+                        new_res = new_res + cgb_char_to_str(result[ri])
+                        ri = ri + 1
+                    }
+                }
+                result = new_res
+            }
+        }
+        i = i + 1
+    }
+    return result
+}
+
 fn map_type(self, resolved_type: Str) -> Str {
-    if resolved_type == "Int" || resolved_type == "i64" { return "int64_t" }
-    if resolved_type == "i8" { return "int8_t" }
-    if resolved_type == "i16" { return "int16_t" }
-    if resolved_type == "i32" { return "int32_t" }
-    if resolved_type == "u8" { return "uint8_t" }
-    if resolved_type == "u16" { return "uint16_t" }
-    if resolved_type == "u32" { return "uint32_t" }
-    if resolved_type == "u64" { return "uint64_t" }
-    if resolved_type == "usize" { return "size_t" }
-    if resolved_type == "isize" { return "intptr_t" }
-    if resolved_type == "Void" { return "void" }
-    if resolved_type == "Bool" { return "bool" }
-    if resolved_type == "Char" { return "char" }
-    if resolved_type == "Float" { return "double" }
-    if resolved_type == "Str" { return "const char*" }
-    if resolved_type == "NoneType" { return "void" }
-    if length(resolved_type) > 0 && resolved_type[0] == Char(42) {
-        let inner = resolved_type[1..length(resolved_type)]
-        return self.map_type(inner) + "*"
+    var orig = resolved_type
+    if strlen(orig) == 0 { return "void" }
+
+    if self.current_type_map.length() > 0 {
+        var tmi = 0
+        while tmi < self.current_type_map.length() {
+            let entry = self.current_type_map.get(tmi)
+            if entry.key == orig { return self.map_type(entry.value) }
+            tmi = tmi + 1
+        }
     }
-    if length(resolved_type) > 0 && resolved_type[0] == Char(38) {
-        let inner = resolved_type[1..length(resolved_type)]
-        return self.map_type(inner) + "*"
+
+    if orig == "Int" || orig == "i64" { return "int64_t" }
+    if orig == "i8" { return "int8_t" }
+    if orig == "i16" { return "int16_t" }
+    if orig == "i32" { return "int32_t" }
+    if orig == "u8" { return "uint8_t" }
+    if orig == "u16" { return "uint16_t" }
+    if orig == "u32" { return "uint32_t" }
+    if orig == "u64" { return "uint64_t" }
+    if orig == "usize" { return "size_t" }
+    if orig == "isize" { return "intptr_t" }
+    if orig == "Void" { return "void" }
+    if orig == "Bool" { return "bool" }
+    if orig == "Char" { return "char" }
+    if orig == "Float" { return "double" }
+    if orig == "Str" { return "const char*" }
+    if orig == "NoneType" { return "void" }
+    if orig == "Allocator" { return "KaiAllocator" }
+    if orig == "TokenValue" { return "TokenValue" }
+    if orig == "TokenType" { return "TokenType" }
+
+    var ptr_count = 0
+    var inner = orig
+    var changed = true
+    while changed {
+        changed = false
+        if strlen(inner) > 0 && inner[0] == Char(42) {
+            ptr_count = ptr_count + 1
+            inner = inner[1..strlen(inner)]
+            changed = true
+        }
+        else if strlen(inner) > 0 && inner[0] == Char(38) {
+            ptr_count = ptr_count + 1
+            inner = inner[1..strlen(inner)]
+            changed = true
+        }
+        else if strlen(inner) >= 2 && inner[0..2] == "[]" {
+            ptr_count = ptr_count + 1
+            inner = inner[2..strlen(inner)]
+            changed = true
+        }
+        else if strlen(inner) > 5 && inner[0..5] == "*mut " {
+            ptr_count = ptr_count + 1
+            inner = inner[5..strlen(inner)]
+            changed = true
+        }
     }
-    if length(resolved_type) >= 2 && resolved_type[0..2] == "[]" {
-        let inner = resolved_type[2..length(resolved_type)]
-        return self.map_type(inner) + "*"
+
+    var base = inner
+
+    if base == "Int" || base == "i64" { base = "int64_t" }
+    else if base == "i8" { base = "int8_t" }
+    else if base == "i16" { base = "int16_t" }
+    else if base == "i32" { base = "int32_t" }
+    else if base == "u8" { base = "uint8_t" }
+    else if base == "u16" { base = "uint16_t" }
+    else if base == "u32" { base = "uint32_t" }
+    else if base == "u64" { base = "uint64_t" }
+    else if base == "usize" { base = "size_t" }
+    else if base == "isize" { base = "intptr_t" }
+    else if base == "Void" { base = "void" }
+    else if base == "Bool" { base = "bool" }
+    else if base == "Char" { base = "char" }
+    else if base == "Float" { base = "double" }
+    else if base == "Str" { base = "const char*" }
+    else if base == "NoneType" { base = "void" }
+    else if base == "Allocator" { base = "KaiAllocator" }
+    else if base == "TokenValue" { base = "TokenValue" }
+    else if base == "TokenType" { base = "TokenType" }
+    else if self.str_contains(base, Char(33)) {
+        let excl_pos = self.str_find(base, Char(33))
+        let val_type = base[0..excl_pos]
+        let err_type = base[(excl_pos + 1)..strlen(base)]
+        let clean_val = self.cgb_clean_type_for_mangling(val_type)
+        let clean_err = self.cgb_clean_type_for_mangling(err_type)
+        let concrete_name = "Result_" + clean_val + "_" + clean_err
+        if cgb_strlist_find(&self.monomorphized_types, concrete_name) < 0 {
+            self.monomorphized_types.push(concrete_name)
+            self.struct_decls.append("typedef struct " + concrete_name + " " + concrete_name + ";\n")
+            self.struct_decls.append("struct " + concrete_name + " {\n")
+            self.struct_decls.append("    int64_t tag;\n")
+            if val_type != "Void" {
+                self.struct_decls.append("    " + self.map_type(val_type) + " value;\n")
+            }
+            self.struct_decls.append("};\n")
+        }
+        base = concrete_name
     }
-    if length(resolved_type) > 5 && resolved_type[0..5] == "*mut " {
-        let inner = resolved_type[5..length(resolved_type)]
-        return self.map_type(inner) + "*"
+    else if self.str_contains(base, Char(63)) {
+        let q_pos = self.str_find(base, Char(63))
+        if q_pos == 0 {
+            let val_type = base[1..strlen(base)]
+            let clean_val2 = self.cgb_clean_type_for_mangling(val_type)
+            let concrete_name = "Optional_" + clean_val2
+            if cgb_strlist_find(&self.monomorphized_types, concrete_name) < 0 {
+                self.monomorphized_types.push(concrete_name)
+                self.struct_decls.append("typedef struct " + concrete_name + " " + concrete_name + ";\n")
+                self.struct_decls.append("struct " + concrete_name + " {\n")
+                self.struct_decls.append("    bool has_value;\n")
+                self.struct_decls.append("    " + self.map_type(val_type) + " value;\n")
+                self.struct_decls.append("};\n")
+            }
+            base = concrete_name
+        }
     }
-    return resolved_type
+    else if self.str_contains(base, Char(60)) {
+        let lt_pos = self.str_find(base, Char(60))
+        let base_name = base[0..lt_pos]
+        var args_str2 = base[(lt_pos + 1)..strlen(base) - 1]
+        var concrete_name = base_name
+        var args_list = ArrayList<Str>(self.allocator)
+        var start2 = 0
+        while start2 < strlen(args_str2) {
+            while start2 < strlen(args_str2) && args_str2[start2] == Char(32) { start2 = start2 + 1 }
+            if start2 >= strlen(args_str2) { break }
+            var end2 = start2
+            while end2 < strlen(args_str2) && args_str2[end2] != Char(44) { end2 = end2 + 1 }
+            let arg = args_str2[start2..end2]
+            let clean_arg = self.cgb_clean_type_for_mangling(arg)
+            args_list.push(arg)
+            if strlen(concrete_name) > 0 { concrete_name = concrete_name + "_" }
+            concrete_name = concrete_name + clean_arg
+            start2 = end2 + 1
+        }
+
+        let struct_idx_str = cgb_map_get(&self.generic_struct_decls, base_name)
+        if strlen(struct_idx_str) > 0 {
+            if cgb_strlist_find(&self.monomorphized_types, concrete_name) < 0 {
+                self.monomorphized_types.push(concrete_name)
+                self.monomorphize_struct(base_name, concrete_name, &args_list)
+            }
+            base = concrete_name
+        } else {
+            let enum_idx_str = cgb_map_get(&self.generic_enum_decls, base_name)
+            if strlen(enum_idx_str) > 0 {
+                if cgb_strlist_find(&self.monomorphized_types, concrete_name) < 0 {
+                    self.monomorphized_types.push(concrete_name)
+                    self.monomorphize_enum(base_name, concrete_name, &args_list)
+                }
+                base = concrete_name
+            } else {
+                base = concrete_name
+            }
+        }
+    }
+
+    var result = base
+    var pi = 0
+    while pi < ptr_count {
+        result = result + "*"
+        pi = pi + 1
+    }
+    return result
+}
+
+fn str_contains(self, s: Str, target: Char) -> Bool {
+    var i = 0
+    while i < strlen(s) {
+        if s[i] == target { return true }
+        i = i + 1
+    }
+    return false
+}
+
+fn str_find(self, s: Str, target: Char) -> Int {
+    var i = 0
+    while i < strlen(s) {
+        if s[i] == target { return i }
+        i = i + 1
+    }
+    return -1
+}
+
+fn is_standard_c_func(self, name: Str) -> Bool {
+    let l = strlen(name)
+    if l >= 4 {
+        let sub4 = name[0..4]
+        var is_llvm = false
+        unsafe { if strcmp(sub4, "LLVM") == 0 { is_llvm = true } }
+        if is_llvm { return true }
+    }
+    if l >= 8 {
+        let sub8 = name[0..8]
+        var is_kai_llvm = false
+        unsafe { if strcmp(sub8, "kai_LLVM") == 0 { is_kai_llvm = true } }
+        if is_kai_llvm { return true }
+    }
+    if name == "atoll" { return true }
+    if name == "malloc" { return true }
+    if name == "free" { return true }
+    if name == "realloc" { return true }
+    if name == "calloc" { return true }
+    if name == "isdigit" { return true }
+    if name == "isalpha" { return true }
+    if name == "isalnum" { return true }
+    if name == "isspace" { return true }
+    if name == "toupper" { return true }
+    if name == "tolower" { return true }
+    if name == "strlen" { return true }
+    if name == "exit" { return true }
+    if name == "system" { return true }
+    if name == "fopen" { return true }
+    if name == "fread" { return true }
+    if name == "fwrite" { return true }
+    if name == "fclose" { return true }
+    if name == "fseek" { return true }
+    if name == "ftell" { return true }
+    if name == "rewind" { return true }
+    if name == "strcmp" { return true }
+    if name == "printf" { return true }
+    if name == "fprintf" { return true }
+    if name == "sprintf" { return true }
+    if name == "snprintf" { return true }
+    if name == "sqrt" { return true }
+    return false
+}
+
+fn gen_expr_with_expected_type(self, expr_idx: Int, expected_type: Str) -> Str {
+    if expr_idx < 0 { return "" }
+    let expr = self.expr_pool.get(expr_idx)
+    let actual_type = self.get_expr_type(expr_idx)
+    if expr.kind == ExprKind.ek_literal && expr.lit_vkind == "NONE" {
+        if strlen(expected_type) > 0 && expected_type[0] == Char(63) {
+            let val_type = expected_type[1..strlen(expected_type)]
+            if self.is_pointer_type(val_type) { return "NULL" }
+            return "(" + self.map_type(expected_type) + "){0}"
+        }
+        return "NULL"
+    }
+    let gen_val = self.gen_expr(expr_idx)
+    if strlen(expected_type) > 0 && expected_type[0] == Char(63) {
+        let val_type = expected_type[1..strlen(expected_type)]
+        if !self.is_pointer_type(val_type) && actual_type == val_type {
+            return "(" + self.map_type(expected_type) + "){ .has_value = true, .value = " + gen_val + " }"
+        }
+    }
+    // Handle Result type wrapping (T!E)
+    var excl_pos = -1
+    var ei = 0
+    while ei < strlen(expected_type) {
+        if expected_type[ei] == Char(33) { excl_pos = ei }
+        ei = ei + 1
+    }
+    if excl_pos >= 0 {
+        let val_payload = expected_type[0..excl_pos]
+        let mapped_type = self.map_type(expected_type)
+        // Check if return value is already a Result type
+        var actual_has_excl = false
+        var aei = 0
+        while aei < strlen(actual_type) {
+            if actual_type[aei] == Char(33) { actual_has_excl = true }
+            aei = aei + 1
+        }
+        if actual_has_excl { return gen_val }
+        // Is it an error variant (enum field access)?
+        if actual_type == "Void" && val_payload != "Void" {
+            return "(" + mapped_type + "){ .tag = " + gen_val + " }"
+        }
+        if val_payload == "Void" {
+            return "(" + mapped_type + "){ .tag = 0 }"
+        }
+        return "(" + mapped_type + "){ .tag = 0, .value = " + gen_val + " }"
+    }
+    return gen_val
 }
 
 //== Expression Codegen
@@ -341,7 +794,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
                     let s: Str = v
                     return s + "LL"
                 }
-                case .tv_int(v) => { return int_to_str(v) + "LL" }
+                case .tv_int(v) => { return cgb_int_to_str(v) + "LL" }
                 case else => { return "0LL" }
             }
         }
@@ -371,12 +824,13 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         if vkind == "CHAR" {
             match expr.lit_value {
                 case .tv_char(v) => {
-                    var buf = "'" + char_to_str(v) + "'"
+                    var buf = "'" + cgb_char_to_str(v) + "'"
                     return buf
                 }
                 case else => { return "'\\0'" }
             }
         }
+        if vkind == "NONE" { return "((void*)0)" }
         return ""
     }
 
@@ -385,9 +839,16 @@ fn gen_expr(self, expr_idx: Int) -> Str {
     }
 
     if expr.kind == ExprKind.ek_binary_op {
+        let lhs_type = self.get_expr_type(expr.binop_left)
         let left = self.gen_expr(expr.binop_left)
+        let op = expr.binop_op
         let right = self.gen_expr(expr.binop_right)
-        return "(" + left + " " + expr.binop_op + " " + right + ")"
+        if lhs_type == "Str" {
+            if op == "+" { return "__kai_std_str_concat_alloc(" + left + ", " + right + ")" }
+            if op == "==" { return "(strcmp(" + left + ", " + right + ") == 0)" }
+            if op == "!=" { return "(strcmp(" + left + ", " + right + ") != 0)" }
+        }
+        return "(" + left + " " + op + " " + right + ")"
     }
 
     if expr.kind == ExprKind.ek_unary_op {
@@ -402,37 +863,18 @@ fn gen_expr(self, expr_idx: Int) -> Str {
     if expr.kind == ExprKind.ek_func_call {
         let name = expr.func_name
         if name == "cast" || name == "as" {
-            if expr.func_args.length() >= 2 {
+            let target_type = expr.func_type_args.get(0)
+            if strlen(target_type) > 0 {
                 let val = self.gen_expr(expr.func_args.get(0))
-                let type_expr = self.expr_pool.get(expr.func_args.get(1))
-                var target_type = ""
-                if type_expr.kind == ExprKind.ek_literal && type_expr.lit_vkind == "STRING" {
-                    match type_expr.lit_value {
-                        case .tv_str(v) => { target_type = v }
-                        case else => {}
-                    }
-                }
-                if length(target_type) > 0 {
-                    let ctype = self.map_type(target_type)
-                    return "((" + ctype + ")(" + val + "))"
-                }
+                let ctype = self.map_type(target_type)
+                return "((" + ctype + ")(" + val + "))"
             }
             return "(" + self.gen_expr(expr.func_args.get(0)) + ")"
         }
         if name == "size_of" {
-            if expr.func_args.length() >= 1 {
-                let type_expr = self.expr_pool.get(expr.func_args.get(0))
-                var type_name = ""
-                if type_expr.kind == ExprKind.ek_literal && type_expr.lit_vkind == "STRING" {
-                    match type_expr.lit_value {
-                        case .tv_str(v) => { type_name = v }
-                        case else => {}
-                    }
-                }
-                if length(type_name) > 0 {
-                    let ctype = self.map_type(type_name)
-                    return "sizeof(" + ctype + ")"
-                }
+            let target_type = expr.func_type_args.get(0)
+            if strlen(target_type) > 0 {
+                return "sizeof(" + self.map_type(target_type) + ")"
             }
             return "0LL"
         }
@@ -446,15 +888,39 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             }
             return "0LL"
         }
+        if name == "length" {
+            if expr.func_args.length() >= 1 {
+                let arg = self.gen_expr(expr.func_args.get(0))
+                return "strlen(" + arg + ")"
+            }
+            return "0LL"
+        }
+
+        var fn_name = name
+        var is_struct = false
+        var si = 0
+        while si < self.stmt_pool.length() {
+            let s = self.stmt_pool.get(si)
+            if s.kind == StmtKind.sk_struct_decl && s.struct_name == name { is_struct = true }
+            si = si + 1
+        }
+        if name == "ArrayList" || name == "HashMap" || name == "StringBuilder" {
+            is_struct = true
+        }
+        if is_struct { fn_name = name + "_init" }
 
         var args_str = ""
         var ai = 0
         while ai < expr.func_args.length() {
             if ai > 0 { args_str = args_str + ", " }
-            args_str = args_str + self.gen_expr(expr.func_args.get(ai))
+            var p_idx = ai
+            if is_struct { p_idx = ai + 1 }
+            let p_key = fn_name + "_param_" + cgb_int_to_str(p_idx)
+            let expected_type = cgb_map_get(&self.func_param_types, p_key)
+            args_str = args_str + self.gen_expr_with_expected_type(expr.func_args.get(ai), expected_type)
             ai = ai + 1
         }
-        return name + "(" + args_str + ")"
+        return fn_name + "(" + args_str + ")"
     }
 
     if expr.kind == ExprKind.ek_index {
@@ -470,27 +936,356 @@ fn gen_expr(self, expr_idx: Int) -> Str {
     }
 
     if expr.kind == ExprKind.ek_field_access {
-        return "(" + self.gen_expr(expr.field_expr) + ")." + expr.field_name
+        let base_node = self.expr_pool.get(expr.field_expr)
+        if base_node.kind == ExprKind.ek_identifier {
+            let ident = base_node.ident_name
+            var ei = 0
+            while ei < self.stmt_pool.length() {
+                let s = self.stmt_pool.get(ei)
+                if s.kind == StmtKind.sk_enum_decl && s.enum_name == ident {
+                    let ename = self.map_type(ident)
+                    let var_name = expr.field_name
+                    var has_payload = false
+                    var vi = 0
+                    while vi < s.enum_variants.length() {
+                        let v = s.enum_variants.get(vi)
+                        if v.vname == var_name && v.params.length() > 0 {
+                            has_payload = true
+                        }
+                        vi = vi + 1
+                    }
+                    if has_payload {
+                        return "(" + ename + "){ .tag = " + ename + "_" + var_name + "_TAG }"
+                    }
+                    return ename + "_" + var_name
+                }
+                if s.kind == StmtKind.sk_error_decl && s.error_name == ident {
+                    let ename = self.map_type(ident)
+                    return ename + "_" + expr.field_name
+                }
+                ei = ei + 1
+            }
+        }
+        let base = self.gen_expr(expr.field_expr)
+        let base_type = self.get_expr_type(expr.field_expr)
+        var accessor = "."
+        var done_access = false
+        while !done_access {
+            if strlen(base_type) > 0 && base_type[0] == Char(42) { accessor = "->"; done_access = true }
+            else if strlen(base_type) > 4 && base_type[0..4] == "*mut " { accessor = "->"; done_access = true }
+            else { done_access = true }
+        }
+        return "(" + base + ")" + accessor + expr.field_name
     }
 
     if expr.kind == ExprKind.ek_method_call {
+        let receiver_node = self.expr_pool.get(expr.meth_expr)
+        let rec_type = self.get_expr_type(expr.meth_expr)
+        var clean_type = ""
+        var ci = 0
+        while ci < strlen(rec_type) {
+            let c = rec_type[ci]
+            if c != Char(42) && c != Char(38) { clean_type = clean_type + cgb_char_to_str(c) }
+            ci = ci + 1
+        }
+        if strlen(clean_type) >= 4 && clean_type[0..4] == "mut " {
+            clean_type = clean_type[4..strlen(clean_type)]
+        }
+        clean_type = self.map_type(clean_type)
+        var is_constructor = false
+        if receiver_node.kind == ExprKind.ek_identifier {
+            let r_name = receiver_node.ident_name
+            if r_name[0] >= Char(65) && r_name[0] <= Char(90) { is_constructor = true }
+        }
+        let func_name = clean_type + "_" + expr.meth_name
         var args_str = ""
+        if !is_constructor && expr.meth_name != "init" {
+            let rec_val = self.gen_expr(expr.meth_expr)
+            let rec_inferred = self.get_expr_type(expr.meth_expr)
+            let is_self_ptr = (receiver_node.kind == ExprKind.ek_identifier && receiver_node.ident_name == "self" && !self.cur_method_is_init)
+            if strlen(rec_inferred) > 0 && (rec_inferred[0] == Char(42) || rec_inferred[0] == Char(38) || is_self_ptr) {
+                args_str = rec_val
+            } else {
+                args_str = "&(" + rec_val + ")"
+            }
+        }
         var ai = 0
         while ai < expr.meth_args.length() {
-            if ai > 0 { args_str = args_str + ", " }
-            args_str = args_str + self.gen_expr(expr.meth_args.get(ai))
+            if strlen(args_str) > 0 { args_str = args_str + ", " }
+            let p_key = func_name + "_param_" + cgb_int_to_str(ai + 1)
+            let expected_type = cgb_map_get(&self.func_param_types, p_key)
+            args_str = args_str + self.gen_expr_with_expected_type(expr.meth_args.get(ai), expected_type)
             ai = ai + 1
         }
-        return self.gen_expr(expr.meth_expr) + "_" + expr.meth_name + "(" + args_str + ")"
+        if expr.meth_name == "init" && !is_constructor {
+            let rec_val = self.gen_expr(expr.meth_expr)
+            let rec_inferred = self.get_expr_type(expr.meth_expr)
+            if strlen(rec_inferred) > 0 && (rec_inferred[0] == Char(42) || rec_inferred[0] == Char(38)) {
+                return "*(" + rec_val + ") = " + func_name + "(" + args_str + ")"
+            }
+            return rec_val + " = " + func_name + "(" + args_str + ")"
+        }
+        return func_name + "(" + args_str + ")"
     }
 
     if expr.kind == ExprKind.ek_slice {
         let base = self.gen_expr(expr.slice_expr)
+        let base_type = self.get_expr_type(expr.slice_expr)
         var lower = "0"
-        var upper = "0"
+        var upper = "strlen(" + base + ")"
         if expr.slice_lower >= 0 { lower = self.gen_expr(expr.slice_lower) }
         if expr.slice_upper >= 0 { upper = self.gen_expr(expr.slice_upper) }
-        return "__kai_str_sub(" + base + ", " + lower + ", " + upper + ")"
+        if base_type == "Str" || base_type == "*Char" {
+            return "__kai_str_sub(" + base + ", " + lower + ", " + upper + ")"
+        }
+        if strlen(base_type) >= 2 && base_type[0..2] == "[]" {
+            let inner_type = base_type[2..strlen(base_type)]
+            let mapped_inner = self.map_type(inner_type)
+            return "__kai_arr_sub(" + base + ", " + lower + ", " + upper + ", sizeof(" + mapped_inner + "))"
+        }
+        return base
+    }
+
+    if expr.kind == ExprKind.ek_struct_init {
+        if self.str_contains(expr.struct_name, Char(46)) {
+            let dot_pos = self.str_find(expr.struct_name, Char(46))
+            let enum_part = expr.struct_name[0..dot_pos]
+            let variant_name = expr.struct_name[(dot_pos + 1)..strlen(expr.struct_name)]
+            let enum_name = self.map_type(enum_part)
+            var fields_str = ""
+            var i = 0
+            while i < expr.struct_fields.length() {
+                let f = expr.struct_fields.get(i)
+                if i > 0 { fields_str = fields_str + ", " }
+                fields_str = fields_str + "." + f.name + " = " + self.gen_expr(f.value)
+                i = i + 1
+            }
+            var payload_str = ""
+            if strlen(fields_str) > 0 {
+                payload_str = ", .payload = { ." + variant_name + " = { " + fields_str + " } }"
+            }
+            return "(" + enum_name + "){ .tag = " + enum_name + "_" + variant_name + "_TAG" + payload_str + " }"
+        }
+        let struct_name = self.map_type(expr.struct_name)
+        var fields_str = ""
+        var i = 0
+        while i < expr.struct_fields.length() {
+            let f = expr.struct_fields.get(i)
+            if i > 0 { fields_str = fields_str + ", " }
+            var field_type = ""
+            var si = 0
+            while si < self.stmt_pool.length() {
+                let s = self.stmt_pool.get(si)
+                if s.kind == StmtKind.sk_struct_decl && s.struct_name == expr.struct_name {
+                    var fi = 0
+                    while fi < s.struct_fields.length() {
+                        let sf = s.struct_fields.get(fi)
+                        if sf.name == f.name { field_type = sf.ftype }
+                        fi = fi + 1
+                    }
+                }
+                si = si + 1
+            }
+            fields_str = fields_str + "." + f.name + " = " + self.gen_expr_with_expected_type(f.value, field_type)
+            i = i + 1
+        }
+        return "(" + struct_name + "){ " + fields_str + " }"
+    }
+
+    if expr.kind == ExprKind.ek_array {
+        var elems_str = ""
+        var i = 0
+        while i < expr.arr_elements.length() {
+            if i > 0 { elems_str = elems_str + ", " }
+            elems_str = elems_str + self.gen_expr(expr.arr_elements.get(i))
+            i = i + 1
+        }
+        if strlen(elems_str) == 0 { elems_str = "0" }
+        var inner_ty = "Int"
+        if strlen(expr.inferred_type) > 2 && expr.inferred_type[0..2] == "[]" {
+            inner_ty = expr.inferred_type[2..strlen(expr.inferred_type)]
+        }
+        let mapped_inner = self.map_type(inner_ty)
+        return "(" + mapped_inner + "[]){ " + elems_str + " }"
+    }
+
+    if expr.kind == ExprKind.ek_tuple {
+        if strlen(expr.inferred_type) > 0 {
+            let mapped_ty = self.map_type(expr.inferred_type)
+            var elems_str = ""
+            var i = 0
+            while i < expr.tup_elements.length() {
+                if i > 0 { elems_str = elems_str + ", " }
+                elems_str = elems_str + self.gen_expr(expr.tup_elements.get(i))
+                i = i + 1
+            }
+            return "(" + mapped_ty + "){ " + elems_str + " }"
+        }
+        return "NULL"
+    }
+
+    if expr.kind == ExprKind.ek_range {
+        let start = self.gen_expr(expr.range_start)
+        let end = self.gen_expr(expr.range_end)
+        var incl = "false"
+        if expr.range_inclusive { incl = "true" }
+        return "(Range){ .start = " + start + ", .end = " + end + ", .is_inclusive = " + incl + " }"
+    }
+
+    if expr.kind == ExprKind.ek_str_interp {
+        if expr.interp_parts.length() == 0 { return "\"\"" }
+        var result = ""
+        var i = 0
+        while i < expr.interp_parts.length() {
+            let part = expr.interp_parts.get(i)
+            var part_str = ""
+            if part.kind == 0 {
+                part_str = "\"" + self.escape_string(part.str_val) + "\""
+            } else {
+                let expr_val = self.gen_expr(part.expr_idx)
+                let expr_type = self.get_expr_type(part.expr_idx)
+                if expr_type == "Int" {
+                    part_str = "cgb_int_to_str(" + expr_val + ")"
+                } else if expr_type == "Char" {
+                    part_str = "cgb_char_to_str(" + expr_val + ")"
+                } else if expr_type == "Bool" {
+                    part_str = "((" + expr_val + ") ? \"true\" : \"false\")"
+                } else if expr_type == "Str" {
+                    part_str = expr_val
+                } else {
+                    part_str = expr_val
+                }
+            }
+            if i == 0 {
+                result = part_str
+            } else {
+                result = "__kai_std_str_concat_alloc(" + result + ", " + part_str + ")"
+            }
+            i = i + 1
+        }
+        return result
+    }
+
+    if expr.kind == ExprKind.ek_try {
+        let inner_ty = self.get_expr_type(expr.try_expr)
+        let excl_pos = self.str_find(inner_ty, Char(33))
+        let inner = self.gen_expr(expr.try_expr)
+        if excl_pos < 0 { return inner }
+        let val_type = inner_ty[0..excl_pos]
+        let result_ctype = self.map_type(inner_ty)
+        let ret_ctype = self.map_type(self.cur_return_type)
+        var try_code = "({ " + result_ctype + " _kai_res = (" + inner + "); "
+        try_code = try_code + "if (_kai_res.tag != 0) { "
+        try_code = try_code + ret_ctype + " _kai_err_ret; _kai_err_ret.tag = _kai_res.tag; return _kai_err_ret; } "
+        if val_type == "Void" {
+            try_code = try_code + "0; })"
+        } else {
+            try_code = try_code + "_kai_res.value; })"
+        }
+        return try_code
+    }
+
+    if expr.kind == ExprKind.ek_check {
+        return self.gen_expr(expr.check_expr)
+    }
+
+    if expr.kind == ExprKind.ek_asm {
+        var decls_str = ""
+        var out_ops_str = ""
+        var i = 0
+        while i < expr.asm_outputs.length() {
+            let out = expr.asm_outputs.get(i)
+            if strlen(out.type_name) > 0 {
+                let mapped_type = self.map_type(out.type_name)
+                let var_name = "asm_ret_" + cgb_int_to_str(i)
+                if strlen(decls_str) > 0 { decls_str = decls_str + " " }
+                decls_str = decls_str + mapped_type + " " + var_name + ";"
+                if strlen(out_ops_str) > 0 { out_ops_str = out_ops_str + ", " }
+                out_ops_str = out_ops_str + "[" + out.name + "] \"" + out.constraint + "\" (" + var_name + ")"
+            } else if out.expr_idx >= 0 {
+                let val_str = self.gen_expr(out.expr_idx)
+                if strlen(out_ops_str) > 0 { out_ops_str = out_ops_str + ", " }
+                out_ops_str = out_ops_str + "[" + out.name + "] \"" + out.constraint + "\" (" + val_str + ")"
+            }
+            i = i + 1
+        }
+
+        var in_ops_str = ""
+        var j = 0
+        while j < expr.asm_inputs.length() {
+            let inp = expr.asm_inputs.get(j)
+            let val_str = self.gen_expr(inp.expr_idx)
+            if strlen(in_ops_str) > 0 { in_ops_str = in_ops_str + ", " }
+            in_ops_str = in_ops_str + "[" + inp.name + "] \"" + inp.constraint + "\" (" + val_str + ")"
+            j = j + 1
+        }
+
+        var clobs_str = ""
+        var k = 0
+        while k < expr.asm_clobbers.length() {
+            if strlen(clobs_str) > 0 { clobs_str = clobs_str + ", " }
+            clobs_str = clobs_str + "\"" + expr.asm_clobbers.get(k) + "\""
+            k = k + 1
+        }
+
+        var volatile_prefix = ""
+        if expr.asm_is_volatile { volatile_prefix = "volatile" }
+
+        var escaped_asm = ""
+        var c_idx = 0
+        while c_idx < strlen(expr.asm_code) {
+            let c = expr.asm_code[c_idx]
+            if c == Char(10) { escaped_asm = escaped_asm + "\\n\\t" }
+            else if c == Char(34) { escaped_asm = escaped_asm + "\\\"" }
+            else { escaped_asm = escaped_asm + cgb_char_to_str(c) }
+            c_idx = c_idx + 1
+        }
+
+        var asm_stmt = "__asm__ " + volatile_prefix + " (\"" + escaped_asm + "\""
+        if strlen(out_ops_str) > 0 || strlen(in_ops_str) > 0 || strlen(clobs_str) > 0 {
+            if strlen(out_ops_str) == 0 { out_ops_str = " " }
+            if strlen(in_ops_str) == 0 { in_ops_str = " " }
+            if strlen(clobs_str) == 0 { clobs_str = " " }
+            asm_stmt = asm_stmt + " : " + out_ops_str
+            asm_stmt = asm_stmt + " : " + in_ops_str
+            asm_stmt = asm_stmt + " : " + clobs_str
+        }
+        asm_stmt = asm_stmt + ");"
+
+        var res = "({\n" + decls_str + "\n"
+        res = res + "    " + asm_stmt + "\n"
+
+        if expr.asm_outputs.length() == 1 {
+            let out0 = expr.asm_outputs.get(0)
+            if strlen(out0.type_name) > 0 {
+                res = res + "    asm_ret_0;\n"
+            }
+        } else if expr.asm_outputs.length() > 1 {
+            var types_str = ""
+            var ti = 0
+            var all_typed = true
+            while ti < expr.asm_outputs.length() {
+                let out = expr.asm_outputs.get(ti)
+                if strlen(out.type_name) == 0 { all_typed = false }
+                if strlen(types_str) > 0 { types_str = types_str + ", " }
+                types_str = types_str + out.type_name
+                ti = ti + 1
+            }
+            if all_typed {
+                let tuple_type = "(" + types_str + ")"
+                let mapped_tuple = self.map_type(tuple_type)
+                var vals_str = ""
+                var vi = 0
+                while vi < expr.asm_outputs.length() {
+                    if strlen(vals_str) > 0 { vals_str = vals_str + ", " }
+                    vals_str = vals_str + "asm_ret_" + cgb_int_to_str(vi)
+                    vi = vi + 1
+                }
+                res = res + "    (" + mapped_tuple + "){ " + vals_str + " };\n"
+            }
+        }
+        res = res + "})"
+        return res
     }
 
     return ""
@@ -519,7 +1314,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
         let var_type = stmt.vardecl_type
         let var_name = stmt.vardecl_name
         let var_value = stmt.vardecl_value
-        if length(var_type) == 0 {
+        if strlen(var_type) == 0 {
             let val_type = self.get_expr_type(var_value)
             let ctype = self.map_type(val_type)
             cgb_map_put(&self.var_types, var_name, val_type)
@@ -542,21 +1337,88 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
 
     if stmt.kind == StmtKind.sk_assignment {
         let target = self.gen_expr(stmt.assign_target)
-        let value = self.gen_expr(stmt.assign_value)
-        self.builder.emit_line(target + " = " + value + ";")
+        let lhs_type = self.get_expr_type(stmt.assign_target)
+        let rhs = self.gen_expr_with_expected_type(stmt.assign_value, lhs_type)
+        var op = "="
+        if strlen(stmt.assign_op) > 0 { op = stmt.assign_op }
+        self.builder.emit_line(target + " " + op + " " + rhs + ";")
         return
     }
 
     if stmt.kind == StmtKind.sk_return {
-        if stmt.return_value >= 0 {
-            let val = self.gen_expr(stmt.return_value)
-            if self.cur_method_is_init {
-                self.builder.emit_line(val + ";")
+        var drop_calls = ArrayList<Str>(self.allocator)
+        var bi = self.block_stack.length() - 1
+        while bi >= 0 {
+            let b_idx = self.block_stack.get(bi)
+            let b_node = self.stmt_pool.get(b_idx)
+            var start_idx = 0
+            if bi < self.defer_depths.length() { start_idx = self.defer_depths.get(bi) }
+            var next_start_idx = self.defer_stack.length()
+            if bi < self.block_stack.length() - 1 && (bi + 1) < self.defer_depths.length() {
+                next_start_idx = self.defer_depths.get(bi + 1)
+            }
+            var def_i = next_start_idx - 1
+            while def_i >= start_idx {
+                if def_i < self.defer_stack.length() {
+                    let def_idx = self.defer_stack.get(def_i)
+                    let def_node = self.stmt_pool.get(def_idx)
+                    self.gen_stmt(def_node.defer_body)
+                }
+                def_i = def_i - 1
+            }
+            var di = 0
+            while di < b_node.block_drop_vars.length() {
+                let entry = b_node.block_drop_vars.get(di)
+                drop_calls.push(entry.base_type + "_drop(&" + entry.name + ");")
+                di = di + 1
+            }
+            bi = bi - 1
+        }
+
+        if drop_calls.length() == 0 {
+            if stmt.return_value >= 0 {
+                let val = self.gen_expr_with_expected_type(stmt.return_value, self.cur_return_type)
+                if self.cur_method_is_init {
+                    self.builder.emit_line(val + ";")
+                } else {
+                    self.builder.emit_line("return " + val + ";")
+                }
             } else {
-                self.builder.emit_line("return " + val + ";")
+                self.builder.emit_line("return;")
             }
         } else {
-            self.builder.emit_line("return;")
+            if stmt.return_value >= 0 {
+                let val_str = self.gen_expr_with_expected_type(stmt.return_value, self.cur_return_type)
+                let val_type = self.get_expr_type(stmt.return_value)
+                if val_type == "Void" || val_type == "NoneType" {
+                    self.builder.emit_line(val_str + ";")
+                    var ci = 0
+                    while ci < drop_calls.length() {
+                        self.builder.emit_line(drop_calls.get(ci))
+                        ci = ci + 1
+                    }
+                    self.builder.emit_line("return;")
+                } else {
+                    self.builder.begin_block()
+                    self.builder.emit_line("int64_t __ret_val = " + val_str + ";")
+                    var ci = 0
+                    while ci < drop_calls.length() {
+                        self.builder.emit_line(drop_calls.get(ci))
+                        ci = ci + 1
+                    }
+                    self.builder.emit_line("return __ret_val;")
+                    self.builder.end_block()
+                }
+            } else {
+                self.builder.begin_block()
+                var ci = 0
+                while ci < drop_calls.length() {
+                    self.builder.emit_line(drop_calls.get(ci))
+                    ci = ci + 1
+                }
+                self.builder.emit_line("return;")
+                self.builder.end_block()
+            }
         }
         return
     }
@@ -566,8 +1428,65 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
         self.builder.emit_line("if (" + cond + ")")
         self.gen_stmt(stmt.if_then)
         if stmt.if_else >= 0 {
-            self.builder.emit_line("else")
-            self.gen_stmt(stmt.if_else)
+            let else_node = self.stmt_pool.get(stmt.if_else)
+            if else_node.kind == StmtKind.sk_block && else_node.block_stmts.length() == 1 {
+                let single_stmt_idx = else_node.block_stmts.get(0)
+                let single_stmt = self.stmt_pool.get(single_stmt_idx)
+                if single_stmt.kind == StmtKind.sk_if {
+                    self.builder.emit_line("else")
+                    self.gen_stmt(single_stmt_idx)
+                } else {
+                    self.builder.emit_line("else")
+                    self.gen_stmt(stmt.if_else)
+                }
+            } else {
+                self.builder.emit_line("else")
+                self.gen_stmt(stmt.if_else)
+            }
+        }
+        return
+    }
+
+    if stmt.kind == StmtKind.sk_if_let {
+        let cond_val = self.gen_expr(stmt.iflet_expr)
+        let cond_type = self.get_expr_type(stmt.iflet_expr)
+        let unwrapped_type = cond_type[1..strlen(cond_type)]
+        let unwrapped_ctype = self.map_type(unwrapped_type)
+        let cond_ctype = self.map_type(cond_type)
+
+        let old_var_len = self.var_types.length()
+        cgb_map_put(&self.var_types, stmt.iflet_var, unwrapped_type)
+
+        if self.is_pointer_type(unwrapped_type) {
+            self.builder.emit_line("if ((" + cond_val + ") != NULL)")
+            self.builder.begin_block()
+            self.builder.emit_line(unwrapped_ctype + " " + stmt.iflet_var + " = " + cond_val + ";")
+            self.gen_stmt(stmt.iflet_then)
+            self.builder.end_block()
+        } else {
+            self.builder.begin_block()
+            self.builder.emit_line(cond_ctype + " _kai_opt = " + cond_val + ";")
+            self.builder.emit_line("if (_kai_opt.has_value)")
+            self.builder.begin_block()
+            self.builder.emit_line(unwrapped_ctype + " " + stmt.iflet_var + " = _kai_opt.value;")
+            self.gen_stmt(stmt.iflet_then)
+            self.builder.end_block()
+            self.builder.end_block()
+        }
+
+        if stmt.iflet_else >= 0 {
+            let else_node = self.stmt_pool.get(stmt.iflet_else)
+            if else_node.kind == StmtKind.sk_if_let {
+                self.builder.emit_line("else")
+                self.gen_stmt(stmt.iflet_else)
+            } else {
+                self.builder.emit_line("else")
+                self.gen_stmt(stmt.iflet_else)
+            }
+        }
+
+        while self.var_types.length() > old_var_len {
+            let _ = self.var_types.pop()
         }
         return
     }
@@ -575,23 +1494,294 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     if stmt.kind == StmtKind.sk_while {
         let cond = self.gen_expr(stmt.while_cond)
         self.builder.emit_line("while (" + cond + ")")
+        if stmt.while_body >= 0 {
+            var body_stmt = self.stmt_pool.get(stmt.while_body)
+            body_stmt.block_is_loop_body = true
+            self.stmt_pool.set(stmt.while_body, body_stmt)
+        }
         self.gen_stmt(stmt.while_body)
         return
     }
 
+    if stmt.kind == StmtKind.sk_for {
+        let iter_var = stmt.for_var
+        let start = self.gen_expr(stmt.for_start)
+        let end = self.gen_expr(stmt.for_end)
+        if stmt.for_body >= 0 {
+            var body_stmt = self.stmt_pool.get(stmt.for_body)
+            body_stmt.block_is_loop_body = true
+            self.stmt_pool.set(stmt.for_body, body_stmt)
+        }
+        var cmp_asc = "<"
+        var cmp_desc = ">"
+        if stmt.for_inclusive {
+            cmp_asc = "<="
+            cmp_desc = ">="
+        }
+        self.builder.emit_line("for (int64_t " + iter_var + " = " + start + "; (" + start + " <= " + end + ") ? (" + iter_var + " " + cmp_asc + " " + end + ") : (" + iter_var + " " + cmp_desc + " " + end + "); (" + start + " <= " + end + ") ? ++" + iter_var + " : --" + iter_var + ")")
+        self.gen_stmt(stmt.for_body)
+        return
+    }
+
     if stmt.kind == StmtKind.sk_break {
-        self.builder.emit_line("break;")
+        var drop_calls = ArrayList<Str>(self.allocator)
+        var bi = self.block_stack.length() - 1
+        var done = false
+        while bi >= 0 && !done {
+            let b_idx = self.block_stack.get(bi)
+            let b_node = self.stmt_pool.get(b_idx)
+            var start_idx = 0
+            if bi < self.defer_depths.length() { start_idx = self.defer_depths.get(bi) }
+            var next_start_idx = self.defer_stack.length()
+            if bi < self.block_stack.length() - 1 && (bi + 1) < self.defer_depths.length() {
+                next_start_idx = self.defer_depths.get(bi + 1)
+            }
+            var def_i = next_start_idx - 1
+            while def_i >= start_idx {
+                if def_i < self.defer_stack.length() {
+                    let def_idx = self.defer_stack.get(def_i)
+                    let def_node = self.stmt_pool.get(def_idx)
+                    self.gen_stmt(def_node.defer_body)
+                }
+                def_i = def_i - 1
+            }
+            var di = 0
+            while di < b_node.block_drop_vars.length() {
+                let entry = b_node.block_drop_vars.get(di)
+                drop_calls.push(entry.base_type + "_drop(&" + entry.name + ");")
+                di = di + 1
+            }
+            if b_node.block_is_loop_body { done = true }
+            bi = bi - 1
+        }
+        if drop_calls.length() == 0 {
+            self.builder.emit_line("break;")
+        } else {
+            self.builder.begin_block()
+            var ci = 0
+            while ci < drop_calls.length() {
+                self.builder.emit_line(drop_calls.get(ci))
+                ci = ci + 1
+            }
+            self.builder.emit_line("break;")
+            self.builder.end_block()
+        }
         return
     }
 
     if stmt.kind == StmtKind.sk_continue {
-        self.builder.emit_line("continue;")
+        var drop_calls = ArrayList<Str>(self.allocator)
+        var bi = self.block_stack.length() - 1
+        var done = false
+        while bi >= 0 && !done {
+            let b_idx = self.block_stack.get(bi)
+            let b_node = self.stmt_pool.get(b_idx)
+            var start_idx = 0
+            if bi < self.defer_depths.length() { start_idx = self.defer_depths.get(bi) }
+            var next_start_idx = self.defer_stack.length()
+            if bi < self.block_stack.length() - 1 && (bi + 1) < self.defer_depths.length() {
+                next_start_idx = self.defer_depths.get(bi + 1)
+            }
+            var def_i = next_start_idx - 1
+            while def_i >= start_idx {
+                if def_i < self.defer_stack.length() {
+                    let def_idx = self.defer_stack.get(def_i)
+                    let def_node = self.stmt_pool.get(def_idx)
+                    self.gen_stmt(def_node.defer_body)
+                }
+                def_i = def_i - 1
+            }
+            var di = 0
+            while di < b_node.block_drop_vars.length() {
+                let entry = b_node.block_drop_vars.get(di)
+                drop_calls.push(entry.base_type + "_drop(&" + entry.name + ");")
+                di = di + 1
+            }
+            if b_node.block_is_loop_body { done = true }
+            bi = bi - 1
+        }
+        if drop_calls.length() == 0 {
+            self.builder.emit_line("continue;")
+        } else {
+            self.builder.begin_block()
+            var ci = 0
+            while ci < drop_calls.length() {
+                self.builder.emit_line(drop_calls.get(ci))
+                ci = ci + 1
+            }
+            self.builder.emit_line("continue;")
+            self.builder.end_block()
+        }
+        return
+    }
+
+    if stmt.kind == StmtKind.sk_print {
+        let arg = stmt.print_value
+        let val = self.gen_expr(arg)
+        let arg_type = self.get_expr_type(arg)
+        if arg_type == "Int" {
+            self.builder.emit_line("__kai_print_int(" + val + ");")
+        } else if arg_type == "Float" {
+            self.builder.emit_line("__kai_print_float(" + val + ");")
+        } else if arg_type == "Char" {
+            self.builder.emit_line("printf(\"%c\\n\", (char)(" + val + "));")
+        } else if arg_type == "Bool" {
+            self.builder.emit_line("printf(\"%s\\n\", (" + val + ") ? \"true\" : \"false\");")
+        } else {
+            self.builder.emit_line("printf(\"%s\\n\", " + val + ");")
+        }
+        return
+    }
+
+    if stmt.kind == StmtKind.sk_unsafe {
+        self.gen_stmt(stmt.unsafe_body)
+        return
+    }
+
+    if stmt.kind == StmtKind.sk_defer {
+        self.defer_stack.push(stmt_idx)
+        return
+    }
+
+    if stmt.kind == StmtKind.sk_match {
+        let expr_idx = stmt.match_expr
+        let expr_val = self.gen_expr(expr_idx)
+        let expr_node = self.expr_pool.get(expr_idx)
+        let expr_type = self.get_expr_type(expr_idx)
+        let mapped_expr_type = self.map_type(expr_type)
+
+        let is_self_ptr = (expr_node.kind == ExprKind.ek_identifier && expr_node.ident_name == "self" && !self.cur_method_is_init)
+        var is_ptr = false
+        if strlen(expr_type) > 0 && (expr_type[0] == Char(42) || expr_type[0] == Char(38) || is_self_ptr) {
+            is_ptr = true
+        }
+        var op = "."
+        if is_ptr { op = "->" }
+
+        var case_idx = 0
+        while case_idx < stmt.match_cases.length() {
+            let case_node = stmt.match_cases.get(case_idx)
+            let pat_node = self.pattern_pool.get(case_node.pattern)
+
+            var cond = ""
+            var bindings_str = ""
+
+            if pat_node.kind == PatternKind.pk_literal {
+                var lit_str = ""
+                match pat_node.lit_value {
+                    case .tv_int(v) => { lit_str = cgb_int_to_str(v) }
+                    case .tv_str(v) => { lit_str = "\"" + self.escape_string(v) + "\"" }
+                    case .tv_bool(v) => {
+                        if v { lit_str = "true" } else { lit_str = "false" }
+                    }
+                    case .tv_char(v) => {
+                        if v == Char(10) { lit_str = "'\\n'" }
+                        else if v == Char(13) { lit_str = "'\\r'" }
+                        else if v == Char(9) { lit_str = "'\\t'" }
+                        else if v == Char(92) { lit_str = "'\\\\'" }
+                        else if v == Char(39) { lit_str = "'\\''" }
+                        else { lit_str = "'" + cgb_char_to_str(v) + "'" }
+                    }
+                    case else => { lit_str = "0" }
+                }
+                cond = expr_val + " == " + lit_str
+            } else if pat_node.kind == PatternKind.pk_variant {
+                let var_name = pat_node.variant_name
+                var base_type = mapped_expr_type
+                if strlen(base_type) > 0 && (base_type[strlen(base_type) - 1] == Char(42) || base_type[strlen(base_type) - 1] == Char(38)) {
+                    base_type = base_type[0..strlen(base_type) - 1]
+                }
+                if strlen(base_type) > 0 && base_type[0] == Char(42) {
+                    base_type = base_type[1..strlen(base_type)]
+                }
+                var has_payload = false
+                var enum_idx_str = cgb_map_get(&self.enum_decls, expr_type)
+                if strlen(enum_idx_str) == 0 {
+                    var clean_base = expr_type
+                    var done_clean = false
+                    while !done_clean {
+                        if strlen(clean_base) > 0 && (clean_base[0] == Char(42) || clean_base[0] == Char(38)) {
+                            clean_base = clean_base[1..strlen(clean_base)]
+                        } else { done_clean = true }
+                    }
+                    enum_idx_str = cgb_map_get(&self.enum_decls, clean_base)
+                }
+                if strlen(enum_idx_str) > 0 {
+                    let enum_stmt = self.stmt_pool.get(self.str_to_int(enum_idx_str))
+                    var vi = 0
+                    while vi < enum_stmt.enum_variants.length() {
+                        let v = enum_stmt.enum_variants.get(vi)
+                        if v.params.length() > 0 { has_payload = true }
+                        vi = vi + 1
+                    }
+                }
+                if has_payload {
+                    cond = expr_val + op + "tag == " + base_type + "_" + var_name + "_TAG"
+                } else {
+                    cond = expr_val + " == " + base_type + "_" + var_name
+                }
+
+                if pat_node.bindings.length() > 0 {
+                    let bind_name = pat_node.bindings.get(0)
+                    if bind_name != "_" {
+                        var bind_type = ""
+                        var field_name = ""
+                        if var_name == "ok" {
+                            bind_type = "Int"
+                            field_name = "value"
+                        } else if var_name == "err" {
+                            bind_type = "Int"
+                            field_name = "value"
+                        } else if var_name == "tv_int" {
+                            bind_type = "Int"
+                            field_name = "v"
+                        } else if var_name == "tv_float" {
+                            bind_type = "Float"
+                            field_name = "v"
+                        } else if var_name == "tv_bool" {
+                            bind_type = "Bool"
+                            field_name = "v"
+                        } else if var_name == "tv_char" {
+                            bind_type = "Char"
+                            field_name = "v"
+                        } else if var_name == "tv_str" {
+                            bind_type = "Str"
+                            field_name = "v"
+                        }
+                        if strlen(bind_type) > 0 {
+                            let mapped_bind_type = self.map_type(bind_type)
+                            bindings_str = mapped_bind_type + " " + bind_name + " = " + expr_val + op + "payload." + var_name + "." + field_name + ";"
+                        }
+                    }
+                }
+            } else if pat_node.kind == PatternKind.pk_else {
+                cond = "true"
+            }
+
+            if case_idx == 0 {
+                self.builder.emit_line("if (" + cond + ")")
+            } else if cond == "true" {
+                self.builder.emit_line("else")
+            } else {
+                self.builder.emit_line("else if (" + cond + ")")
+            }
+
+            if strlen(bindings_str) > 0 {
+                self.builder.begin_block()
+                self.builder.emit_line(bindings_str)
+                self.gen_stmt(case_node.body)
+                self.builder.end_block()
+            } else {
+                self.gen_stmt(case_node.body)
+            }
+            case_idx = case_idx + 1
+        }
         return
     }
 
     if stmt.kind == StmtKind.sk_expr {
         let val = self.gen_expr(stmt.expr_stmt)
-        if length(val) > 0 {
+        if strlen(val) > 0 {
             self.builder.emit_line(val + ";")
         }
         return
@@ -602,65 +1792,703 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     if stmt.kind == StmtKind.sk_struct_decl { return }
     if stmt.kind == StmtKind.sk_enum_decl { return }
     if stmt.kind == StmtKind.sk_impl_block { return }
-    if stmt.kind == StmtKind.sk_import { return }
+    if stmt.kind == StmtKind.sk_import {
+        let path = stmt.import_path
+        var module_key = ""
+        var pi = 0
+        while pi < path.length() {
+            if pi > 0 { module_key = module_key + "." }
+            module_key = module_key + path.get(pi)
+            pi = pi + 1
+        }
+        if module_key == "" { return }
+        if cgb_strlist_find(&self.loaded_modules, module_key) >= 0 { return }
+        self.loaded_modules.push(module_key)
+
+        var has_source = false
+        var source = ""
+        if path.length() > 0 && path.get(0) == "std" {
+            var path_str = ""
+            var i = 0
+            while i < path.length() {
+                if i > 0 { path_str = path_str + "/" }
+                path_str = path_str + path.get(i)
+                i = i + 1
+            }
+            let rel_path = path_str + ".kai"
+            let s1 = read_to_string(self.allocator, rel_path)
+            if s1.tag == 0 && strlen(s1.value) > 0 {
+                source = s1.value
+                has_source = true
+            } else {
+                unsafe {
+                    let buf = malloc(1024) as *Char
+                    if get_exe_dir(buf, 1024) == 0 {
+                        let exe_dir = buf as Str
+                        let full_path = exe_dir + "/" + rel_path
+                        let s2 = read_to_string(self.allocator, full_path)
+                        if s2.tag == 0 && strlen(s2.value) > 0 {
+                            source = s2.value
+                            has_source = true
+                        } else {
+                            let parent_path = exe_dir + "/../" + rel_path
+                            let s3 = read_to_string(self.allocator, parent_path)
+                            if s3.tag == 0 && strlen(s3.value) > 0 {
+                                source = s3.value
+                                has_source = true
+                            } else {
+                                let lib_path = exe_dir + "/../lib/kai/" + rel_path
+                                let s4 = read_to_string(self.allocator, lib_path)
+                                if s4.tag == 0 && strlen(s4.value) > 0 {
+                                    source = s4.value
+                                    has_source = true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else if path.length() > 0 {
+            let file_path = "src/" + module_key + ".kai"
+            let s = read_to_string(self.allocator, file_path)
+            if s.tag == 0 && strlen(s.value) > 0 {
+                source = s.value
+                has_source = true
+            }
+        }
+
+        if has_source {
+            var lexer = Lexer(self.allocator, source, "")
+            lexer.lex()
+            if !lexer.has_error {
+                var parser = Parser.init_with_pools(self.allocator, "", lexer.tokens, self.expr_pool, self.stmt_pool, self.pattern_pool)
+                let program_idx = parser.parse_program()
+                if program_idx >= 0 {
+                    let prog = self.stmt_pool.get(program_idx)
+                    if prog.kind == StmtKind.sk_block {
+                        var pi = 0
+                        while pi < prog.block_stmts.length() {
+                            let sub = self.stmt_pool.get(prog.block_stmts.get(pi))
+                            if sub.kind == StmtKind.sk_import {
+                                self.gen_stmt(prog.block_stmts.get(pi))
+                            }
+                            pi = pi + 1
+                        }
+                    }
+                }
+            }
+        }
+        return
+    }
     if stmt.kind == StmtKind.sk_cimport { return }
+    if stmt.kind == StmtKind.sk_trait_decl { return }
+    if stmt.kind == StmtKind.sk_error_decl { return }
 }
 
 fn build_func_types(self) -> Void {
+    // Phase 1: Register all generic types and collect type info (no emission)
     var i = 0
     while i < self.stmt_pool.length() {
         let stmt = self.stmt_pool.get(i)
-        if stmt.kind == StmtKind.sk_func_decl {
-            self.var_types = ArrayList<CgbMapEntry>(self.allocator)
-            self.block_stack = ArrayList<Int>(self.allocator)
-            var params_str = ""
-            var pi = 0
-            while pi < stmt.func_params.length() {
-                let p = stmt.func_params.get(pi)
-                if pi > 0 { params_str = params_str + ", " }
-                let ctype = self.map_type(p.ptype)
-                params_str = params_str + ctype + " " + p.name
-                cgb_map_put(&self.var_types, p.name, p.ptype)
-                pi = pi + 1
+        if stmt.kind == StmtKind.sk_struct_decl {
+            if stmt.struct_type_params.length() > 0 {
+                cgb_map_put(&self.generic_struct_decls, stmt.struct_name, cgb_int_to_str(i))
             }
-            let ret_type = self.map_type(stmt.func_return_type)
-            var func_type_str = params_str + ":" + stmt.func_return_type
-            cgb_map_put(&self.func_types, stmt.func_name, func_type_str)
-
-            self.cur_func_name = stmt.func_name
-            self.cur_return_type = stmt.func_return_type
-            self.cur_method_is_init = false
-
-            self.func_decls.append(ret_type + " " + stmt.func_name + "(" + params_str + ");\n")
-
-            // Generate function body
-            self.output_body.append(ret_type + " " + stmt.func_name + "(" + params_str + ")")
-            let body_idx = stmt.func_body
-            if body_idx >= 0 {
-                let body_stmt = self.stmt_pool.get(body_idx)
-                if body_stmt.kind == StmtKind.sk_block {
-                    // Set up builder for this function
-                    self.builder.emit_line(ret_type + " " + stmt.func_name + "(" + params_str + ")")
-                    self.gen_stmt(body_idx)
-                    self.output_body.append(self.builder.to_str())
-                    self.builder.clear()
-                }
+        }
+        if stmt.kind == StmtKind.sk_enum_decl {
+            if stmt.enum_type_params.length() > 0 {
+                cgb_map_put(&self.generic_enum_decls, stmt.enum_name, cgb_int_to_str(i))
             }
         }
         i = i + 1
     }
+
+    // Phase 2: Emit forward declarations for ALL non-generic structs and enums
+    var i1 = 0
+    while i1 < self.stmt_pool.length() {
+        let stmt = self.stmt_pool.get(i1)
+        if stmt.kind == StmtKind.sk_struct_decl && stmt.struct_type_params.length() == 0 {
+            let cname = self.map_type(stmt.struct_name)
+            self.type_defs.append("typedef struct " + cname + " " + cname + ";\n")
+        }
+        if stmt.kind == StmtKind.sk_enum_decl && stmt.enum_type_params.length() == 0 {
+            let cename = self.map_type(stmt.enum_name)
+            var has_payload = false
+            var vi = 0
+            while vi < stmt.enum_variants.length() {
+                let v = stmt.enum_variants.get(vi)
+                if v.params.length() > 0 { has_payload = true }
+                vi = vi + 1
+            }
+            if !has_payload {
+                self.type_defs.append("typedef enum {\n")
+                var vi2 = 0
+                while vi2 < stmt.enum_variants.length() {
+                    let v = stmt.enum_variants.get(vi2)
+                    self.type_defs.append("    " + cename + "_" + v.vname + ",\n")
+                    vi2 = vi2 + 1
+                }
+                self.type_defs.append("} " + cename + ";\n")
+            } else {
+                let tags_name = cename + "_tags"
+                self.type_defs.append("typedef enum {\n")
+                var vi3 = 0
+                while vi3 < stmt.enum_variants.length() {
+                    let v = stmt.enum_variants.get(vi3)
+                    self.type_defs.append("    " + cename + "_" + v.vname + "_TAG,\n")
+                    vi3 = vi3 + 1
+                }
+                self.type_defs.append("} " + tags_name + ";\n")
+                self.type_defs.append("typedef struct " + cename + " " + cename + ";\n")
+            }
+        }
+        if stmt.kind == StmtKind.sk_error_decl {
+            let cename = self.map_type(stmt.error_name)
+            self.type_defs.append("typedef enum {\n")
+            var vi5 = 0
+            while vi5 < stmt.error_variants.length() {
+                let vname = stmt.error_variants.get(vi5)
+                self.type_defs.append("    " + cename + "_" + vname + " = " + cgb_int_to_str(vi5 + 1) + ",\n")
+                vi5 = vi5 + 1
+            }
+            self.type_defs.append("} " + cename + ";\n")
+        }
+        i1 = i1 + 1
+    }
+
+    // Phase 3a: Register ALL function types first (forward declarations)
+    var i2a = 0
+    while i2a < self.stmt_pool.length() {
+        let stmt = self.stmt_pool.get(i2a)
+        if stmt.kind == StmtKind.sk_func_decl {
+            var has_self_param = false
+            var pi = 0
+            while pi < stmt.func_params.length() {
+                let p = stmt.func_params.get(pi)
+                unsafe { if strcmp(p.name, "self") == 0 { has_self_param = true } }
+                pi = pi + 1
+            }
+            var is_runtime_helper = false
+            unsafe { if strcmp(stmt.func_name, "__kai_std_str_concat_alloc") == 0 { is_runtime_helper = true } }
+            if !has_self_param && !is_runtime_helper {
+                var params_str = ""
+                var pi2 = 0
+                while pi2 < stmt.func_params.length() {
+                    let p = stmt.func_params.get(pi2)
+                    if pi2 > 0 { params_str = params_str + ", " }
+                    let ctype = self.map_type(p.ptype)
+                    params_str = params_str + ctype + " " + p.name
+                    pi2 = pi2 + 1
+                }
+                var func_type_str = params_str + ":" + stmt.func_return_type
+                cgb_map_put(&self.func_types, stmt.func_name, func_type_str)
+                var p_i = 0
+                while p_i < stmt.func_params.length() {
+                    let p = stmt.func_params.get(p_i)
+                    let p_key = stmt.func_name + "_param_" + cgb_int_to_str(p_i)
+                    cgb_map_put(&self.func_param_types, p_key, p.ptype)
+                    p_i = p_i + 1
+                }
+            }
+        }
+        if stmt.kind == StmtKind.sk_extern {
+            cgb_map_put(&self.func_types, stmt.extern_name, stmt.extern_return)
+            var p_i = 0
+            while p_i < stmt.extern_params.length() {
+                let p = stmt.extern_params.get(p_i)
+                let p_key = stmt.extern_name + "_param_" + cgb_int_to_str(p_i)
+                cgb_map_put(&self.func_param_types, p_key, p.ptype)
+                p_i = p_i + 1
+            }
+        }
+        if stmt.kind == StmtKind.sk_impl_block {
+            let struct_name = stmt.impl_struct_name
+            if cgb_map_find(&self.generic_struct_decls, struct_name) < 0 && cgb_map_find(&self.generic_enum_decls, struct_name) < 0 {
+                var j = 0
+                while j < stmt.impl_methods.length() {
+                    let m_idx = stmt.impl_methods.get(j)
+                    let m_node = self.stmt_pool.get(m_idx)
+                    let method_name = m_node.func_name
+                    let is_init = (method_name == "init")
+                    let key = struct_name + "_" + method_name
+                    var ret = m_node.func_return_type
+                    if is_init { ret = struct_name }
+                    cgb_map_put(&self.func_types, key, ret)
+                    var p_i = 0
+                    while p_i < m_node.func_params.length() {
+                        let p = m_node.func_params.get(p_i)
+                        let p_key = key + "_param_" + cgb_int_to_str(p_i)
+                        cgb_map_put(&self.func_param_types, p_key, p.ptype)
+                        p_i = p_i + 1
+                    }
+                    j = j + 1
+                }
+            }
+        }
+        i2a = i2a + 1
+    }
+
+    // Phase 3b: Emit function declarations, function bodies, struct bodies, enum bodies, impl methods
+    var i2 = 0
+    while i2 < self.stmt_pool.length() {
+        let stmt = self.stmt_pool.get(i2)
+        if stmt.kind == StmtKind.sk_func_decl {
+            var has_self_param = false
+            var pi = 0
+            while pi < stmt.func_params.length() {
+                let p = stmt.func_params.get(pi)
+                unsafe { if strcmp(p.name, "self") == 0 { has_self_param = true } }
+                pi = pi + 1
+            }
+            var is_runtime_helper = false
+            unsafe { if strcmp(stmt.func_name, "__kai_std_str_concat_alloc") == 0 { is_runtime_helper = true } }
+            if has_self_param { /* skip impl methods — handled by sk_impl_block */ }
+            else if is_runtime_helper { /* skip — emitted as runtime helper */ }
+            else {
+                self.var_types.init(self.allocator)
+                self.block_stack.init(self.allocator)
+                var params_str = ""
+                var pi2 = 0
+                while pi2 < stmt.func_params.length() {
+                    let p = stmt.func_params.get(pi2)
+                    if pi2 > 0 { params_str = params_str + ", " }
+                    let ctype = self.map_type(p.ptype)
+                    params_str = params_str + ctype + " " + p.name
+                    cgb_map_put(&self.var_types, p.name, p.ptype)
+                    pi2 = pi2 + 1
+                }
+                let ret_type = self.map_type(stmt.func_return_type)
+
+                self.cur_func_name = stmt.func_name
+                self.cur_return_type = stmt.func_return_type
+                self.cur_method_is_init = false
+
+                var is_main = false
+                unsafe { if strcmp(stmt.func_name, "main") == 0 { is_main = true } }
+                var decl_ret = ret_type
+                var decl_params = params_str
+                var impl_header = ret_type + " " + stmt.func_name + "(" + params_str + ")"
+                if is_main {
+                    decl_ret = "int"
+                    decl_params = "int argc, char** argv"
+                    impl_header = "int main(int argc, char** argv)"
+                }
+
+                if !is_main {
+                    self.func_decls.append(decl_ret + " " + stmt.func_name + "(" + decl_params + ");\n")
+                }
+
+                let body_idx = stmt.func_body
+                if body_idx >= 0 {
+                    let body_stmt = self.stmt_pool.get(body_idx)
+                    if body_stmt.kind == StmtKind.sk_block {
+                        self.builder.emit_line(impl_header)
+                        self.gen_stmt(body_idx)
+                        self.output_body.append(self.builder.to_str())
+                        self.builder.clear()
+                    }
+                }
+            }
+        }
+        if stmt.kind == StmtKind.sk_extern {
+            if !self.is_standard_c_func(stmt.extern_name) {
+                unsafe {
+                    if strcmp(stmt.extern_name, "_kai_set_current_allocator") == 0 { /* skip */ }
+                    else if strcmp(stmt.extern_name, "__kai_std_str_concat_alloc") == 0 { /* skip */ }
+                    else {
+                        var params_str = ""
+                        var pi3 = 0
+                        while pi3 < stmt.extern_params.length() {
+                            let p = stmt.extern_params.get(pi3)
+                            if pi3 > 0 { params_str = params_str + ", " }
+                            params_str = params_str + self.map_type(p.ptype) + " " + p.name
+                            pi3 = pi3 + 1
+                        }
+                        let ret_type = self.map_type(stmt.extern_return)
+                        self.func_decls.append("extern " + ret_type + " " + stmt.extern_name + "(" + params_str + ");\n")
+                    }
+                }
+            }
+        }
+        if stmt.kind == StmtKind.sk_impl_block {
+            let struct_name = stmt.impl_struct_name
+            if cgb_map_find(&self.generic_struct_decls, struct_name) >= 0 || cgb_map_find(&self.generic_enum_decls, struct_name) >= 0 {
+                i2 = i2 + 1
+                continue
+            }
+            let mapped_name = self.map_type(struct_name)
+            var j = 0
+            while j < stmt.impl_methods.length() {
+                let m_idx = stmt.impl_methods.get(j)
+                let m_node = self.stmt_pool.get(m_idx)
+                let method_name = m_node.func_name
+                let is_init = (method_name == "init")
+
+                self.var_types.init(self.allocator)
+                self.block_stack.init(self.allocator)
+
+                var params_str = ""
+                if !is_init {
+                    params_str = mapped_name + "* self"
+                    cgb_map_put(&self.var_types, "self", "*" + struct_name)
+                } else {
+                    cgb_map_put(&self.var_types, "self", struct_name)
+                }
+                var pi2 = 0
+                while pi2 < m_node.func_params.length() {
+                    let p = m_node.func_params.get(pi2)
+                    var is_self = false
+                    unsafe { if strcmp(p.name, "self") == 0 { is_self = true } }
+                    if !is_self {
+                        if strlen(params_str) > 0 { params_str = params_str + ", " }
+                        let ctype = self.map_type(p.ptype)
+                        params_str = params_str + ctype + " " + p.name
+                        cgb_map_put(&self.var_types, p.name, p.ptype)
+                    }
+                    pi2 = pi2 + 1
+                }
+                if strlen(params_str) == 0 { params_str = "void" }
+
+                var ret = m_node.func_return_type
+                if is_init { ret = struct_name }
+                let ret_type = self.map_type(ret)
+                let mangled_fn = mapped_name + "_" + method_name
+
+                self.cur_func_name = mangled_fn
+                self.cur_return_type = ret
+                self.cur_method_is_init = is_init
+
+                self.func_decls.append(ret_type + " " + mangled_fn + "(" + params_str + ");\n")
+
+                let body_idx = m_node.func_body
+                if body_idx >= 0 {
+                    let body_stmt = self.stmt_pool.get(body_idx)
+                    if body_stmt.kind == StmtKind.sk_block {
+                        self.builder.emit_line(ret_type + " " + mangled_fn + "(" + params_str + ")")
+                        self.gen_stmt(body_idx)
+                        var body_str = self.builder.to_str()
+                        if is_init {
+                            // body_str = "KaiAllocator KaiAllocator_init(void)\n{\n    ..."
+                            // Find the first { to split header from body
+                            var brace_pos = 0
+                            while brace_pos < strlen(body_str) {
+                                if body_str[brace_pos] == Char(123) { break } // '{'
+                                brace_pos = brace_pos + 1
+                            }
+                            let header = body_str[0..brace_pos]
+                            let raw_body = body_str[brace_pos..strlen(body_str)]
+                            body_str = header + self.add_init_return(raw_body, mapped_name)
+                        }
+                        self.output_body.append(body_str)
+                        self.builder.clear()
+                    }
+                }
+
+                j = j + 1
+            }
+        }
+        i2 = i2 + 1
+    }
+
+    // Phase 4: Emit struct bodies and payload-enum bodies.
+    // Uses forward pool order but ensures value-type dependencies are emitted first.
+    var emitted_struct_bodies = ArrayList<Str>(self.allocator)
+    var i4 = 0
+    while i4 < self.stmt_pool.length() {
+        let stmt = self.stmt_pool.get(i4)
+        if stmt.kind == StmtKind.sk_struct_decl {
+            self.emit_struct_body_with_deps(i4, &emitted_struct_bodies)
+        }
+        if stmt.kind == StmtKind.sk_enum_decl {
+            let ename = stmt.enum_name
+            if stmt.enum_type_params.length() == 0 {
+                let cename = self.map_type(ename)
+                var has_payload = false
+                var vi = 0
+                while vi < stmt.enum_variants.length() {
+                    let v = stmt.enum_variants.get(vi)
+                    if v.params.length() > 0 { has_payload = true }
+                    vi = vi + 1
+                }
+                if has_payload {
+                    self.struct_decls.append("struct " + cename + " {\n")
+                    self.struct_decls.append("    uint8_t tag;\n")
+                    self.struct_decls.append("    union {\n")
+                    var vi4 = 0
+                    while vi4 < stmt.enum_variants.length() {
+                        let v = stmt.enum_variants.get(vi4)
+                        if v.params.length() > 0 {
+                            self.struct_decls.append("        struct {\n")
+                            var pi3 = 0
+                            while pi3 < v.params.length() {
+                                let p = v.params.get(pi3)
+                                self.struct_decls.append("            " + self.map_type(p.ptype) + " " + p.name + ";\n")
+                                pi3 = pi3 + 1
+                            }
+                            self.struct_decls.append("        } " + v.vname + ";\n")
+                        }
+                        vi4 = vi4 + 1
+                    }
+                    self.struct_decls.append("    };\n")
+                    self.struct_decls.append("};\n")
+                }
+            }
+        }
+        i4 = i4 + 1
+    }
+}
+
+fn emit_struct_body_with_deps(self, stmt_idx: Int, emitted: *ArrayList<Str>) {
+    let stmt = self.stmt_pool.get(stmt_idx)
+    if stmt.kind != StmtKind.sk_struct_decl { return }
+    if stmt.struct_type_params.length() > 0 { return }
+    let cname = self.map_type(stmt.struct_name)
+    if cgb_strlist_find(emitted, cname) >= 0 { return }
+    // Mark as emitted now to prevent infinite recursion
+    emitted.push(cname)
+
+    // First, ensure value-type dependencies are emitted
+    var fi = 0
+    while fi < stmt.struct_fields.length() {
+        let f = stmt.struct_fields.get(fi)
+        let ftype = f.ftype
+        unsafe {
+            // Check if this is a non-pointer value type (check first char isn't * or &)
+            if strlen(ftype) > 0 && ftype[0] != Char(42) && ftype[0] != Char(38) {
+                // Could be a value-type struct dependency
+                // Look for this type name in struct_decls in the pool
+                var si = 0
+                while si < self.stmt_pool.length() {
+                    let s2 = self.stmt_pool.get(si)
+                    if s2.kind == StmtKind.sk_struct_decl && s2.struct_type_params.length() == 0 {
+                        if s2.struct_name == ftype {
+                            self.emit_struct_body_with_deps(si, emitted)
+                        }
+                    }
+                    si = si + 1
+                }
+            }
+        }
+        fi = fi + 1
+    }
+
+    // Now emit this struct's body
+    var body_buf = StrBuf(self.allocator)
+    body_buf.append("struct " + cname + " {\n")
+    var fi2 = 0
+    while fi2 < stmt.struct_fields.length() {
+        let f = stmt.struct_fields.get(fi2)
+        body_buf.append("    " + self.map_type(f.ftype) + " " + f.name + ";\n")
+        fi2 = fi2 + 1
+    }
+    body_buf.append("};\n")
+    self.struct_decls.append(body_buf.to_str())
+
+    // Process trait impls
+    var ti = 0
+    while ti < stmt.struct_trait_impls.length() {
+        let impl_idx = stmt.struct_trait_impls.get(ti)
+        let impl_node = self.stmt_pool.get(impl_idx)
+        var j = 0
+        while j < impl_node.impl_methods.length() {
+            let m_idx = impl_node.impl_methods.get(j)
+            let m_node = self.stmt_pool.get(m_idx)
+            let key = stmt.struct_name + "_" + m_node.func_name
+            var ret = m_node.func_return_type
+            if m_node.func_name == "init" { ret = stmt.struct_name }
+            cgb_map_put(&self.func_types, key, ret)
+            var p_i = 0
+            while p_i < m_node.func_params.length() {
+                let p = m_node.func_params.get(p_i)
+                let p_key = key + "_param_" + cgb_int_to_str(p_i)
+                cgb_map_put(&self.func_param_types, p_key, p.ptype)
+                p_i = p_i + 1
+            }
+            j = j + 1
+        }
+        ti = ti + 1
+    }
 }
 
 fn generate(self, top_stmt_idx: Int) -> Str {
+    // Process imports first to populate stmt_pool with all functions
+    if top_stmt_idx >= 0 {
+        let top_stmt = self.stmt_pool.get(top_stmt_idx)
+        if top_stmt.kind == StmtKind.sk_block {
+            var ii = 0
+            while ii < top_stmt.block_stmts.length() {
+                let sub_stmt = self.stmt_pool.get(top_stmt.block_stmts.get(ii))
+                if sub_stmt.kind == StmtKind.sk_import {
+                    self.gen_stmt(top_stmt.block_stmts.get(ii))
+                }
+                if sub_stmt.kind == StmtKind.sk_cimport {
+                    self.gen_stmt(top_stmt.block_stmts.get(ii))
+                }
+                ii = ii + 1
+            }
+        }
+    }
+
     self.build_func_types()
 
-    var result = StringBuilder(self.allocator)
+    var result = StrBuf(self.allocator)
+    result.append("/* BUILDER CODEGEN ACTIVE */\n")
     result.append("#include <stdint.h>\n")
     result.append("#include <stdbool.h>\n")
     result.append("#include <stdio.h>\n")
     result.append("#include <stdlib.h>\n")
     result.append("#include <string.h>\n")
 
+    //== Runtime: get_exe_dir (platform-conditional)
+    result.append("#ifndef NO_GET_EXE_DIR\n")
+    result.append("#if defined(_WIN32)\n")
+    result.append("#include <windows.h>\n")
+    result.append("#else\n")
+    result.append("#ifndef _GNU_SOURCE\n")
+    result.append("#define _GNU_SOURCE\n")
+    result.append("#endif\n")
+    result.append("#include <dlfcn.h>\n")
+    result.append("#include <limits.h>\n")
+    result.append("#endif\n\n")
+    result.append("int64_t get_exe_dir(char* out_buf, int64_t max_len) {\n")
+    result.append("#if defined(_WIN32)\n")
+    result.append("    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);\n")
+    result.append("    if (len == 0 || len >= max_len) return -1;\n")
+    result.append("    for (int i = len - 1; i >= 0; i--) {\n")
+    result.append("        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {\n")
+    result.append("            out_buf[i] = '\\0';\n")
+    result.append("            break;\n")
+    result.append("        }\n")
+    result.append("    }\n")
+    result.append("    return 0;\n")
+    result.append("#else\n")
+    result.append("    Dl_info info;\n")
+    result.append("    char dummy = 0;\n")
+    result.append("    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {\n")
+    result.append("        char real_path[PATH_MAX];\n")
+    result.append("        if (realpath(info.dli_fname, real_path) != NULL) {\n")
+    result.append("            char* last_slash = strrchr(real_path, '/');\n")
+    result.append("            if (last_slash != NULL) {\n")
+    result.append("                *last_slash = '\\0';\n")
+    result.append("                int i = 0;\n")
+    result.append("                while (i < max_len - 1 && real_path[i] != '\\0') {\n")
+    result.append("                    out_buf[i] = real_path[i];\n")
+    result.append("                    i++;\n")
+    result.append("                }\n")
+    result.append("                out_buf[i] = '\\0';\n")
+    result.append("                return 0;\n")
+    result.append("            }\n")
+    result.append("        }\n")
+    result.append("    }\n")
+    result.append("    return -1;\n")
+    result.append("#endif\n")
+    result.append("}\n")
+    result.append("#endif\n")
+    result.append("\n")
+
+    //== Runtime: __kai_str_sub / __kai_arr_sub
+    result.append("static char* __kai_str_sub(const char* s, int64_t start, int64_t end) {\n")
+    result.append("    int64_t len = strlen(s);\n")
+    result.append("    if (end > len) end = len;\n")
+    result.append("    if (start < 0) start = 0;\n")
+    result.append("    if (start >= end) {\n")
+    result.append("        char* empty = malloc(1);\n")
+    result.append("        if (empty) empty[0] = '\\0';\n")
+    result.append("        return empty;\n")
+    result.append("    }\n")
+    result.append("    int64_t sub_len = end - start;\n")
+    result.append("    char* buf = malloc(sub_len + 1);\n")
+    result.append("    if (buf) {\n")
+    result.append("        memcpy(buf, s + start, sub_len);\n")
+    result.append("        buf[sub_len] = '\\0';\n")
+    result.append("    }\n")
+    result.append("    return buf;\n")
+    result.append("}\n")
+    result.append("\n")
+    result.append("static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t elem_size) {\n")
+    result.append("    int64_t count = end - start;\n")
+    result.append("    if (count <= 0) return NULL;\n")
+    result.append("    size_t total = (size_t)count * (size_t)elem_size;\n")
+    result.append("    void* buf = malloc(total);\n")
+    result.append("    if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);\n")
+    result.append("    return buf;\n")
+    result.append("}\n")
+    result.append("\n")
+
+    //== Runtime: __kai_std_str_concat_alloc
+    result.append("static char* __kai_std_str_concat_alloc(const char* left, const char* right) {\n")
+    result.append("    size_t left_len = strlen(left);\n")
+    result.append("    size_t right_len = strlen(right);\n")
+    result.append("    size_t total = left_len + right_len + 1;\n")
+    result.append("    char* buf = (char*)malloc(total);\n")
+    result.append("    if (buf) {\n")
+    result.append("        memcpy(buf, left, left_len);\n")
+    result.append("        memcpy(buf + left_len, right, right_len);\n")
+    result.append("        buf[total - 1] = '\\0';\n")
+    result.append("    }\n")
+    result.append("    return buf;\n")
+    result.append("}\n")
+    result.append("\n")
+
+    //== Phase: User C FFI imports (non-baseline headers)
+    var ci = 0
+    var has_cimports = false
+    while ci < self.cimport_headers.length() {
+        let hdr = self.cimport_headers.get(ci)
+        var is_baseline = false
+        if hdr == "stdint.h" { is_baseline = true }
+        else if hdr == "stdbool.h" { is_baseline = true }
+        else if hdr == "stdio.h" { is_baseline = true }
+        else if hdr == "stdlib.h" { is_baseline = true }
+        else if hdr == "string.h" { is_baseline = true }
+        else if hdr == "sys/mman.h" { is_baseline = true }
+        else if hdr == "ctype.h" { is_baseline = true }
+        if !is_baseline {
+            if !has_cimports {
+                result.append("/* C FFI Imports */\n")
+                has_cimports = true
+            }
+            var has_slash = false
+            var dot_start = false
+            if strlen(hdr) > 0 {
+                var hi = 0
+                while hi < strlen(hdr) {
+                    if hdr[hi] == Char(47) { has_slash = true }
+                    hi = hi + 1
+                }
+                if hdr[0] == Char(46) { dot_start = true }
+            }
+            if !has_slash && !dot_start {
+                result.append("#include <" + hdr + ">\n")
+            } else {
+                result.append("#include \"" + hdr + "\"\n")
+            }
+        }
+        ci = ci + 1
+    }
+
+    //== Phase: Allocator + runtime glue
+    result.append("#ifndef MAP_FAILED\n")
+    result.append("#define MAP_FAILED ((void*)-1)\n")
+    result.append("#endif\n")
+    result.append("#ifndef MAP_PRIVATE\n")
+    result.append("#define MAP_PRIVATE 2\n")
+    result.append("#endif\n")
+    result.append("#ifndef MAP_ANONYMOUS\n")
+    result.append("#ifdef __APPLE__\n")
+    result.append("#define MAP_ANONYMOUS 0x1000\n")
+    result.append("#else\n")
+    result.append("#define MAP_ANONYMOUS 0x20\n")
+    result.append("#endif\n")
+    result.append("#endif\n")
+    result.append("extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);\n")
+    result.append("extern int munmap(void* addr, unsigned long long length);\n")
+    result.append("\n")
+    result.append("static __thread void* _kai_current_allocator = NULL;\n")
+    result.append("\n")
+    result.append("static inline void _kai_set_current_allocator(void* allocator) {\n")
+    result.append("    _kai_current_allocator = allocator;\n")
+    result.append("}\n")
     result.append("\n")
     result.append("void __kai_print_int(int64_t v) {\n")
     result.append("    printf(\"%lld\\n\", (long long)(v));\n")
@@ -670,15 +2498,38 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     result.append("    printf(\"%f\\n\", (double)(v));\n")
     result.append("}\n")
     result.append("\n")
+    result.append("static inline char* _kai_mmap(char* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {\n")
+    result.append("    return (char*)mmap(addr, length, prot, MAP_PRIVATE | MAP_ANONYMOUS, fd, offset);\n")
+    result.append("}\n")
+    result.append("\n")
+    result.append("static inline int64_t _kai_munmap(char* addr, int64_t length) {\n")
+    result.append("    return munmap(addr, length);\n")
+    result.append("}\n")
+    result.append("\n")
+    result.append("extern void __kai_panic(const char* msg);\n")
+    result.append("#ifndef __KAI_NO_PANIC\n")
+    result.append("void __kai_panic(const char* msg) {\n")
+    result.append("    fprintf(stderr, \"KAI PANIC: %s\\n\", msg);\n")
+    result.append("    fflush(stderr);\n")
+    result.append("    abort();\n")
+    result.append("}\n")
+    result.append("#endif\n")
+    result.append("\n")
+
+    //== Phase: User struct/enum/trait declarations
+    result.append(self.type_defs.to_str())
+    result.append("\n")
+    result.append(self.struct_decls.to_str())
+    result.append("\n")
 
     let func_decl_str = self.func_decls.to_str()
-    if length(func_decl_str) > 0 {
+    if strlen(func_decl_str) > 0 {
         result.append(func_decl_str)
         result.append("\n")
     }
 
     let output_body_str = self.output_body.to_str()
-    if length(output_body_str) > 0 {
+    if strlen(output_body_str) > 0 {
         result.append(output_body_str)
     }
 
