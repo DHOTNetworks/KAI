@@ -8,6 +8,8 @@ import CStmtKind from codegen_c_ast
 import CDeclNode from codegen_c_ast
 import ctype_to_str from codegen_c_ast
 
+extern fn strlen(s: Str) -> Int
+
 struct CPrinter {
     builder: CCodeBuilder
     expr_pool: *ArrayList<CExprNode>
@@ -155,6 +157,69 @@ fn print_stmt(self, idx: Int) {
             self.builder.emit_line(type_str + " " + node.var_name + " = " + init_val + ";")
         } else {
             self.builder.emit_line(type_str + " " + node.var_name + ";")
+        }
+    }
+}
+
+fn print_decl(self, decl: CDeclNode) {
+    if decl.is_typedef {
+        let def_str = ctype_to_str(decl.typedef_def)
+        self.builder.emit_line("typedef " + def_str + " " + decl.typedef_alias + ";")
+        return
+    }
+    if decl.is_struct {
+        self.builder.emit_line("struct " + decl.struct_name + " {")
+        self.builder.indent()
+        var i = 0
+        while i < decl.struct_fields.length() {
+            self.builder.emit_line(decl.struct_fields.get(i))
+            i = i + 1
+        }
+        self.builder.dedent()
+        self.builder.emit_line("};")
+        return
+    }
+    if decl.is_enum {
+        self.builder.emit_line("typedef enum {")
+        self.builder.indent()
+        var i = 0
+        while i < decl.enum_variants.length() {
+            self.builder.emit_line(decl.enum_variants.get(i))
+            i = i + 1
+        }
+        self.builder.dedent()
+        self.builder.emit_line("} " + decl.enum_name + ";")
+        return
+    }
+    if decl.is_function {
+        var params_str = ""
+        var i = 0
+        while i < decl.func_params.length() {
+            if i > 0 { params_str = params_str + ", " }
+            params_str = params_str + decl.func_params.get(i)
+            i = i + 1
+        }
+        if decl.func_vararg {
+            if strlen(params_str) > 0 { params_str = params_str + ", ..." }
+            else { params_str = "..." }
+        }
+        let ret_str = ctype_to_str(decl.func_ret)
+        let header = ret_str + " " + decl.func_name + "(" + params_str + ")"
+        if decl.is_extern {
+            self.builder.emit_line("extern " + header + ";")
+            return
+        }
+        if decl.func_body.length() == 0 {
+            self.builder.emit_line(header + ";")
+        } else {
+            self.builder.emit_line(header)
+            self.builder.begin_block()
+            var j = 0
+            while j < decl.func_body.length() {
+                self.print_stmt(decl.func_body.get(j))
+                j = j + 1
+            }
+            self.builder.end_block()
         }
     }
 }

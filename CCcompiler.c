@@ -1518,9 +1518,11 @@ CExprNode cexpr_new_binary(int64_t left, const char* op, int64_t right);
 CExprNode cexpr_new_call(const char* callee, ArrayList_Int args);
 CStmtNode cstmt_new_expr(int64_t expr_idx);
 CStmtNode cstmt_new_block(ArrayList_Int stmts);
+CStmtNode cstmt_new_if(int64_t cond, int64_t then_branch, int64_t else_branch);
 CPrinter CPrinter_init(CCodeBuilder builder, ArrayList_CExprNode* expr_pool, ArrayList_CStmtNode* stmt_pool);
 const char* CPrinter_print_expr(CPrinter* self, int64_t idx);
 void CPrinter_print_stmt(CPrinter* self, int64_t idx);
+void CPrinter_print_decl(CPrinter* self, CDeclNode decl);
 ErrorInfo get_error_info(const char* code);
 int64_t find_last(const char* path, char c);
 bool mkdir_p(const char* path);
@@ -15791,7 +15793,12 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self)
         if (((stmt).kind == StmtKind_sk_struct_decl) && (ArrayList_Str_length(&((stmt).struct_type_params)) == 0LL))
         {
             const char* cname = CodegenBuilder_map_type(self, (stmt).struct_name);
-            StrBuf_append(&((self)->type_defs), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", cname), " "), cname), ";\n"));
+            CDeclNode struct_decl = (CDeclNode){ .is_function = false, .func_ret = ctype_void(), .func_name = "", .func_params = ArrayList_Str_init((self)->allocator), .func_vararg = false, .func_body = ArrayList_Int_init((self)->allocator), .is_extern = false, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .is_struct = false, .struct_name = "", .struct_fields = ArrayList_Str_init((self)->allocator), .is_enum = false, .enum_name = "", .enum_variants = ArrayList_Str_init((self)->allocator), .is_tagged_enum = false, .tagged_name = "", .tagged_variants = ArrayList_Str_init((self)->allocator), .is_typedef = true, .typedef_alias = cname, .typedef_def = ctype_new(__kai_std_str_concat_alloc("struct ", cname), 0LL, false, false) };
+            CCodeBuilder local_builder = (CCodeBuilder){ .alloc = (self)->allocator, .lines = ArrayList_Str_init((self)->allocator), .indent_level = 0LL };
+            local_builder = CCodeBuilder_init((self)->allocator);
+            CPrinter printer = (CPrinter){ .builder = local_builder, .expr_pool = &((self)->c_exprs), .stmt_pool = &((self)->c_stmts) };
+            CPrinter_print_decl(&(printer), struct_decl);
+            StrBuf_append(&((self)->type_defs), CCodeBuilder_to_str(&(local_builder)));
         }
         if (((stmt).kind == StmtKind_sk_enum_decl) && (ArrayList_Str_length(&((stmt).enum_type_params)) == 0LL))
         {
@@ -15810,43 +15817,63 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self)
             }
             if (!has_payload)
             {
-                StrBuf_append(&((self)->type_defs), "typedef enum {\n");
+                ArrayList_Str variants_list = ArrayList_Str_init((self)->allocator);
                 int64_t vi2 = 0LL;
                 while (vi2 < ArrayList_Variant_length(&((stmt).enum_variants)))
                 {
                     Variant v = ArrayList_Variant_get(&((stmt).enum_variants), vi2);
-                    StrBuf_append(&((self)->type_defs), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", cename), "_"), (v).vname), ",\n"));
+                    ArrayList_Str_push(&(variants_list), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", cename), "_"), (v).vname), ","));
                     vi2 = (vi2 + 1LL);
                 }
-                StrBuf_append(&((self)->type_defs), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("} ", cename), ";\n"));
+                CDeclNode enum_decl = (CDeclNode){ .is_function = false, .func_ret = ctype_void(), .func_name = "", .func_params = ArrayList_Str_init((self)->allocator), .func_vararg = false, .func_body = ArrayList_Int_init((self)->allocator), .is_extern = false, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .is_struct = false, .struct_name = "", .struct_fields = ArrayList_Str_init((self)->allocator), .is_enum = true, .enum_name = cename, .enum_variants = variants_list, .is_tagged_enum = false, .tagged_name = "", .tagged_variants = ArrayList_Str_init((self)->allocator), .is_typedef = false, .typedef_alias = "", .typedef_def = ctype_void() };
+                CCodeBuilder local_builder = (CCodeBuilder){ .alloc = (self)->allocator, .lines = ArrayList_Str_init((self)->allocator), .indent_level = 0LL };
+                local_builder = CCodeBuilder_init((self)->allocator);
+                CPrinter printer = (CPrinter){ .builder = local_builder, .expr_pool = &((self)->c_exprs), .stmt_pool = &((self)->c_stmts) };
+                CPrinter_print_decl(&(printer), enum_decl);
+                StrBuf_append(&((self)->type_defs), CCodeBuilder_to_str(&(local_builder)));
             }
             else
             {
                 const char* tags_name = __kai_std_str_concat_alloc(cename, "_tags");
-                StrBuf_append(&((self)->type_defs), "typedef enum {\n");
+                ArrayList_Str variants_list = ArrayList_Str_init((self)->allocator);
                 int64_t vi3 = 0LL;
                 while (vi3 < ArrayList_Variant_length(&((stmt).enum_variants)))
                 {
                     Variant v = ArrayList_Variant_get(&((stmt).enum_variants), vi3);
-                    StrBuf_append(&((self)->type_defs), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", cename), "_"), (v).vname), "_TAG,\n"));
+                    ArrayList_Str_push(&(variants_list), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", cename), "_"), (v).vname), "_TAG,"));
                     vi3 = (vi3 + 1LL);
                 }
-                StrBuf_append(&((self)->type_defs), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("} ", tags_name), ";\n"));
-                StrBuf_append(&((self)->type_defs), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", cename), " "), cename), ";\n"));
+                CDeclNode enum_decl = (CDeclNode){ .is_function = false, .func_ret = ctype_void(), .func_name = "", .func_params = ArrayList_Str_init((self)->allocator), .func_vararg = false, .func_body = ArrayList_Int_init((self)->allocator), .is_extern = false, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .is_struct = false, .struct_name = "", .struct_fields = ArrayList_Str_init((self)->allocator), .is_enum = true, .enum_name = tags_name, .enum_variants = variants_list, .is_tagged_enum = false, .tagged_name = "", .tagged_variants = ArrayList_Str_init((self)->allocator), .is_typedef = false, .typedef_alias = "", .typedef_def = ctype_void() };
+                CCodeBuilder local_builder = (CCodeBuilder){ .alloc = (self)->allocator, .lines = ArrayList_Str_init((self)->allocator), .indent_level = 0LL };
+                local_builder = CCodeBuilder_init((self)->allocator);
+                CPrinter printer = (CPrinter){ .builder = local_builder, .expr_pool = &((self)->c_exprs), .stmt_pool = &((self)->c_stmts) };
+                CPrinter_print_decl(&(printer), enum_decl);
+                StrBuf_append(&((self)->type_defs), CCodeBuilder_to_str(&(local_builder)));
+                CDeclNode struct_decl = (CDeclNode){ .is_function = false, .func_ret = ctype_void(), .func_name = "", .func_params = ArrayList_Str_init((self)->allocator), .func_vararg = false, .func_body = ArrayList_Int_init((self)->allocator), .is_extern = false, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .is_struct = false, .struct_name = "", .struct_fields = ArrayList_Str_init((self)->allocator), .is_enum = false, .enum_name = "", .enum_variants = ArrayList_Str_init((self)->allocator), .is_tagged_enum = false, .tagged_name = "", .tagged_variants = ArrayList_Str_init((self)->allocator), .is_typedef = true, .typedef_alias = cename, .typedef_def = ctype_new(__kai_std_str_concat_alloc("struct ", cename), 0LL, false, false) };
+                CCodeBuilder local_builder2 = (CCodeBuilder){ .alloc = (self)->allocator, .lines = ArrayList_Str_init((self)->allocator), .indent_level = 0LL };
+                local_builder2 = CCodeBuilder_init((self)->allocator);
+                CPrinter printer2 = (CPrinter){ .builder = local_builder2, .expr_pool = &((self)->c_exprs), .stmt_pool = &((self)->c_stmts) };
+                CPrinter_print_decl(&(printer2), struct_decl);
+                StrBuf_append(&((self)->type_defs), CCodeBuilder_to_str(&(local_builder2)));
             }
         }
         if ((stmt).kind == StmtKind_sk_error_decl)
         {
             const char* cename = CodegenBuilder_map_type(self, (stmt).error_name);
-            StrBuf_append(&((self)->type_defs), "typedef enum {\n");
+            ArrayList_Str variants_list = ArrayList_Str_init((self)->allocator);
             int64_t vi5 = 0LL;
             while (vi5 < ArrayList_Str_length(&((stmt).error_variants)))
             {
                 const char* vname = ArrayList_Str_get(&((stmt).error_variants), vi5);
-                StrBuf_append(&((self)->type_defs), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", cename), "_"), vname), " = "), cgb_int_to_str((vi5 + 1LL))), ",\n"));
+                ArrayList_Str_push(&(variants_list), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", cename), "_"), vname), " = "), cgb_int_to_str((vi5 + 1LL))), ","));
                 vi5 = (vi5 + 1LL);
             }
-            StrBuf_append(&((self)->type_defs), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("} ", cename), ";\n"));
+            CDeclNode enum_decl = (CDeclNode){ .is_function = false, .func_ret = ctype_void(), .func_name = "", .func_params = ArrayList_Str_init((self)->allocator), .func_vararg = false, .func_body = ArrayList_Int_init((self)->allocator), .is_extern = false, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .is_struct = false, .struct_name = "", .struct_fields = ArrayList_Str_init((self)->allocator), .is_enum = true, .enum_name = cename, .enum_variants = variants_list, .is_tagged_enum = false, .tagged_name = "", .tagged_variants = ArrayList_Str_init((self)->allocator), .is_typedef = false, .typedef_alias = "", .typedef_def = ctype_void() };
+            CCodeBuilder local_builder = (CCodeBuilder){ .alloc = (self)->allocator, .lines = ArrayList_Str_init((self)->allocator), .indent_level = 0LL };
+            local_builder = CCodeBuilder_init((self)->allocator);
+            CPrinter printer = (CPrinter){ .builder = local_builder, .expr_pool = &((self)->c_exprs), .stmt_pool = &((self)->c_stmts) };
+            CPrinter_print_decl(&(printer), enum_decl);
+            StrBuf_append(&((self)->type_defs), CCodeBuilder_to_str(&(local_builder)));
         }
         i1 = (i1 + 1LL);
     }
@@ -16958,6 +16985,11 @@ CStmtNode cstmt_new_block(ArrayList_Int stmts)
 {
     return (CStmtNode){ .kind = CStmtKind_cs_block, .block_stmts = stmts, .expr_stmt = (-1LL), .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_init = (-1LL), .for_cond = (-1LL), .for_inc = (-1LL), .for_body = (-1LL), .do_body = (-1LL), .do_cond = (-1LL), .return_val = (-1LL), .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .switch_expr = (-1LL), .case_val = "", .label_name = "", .asm_code = "", .asm_volatile = false };
 }
+CStmtNode cstmt_new_if(int64_t cond, int64_t then_branch, int64_t else_branch)
+{
+    ArrayList_Int block_stmts = (ArrayList_Int){ .data = ((int64_t*)(unsigned long long)(0LL)), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(unsigned long long)(0LL)) };
+    return (CStmtNode){ .kind = CStmtKind_cs_if, .block_stmts = block_stmts, .expr_stmt = (-1LL), .if_cond = cond, .if_then = then_branch, .if_else = else_branch, .while_cond = (-1LL), .while_body = (-1LL), .for_init = (-1LL), .for_cond = (-1LL), .for_inc = (-1LL), .for_body = (-1LL), .do_body = (-1LL), .do_cond = (-1LL), .return_val = (-1LL), .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .switch_expr = (-1LL), .case_val = "", .label_name = "", .asm_code = "", .asm_volatile = false };
+}
 CPrinter CPrinter_init(CCodeBuilder builder, ArrayList_CExprNode* expr_pool, ArrayList_CStmtNode* stmt_pool)
 {
     CPrinter self = (CPrinter){0};
@@ -17145,6 +17177,91 @@ void CPrinter_print_stmt(CPrinter* self, int64_t idx)
         else
         {
             CCodeBuilder_emit_line(&((self)->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(type_str, " "), (node).var_name), ";"));
+        }
+    }
+}
+void CPrinter_print_decl(CPrinter* self, CDeclNode decl)
+{
+    if ((decl).is_typedef)
+    {
+        const char* def_str = ctype_to_str((decl).typedef_def);
+        CCodeBuilder_emit_line(&((self)->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef ", def_str), " "), (decl).typedef_alias), ";"));
+        return;
+    }
+    if ((decl).is_struct)
+    {
+        CCodeBuilder_emit_line(&((self)->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", (decl).struct_name), " {"));
+        CCodeBuilder_indent(&((self)->builder));
+        int64_t i = 0LL;
+        while (i < ArrayList_Str_length(&((decl).struct_fields)))
+        {
+            CCodeBuilder_emit_line(&((self)->builder), ArrayList_Str_get(&((decl).struct_fields), i));
+            i = (i + 1LL);
+        }
+        CCodeBuilder_dedent(&((self)->builder));
+        CCodeBuilder_emit_line(&((self)->builder), "};");
+        return;
+    }
+    if ((decl).is_enum)
+    {
+        CCodeBuilder_emit_line(&((self)->builder), "typedef enum {");
+        CCodeBuilder_indent(&((self)->builder));
+        int64_t i = 0LL;
+        while (i < ArrayList_Str_length(&((decl).enum_variants)))
+        {
+            CCodeBuilder_emit_line(&((self)->builder), ArrayList_Str_get(&((decl).enum_variants), i));
+            i = (i + 1LL);
+        }
+        CCodeBuilder_dedent(&((self)->builder));
+        CCodeBuilder_emit_line(&((self)->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("} ", (decl).enum_name), ";"));
+        return;
+    }
+    if ((decl).is_function)
+    {
+        const char* params_str = "";
+        int64_t i = 0LL;
+        while (i < ArrayList_Str_length(&((decl).func_params)))
+        {
+            if (i > 0LL)
+            {
+                params_str = __kai_std_str_concat_alloc(params_str, ", ");
+            }
+            params_str = __kai_std_str_concat_alloc(params_str, ArrayList_Str_get(&((decl).func_params), i));
+            i = (i + 1LL);
+        }
+        if ((decl).func_vararg)
+        {
+            if (strlen(params_str) > 0LL)
+            {
+                params_str = __kai_std_str_concat_alloc(params_str, ", ...");
+            }
+            else
+            {
+                params_str = "...";
+            }
+        }
+        const char* ret_str = ctype_to_str((decl).func_ret);
+        const char* header = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_str, " "), (decl).func_name), "("), params_str), ")");
+        if ((decl).is_extern)
+        {
+            CCodeBuilder_emit_line(&((self)->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("extern ", header), ";"));
+            return;
+        }
+        if (ArrayList_Int_length(&((decl).func_body)) == 0LL)
+        {
+            CCodeBuilder_emit_line(&((self)->builder), __kai_std_str_concat_alloc(header, ";"));
+        }
+        else
+        {
+            CCodeBuilder_emit_line(&((self)->builder), header);
+            CCodeBuilder_begin_block(&((self)->builder));
+            int64_t j = 0LL;
+            while (j < ArrayList_Int_length(&((decl).func_body)))
+            {
+                CPrinter_print_stmt(self, ArrayList_Int_get(&((decl).func_body), j));
+                j = (j + 1LL);
+            }
+            CCodeBuilder_end_block(&((self)->builder));
         }
     }
 }

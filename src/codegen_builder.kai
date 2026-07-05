@@ -2635,7 +2635,22 @@ fn build_func_types(self) -> Void {
         let stmt = self.stmt_pool.get(i1)
         if stmt.kind == StmtKind.sk_struct_decl && stmt.struct_type_params.length() == 0 {
             let cname = self.map_type(stmt.struct_name)
-            self.type_defs.append("typedef struct " + cname + " " + cname + ";\n")
+            
+            // Build AST CDeclNode for struct typedef
+            var struct_decl = CDeclNode(
+                is_function: false, func_ret: ctype_void(), func_name: "", func_params: ArrayList<Str>(self.allocator),
+                func_vararg: false, func_body: ArrayList<Int>(self.allocator), is_extern: false, var_type: ctype_void(),
+                var_name: "", var_init: -1, is_struct: false, struct_name: "", struct_fields: ArrayList<Str>(self.allocator),
+                is_enum: false, enum_name: "", enum_variants: ArrayList<Str>(self.allocator), is_tagged_enum: false,
+                tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_typedef: true, typedef_alias: cname,
+                typedef_def: ctype_new("struct " + cname, 0, false, false)
+            )
+            
+            var local_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
+            local_builder.init(self.allocator)
+            var printer = CPrinter(builder: local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+            printer.print_decl(struct_decl)
+            self.type_defs.append(local_builder.to_str())
         }
         if stmt.kind == StmtKind.sk_enum_decl && stmt.enum_type_params.length() == 0 {
             cgb_map_put(&self.enum_decls, stmt.enum_name, cgb_int_to_str(i1))
@@ -2648,37 +2663,94 @@ fn build_func_types(self) -> Void {
                 vi = vi + 1
             }
             if !has_payload {
-                self.type_defs.append("typedef enum {\n")
+                var variants_list = ArrayList<Str>(self.allocator)
                 var vi2 = 0
                 while vi2 < stmt.enum_variants.length() {
                     let v = stmt.enum_variants.get(vi2)
-                    self.type_defs.append("    " + cename + "_" + v.vname + ",\n")
+                    variants_list.push("    " + cename + "_" + v.vname + ",")
                     vi2 = vi2 + 1
                 }
-                self.type_defs.append("} " + cename + ";\n")
+                
+                var enum_decl = CDeclNode(
+                    is_function: false, func_ret: ctype_void(), func_name: "", func_params: ArrayList<Str>(self.allocator),
+                    func_vararg: false, func_body: ArrayList<Int>(self.allocator), is_extern: false, var_type: ctype_void(),
+                    var_name: "", var_init: -1, is_struct: false, struct_name: "", struct_fields: ArrayList<Str>(self.allocator),
+                    is_enum: true, enum_name: cename, enum_variants: variants_list, is_tagged_enum: false,
+                    tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_typedef: false, typedef_alias: "",
+                    typedef_def: ctype_void()
+                )
+                
+                var local_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
+                local_builder.init(self.allocator)
+                var printer = CPrinter(builder: local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+                printer.print_decl(enum_decl)
+                self.type_defs.append(local_builder.to_str())
             } else {
                 let tags_name = cename + "_tags"
-                self.type_defs.append("typedef enum {\n")
+                var variants_list = ArrayList<Str>(self.allocator)
                 var vi3 = 0
                 while vi3 < stmt.enum_variants.length() {
                     let v = stmt.enum_variants.get(vi3)
-                    self.type_defs.append("    " + cename + "_" + v.vname + "_TAG,\n")
+                    variants_list.push("    " + cename + "_" + v.vname + "_TAG,")
                     vi3 = vi3 + 1
                 }
-                self.type_defs.append("} " + tags_name + ";\n")
-                self.type_defs.append("typedef struct " + cename + " " + cename + ";\n")
+                
+                var enum_decl = CDeclNode(
+                    is_function: false, func_ret: ctype_void(), func_name: "", func_params: ArrayList<Str>(self.allocator),
+                    func_vararg: false, func_body: ArrayList<Int>(self.allocator), is_extern: false, var_type: ctype_void(),
+                    var_name: "", var_init: -1, is_struct: false, struct_name: "", struct_fields: ArrayList<Str>(self.allocator),
+                    is_enum: true, enum_name: tags_name, enum_variants: variants_list, is_tagged_enum: false,
+                    tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_typedef: false, typedef_alias: "",
+                    typedef_def: ctype_void()
+                )
+                
+                var local_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
+                local_builder.init(self.allocator)
+                var printer = CPrinter(builder: local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+                printer.print_decl(enum_decl)
+                self.type_defs.append(local_builder.to_str())
+
+                // Struct typedef for enum
+                var struct_decl = CDeclNode(
+                    is_function: false, func_ret: ctype_void(), func_name: "", func_params: ArrayList<Str>(self.allocator),
+                    func_vararg: false, func_body: ArrayList<Int>(self.allocator), is_extern: false, var_type: ctype_void(),
+                    var_name: "", var_init: -1, is_struct: false, struct_name: "", struct_fields: ArrayList<Str>(self.allocator),
+                    is_enum: false, enum_name: "", enum_variants: ArrayList<Str>(self.allocator), is_tagged_enum: false,
+                    tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_typedef: true, typedef_alias: cename,
+                    typedef_def: ctype_new("struct " + cename, 0, false, false)
+                )
+                
+                var local_builder2 = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
+                local_builder2.init(self.allocator)
+                var printer2 = CPrinter(builder: local_builder2, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+                printer2.print_decl(struct_decl)
+                self.type_defs.append(local_builder2.to_str())
             }
         }
         if stmt.kind == StmtKind.sk_error_decl {
             let cename = self.map_type(stmt.error_name)
-            self.type_defs.append("typedef enum {\n")
+            var variants_list = ArrayList<Str>(self.allocator)
             var vi5 = 0
             while vi5 < stmt.error_variants.length() {
                 let vname = stmt.error_variants.get(vi5)
-                self.type_defs.append("    " + cename + "_" + vname + " = " + cgb_int_to_str(vi5 + 1) + ",\n")
+                variants_list.push("    " + cename + "_" + vname + " = " + cgb_int_to_str(vi5 + 1) + ",")
                 vi5 = vi5 + 1
             }
-            self.type_defs.append("} " + cename + ";\n")
+            
+            var enum_decl = CDeclNode(
+                is_function: false, func_ret: ctype_void(), func_name: "", func_params: ArrayList<Str>(self.allocator),
+                func_vararg: false, func_body: ArrayList<Int>(self.allocator), is_extern: false, var_type: ctype_void(),
+                var_name: "", var_init: -1, is_struct: false, struct_name: "", struct_fields: ArrayList<Str>(self.allocator),
+                is_enum: true, enum_name: cename, enum_variants: variants_list, is_tagged_enum: false,
+                tagged_name: "", tagged_variants: ArrayList<Str>(self.allocator), is_typedef: false, typedef_alias: "",
+                typedef_def: ctype_void()
+            )
+            
+            var local_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
+            local_builder.init(self.allocator)
+            var printer = CPrinter(builder: local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+            printer.print_decl(enum_decl)
+            self.type_defs.append(local_builder.to_str())
         }
         i1 = i1 + 1
     }

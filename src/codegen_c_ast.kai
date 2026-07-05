@@ -340,3 +340,13 @@ fn cstmt_new_block(stmts: ArrayList<Int>) -> CStmtNode {
         label_name: "", asm_code: "", asm_volatile: false
     )
 }
+
+fn cstmt_new_if(cond: Int, then_branch: Int, else_branch: Int) -> CStmtNode {
+    var block_stmts = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
+    return CStmtNode(
+        kind: CStmtKind.cs_if, block_stmts: block_stmts, expr_stmt: -1, if_cond: cond, if_then: then_branch, if_else: else_branch,
+        while_cond: -1, while_body: -1, for_init: -1, for_cond: -1, for_inc: -1, for_body: -1, do_body: -1, do_cond: -1,
+        return_val: -1, var_type: ctype_void(), var_name: "", var_init: -1, switch_expr: -1, case_val: "",
+        label_name: "", asm_code: "", asm_volatile: false
+    )
+}
