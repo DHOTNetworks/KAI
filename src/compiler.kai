@@ -178,6 +178,38 @@ fn main(argc: Int, argv: **Char) -> Int {
         if json_mode { printf("{\"messages\":[{\"code\":\"E0101\",\"message\":\"Parse error\",\"file\":\"%s\"}],\"error\":true}\n", input_file) }
         return 3
     }
+
+    // Pre-resolve imports before type checking (populates stmt_pool with imported declarations)
+    if program_idx >= 0 {
+        if use_builder {
+            var builder_gen = CodegenBuilder(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
+            let top_stmt = parser.stmt_pool.get(program_idx)
+            if top_stmt.kind == StmtKind.sk_block {
+                var ii = 0
+                while ii < top_stmt.block_stmts.length() {
+                    let sub_stmt = parser.stmt_pool.get(top_stmt.block_stmts.get(ii))
+                    if sub_stmt.kind == StmtKind.sk_import || sub_stmt.kind == StmtKind.sk_cimport {
+                        builder_gen.gen_stmt(top_stmt.block_stmts.get(ii))
+                    }
+                    ii = ii + 1
+                }
+            }
+        } else {
+            var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
+            let top_stmt = parser.stmt_pool.get(program_idx)
+            if top_stmt.kind == StmtKind.sk_block {
+                var ii = 0
+                while ii < top_stmt.block_stmts.length() {
+                    let sub_stmt = parser.stmt_pool.get(top_stmt.block_stmts.get(ii))
+                    if sub_stmt.kind == StmtKind.sk_import || sub_stmt.kind == StmtKind.sk_cimport {
+                        gen.gen_stmt(top_stmt.block_stmts.get(ii))
+                    }
+                    ii = ii + 1
+                }
+            }
+        }
+    }
+
     var checker = TypeChecker(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, input_file, source)
     let success = checker.check_program(program_idx)
     if !success {

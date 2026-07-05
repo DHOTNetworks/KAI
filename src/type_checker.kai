@@ -19,6 +19,13 @@ import int_to_str from std.core.string
 import str_array_join from parser
 import std.io.print
 import get_source_line from utils
+import Lexer from lexer
+import Parser from parser
+import read_to_string from std.io.file
+
+extern fn malloc(size: Int) -> *Char
+extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
+extern fn strlen(s: Str) -> Int
 
 struct PtrRefResult {
     is_ptr: Bool
@@ -45,7 +52,12 @@ struct TypeChecker {
     current_func_ret_type: Str
     source_file: Str
     source: Str
-    has_any_import: Bool
+    imported_names: ArrayList<Str>
+    import_used: ArrayList<Bool>
+    import_lines: ArrayList<Int>
+    import_cols: ArrayList<Int>
+    loaded_modules: ArrayList<Str>
+    has_bare_import: Bool
     loop_depth: Int
 }
 
@@ -62,7 +74,12 @@ impl TypeChecker {
         self.current_func_ret_type = ""
         self.source_file = source_file
         self.source = source
-        self.has_any_import = false
+        self.imported_names = ArrayList<Str>(allocator)
+        self.import_used = ArrayList<Bool>(allocator)
+        self.import_lines = ArrayList<Int>(allocator)
+        self.import_cols = ArrayList<Int>(allocator)
+        self.loaded_modules = ArrayList<Str>(allocator)
+        self.has_bare_import = false
         self.loop_depth = 0
     }
 
@@ -116,11 +133,23 @@ impl TypeChecker {
         // Pre-pass: register struct drop info and detect imports
         self.register_struct_info(top_stmt_idx)
         self.detect_imports(top_stmt_idx)
+        self.resolve_imports(top_stmt_idx)
         
         // Start checking
         self.enter_scope()
         self.check_stmt(top_stmt_idx)
         self.exit_scope()
+        
+        // Check for unused imports
+        var ui = 0
+        while ui < self.imported_names.length() {
+            if !self.import_used.get(ui) {
+                let line = self.import_lines.get(ui)
+                let col = self.import_cols.get(ui)
+                self.err("E0033", "unused import: '" + self.imported_names.get(ui) + "'", line, col)
+            }
+            ui = ui + 1
+        }
         
         return !self.has_error
     }
@@ -132,11 +161,149 @@ impl TypeChecker {
             while i < stmt.block_stmts.length() {
                 let s_idx = stmt.block_stmts.get(i)
                 let s = self.stmt_pool.get(s_idx)
-                if s.kind == StmtKind.sk_import || s.kind == StmtKind.sk_cimport {
-                    self.has_any_import = true
-                    return
+                if s.kind == StmtKind.sk_import {
+                    // check for "import X from Y" — alias is set for named imports
+                    if length(s.import_alias) > 0 {
+                        self.imported_names.push(s.import_alias)
+                        self.import_used.push(false)
+                        self.import_lines.push(s.line)
+                        self.import_cols.push(s.col)
+                    } else {
+                        self.has_bare_import = true
+                    }
+                }
+                if s.kind == StmtKind.sk_cimport {
+                    self.has_bare_import = true
                 }
                 i = i + 1
+            }
+        }
+    }
+
+    fn resolve_imports(self, top_stmt_idx: Int) {
+        let stmt = self.stmt_pool.get(top_stmt_idx)
+        if stmt.kind == StmtKind.sk_block {
+            var i = 0
+            while i < stmt.block_stmts.length() {
+                let s_idx = stmt.block_stmts.get(i)
+                let s = self.stmt_pool.get(s_idx)
+                if s.kind == StmtKind.sk_import {
+                    self.resolve_one_import(s_idx)
+                }
+                if s.kind == StmtKind.sk_cimport {
+                    self.resolve_one_import(s_idx)
+                }
+                i = i + 1
+            }
+        }
+    }
+
+    fn resolve_one_import(self, stmt_idx: Int) {
+        let stmt = self.stmt_pool.get(stmt_idx)
+        var path = stmt.import_path
+        var module_key = ""
+        var pi = 0
+        while pi < path.length() {
+            if pi > 0 { module_key = module_key + "." }
+            module_key = module_key + path.get(pi)
+            pi = pi + 1
+        }
+        if module_key == "" { return }
+        // Check if already loaded
+        var li = 0
+        while li < self.loaded_modules.length() {
+            if self.loaded_modules.get(li) == module_key { return }
+            li = li + 1
+        }
+        self.loaded_modules.push(module_key)
+
+        var has_source = false
+        var source = ""
+        if path.length() > 0 && path.get(0) == "std" {
+            var path_str = ""
+            var ii = 0
+            while ii < path.length() {
+                if ii > 0 { path_str = path_str + "/" }
+                path_str = path_str + path.get(ii)
+                ii = ii + 1
+            }
+            let rel_path = path_str + ".kai"
+            let s1 = read_to_string(self.allocator, rel_path)
+            if s1.tag == 0 && strlen(s1.value) > 0 {
+                source = s1.value
+                has_source = true
+            }
+            if !has_source {
+                unsafe {
+                    let buf = malloc(1024) as *Char
+                    if get_exe_dir(buf, 1024) == 0 {
+                        let exe_dir = buf as Str
+                        let full_path = exe_dir + "/" + rel_path
+                        let s2 = read_to_string(self.allocator, full_path)
+                        if s2.tag == 0 && strlen(s2.value) > 0 {
+                            source = s2.value
+                            has_source = true
+                        }
+                        if !has_source {
+                            let parent_path = exe_dir + "/../" + rel_path
+                            let s3 = read_to_string(self.allocator, parent_path)
+                            if s3.tag == 0 && strlen(s3.value) > 0 {
+                                source = s3.value
+                                has_source = true
+                            }
+                            if !has_source {
+                                let lib_path = exe_dir + "/../lib/kai/" + rel_path
+                                let s4 = read_to_string(self.allocator, lib_path)
+                                if s4.tag == 0 && strlen(s4.value) > 0 {
+                                    source = s4.value
+                                    has_source = true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else if path.length() > 0 {
+            let file_path = "src/" + module_key + ".kai"
+            let s = read_to_string(self.allocator, file_path)
+            if s.tag == 0 && strlen(s.value) > 0 {
+                source = s.value
+                has_source = true
+            }
+        }
+
+        if has_source {
+            var current_file_path = ""
+            if path.length() > 0 && path.get(0) == "std" {
+                var path_str = ""
+                var ii = 0
+                while ii < path.length() {
+                    if ii > 0 { path_str = path_str + "/" }
+                    path_str = path_str + path.get(ii)
+                    ii = ii + 1
+                }
+                current_file_path = path_str + ".kai"
+            } else {
+                current_file_path = "src/" + module_key + ".kai"
+            }
+            var lexer = Lexer(self.allocator, source, current_file_path)
+            lexer.lex()
+            if !lexer.has_error {
+                var parser = Parser.init_with_pools(self.allocator, current_file_path, lexer.tokens, self.expr_pool, self.stmt_pool, self.pattern_pool, source)
+                let program_idx = parser.parse_program()
+                if program_idx >= 0 {
+                    let prog = self.stmt_pool.get(program_idx)
+                    if prog.kind == StmtKind.sk_block {
+                        var pi = 0
+                        while pi < prog.block_stmts.length() {
+                            let sub = self.stmt_pool.get(prog.block_stmts.get(pi))
+                            if sub.kind == StmtKind.sk_import || sub.kind == StmtKind.sk_cimport {
+                                self.resolve_one_import(prog.block_stmts.get(pi))
+                            }
+                            pi = pi + 1
+                        }
+                    }
+                }
             }
         }
     }
@@ -193,7 +360,7 @@ impl TypeChecker {
         var i = table.entries.length() - 1
         while i >= 0 {
             let sym = table.entries.get(i)
-            if (sym.kind == "var" || sym.kind == "param") && !sym.moved {
+            if (sym.kind == "var" || sym.kind == "param") && !sym.moved && !sym.freed {
                 let base_type = sym.type_name
                 if self.has_drop_method(base_type) {
                     drop_vars.push(DropVarEntry(name: sym.name, base_type: base_type))
@@ -225,6 +392,36 @@ impl TypeChecker {
     fn is_numeric_type(self, type_name: Str) -> Bool {
         if self.is_integer_type(type_name) { return true }
         if type_name == "Float" { return true }
+        return false
+    }
+
+    fn is_builtin_type(self, name: Str) -> Bool {
+        return name == "Int" || name == "Float" || name == "Bool" || name == "Char" || name == "Str" || name == "Void" || name == "NoneType" || name == "usize"
+    }
+
+    fn is_struct_type(self, name: Str) -> Bool {
+        if name == "ArrayList" || name == "HashMap" || name == "StringBuilder" { return true }
+        var i = 0
+        while i < self.stmt_pool.length() {
+            let s = self.stmt_pool.get(i)
+            if s.kind == StmtKind.sk_struct_decl && s.struct_name == name { return true }
+            i = i + 1
+        }
+        return false
+    }
+
+    fn is_standard_c_func(self, name: Str) -> Bool {
+        if name == "malloc" || name == "free" || name == "realloc" || name == "calloc" { return true }
+        if name == "printf" || name == "fprintf" || name == "sprintf" || name == "snprintf" { return true }
+        if name == "fopen" || name == "fread" || name == "fwrite" || name == "fclose" || name == "fseek" || name == "ftell" || name == "rewind" { return true }
+        if name == "strlen" || name == "strcmp" { return true }
+        if name == "exit" || name == "system" { return true }
+        if name == "isdigit" || name == "isalpha" || name == "isalnum" || name == "isspace" { return true }
+        if name == "toupper" || name == "tolower" { return true }
+        if name == "atoll" { return true }
+        if name == "sqrt" { return true }
+        if name == "memset" || name == "memcpy" || name == "memmove" { return true }
+        if name == "abort" { return true }
         return false
     }
 
@@ -589,6 +786,41 @@ impl TypeChecker {
         }
     }
 
+    fn mark_expr_freed(self, expr_idx: Int) {
+        if expr_idx < 0 { return }
+        // Walk through cast/coerce wrappers to find the underlying identifier
+        var inner = expr_idx
+        var done = false
+        while !done {
+            let e = self.expr_pool.get(inner)
+            if e.kind == ExprKind.ek_func_call && e.func_name == "as" && e.func_args.length() >= 1 {
+                inner = e.func_args.get(0)
+            } else {
+                done = true
+            }
+        }
+        let expr = self.expr_pool.get(inner)
+        if expr.kind == ExprKind.ek_identifier {
+            var table = self.symbol_tables.get(self.current_table_idx)
+            let sym = table.lookup_symbol(expr.ident_name, &self.symbol_tables)
+            if length(sym.name) > 0 {
+                if sym.freed {
+                    self.err("E0032", "double-free: '" + expr.ident_name + "' is already freed", expr.line, expr.col)
+                    return
+                }
+                if sym.moved {
+                    self.err("E0009", "use of moved value: '" + expr.ident_name + "'", expr.line, expr.col)
+                    return
+                }
+                table.mark_freed(expr.ident_name, &self.symbol_tables)
+                self.symbol_tables.set(self.current_table_idx, table)
+            }
+        }
+    }
+
+
+
+
     fn get_expr_type(self, expr_idx: Int) -> Str {
         if expr_idx < 0 { return "Void" }
         let expr = self.expr_pool.get(expr_idx)
@@ -872,17 +1104,44 @@ impl TypeChecker {
         return false
     }
 
+    fn is_imported_name(self, name: Str) -> Bool {
+        var i = 0
+        while i < self.imported_names.length() {
+            if self.imported_names.get(i) == name {
+                return true
+            }
+            i = i + 1
+        }
+        return false
+    }
+
+    fn mark_import_used(self, name: Str) {
+        var i = 0
+        while i < self.imported_names.length() {
+            if self.imported_names.get(i) == name {
+                self.import_used.set(i, true)
+                return
+            }
+            i = i + 1
+        }
+    }
+
     fn check_identifier(self, expr_idx: Int) {
         let expr = self.expr_pool.get(expr_idx)
         let name = expr.ident_name
         let table = self.symbol_tables.get(self.current_table_idx)
         let sym = table.lookup_symbol(name, &self.symbol_tables)
         if length(sym.name) > 0 {
-            if sym.moved {
+            if sym.freed {
+                self.err("E0031", "use of freed value: '" + name + "'", expr.line, expr.col)
+            } else if sym.moved {
                 self.err("E0009", "use of moved value: '" + name + "'", expr.line, expr.col)
             }
-        } else if !self.is_enum_or_error_type(name) && !self.has_any_import {
+        } else if !self.is_enum_or_error_type(name) && !self.is_builtin_type(name) && !self.is_imported_name(name) && !self.has_bare_import {
             self.err("E0019", "undefined identifier: '" + name + "'", expr.line, expr.col)
+        }
+        if self.is_imported_name(name) {
+            self.mark_import_used(name)
         }
     }
 
@@ -978,8 +1237,12 @@ impl TypeChecker {
                 if target_expr.kind == ExprKind.ek_identifier {
                     let table = self.symbol_tables.get(self.current_table_idx)
                     let sym = table.lookup_symbol(target_expr.ident_name, &self.symbol_tables)
-                    if length(sym.name) > 0 && !sym.is_mutable {
-                        self.err("E0008", "cannot assign to immutable variable '" + target_expr.ident_name + "'", target_expr.line, target_expr.col)
+                    if length(sym.name) > 0 {
+                        if sym.freed {
+                            self.err("E0031", "cannot assign to freed variable '" + target_expr.ident_name + "'", target_expr.line, target_expr.col)
+                        } else if !sym.is_mutable {
+                            self.err("E0008", "cannot assign to immutable variable '" + target_expr.ident_name + "'", target_expr.line, target_expr.col)
+                        }
                     }
                 }
             }
@@ -1260,15 +1523,30 @@ impl TypeChecker {
             return
         }
         if expr.kind == ExprKind.ek_func_call {
-            var i = 0
-            while i < expr.func_args.length() {
-                let arg = expr.func_args.get(i)
-                self.check_expr(arg)
-                self.mark_expr_moved(arg)
-                i = i + 1
-            }
             let name = expr.func_name
-            if name == "cast" || name == "as" || name == "size_of" || name == "Char" || name == "Int" || name == "Float" || name == "Bool" {
+            if name == "free" {
+                var i = 0
+                while i < expr.func_args.length() {
+                    let arg = expr.func_args.get(i)
+                    self.check_expr(arg)
+                    i = i + 1
+                }
+                if expr.func_args.length() >= 1 {
+                    self.mark_expr_freed(expr.func_args.get(0))
+                }
+                if self.is_imported_name(name) {
+                    self.mark_import_used(name)
+                }
+            } else {
+                var i = 0
+                while i < expr.func_args.length() {
+                    let arg = expr.func_args.get(i)
+                    self.check_expr(arg)
+                    self.mark_expr_moved(arg)
+                    i = i + 1
+                }
+            }
+            if name == "cast" || name == "as" || name == "size_of" || name == "free" || name == "Char" || name == "Int" || name == "Float" || name == "Bool" {
                 return
             }
             let func_idx = self.find_func_decl(name)
@@ -1307,8 +1585,16 @@ impl TypeChecker {
                         arg_i = arg_i + 1
                     }
                 }
-            } else if !self.has_any_import {
-                self.err("E0020", "undefined function: '" + name + "'", expr.line, expr.col)
+            } else if !self.is_imported_name(name) && !self.is_standard_c_func(name) && !self.has_bare_import {
+                if self.is_builtin_type(name) || self.is_struct_type(name) {
+                    // Allowed as function call (e.g. Int(x), ArrayList_init(x))
+                } else {
+                    self.err("E0020", "undefined function: '" + name + "'", expr.line, expr.col)
+                }
+            }
+            // Mark imported names as used when called as functions
+            if self.is_imported_name(name) {
+                self.mark_import_used(name)
             }
             return
         }
@@ -1353,8 +1639,11 @@ impl TypeChecker {
                         arg_i = arg_i + 1
                     }
                 }
-            } else if !self.has_any_import {
+            } else if !self.is_imported_name(meth_name) && !self.has_bare_import {
                 self.err("E0022", "undefined method: '" + meth_name + "' for type '" + recv_type + "'", expr.line, expr.col)
+            }
+            if self.is_imported_name(meth_name) {
+                self.mark_import_used(meth_name)
             }
             return
         }
@@ -1409,7 +1698,7 @@ impl TypeChecker {
             let struct_name = expr.struct_name
             let struct_idx = self.find_struct_decl(struct_name)
             if struct_idx < 0 {
-                if !self.has_any_import {
+                if !self.is_imported_name(struct_name) && !self.has_bare_import {
                     self.err("E0021", "undefined struct: '" + struct_name + "'", expr.line, expr.col)
                 }
                 return

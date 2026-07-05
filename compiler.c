@@ -296,35 +296,6 @@ struct Token {
     int64_t line;
     int64_t column;
 };
-typedef struct ArrayList_Token ArrayList_Token;
-struct ArrayList_Token {
-    Token* data;
-    int64_t len;
-    int64_t cap;
-    KaiAllocator* allocator;
-};
-typedef struct ArrayList_Int ArrayList_Int;
-struct ArrayList_Int {
-    int64_t* data;
-    int64_t len;
-    int64_t cap;
-    KaiAllocator* allocator;
-};
-typedef struct Lexer Lexer;
-struct Lexer {
-    KaiAllocator* allocator;
-    const char* source;
-    const char* source_file;
-    int64_t source_len;
-    int64_t cursor;
-    int64_t line;
-    int64_t column;
-    ArrayList_Token* tokens;
-    ArrayList_Int* indent_stack;
-    int64_t paren_depth;
-    int64_t brace_depth;
-    bool has_error;
-};
 typedef struct DropVarEntry DropVarEntry;
 struct DropVarEntry {
     const char* name;
@@ -426,6 +397,13 @@ typedef enum {
 typedef struct ArrayList_StrInterpPart ArrayList_StrInterpPart;
 struct ArrayList_StrInterpPart {
     StrInterpPart* data;
+    int64_t len;
+    int64_t cap;
+    KaiAllocator* allocator;
+};
+typedef struct ArrayList_Int ArrayList_Int;
+struct ArrayList_Int {
+    int64_t* data;
     int64_t len;
     int64_t cap;
     KaiAllocator* allocator;
@@ -628,6 +606,17 @@ struct StmtNode {
     const char* error_name;
     ArrayList_Str error_variants;
 };
+typedef struct Dir Dir;
+struct Dir {
+    void* handle;
+};
+typedef struct ArrayList_Token ArrayList_Token;
+struct ArrayList_Token {
+    Token* data;
+    int64_t len;
+    int64_t cap;
+    KaiAllocator* allocator;
+};
 typedef struct ArrayList_ExprNode ArrayList_ExprNode;
 struct ArrayList_ExprNode {
     ExprNode* data;
@@ -653,6 +642,7 @@ typedef struct Parser Parser;
 struct Parser {
     KaiAllocator* allocator;
     const char* source_file;
+    const char* source;
     ArrayList_Token* tokens;
     int64_t cursor;
     bool pending_gt;
@@ -661,6 +651,23 @@ struct Parser {
     ArrayList_ExprNode* expr_pool;
     ArrayList_StmtNode* stmt_pool;
     ArrayList_PatternNode* pattern_pool;
+    int64_t stmt_line;
+    int64_t stmt_col;
+};
+typedef struct Lexer Lexer;
+struct Lexer {
+    KaiAllocator* allocator;
+    const char* source;
+    const char* source_file;
+    int64_t source_len;
+    int64_t cursor;
+    int64_t line;
+    int64_t column;
+    ArrayList_Token* tokens;
+    ArrayList_Int* indent_stack;
+    int64_t paren_depth;
+    int64_t brace_depth;
+    bool has_error;
 };
 typedef struct Symbol Symbol;
 struct Symbol {
@@ -670,6 +677,7 @@ struct Symbol {
     const char* kind;
     const char* llvm_value;
     bool moved;
+    bool freed;
 };
 typedef struct ArrayList_Symbol ArrayList_Symbol;
 struct ArrayList_Symbol {
@@ -691,10 +699,6 @@ struct ArrayList_SymbolTable {
     int64_t cap;
     KaiAllocator* allocator;
 };
-typedef struct Dir Dir;
-struct Dir {
-    void* handle;
-};
 typedef struct PtrRefResult PtrRefResult;
 struct PtrRefResult {
     bool is_ptr;
@@ -713,6 +717,13 @@ struct ArrayList_StructInfo {
     int64_t cap;
     KaiAllocator* allocator;
 };
+typedef struct ArrayList_Bool ArrayList_Bool;
+struct ArrayList_Bool {
+    bool* data;
+    int64_t len;
+    int64_t cap;
+    KaiAllocator* allocator;
+};
 typedef struct TypeChecker TypeChecker;
 struct TypeChecker {
     KaiAllocator* allocator;
@@ -726,7 +737,10 @@ struct TypeChecker {
     const char* current_func_ret_type;
     const char* source_file;
     const char* source;
-    bool has_any_import;
+    ArrayList_Str imported_names;
+    ArrayList_Bool import_used;
+    ArrayList_Int import_lines;
+    ArrayList_Int import_cols;
     int64_t loop_depth;
 };
 typedef struct StrMapEntry StrMapEntry;
@@ -1022,13 +1036,6 @@ struct Optional_Int {
     bool has_value;
     int64_t value;
 };
-typedef struct ArrayList_Bool ArrayList_Bool;
-struct ArrayList_Bool {
-    bool* data;
-    int64_t len;
-    int64_t cap;
-    KaiAllocator* allocator;
-};
 
 uint8_t* CAlloc_alloc(CAlloc* self, int64_t size, int64_t alignment);
 uint8_t* CAlloc_realloc(CAlloc* self, uint8_t* ptr, int64_t old_size, int64_t new_size, int64_t alignment);
@@ -1070,36 +1077,6 @@ void StringBuilder_deinit(StringBuilder* self);
 const char* int_to_str(int64_t n);
 const char* char_to_str(char c);
 const char* substring(const char* s, int64_t start, int64_t end);
-TokenType keyword_type(const char* ident);
-TokenValue make_keyword_value(const char* ident, TokenType ttype);
-ArrayList_Token ArrayList_Token_init(KaiAllocator* allocator);
-void ArrayList_Token_push(ArrayList_Token* self, Token item);
-Token ArrayList_Token_get(ArrayList_Token* self, int64_t index);
-void ArrayList_Token_set(ArrayList_Token* self, int64_t index, Token item);
-Token ArrayList_Token_pop(ArrayList_Token* self);
-int64_t ArrayList_Token_length(ArrayList_Token* self);
-void ArrayList_Token_deinit(ArrayList_Token* self);
-ArrayList_Int ArrayList_Int_init(KaiAllocator* allocator);
-void ArrayList_Int_push(ArrayList_Int* self, int64_t item);
-int64_t ArrayList_Int_get(ArrayList_Int* self, int64_t index);
-void ArrayList_Int_set(ArrayList_Int* self, int64_t index, int64_t item);
-int64_t ArrayList_Int_pop(ArrayList_Int* self);
-int64_t ArrayList_Int_length(ArrayList_Int* self);
-void ArrayList_Int_deinit(ArrayList_Int* self);
-Lexer Lexer_init(KaiAllocator* allocator, const char* source, const char* source_file);
-char Lexer_peek(Lexer* self, int64_t offset);
-char Lexer_advance(Lexer* self);
-void Lexer_emit(Lexer* self, TokenType ttype, TokenValue value);
-void Lexer_lex_error(Lexer* self, const char* msg);
-void Lexer_skip_line_comment(Lexer* self);
-void Lexer_skip_block_comment(Lexer* self);
-void Lexer_skip_whitespace(Lexer* self);
-void Lexer_lex_identifier(Lexer* self);
-void Lexer_lex_number(Lexer* self);
-void Lexer_lex_string(Lexer* self);
-void Lexer_lex_char(Lexer* self);
-int64_t Lexer_compute_indent(Lexer* self);
-void Lexer_lex(Lexer* self);
 extern void __kai_print_int(int64_t i);
 extern void __kai_print_float(double f);
 void print_separator(void);
@@ -1128,6 +1105,13 @@ void ArrayList_StrInterpPart_set(ArrayList_StrInterpPart* self, int64_t index, S
 StrInterpPart ArrayList_StrInterpPart_pop(ArrayList_StrInterpPart* self);
 int64_t ArrayList_StrInterpPart_length(ArrayList_StrInterpPart* self);
 void ArrayList_StrInterpPart_deinit(ArrayList_StrInterpPart* self);
+ArrayList_Int ArrayList_Int_init(KaiAllocator* allocator);
+void ArrayList_Int_push(ArrayList_Int* self, int64_t item);
+int64_t ArrayList_Int_get(ArrayList_Int* self, int64_t index);
+void ArrayList_Int_set(ArrayList_Int* self, int64_t index, int64_t item);
+int64_t ArrayList_Int_pop(ArrayList_Int* self);
+int64_t ArrayList_Int_length(ArrayList_Int* self);
+void ArrayList_Int_deinit(ArrayList_Int* self);
 ArrayList_FieldInit ArrayList_FieldInit_init(KaiAllocator* allocator);
 void ArrayList_FieldInit_push(ArrayList_FieldInit* self, FieldInit item);
 FieldInit ArrayList_FieldInit_get(ArrayList_FieldInit* self, int64_t index);
@@ -1191,10 +1175,36 @@ ArrayList_AsmInput empty_asminput_array(void);
 ExprNode new_expr_node(ExprKind kind, int64_t line, int64_t col);
 StmtNode new_stmt_node(StmtKind kind, int64_t line, int64_t col);
 PatternNode new_pattern_node(PatternKind kind);
+extern bool kai_fs_exists(const char* path);
+extern bool kai_fs_is_dir(const char* path);
+extern bool kai_fs_mkdir(const char* path);
+extern bool kai_fs_remove(const char* path);
+extern void* kai_fs_opendir(const char* path);
+extern char* kai_fs_readdir(void* handle);
+extern void kai_fs_closedir(void* handle);
+bool fs_exists(const char* path);
+bool fs_is_dir(const char* path);
+bool fs_mkdir(const char* path);
+bool fs_remove(const char* path);
+Dir fs_opendir(const char* path);
+const char* fs_readdir(Dir dir);
+void fs_closedir(Dir dir);
+const char* get_source_line(const char* source, int64_t line_num);
+int64_t find_last(const char* path, char c);
+bool mkdir_p(const char* path);
+const char* str_replace(const char* s, const char* old, const char* new_val);
+const char* get_base_name(const char* path);
 const char* tv_get_str(TokenValue val);
 int64_t token_precedence(TokenType ttype);
 const char* token_op_str(TokenType ttype);
 const char* str_array_join(ArrayList_Str arr, const char* sep);
+ArrayList_Token ArrayList_Token_init(KaiAllocator* allocator);
+void ArrayList_Token_push(ArrayList_Token* self, Token item);
+Token ArrayList_Token_get(ArrayList_Token* self, int64_t index);
+void ArrayList_Token_set(ArrayList_Token* self, int64_t index, Token item);
+Token ArrayList_Token_pop(ArrayList_Token* self);
+int64_t ArrayList_Token_length(ArrayList_Token* self);
+void ArrayList_Token_deinit(ArrayList_Token* self);
 ArrayList_ExprNode ArrayList_ExprNode_init(KaiAllocator* allocator);
 void ArrayList_ExprNode_push(ArrayList_ExprNode* self, ExprNode item);
 ExprNode ArrayList_ExprNode_get(ArrayList_ExprNode* self, int64_t index);
@@ -1216,8 +1226,9 @@ void ArrayList_PatternNode_set(ArrayList_PatternNode* self, int64_t index, Patte
 PatternNode ArrayList_PatternNode_pop(ArrayList_PatternNode* self);
 int64_t ArrayList_PatternNode_length(ArrayList_PatternNode* self);
 void ArrayList_PatternNode_deinit(ArrayList_PatternNode* self);
-Parser Parser_init_with_pools(KaiAllocator* allocator, const char* source_file, ArrayList_Token* tokens, ArrayList_ExprNode* expr_pool, ArrayList_StmtNode* stmt_pool, ArrayList_PatternNode* pattern_pool);
-Parser Parser_init(KaiAllocator* allocator, const char* source_file, ArrayList_Token* tokens);
+void parser_err(const char* source_file, const char* source, const char* code, const char* msg, int64_t line, int64_t col);
+Parser Parser_init_with_pools(KaiAllocator* allocator, const char* source_file, ArrayList_Token* tokens, ArrayList_ExprNode* expr_pool, ArrayList_StmtNode* stmt_pool, ArrayList_PatternNode* pattern_pool, const char* source);
+Parser Parser_init(KaiAllocator* allocator, const char* source_file, ArrayList_Token* tokens, const char* source);
 Token Parser_peek(Parser* self, int64_t offset);
 Token Parser_advance(Parser* self);
 bool Parser_match_token(Parser* self, TokenType ttype);
@@ -1246,6 +1257,7 @@ int64_t Parser_ex_deref(Parser* self, int64_t expr);
 int64_t Parser_ex_try(Parser* self, int64_t expr);
 int64_t Parser_ex_catch(Parser* self, int64_t expr, const char* var_name, int64_t fallback);
 int64_t Parser_ex_asm(Parser* self, const char* code, bool is_volatile, ArrayList_AsmOutput outputs, ArrayList_AsmInput inputs, ArrayList_Str clobbers);
+StmtNode Parser_mk_stmt_node(Parser* self, StmtKind kind);
 int64_t Parser_st_block(Parser* self, ArrayList_Int stmts);
 int64_t Parser_st_error(Parser* self, const char* name, ArrayList_Str variants);
 int64_t Parser_st_var_decl(Parser* self, const char* name, const char* type_ann, int64_t value, bool is_mut);
@@ -1302,6 +1314,22 @@ int64_t Parser_parse_import_stmt_new(Parser* self);
 int64_t Parser_parse_cimport_stmt(Parser* self);
 int64_t Parser_parse_expression(Parser* self, int64_t precedence);
 int64_t Parser_parse_primary(Parser* self);
+TokenType keyword_type(const char* ident);
+TokenValue make_keyword_value(const char* ident, TokenType ttype);
+Lexer Lexer_init(KaiAllocator* allocator, const char* source, const char* source_file);
+char Lexer_peek(Lexer* self, int64_t offset);
+char Lexer_advance(Lexer* self);
+void Lexer_emit(Lexer* self, TokenType ttype, TokenValue value);
+void Lexer_lex_error(Lexer* self, const char* msg);
+void Lexer_skip_line_comment(Lexer* self);
+void Lexer_skip_block_comment(Lexer* self);
+void Lexer_skip_whitespace(Lexer* self);
+void Lexer_lex_identifier(Lexer* self);
+void Lexer_lex_number(Lexer* self);
+void Lexer_lex_string(Lexer* self);
+void Lexer_lex_char(Lexer* self);
+int64_t Lexer_compute_indent(Lexer* self);
+void Lexer_lex(Lexer* self);
 ArrayList_Symbol ArrayList_Symbol_init(KaiAllocator* allocator);
 void ArrayList_Symbol_push(ArrayList_Symbol* self, Symbol item);
 Symbol ArrayList_Symbol_get(ArrayList_Symbol* self, int64_t index);
@@ -1321,26 +1349,8 @@ void ArrayList_SymbolTable_deinit(ArrayList_SymbolTable* self);
 int64_t SymbolTable_lookup(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
 Symbol SymbolTable_lookup_symbol(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
 void SymbolTable_mark_moved(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
+void SymbolTable_mark_freed(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
 int64_t SymbolTable_lookup_current(SymbolTable* self, const char* name);
-extern bool kai_fs_exists(const char* path);
-extern bool kai_fs_is_dir(const char* path);
-extern bool kai_fs_mkdir(const char* path);
-extern bool kai_fs_remove(const char* path);
-extern void* kai_fs_opendir(const char* path);
-extern char* kai_fs_readdir(void* handle);
-extern void kai_fs_closedir(void* handle);
-bool fs_exists(const char* path);
-bool fs_is_dir(const char* path);
-bool fs_mkdir(const char* path);
-bool fs_remove(const char* path);
-Dir fs_opendir(const char* path);
-const char* fs_readdir(Dir dir);
-void fs_closedir(Dir dir);
-const char* get_source_line(const char* source, int64_t line_num);
-int64_t find_last(const char* path, char c);
-bool mkdir_p(const char* path);
-const char* str_replace(const char* s, const char* old, const char* new_val);
-const char* get_base_name(const char* path);
 ArrayList_StructInfo ArrayList_StructInfo_init(KaiAllocator* allocator);
 void ArrayList_StructInfo_push(ArrayList_StructInfo* self, StructInfo item);
 StructInfo ArrayList_StructInfo_get(ArrayList_StructInfo* self, int64_t index);
@@ -1348,6 +1358,13 @@ void ArrayList_StructInfo_set(ArrayList_StructInfo* self, int64_t index, StructI
 StructInfo ArrayList_StructInfo_pop(ArrayList_StructInfo* self);
 int64_t ArrayList_StructInfo_length(ArrayList_StructInfo* self);
 void ArrayList_StructInfo_deinit(ArrayList_StructInfo* self);
+ArrayList_Bool ArrayList_Bool_init(KaiAllocator* allocator);
+void ArrayList_Bool_push(ArrayList_Bool* self, bool item);
+bool ArrayList_Bool_get(ArrayList_Bool* self, int64_t index);
+void ArrayList_Bool_set(ArrayList_Bool* self, int64_t index, bool item);
+bool ArrayList_Bool_pop(ArrayList_Bool* self);
+int64_t ArrayList_Bool_length(ArrayList_Bool* self);
+void ArrayList_Bool_deinit(ArrayList_Bool* self);
 TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, const char* source_file, const char* source);
 void TypeChecker_err(TypeChecker* self, const char* code, const char* msg, int64_t line, int64_t col);
 void TypeChecker_enter_scope(TypeChecker* self);
@@ -1360,6 +1377,9 @@ bool TypeChecker_has_drop_method(TypeChecker* self, const char* type_name);
 void TypeChecker_collect_block_drops(TypeChecker* self, int64_t stmt_idx);
 bool TypeChecker_is_integer_type(TypeChecker* self, const char* type_name);
 bool TypeChecker_is_numeric_type(TypeChecker* self, const char* type_name);
+bool TypeChecker_is_builtin_type(TypeChecker* self, const char* name);
+bool TypeChecker_is_struct_type(TypeChecker* self, const char* name);
+bool TypeChecker_is_standard_c_func(TypeChecker* self, const char* name);
 bool TypeChecker_fits_in_type(TypeChecker* self, int64_t val, const char* type_name);
 bool TypeChecker_is_integer_literal(TypeChecker* self, int64_t expr_idx);
 int64_t TypeChecker_int_literal_value(TypeChecker* self, ExprNode expr);
@@ -1371,9 +1391,12 @@ int64_t TypeChecker_find_method_decl(TypeChecker* self, const char* struct_name,
 int64_t TypeChecker_find_struct_decl(TypeChecker* self, const char* name);
 const char* TypeChecker_get_block_yield_type(TypeChecker* self, int64_t stmt_idx);
 void TypeChecker_mark_expr_moved(TypeChecker* self, int64_t expr_idx);
+void TypeChecker_mark_expr_freed(TypeChecker* self, int64_t expr_idx);
 const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx);
 bool TypeChecker_expr_is_mutable(TypeChecker* self, int64_t expr_idx);
 bool TypeChecker_is_enum_or_error_type(TypeChecker* self, const char* name);
+bool TypeChecker_is_imported_name(TypeChecker* self, const char* name);
+void TypeChecker_mark_import_used(TypeChecker* self, const char* name);
 void TypeChecker_check_identifier(TypeChecker* self, int64_t expr_idx);
 void TypeChecker_check_field_access(TypeChecker* self, int64_t expr_idx);
 void TypeChecker_check_method_call(TypeChecker* self, int64_t expr_idx);
@@ -1579,13 +1602,6 @@ void print_diag_json(const char* code, const char* message, const char* path, in
 void print_fix_json(const char* code, bool applies);
 void print_plan(const char* path, bool json_mode, ArrayList_Str* codes, ArrayList_Str* messages, ArrayList_Int* dlines, ArrayList_Int* dcolumns, ArrayList_Int* dlengths, ArrayList_Str* expected, ArrayList_Str* actual, ArrayList_Str* helpv);
 void print_patch(const char* path, bool json_mode, bool apply, bool applied, ArrayList_Str* codes, ArrayList_Str* messages, ArrayList_Int* dlines, ArrayList_Int* dcolumns, ArrayList_Int* dlengths, ArrayList_Str* expected, ArrayList_Str* actual, ArrayList_Str* helpv, ArrayList_Int* patch_lines, ArrayList_Str* patch_old, ArrayList_Str* patch_new, ArrayList_Str* patch_codes);
-ArrayList_Bool ArrayList_Bool_init(KaiAllocator* allocator);
-void ArrayList_Bool_push(ArrayList_Bool* self, bool item);
-bool ArrayList_Bool_get(ArrayList_Bool* self, int64_t index);
-void ArrayList_Bool_set(ArrayList_Bool* self, int64_t index, bool item);
-bool ArrayList_Bool_pop(ArrayList_Bool* self);
-int64_t ArrayList_Bool_length(ArrayList_Bool* self);
-void ArrayList_Bool_deinit(ArrayList_Bool* self);
 int64_t run_fix(const char* fix_mode, const char* fix_file, bool json);
 int64_t run_patch(int64_t argc, char** argv);
 int64_t run_graph(int64_t argc, char** argv);
@@ -2026,664 +2042,6 @@ const char* substring(const char* s, int64_t start, int64_t end) {
     return (const char*)(buf);
 }
 }
-TokenType keyword_type(const char* ident) {
-    if (strcmp(ident, "let") == 0) {
-    return TokenType_LET;
-} else if (strcmp(ident, "var") == 0) {
-    return TokenType_VAR;
-} else if (strcmp(ident, "fn") == 0) {
-    return TokenType_FUNC;
-} else if (strcmp(ident, "if") == 0) {
-    return TokenType_IF;
-} else if (strcmp(ident, "else") == 0) {
-    return TokenType_ELSE;
-} else if (strcmp(ident, "while") == 0) {
-    return TokenType_WHILE;
-} else if (strcmp(ident, "for") == 0) {
-    return TokenType_FOR;
-} else if (strcmp(ident, "in") == 0) {
-    return TokenType_IN;
-} else if (strcmp(ident, "return") == 0) {
-    return TokenType_RETURN;
-} else if (strcmp(ident, "true") == 0) {
-    return TokenType_BOOL_LIT;
-} else if (strcmp(ident, "false") == 0) {
-    return TokenType_BOOL_LIT;
-} else if (strcmp(ident, "struct") == 0) {
-    return TokenType_STRUCT;
-} else if (strcmp(ident, "impl") == 0) {
-    return TokenType_IMPL;
-} else if (strcmp(ident, "mut") == 0) {
-    return TokenType_MUT;
-} else if (strcmp(ident, "unsafe") == 0) {
-    return TokenType_UNSAFE;
-} else if (strcmp(ident, "extern") == 0) {
-    return TokenType_EXTERN;
-} else if (strcmp(ident, "enum") == 0) {
-    return TokenType_ENUM;
-} else if (strcmp(ident, "match") == 0) {
-    return TokenType_MATCH;
-} else if (strcmp(ident, "case") == 0) {
-    return TokenType_CASE;
-} else if (strcmp(ident, "use") == 0) {
-    return TokenType_USE;
-} else if (strcmp(ident, "check") == 0) {
-    return TokenType_CHECK;
-} else if (strcmp(ident, "trait") == 0) {
-    return TokenType_TRAIT;
-} else if (strcmp(ident, "pub") == 0) {
-    return TokenType_PUB;
-} else if (strcmp(ident, "import") == 0) {
-    return TokenType_IMPORT;
-} else if (strcmp(ident, "cimport") == 0) {
-    return TokenType_CIMPORT;
-} else if (strcmp(ident, "from") == 0) {
-    return TokenType_FROM;
-} else if (strcmp(ident, "as") == 0) {
-    return TokenType_AS;
-} else if (strcmp(ident, "sizeof") == 0) {
-    return TokenType_SIZEOF;
-} else if (strcmp(ident, "defer") == 0) {
-    return TokenType_DEFER;
-} else if (strcmp(ident, "errdefer") == 0) {
-    return TokenType_ERRDEFER;
-} else if (strcmp(ident, "none") == 0) {
-    return TokenType_NONE;
-} else if (strcmp(ident, "try") == 0) {
-    return TokenType_TRY;
-} else if (strcmp(ident, "catch") == 0) {
-    return TokenType_CATCH;
-} else if (strcmp(ident, "own") == 0) {
-    return TokenType_OWN;
-} else if (strcmp(ident, "error") == 0) {
-    return TokenType_ERROR;
-} else if (strcmp(ident, "asm") == 0) {
-    return TokenType_ASM;
-} else if (strcmp(ident, "volatile") == 0) {
-    return TokenType_VOLATILE;
-} else if (strcmp(ident, "break") == 0) {
-    return TokenType_BREAK;
-} else if (strcmp(ident, "continue") == 0) {
-    return TokenType_CONTINUE;
-} else {
-    return TokenType_IDENTIFIER;
-}
-}
-TokenValue make_keyword_value(const char* ident, TokenType ttype) {
-    if (ttype == TokenType_BOOL_LIT) {
-    if (strcmp(ident, "true") == 0) {
-    return (TokenValue){ .tag = TokenValue_tv_bool_TAG, .payload = { .tv_bool = { .v = true } } };
-}
-    return (TokenValue){ .tag = TokenValue_tv_bool_TAG, .payload = { .tv_bool = { .v = false } } };
-}
-    return (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ident } } };
-}
-ArrayList_Token ArrayList_Token_init(KaiAllocator* allocator) {
-    ArrayList_Token self = (ArrayList_Token){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-    self.data = (Token*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(Token))), 1LL));
-}
-    return self;
-}
-void ArrayList_Token_push(ArrayList_Token* self, Token item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    Token* new_data = (Token*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(Token))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
-}
-}
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-Token ArrayList_Token_get(ArrayList_Token* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_Token_set(ArrayList_Token* self, int64_t index, Token item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-Token ArrayList_Token_pop(ArrayList_Token* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_Token_length(ArrayList_Token* self) {
-    return self->len;
-}
-void ArrayList_Token_deinit(ArrayList_Token* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
-}
-ArrayList_Int ArrayList_Int_init(KaiAllocator* allocator) {
-    ArrayList_Int self = (ArrayList_Int){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-    self.data = (int64_t*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(int64_t))), 1LL));
-}
-    return self;
-}
-void ArrayList_Int_push(ArrayList_Int* self, int64_t item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    int64_t* new_data = (int64_t*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(int64_t))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
-}
-}
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-int64_t ArrayList_Int_get(ArrayList_Int* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_Int_set(ArrayList_Int* self, int64_t index, int64_t item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-int64_t ArrayList_Int_pop(ArrayList_Int* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_Int_length(ArrayList_Int* self) {
-    return self->len;
-}
-void ArrayList_Int_deinit(ArrayList_Int* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
-}
-Lexer Lexer_init(KaiAllocator* allocator, const char* source, const char* source_file) {
-    Lexer self = (Lexer){0};
-    self.allocator = allocator;
-    self.source = source;
-    self.cursor = 0LL;
-    self.line = 1LL;
-    self.column = 1LL;
-    self.paren_depth = 0LL;
-    self.brace_depth = 0LL;
-    self.has_error = false;
-    self.source_file = source_file;
-    {
-    self.tokens = (ArrayList_Token*)(KaiAllocator_alloc(allocator, sizeof(ArrayList_Token), 1LL));
-    self.indent_stack = (ArrayList_Int*)(KaiAllocator_alloc(allocator, sizeof(ArrayList_Int), 1LL));
-}
-    *(self.tokens) = ArrayList_Token_init(allocator);
-    *(self.indent_stack) = ArrayList_Int_init(allocator);
-    ArrayList_Int_push(self.indent_stack, 0LL);
-    {
-    self.source_len = strlen(source);
-}
-    return self;
-}
-char Lexer_peek(Lexer* self, int64_t offset) {
-    int64_t pos = (self->cursor + offset);
-    if (pos >= self->source_len) {
-    return ((char)(0LL));
-}
-    return (self->source)[pos];
-}
-char Lexer_advance(Lexer* self) {
-    if (self->cursor >= self->source_len) {
-    return ((char)(0LL));
-}
-    char c = (self->source)[self->cursor];
-    self->cursor = (self->cursor + 1LL);
-    if (c == '\n') {
-    self->line = (self->line + 1LL);
-    self->column = 1LL;
-} else {
-    self->column = (self->column + 1LL);
-}
-    return c;
-}
-void Lexer_emit(Lexer* self, TokenType ttype, TokenValue value) {
-    ArrayList_Token_push(self->tokens, (Token){ .tok_type = ttype, .value = value, .line = self->line, .column = self->column });
-}
-void Lexer_lex_error(Lexer* self, const char* msg) {
-    printf("%s:%ld:%ld: error[E0100]: %s\n", self->source_file, self->line, self->column, msg);
-    self->has_error = true;
-}
-void Lexer_skip_line_comment(Lexer* self) {
-    while ((self->cursor < self->source_len) && (Lexer_peek(self, 0LL) != '\n')) {
-    (void)(Lexer_advance(self));
-}
-}
-void Lexer_skip_block_comment(Lexer* self) {
-    (void)(Lexer_advance(self));
-    while (self->cursor < self->source_len) {
-    if ((Lexer_peek(self, 0LL) == '*') && (Lexer_peek(self, 1LL) == '/')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    return;
-}
-    (void)(Lexer_advance(self));
-}
-}
-void Lexer_skip_whitespace(Lexer* self) {
-    bool done = false;
-    while ((self->cursor < self->source_len) && (!done)) {
-    char c = Lexer_peek(self, 0LL);
-    if (((c == ' ') || (c == '\t')) || (c == '\r')) {
-    (void)(Lexer_advance(self));
-} else if (c == '/') {
-    if (Lexer_peek(self, 1LL) == '/') {
-    Lexer_skip_line_comment(self);
-} else if (Lexer_peek(self, 1LL) == '*') {
-    Lexer_skip_block_comment(self);
-} else {
-    done = true;
-}
-} else {
-    done = true;
-}
-}
-}
-void Lexer_lex_identifier(Lexer* self) {
-    StringBuilder sb = StringBuilder_init(self->allocator);
-    bool done = false;
-    while ((self->cursor < self->source_len) && (!done)) {
-    char c = Lexer_peek(self, 0LL);
-    if (is_alnum(c) || (c == '_')) {
-    StringBuilder_append_char(&(sb), Lexer_advance(self));
-} else {
-    done = true;
-}
-}
-    const char* ident = StringBuilder_to_str(&(sb));
-    TokenType ktype = keyword_type(ident);
-    if (ktype == TokenType_IDENTIFIER) {
-    Lexer_emit(self, TokenType_IDENTIFIER, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ident } } });
-} else if (ktype == TokenType_BOOL_LIT) {
-    Lexer_emit(self, TokenType_BOOL_LIT, make_keyword_value(ident, TokenType_BOOL_LIT));
-} else {
-    Lexer_emit(self, ktype, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ident } } });
-}
-}
-void Lexer_lex_number(Lexer* self) {
-    StringBuilder sb = StringBuilder_init(self->allocator);
-    bool done = false;
-    while ((self->cursor < self->source_len) && (!done)) {
-    char c = Lexer_peek(self, 0LL);
-    if (is_digit(c)) {
-    StringBuilder_append_char(&(sb), Lexer_advance(self));
-} else {
-    done = true;
-}
-}
-    if ((Lexer_peek(self, 0LL) == '.') && (Lexer_peek(self, 1LL) != '.')) {
-    StringBuilder_append_char(&(sb), Lexer_advance(self));
-    done = false;
-    while ((self->cursor < self->source_len) && (!done)) {
-    char c = Lexer_peek(self, 0LL);
-    if (is_digit(c)) {
-    StringBuilder_append_char(&(sb), Lexer_advance(self));
-} else {
-    done = true;
-}
-}
-    const char* num_str = StringBuilder_to_str(&(sb));
-    Lexer_emit(self, TokenType_FLOAT_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = num_str } } });
-} else {
-    const char* num_str = StringBuilder_to_str(&(sb));
-    Lexer_emit(self, TokenType_INT_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = num_str } } });
-}
-}
-void Lexer_lex_string(Lexer* self) {
-    (void)(Lexer_advance(self));
-    StringBuilder sb = StringBuilder_init(self->allocator);
-    bool done = false;
-    while ((self->cursor < self->source_len) && (!done)) {
-    char c = Lexer_peek(self, 0LL);
-    if (c == '"') {
-    done = true;
-} else if (c == '\\') {
-    (void)(Lexer_advance(self));
-    char esc = Lexer_advance(self);
-    if (esc == 'n') {
-    StringBuilder_append_char(&(sb), '\n');
-} else if (esc == 't') {
-    StringBuilder_append_char(&(sb), '\t');
-} else if (esc == 'r') {
-    StringBuilder_append_char(&(sb), '\r');
-} else if (esc == '"') {
-    StringBuilder_append_char(&(sb), '"');
-} else if (esc == '\\') {
-    StringBuilder_append_char(&(sb), '\\');
-} else {
-    StringBuilder_append_char(&(sb), '\\');
-    StringBuilder_append_char(&(sb), esc);
-}
-} else {
-    StringBuilder_append_char(&(sb), Lexer_advance(self));
-}
-}
-    if (self->cursor < self->source_len) {
-    (void)(Lexer_advance(self));
-}
-    const char* s = StringBuilder_to_str(&(sb));
-    Lexer_emit(self, TokenType_STRING_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = s } } });
-}
-void Lexer_lex_char(Lexer* self) {
-    (void)(Lexer_advance(self));
-    char c = Lexer_advance(self);
-    char ch = ((char)(0LL));
-    if (c == '\\') {
-    char esc = Lexer_advance(self);
-    if (esc == 'n') {
-    ch = '\n';
-} else if (esc == 't') {
-    ch = '\t';
-} else if (esc == 'r') {
-    ch = '\r';
-} else if (esc == '\'') {
-    ch = '\'';
-} else if (esc == '\\') {
-    ch = '\\';
-} else {
-    ch = esc;
-}
-} else {
-    ch = c;
-}
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_CHAR_LIT, (TokenValue){ .tag = TokenValue_tv_char_TAG, .payload = { .tv_char = { .v = ch } } });
-}
-int64_t Lexer_compute_indent(Lexer* self) {
-    int64_t indent = 0LL;
-    int64_t temp = self->cursor;
-    bool done = false;
-    bool has_content = false;
-    while ((temp < self->source_len) && (!done)) {
-    char c = (self->source)[temp];
-    if (c == ' ') {
-    indent = (indent + 1LL);
-    temp = (temp + 1LL);
-} else if (c == '\t') {
-    indent = (indent + 4LL);
-    temp = (temp + 1LL);
-} else if (c == '\r') {
-    temp = (temp + 1LL);
-} else if (c == '\n') {
-    indent = 0LL;
-    temp = (temp + 1LL);
-} else if (((c == '/') && ((temp + 1LL) < self->source_len)) && ((self->source)[(temp + 1LL)] == '/')) {
-    while ((temp < self->source_len) && ((self->source)[temp] != '\n')) {
-    temp = (temp + 1LL);
-}
-    indent = 0LL;
-} else if (((c == '/') && ((temp + 1LL) < self->source_len)) && ((self->source)[(temp + 1LL)] == '*')) {
-    temp = (temp + 2LL);
-    while ((temp < self->source_len) && (!((((temp + 1LL) < self->source_len) && ((self->source)[temp] == '*')) && ((self->source)[(temp + 1LL)] == '/')))) {
-    if ((self->source)[temp] == '\n') {
-    indent = 0LL;
-}
-    temp = (temp + 1LL);
-}
-    if (temp < self->source_len) {
-    temp = (temp + 2LL);
-}
-} else {
-    has_content = true;
-    done = true;
-}
-}
-    if (has_content) {
-    return indent;
-}
-    return (-1LL);
-}
-void Lexer_lex(Lexer* self) {
-    bool is_line_start = true;
-    while (self->cursor < self->source_len) {
-    if (false) {
-    int64_t indent = Lexer_compute_indent(self);
-    if (indent >= 0LL) {
-    if ((self->paren_depth == 0LL) && (self->brace_depth == 0LL)) {
-    int64_t current = ArrayList_Int_get(self->indent_stack, (ArrayList_Int_length(self->indent_stack) - 1LL));
-    if (indent > current) {
-    ArrayList_Int_push(self->indent_stack, indent);
-    Lexer_emit(self, TokenType_INDENT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .payload = { .tv_int = { .v = indent } } });
-} else if (indent < current) {
-    while (indent < ArrayList_Int_get(self->indent_stack, (ArrayList_Int_length(self->indent_stack) - 1LL))) {
-    (void)(ArrayList_Int_pop(self->indent_stack));
-    Lexer_emit(self, TokenType_DEDENT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .payload = { .tv_int = { .v = indent } } });
-}
-    if (indent != ArrayList_Int_get(self->indent_stack, (ArrayList_Int_length(self->indent_stack) - 1LL))) {
-    self->has_error = true;
-}
-}
-}
-}
-    is_line_start = false;
-}
-    Lexer_skip_whitespace(self);
-    if (self->cursor < self->source_len) {
-    char c = Lexer_peek(self, 0LL);
-    if (c == '\n') {
-    (void)(Lexer_advance(self));
-    if (self->paren_depth == 0LL) {
-    int64_t last = ArrayList_Token_length(self->tokens);
-    if (last > 0LL) {
-    Token last_tok = ArrayList_Token_get(self->tokens, (last - 1LL));
-    if (((last_tok.tok_type != TokenType_NEWLINE) && (last_tok.tok_type != TokenType_INDENT)) && (last_tok.tok_type != TokenType_DEDENT)) {
-    Lexer_emit(self, TokenType_NEWLINE, (TokenValue){ .tag = TokenValue_tv_none_TAG });
-}
-}
-}
-    is_line_start = true;
-} else if (is_alpha(c) || (c == '_')) {
-    Lexer_lex_identifier(self);
-} else if (is_digit(c)) {
-    Lexer_lex_number(self);
-} else if (c == '"') {
-    Lexer_lex_string(self);
-} else if (c == '\'') {
-    Lexer_lex_char(self);
-} else if ((c == '-') && (Lexer_peek(self, 1LL) == '>')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_ARROW, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "->" } } });
-} else if ((c == '=') && (Lexer_peek(self, 1LL) == '>')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_FAT_ARROW, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "=>" } } });
-} else if ((c == '+') && (Lexer_peek(self, 1LL) == '=')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_PLUS_ASSIGN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "+=" } } });
-} else if ((c == '-') && (Lexer_peek(self, 1LL) == '=')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_MINUS_ASSIGN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "-=" } } });
-} else if ((c == '=') && (Lexer_peek(self, 1LL) == '=')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_EQ, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "==" } } });
-} else if ((c == '!') && (Lexer_peek(self, 1LL) == '=')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_NE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "!=" } } });
-} else if ((c == '<') && (Lexer_peek(self, 1LL) == '=')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_LE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "<=" } } });
-} else if ((c == '>') && (Lexer_peek(self, 1LL) == '=')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_GE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ">=" } } });
-} else if ((c == '&') && (Lexer_peek(self, 1LL) == '&')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_AND, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "&&" } } });
-} else if ((c == '|') && (Lexer_peek(self, 1LL) == '|')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_OR, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "||" } } });
-} else if ((c == '<') && (Lexer_peek(self, 1LL) == '<')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_LSHIFT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "<<" } } });
-} else if ((c == '>') && (Lexer_peek(self, 1LL) == '>')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_RSHIFT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ">>" } } });
-} else if (((c == '.') && (Lexer_peek(self, 1LL) == '.')) && (Lexer_peek(self, 2LL) == '=')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_DOTDOTEQ, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "..=" } } });
-} else if ((c == '.') && (Lexer_peek(self, 1LL) == '.')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_DOTDOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ".." } } });
-} else if (c == '+') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_PLUS, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "+" } } });
-} else if (c == '-') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_MINUS, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "-" } } });
-} else if (c == '*') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_MUL, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "*" } } });
-} else if (c == '/') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_DIV, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "/" } } });
-} else if (c == '%') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_MOD, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "%" } } });
-} else if (c == '=') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_ASSIGN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "=" } } });
-} else if (c == '<') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_LT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "<" } } });
-} else if (c == '>') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_GT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ">" } } });
-} else if (c == ':') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_COLON, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ":" } } });
-} else if (c == ';') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_SEMICOLON, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ";" } } });
-} else if (c == ',') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_COMMA, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "," } } });
-} else if (c == '(') {
-    (void)(Lexer_advance(self));
-    self->paren_depth = (self->paren_depth + 1LL);
-    Lexer_emit(self, TokenType_LPAREN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "(" } } });
-} else if (c == ')') {
-    (void)(Lexer_advance(self));
-    if (self->paren_depth > 0LL) {
-    self->paren_depth = (self->paren_depth - 1LL);
-}
-    Lexer_emit(self, TokenType_RPAREN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ")" } } });
-} else if (c == '[') {
-    (void)(Lexer_advance(self));
-    self->paren_depth = (self->paren_depth + 1LL);
-    Lexer_emit(self, TokenType_LBRACKET, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "[" } } });
-} else if (c == ']') {
-    (void)(Lexer_advance(self));
-    if (self->paren_depth > 0LL) {
-    self->paren_depth = (self->paren_depth - 1LL);
-}
-    Lexer_emit(self, TokenType_RBRACKET, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "]" } } });
-} else if (c == '{') {
-    (void)(Lexer_advance(self));
-    self->brace_depth = (self->brace_depth + 1LL);
-    Lexer_emit(self, TokenType_LBRACE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "{" } } });
-} else if (c == '}') {
-    (void)(Lexer_advance(self));
-    if (self->brace_depth > 0LL) {
-    self->brace_depth = (self->brace_depth - 1LL);
-}
-    Lexer_emit(self, TokenType_RBRACE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "}" } } });
-} else if (c == '&') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_AMP, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "&" } } });
-} else if (c == '#') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_HASH, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "#" } } });
-} else if (c == '!') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_NOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "!" } } });
-} else if (c == '?') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_QUESTION, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "?" } } });
-} else if (c == '^') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_BITXOR, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "^" } } });
-} else if (c == '~') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_BITNOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "~" } } });
-} else if (c == '|') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_PIPE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "|" } } });
-} else if (c == '.') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_DOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "." } } });
-} else {
-    (void)(Lexer_advance(self));
-    printf("%s:%ld:%ld: error[E0100]: unexpected character '%c'\n", self->source_file, self->line, self->column, c);
-    self->has_error = true;
-}
-}
-}
-    while (false) {
-    (void)(ArrayList_Int_pop(self->indent_stack));
-    Lexer_emit(self, TokenType_DEDENT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .payload = { .tv_int = { .v = 0LL } } });
-}
-    Lexer_emit(self, TokenType_EOF, (TokenValue){ .tag = TokenValue_tv_none_TAG });
-}
 void print_separator(void) {
     printf("---\n");
 }
@@ -2878,6 +2236,67 @@ int64_t ArrayList_StrInterpPart_length(ArrayList_StrInterpPart* self) {
     return self->len;
 }
 void ArrayList_StrInterpPart_deinit(ArrayList_StrInterpPart* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+ArrayList_Int ArrayList_Int_init(KaiAllocator* allocator) {
+    ArrayList_Int self = (ArrayList_Int){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (int64_t*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(int64_t))), 1LL));
+}
+    return self;
+}
+void ArrayList_Int_push(ArrayList_Int* self, int64_t item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    int64_t* new_data = (int64_t*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(int64_t))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+int64_t ArrayList_Int_get(ArrayList_Int* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_Int_set(ArrayList_Int* self, int64_t index, int64_t item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+int64_t ArrayList_Int_pop(ArrayList_Int* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_Int_length(ArrayList_Int* self) {
+    return self->len;
+}
+void ArrayList_Int_deinit(ArrayList_Int* self) {
     {
     KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
 }
@@ -3354,6 +2773,143 @@ PatternNode new_pattern_node(PatternKind kind) {
     PatternNode node = (PatternNode){ .kind = kind, .variant_name = "", .bindings = empty_str_array(), .lit_value = (TokenValue){ .tag = TokenValue_tv_none_TAG } };
     return node;
 }
+bool fs_exists(const char* path) {
+    {
+    return kai_fs_exists(path);
+}
+}
+bool fs_is_dir(const char* path) {
+    {
+    return kai_fs_is_dir(path);
+}
+}
+bool fs_mkdir(const char* path) {
+    {
+    return kai_fs_mkdir(path);
+}
+}
+bool fs_remove(const char* path) {
+    {
+    return kai_fs_remove(path);
+}
+}
+Dir fs_opendir(const char* path) {
+    {
+    return (Dir){ .handle = kai_fs_opendir(path) };
+}
+}
+const char* fs_readdir(Dir dir) {
+    {
+    char* name_ptr = kai_fs_readdir(dir.handle);
+    if (name_ptr == (char*)(unsigned long long)(0LL)) {
+    return "";
+}
+    return (const char*)(name_ptr);
+}
+}
+void fs_closedir(Dir dir) {
+    {
+    kai_fs_closedir(dir.handle);
+}
+}
+const char* get_source_line(const char* source, int64_t line_num) {
+    int64_t current = 0LL;
+    int64_t line_start = 0LL;
+    int64_t i = 0LL;
+    int64_t len = strlen(source);
+    while ((i < len) && (current < line_num)) {
+    if ((source)[i] == ((char)(10LL))) {
+    current = (current + 1LL);
+    line_start = (i + 1LL);
+}
+    i = (i + 1LL);
+}
+    if (current != line_num) {
+    return "";
+}
+    int64_t line_end = line_start;
+    while ((line_end < len) && ((source)[line_end] != ((char)(10LL)))) {
+    line_end = (line_end + 1LL);
+}
+    return substring(source, line_start, line_end);
+}
+int64_t find_last(const char* path, char c) {
+    int64_t i = (strlen(path) - 1LL);
+    while (i >= 0LL) {
+    if ((path)[i] == c) {
+    return i;
+}
+    i = (i - 1LL);
+}
+    return (-1LL);
+}
+bool mkdir_p(const char* path) {
+    if (fs_exists(path)) {
+    return true;
+}
+    int64_t slash_pos = find_last(path, ((char)(47LL)));
+    if (slash_pos > 0LL) {
+    const char* parent = substring(path, 0LL, slash_pos);
+    if (!mkdir_p(parent)) {
+    return false;
+}
+}
+    return fs_mkdir(path);
+}
+const char* str_replace(const char* s, const char* old, const char* new_val) {
+    int64_t s_len = strlen(s);
+    int64_t old_len = strlen(old);
+    if (old_len == 0LL) {
+    return s;
+}
+    const char* result = "";
+    int64_t i = 0LL;
+    while (i < s_len) {
+    int64_t j = 0LL;
+    bool matched = true;
+    while (j < old_len) {
+    {
+    if ((s)[(i + j)] != (old)[j]) {
+    matched = false;
+    break;
+}
+}
+    j = (j + 1LL);
+}
+    if (matched) {
+    result = __kai_std_str_concat_alloc(result, new_val);
+    i = (i + old_len);
+} else {
+    result = __kai_std_str_concat_alloc(result, substring(s, i, (i + 1LL)));
+    i = (i + 1LL);
+}
+}
+    return result;
+}
+const char* get_base_name(const char* path) {
+    int64_t last_slash = (-1LL);
+    int64_t dot_pos = (-1LL);
+    int64_t i = 0LL;
+    int64_t l = strlen(path);
+    while (i < l) {
+    char c = (path)[i];
+    if (c == ((char)(47LL))) {
+    last_slash = i;
+} else if (c == ((char)(46LL))) {
+    dot_pos = i;
+}
+    i = (i + 1LL);
+}
+    int64_t start = 0LL;
+    if (last_slash >= 0LL) {
+    start = (last_slash + 1LL);
+}
+    int64_t end = l;
+    if (dot_pos > last_slash) {
+    end = dot_pos;
+}
+    return substring(path, start, end);
+}
 const char* tv_get_str(TokenValue val) {
     const char* result = "";
     if (val.tag == TokenValue_tv_str_TAG) {
@@ -3463,6 +3019,67 @@ const char* str_array_join(ArrayList_Str arr, const char* sep) {
     i = (i + 1LL);
 }
     return result;
+}
+ArrayList_Token ArrayList_Token_init(KaiAllocator* allocator) {
+    ArrayList_Token self = (ArrayList_Token){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (Token*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(Token))), 1LL));
+}
+    return self;
+}
+void ArrayList_Token_push(ArrayList_Token* self, Token item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    Token* new_data = (Token*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(Token))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+Token ArrayList_Token_get(ArrayList_Token* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_Token_set(ArrayList_Token* self, int64_t index, Token item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+Token ArrayList_Token_pop(ArrayList_Token* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_Token_length(ArrayList_Token* self) {
+    return self->len;
+}
+void ArrayList_Token_deinit(ArrayList_Token* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
 }
 ArrayList_ExprNode ArrayList_ExprNode_init(KaiAllocator* allocator) {
     ArrayList_ExprNode self = (ArrayList_ExprNode){0};
@@ -3647,10 +3264,32 @@ void ArrayList_PatternNode_deinit(ArrayList_PatternNode* self) {
     KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
 }
 }
-Parser Parser_init_with_pools(KaiAllocator* allocator, const char* source_file, ArrayList_Token* tokens, ArrayList_ExprNode* expr_pool, ArrayList_StmtNode* stmt_pool, ArrayList_PatternNode* pattern_pool) {
+void parser_err(const char* source_file, const char* source, const char* code, const char* msg, int64_t line, int64_t col) {
+    printf("%s:%ld:%ld: error[%s]: %s\n", source_file, line, col, code, msg);
+    if (line >= 0LL) {
+    const char* line_text = get_source_line(source, (line - 1LL));
+    if (strlen(line_text) > 0LL) {
+    printf("    %s\n", line_text);
+    const char* caret = "    ";
+    int64_t ci = 0LL;
+    while ((ci < col) && (ci < strlen(line_text))) {
+    if ((line_text)[ci] == ((char)(9LL))) {
+    caret = __kai_std_str_concat_alloc(caret, "\t");
+} else {
+    caret = __kai_std_str_concat_alloc(caret, " ");
+}
+    ci = (ci + 1LL);
+}
+    caret = __kai_std_str_concat_alloc(caret, "^");
+    printf("%s\n", caret);
+}
+}
+}
+Parser Parser_init_with_pools(KaiAllocator* allocator, const char* source_file, ArrayList_Token* tokens, ArrayList_ExprNode* expr_pool, ArrayList_StmtNode* stmt_pool, ArrayList_PatternNode* pattern_pool, const char* source) {
     Parser self = (Parser){0};
     self.allocator = allocator;
     self.source_file = source_file;
+    self.source = source;
     self.tokens = tokens;
     self.cursor = 0LL;
     self.pending_gt = false;
@@ -3659,12 +3298,15 @@ Parser Parser_init_with_pools(KaiAllocator* allocator, const char* source_file, 
     self.expr_pool = expr_pool;
     self.stmt_pool = stmt_pool;
     self.pattern_pool = pattern_pool;
+    self.stmt_line = 0LL;
+    self.stmt_col = 0LL;
     return self;
 }
-Parser Parser_init(KaiAllocator* allocator, const char* source_file, ArrayList_Token* tokens) {
+Parser Parser_init(KaiAllocator* allocator, const char* source_file, ArrayList_Token* tokens, const char* source) {
     Parser self = (Parser){0};
     self.allocator = allocator;
     self.source_file = source_file;
+    self.source = source;
     self.tokens = tokens;
     self.cursor = 0LL;
     self.pending_gt = false;
@@ -3678,6 +3320,8 @@ Parser Parser_init(KaiAllocator* allocator, const char* source_file, ArrayList_T
     *(self.expr_pool) = ArrayList_ExprNode_init(allocator);
     *(self.stmt_pool) = ArrayList_StmtNode_init(allocator);
     *(self.pattern_pool) = ArrayList_PatternNode_init(allocator);
+    self.stmt_line = 0LL;
+    self.stmt_col = 0LL;
     return self;
 }
 Token Parser_peek(Parser* self, int64_t offset) {
@@ -3728,7 +3372,7 @@ Token Parser_expect(Parser* self, TokenType ttype) {
     return Parser_advance(self);
 }
     {
-    printf("%s:%ld:%ld: error[E0101]: expected token type %ld but found %ld\n", self->source_file, tok.line, tok.column, ((int64_t)(ttype)), ((int64_t)(tok.tok_type)));
+    parser_err(self->source_file, self->source, "E0101", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("expected token type ", int_to_str(((int64_t)(ttype)))), " but found "), int_to_str(((int64_t)(tok.tok_type)))), tok.line, tok.column);
     exit(1LL);
 }
     return tok;
@@ -3933,21 +3577,24 @@ int64_t Parser_ex_asm(Parser* self, const char* code, bool is_volatile, ArrayLis
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
+StmtNode Parser_mk_stmt_node(Parser* self, StmtKind kind) {
+    return new_stmt_node(kind, self->stmt_line, self->stmt_col);
+}
 int64_t Parser_st_block(Parser* self, ArrayList_Int stmts) {
-    StmtNode node = new_stmt_node(StmtKind_sk_block, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_block);
     node.block_stmts = stmts;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_error(Parser* self, const char* name, ArrayList_Str variants) {
-    StmtNode node = new_stmt_node(StmtKind_sk_error_decl, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_error_decl);
     node.error_name = name;
     node.error_variants = variants;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_var_decl(Parser* self, const char* name, const char* type_ann, int64_t value, bool is_mut) {
-    StmtNode node = new_stmt_node(StmtKind_sk_var_decl, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_var_decl);
     node.vardecl_name = name;
     node.vardecl_type = type_ann;
     node.vardecl_value = value;
@@ -3956,7 +3603,7 @@ int64_t Parser_st_var_decl(Parser* self, const char* name, const char* type_ann,
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_assign(Parser* self, int64_t target, int64_t value, const char* op) {
-    StmtNode node = new_stmt_node(StmtKind_sk_assignment, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_assignment);
     node.assign_target = target;
     node.assign_value = value;
     node.assign_op = op;
@@ -3964,7 +3611,7 @@ int64_t Parser_st_assign(Parser* self, int64_t target, int64_t value, const char
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_func(Parser* self, const char* name, ArrayList_Param params, const char* ret_type, int64_t body, const char* cap, ArrayList_Str tp) {
-    StmtNode node = new_stmt_node(StmtKind_sk_func_decl, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_func_decl);
     node.func_name = name;
     node.func_params = params;
     node.func_return_type = ret_type;
@@ -3975,7 +3622,7 @@ int64_t Parser_st_func(Parser* self, const char* name, ArrayList_Param params, c
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_struct(Parser* self, const char* name, ArrayList_StructField fields, ArrayList_Str tp, ArrayList_Int methods, ArrayList_Int impls) {
-    StmtNode node = new_stmt_node(StmtKind_sk_struct_decl, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_struct_decl);
     node.struct_name = name;
     node.struct_fields = fields;
     node.struct_type_params = tp;
@@ -3985,7 +3632,7 @@ int64_t Parser_st_struct(Parser* self, const char* name, ArrayList_StructField f
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_impl(Parser* self, const char* struct_name, const char* trait_name, ArrayList_Int methods) {
-    StmtNode node = new_stmt_node(StmtKind_sk_impl_block, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_impl_block);
     node.impl_struct_name = struct_name;
     node.impl_trait_name = trait_name;
     node.impl_methods = methods;
@@ -3993,14 +3640,14 @@ int64_t Parser_st_impl(Parser* self, const char* struct_name, const char* trait_
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_trait(Parser* self, const char* name, ArrayList_Int methods) {
-    StmtNode node = new_stmt_node(StmtKind_sk_trait_decl, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_trait_decl);
     node.trait_name = name;
     node.trait_methods = methods;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_enum(Parser* self, const char* name, ArrayList_Variant variants, ArrayList_Str tp) {
-    StmtNode node = new_stmt_node(StmtKind_sk_enum_decl, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_enum_decl);
     node.enum_name = name;
     node.enum_variants = variants;
     node.enum_type_params = tp;
@@ -4008,20 +3655,20 @@ int64_t Parser_st_enum(Parser* self, const char* name, ArrayList_Variant variant
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_match(Parser* self, int64_t expr, ArrayList_MatchCase cases) {
-    StmtNode node = new_stmt_node(StmtKind_sk_match, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_match);
     node.match_expr = expr;
     node.match_cases = cases;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_unsafe(Parser* self, int64_t body) {
-    StmtNode node = new_stmt_node(StmtKind_sk_unsafe, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_unsafe);
     node.unsafe_body = body;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_extern(Parser* self, const char* name, ArrayList_Param params, const char* ret) {
-    StmtNode node = new_stmt_node(StmtKind_sk_extern, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_extern);
     node.extern_name = name;
     node.extern_params = params;
     node.extern_return = ret;
@@ -4029,7 +3676,7 @@ int64_t Parser_st_extern(Parser* self, const char* name, ArrayList_Param params,
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_if(Parser* self, int64_t cond, int64_t then_b, int64_t else_b) {
-    StmtNode node = new_stmt_node(StmtKind_sk_if, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_if);
     node.if_cond = cond;
     node.if_then = then_b;
     node.if_else = else_b;
@@ -4037,7 +3684,7 @@ int64_t Parser_st_if(Parser* self, int64_t cond, int64_t then_b, int64_t else_b)
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_if_let(Parser* self, const char* vname, int64_t expr, int64_t then_b, int64_t else_b) {
-    StmtNode node = new_stmt_node(StmtKind_sk_if_let, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_if_let);
     node.iflet_var = vname;
     node.iflet_expr = expr;
     node.iflet_then = then_b;
@@ -4046,14 +3693,14 @@ int64_t Parser_st_if_let(Parser* self, const char* vname, int64_t expr, int64_t 
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_while(Parser* self, int64_t cond, int64_t body) {
-    StmtNode node = new_stmt_node(StmtKind_sk_while, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_while);
     node.while_cond = cond;
     node.while_body = body;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_for(Parser* self, const char* var_name, int64_t start, int64_t end, bool inc, int64_t body) {
-    StmtNode node = new_stmt_node(StmtKind_sk_for, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_for);
     node.for_var = var_name;
     node.for_start = start;
     node.for_end = end;
@@ -4063,48 +3710,48 @@ int64_t Parser_st_for(Parser* self, const char* var_name, int64_t start, int64_t
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_return(Parser* self, int64_t value) {
-    StmtNode node = new_stmt_node(StmtKind_sk_return, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_return);
     node.return_value = value;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_expr(Parser* self, int64_t expr) {
-    StmtNode node = new_stmt_node(StmtKind_sk_expr, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_expr);
     node.expr_stmt = expr;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_defer(Parser* self, int64_t body) {
-    StmtNode node = new_stmt_node(StmtKind_sk_defer, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_defer);
     node.defer_body = body;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_errdefer(Parser* self, int64_t body) {
-    StmtNode node = new_stmt_node(StmtKind_sk_errdefer, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_errdefer);
     node.errdefer_body = body;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_break(Parser* self) {
-    StmtNode node = new_stmt_node(StmtKind_sk_break, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_break);
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_continue(Parser* self) {
-    StmtNode node = new_stmt_node(StmtKind_sk_continue, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_continue);
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_import(Parser* self, ArrayList_Str path, const char* alias) {
-    StmtNode node = new_stmt_node(StmtKind_sk_import, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_import);
     node.import_path = path;
     node.import_alias = alias;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_cimport(Parser* self, const char* header, const char* alias) {
-    StmtNode node = new_stmt_node(StmtKind_sk_cimport, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_cimport);
     node.cimport_header = header;
     node.cimport_alias = alias;
     ArrayList_StmtNode_push(self->stmt_pool, node);
@@ -4125,6 +3772,8 @@ int64_t Parser_parse_program(Parser* self) {
 int64_t Parser_parse_statement(Parser* self) {
     Parser_consume_newlines(self);
     Token tok = Parser_peek(self, 0LL);
+    self->stmt_line = tok.line;
+    self->stmt_col = tok.column;
     bool is_public = false;
     if (tok.tok_type == TokenType_PUB) {
     (void)(Parser_advance(self));
@@ -4357,7 +4006,11 @@ int64_t Parser_parse_func_decl(Parser* self) {
     capability = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value);
 }
     Parser_expect_end_of_statement(self);
+    int64_t saved_line = self->stmt_line;
+    int64_t saved_col = self->stmt_col;
     int64_t body = Parser_parse_block(self);
+    self->stmt_line = saved_line;
+    self->stmt_col = saved_col;
     return Parser_st_func(self, name, params, return_type, body, capability, type_params);
 }
 int64_t Parser_parse_struct_decl(Parser* self) {
@@ -4503,6 +4156,8 @@ int64_t Parser_parse_match_stmt(Parser* self) {
     (void)(Parser_expect(self, TokenType_LBRACE));
     ArrayList_MatchCase cases = ArrayList_MatchCase_init(self->allocator);
     Parser_consume_newlines(self);
+    int64_t saved_line = self->stmt_line;
+    int64_t saved_col = self->stmt_col;
     while ((Parser_peek(self, 0LL).tok_type != TokenType_RBRACE) && (Parser_peek(self, 0LL).tok_type != TokenType_EOF)) {
     (void)(Parser_expect(self, TokenType_CASE));
     int64_t pattern = Parser_parse_pattern(self);
@@ -4520,6 +4175,8 @@ int64_t Parser_parse_match_stmt(Parser* self) {
     Parser_consume_newlines(self);
 }
     (void)(Parser_expect(self, TokenType_RBRACE));
+    self->stmt_line = saved_line;
+    self->stmt_col = saved_col;
     return Parser_st_match(self, expr, cases);
 }
 int64_t Parser_parse_pattern(Parser* self) {
@@ -4554,7 +4211,7 @@ int64_t Parser_parse_pattern(Parser* self) {
     return Parser_add_pattern(self, node);
 } else {
     {
-    printf("%s:%ld:%ld: error[E0101]: unexpected token in pattern\n", self->source_file, tok.line, tok.column);
+    parser_err(self->source_file, self->source, "E0101", "unexpected token in pattern", tok.line, tok.column);
     exit(1LL);
 }
     return (-1LL);
@@ -4567,7 +4224,12 @@ int64_t Parser_add_pattern(Parser* self, PatternNode p) {
 int64_t Parser_parse_unsafe_block(Parser* self) {
     (void)(Parser_advance(self));
     Parser_expect_end_of_statement(self);
-    return Parser_st_unsafe(self, Parser_parse_block(self));
+    int64_t saved_line = self->stmt_line;
+    int64_t saved_col = self->stmt_col;
+    int64_t body = Parser_parse_block(self);
+    self->stmt_line = saved_line;
+    self->stmt_col = saved_col;
+    return Parser_st_unsafe(self, body);
 }
 int64_t Parser_parse_extern_decl(Parser* self) {
     (void)(Parser_advance(self));
@@ -4601,6 +4263,8 @@ int64_t Parser_parse_extern_decl(Parser* self) {
 }
 int64_t Parser_parse_if_stmt(Parser* self) {
     (void)(Parser_advance(self));
+    int64_t saved_line = self->stmt_line;
+    int64_t saved_col = self->stmt_col;
     if (Parser_peek(self, 0LL).tok_type == TokenType_LET) {
     (void)(Parser_advance(self));
     const char* var_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value);
@@ -4621,6 +4285,8 @@ int64_t Parser_parse_if_stmt(Parser* self) {
     else_branch = Parser_parse_block(self);
 }
 }
+    self->stmt_line = saved_line;
+    self->stmt_col = saved_col;
     return Parser_st_if_let(self, var_name, cond_expr, then_branch, else_branch);
 }
     int64_t cond_expr = Parser_parse_expression(self, 0LL);
@@ -4639,13 +4305,20 @@ int64_t Parser_parse_if_stmt(Parser* self) {
     else_branch = Parser_parse_block(self);
 }
 }
+    self->stmt_line = saved_line;
+    self->stmt_col = saved_col;
     return Parser_st_if(self, cond_expr, then_branch, else_branch);
 }
 int64_t Parser_parse_while_stmt(Parser* self) {
     (void)(Parser_advance(self));
     int64_t cond_expr = Parser_parse_expression(self, 0LL);
     Parser_expect_end_of_statement(self);
-    return Parser_st_while(self, cond_expr, Parser_parse_block(self));
+    int64_t saved_line = self->stmt_line;
+    int64_t saved_col = self->stmt_col;
+    int64_t body = Parser_parse_block(self);
+    self->stmt_line = saved_line;
+    self->stmt_col = saved_col;
+    return Parser_st_while(self, cond_expr, body);
 }
 int64_t Parser_parse_for_stmt(Parser* self) {
     (void)(Parser_advance(self));
@@ -4662,12 +4335,17 @@ int64_t Parser_parse_for_stmt(Parser* self) {
     is_inclusive = expr_node.range_inclusive;
 } else {
     {
-    printf("%s:%ld:%ld: error[E0101]: invalid expression in for loop\n", self->source_file, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    parser_err(self->source_file, self->source, "E0101", "invalid expression in for loop", Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     exit(1LL);
 }
 }
     Parser_expect_end_of_statement(self);
-    return Parser_st_for(self, var_name, range_start, range_end, is_inclusive, Parser_parse_block(self));
+    int64_t saved_line = self->stmt_line;
+    int64_t saved_col = self->stmt_col;
+    int64_t body = Parser_parse_block(self);
+    self->stmt_line = saved_line;
+    self->stmt_col = saved_col;
+    return Parser_st_for(self, var_name, range_start, range_end, is_inclusive, body);
 }
 int64_t Parser_parse_return_stmt(Parser* self) {
     (void)(Parser_advance(self));
@@ -4696,7 +4374,11 @@ int64_t Parser_parse_defer_stmt(Parser* self) {
     if (Parser_peek(self, 0LL).tok_type == TokenType_NEWLINE) {
     Parser_expect_end_of_statement(self);
 }
+    int64_t saved_line = self->stmt_line;
+    int64_t saved_col = self->stmt_col;
     body = Parser_parse_block(self);
+    self->stmt_line = saved_line;
+    self->stmt_col = saved_col;
 } else {
     body = Parser_parse_statement(self);
 }
@@ -4709,7 +4391,11 @@ int64_t Parser_parse_errdefer_stmt(Parser* self) {
     if (Parser_peek(self, 0LL).tok_type == TokenType_NEWLINE) {
     Parser_expect_end_of_statement(self);
 }
+    int64_t saved_line = self->stmt_line;
+    int64_t saved_col = self->stmt_col;
     body = Parser_parse_block(self);
+    self->stmt_line = saved_line;
+    self->stmt_col = saved_col;
 } else {
     body = Parser_parse_statement(self);
 }
@@ -4730,7 +4416,9 @@ int64_t Parser_parse_expr_or_assignment_stmt(Parser* self) {
 int64_t Parser_parse_block(Parser* self) {
     Parser_consume_newlines(self);
     ArrayList_Int stmts = ArrayList_Int_init(self->allocator);
-    (void)(Parser_expect(self, TokenType_LBRACE));
+    Token brace_tok = Parser_expect(self, TokenType_LBRACE);
+    self->stmt_line = brace_tok.line;
+    self->stmt_col = brace_tok.column;
     Parser_consume_newlines(self);
     while ((Parser_peek(self, 0LL).tok_type != TokenType_RBRACE) && (Parser_peek(self, 0LL).tok_type != TokenType_EOF)) {
     int64_t stmt = Parser_parse_statement(self);
@@ -4741,7 +4429,7 @@ int64_t Parser_parse_block(Parser* self) {
 }
     if (Parser_peek(self, 0LL).tok_type == TokenType_EOF) {
     {
-    printf("%s:0:0: error[E0101]: expected '}' but reached end of file\n", self->source_file);
+    parser_err(self->source_file, self->source, "E0101", "expected '}' but reached end of file", 0LL, 0LL);
     exit(1LL);
 }
 }
@@ -4907,7 +4595,11 @@ int64_t Parser_parse_expression(Parser* self, int64_t precedence) {
     int64_t fallback = (-1LL);
     Token next = Parser_peek(self, 0LL);
     if (next.tok_type == TokenType_NEWLINE) {
+    int64_t saved_line = self->stmt_line;
+    int64_t saved_col = self->stmt_col;
     fallback = Parser_parse_block(self);
+    self->stmt_line = saved_line;
+    self->stmt_col = saved_col;
 } else if (next.tok_type == TokenType_RETURN) {
     (void)(Parser_advance(self));
     int64_t ret_val = (-1LL);
@@ -5205,11 +4897,547 @@ int64_t Parser_parse_primary(Parser* self) {
     return first;
 } else {
     {
-    printf("%s:%ld:%ld: error[E0101]: unexpected token (type: %ld)\n", self->source_file, tok.line, tok.column, ((int64_t)(tok.tok_type)));
+    parser_err(self->source_file, self->source, "E0101", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("unexpected token (type: ", int_to_str(((int64_t)(tok.tok_type)))), ")"), tok.line, tok.column);
     exit(1LL);
 }
     return (-1LL);
 }
+}
+TokenType keyword_type(const char* ident) {
+    if (strcmp(ident, "let") == 0) {
+    return TokenType_LET;
+} else if (strcmp(ident, "var") == 0) {
+    return TokenType_VAR;
+} else if (strcmp(ident, "fn") == 0) {
+    return TokenType_FUNC;
+} else if (strcmp(ident, "if") == 0) {
+    return TokenType_IF;
+} else if (strcmp(ident, "else") == 0) {
+    return TokenType_ELSE;
+} else if (strcmp(ident, "while") == 0) {
+    return TokenType_WHILE;
+} else if (strcmp(ident, "for") == 0) {
+    return TokenType_FOR;
+} else if (strcmp(ident, "in") == 0) {
+    return TokenType_IN;
+} else if (strcmp(ident, "return") == 0) {
+    return TokenType_RETURN;
+} else if (strcmp(ident, "true") == 0) {
+    return TokenType_BOOL_LIT;
+} else if (strcmp(ident, "false") == 0) {
+    return TokenType_BOOL_LIT;
+} else if (strcmp(ident, "struct") == 0) {
+    return TokenType_STRUCT;
+} else if (strcmp(ident, "impl") == 0) {
+    return TokenType_IMPL;
+} else if (strcmp(ident, "mut") == 0) {
+    return TokenType_MUT;
+} else if (strcmp(ident, "unsafe") == 0) {
+    return TokenType_UNSAFE;
+} else if (strcmp(ident, "extern") == 0) {
+    return TokenType_EXTERN;
+} else if (strcmp(ident, "enum") == 0) {
+    return TokenType_ENUM;
+} else if (strcmp(ident, "match") == 0) {
+    return TokenType_MATCH;
+} else if (strcmp(ident, "case") == 0) {
+    return TokenType_CASE;
+} else if (strcmp(ident, "use") == 0) {
+    return TokenType_USE;
+} else if (strcmp(ident, "check") == 0) {
+    return TokenType_CHECK;
+} else if (strcmp(ident, "trait") == 0) {
+    return TokenType_TRAIT;
+} else if (strcmp(ident, "pub") == 0) {
+    return TokenType_PUB;
+} else if (strcmp(ident, "import") == 0) {
+    return TokenType_IMPORT;
+} else if (strcmp(ident, "cimport") == 0) {
+    return TokenType_CIMPORT;
+} else if (strcmp(ident, "from") == 0) {
+    return TokenType_FROM;
+} else if (strcmp(ident, "as") == 0) {
+    return TokenType_AS;
+} else if (strcmp(ident, "sizeof") == 0) {
+    return TokenType_SIZEOF;
+} else if (strcmp(ident, "defer") == 0) {
+    return TokenType_DEFER;
+} else if (strcmp(ident, "errdefer") == 0) {
+    return TokenType_ERRDEFER;
+} else if (strcmp(ident, "none") == 0) {
+    return TokenType_NONE;
+} else if (strcmp(ident, "try") == 0) {
+    return TokenType_TRY;
+} else if (strcmp(ident, "catch") == 0) {
+    return TokenType_CATCH;
+} else if (strcmp(ident, "own") == 0) {
+    return TokenType_OWN;
+} else if (strcmp(ident, "error") == 0) {
+    return TokenType_ERROR;
+} else if (strcmp(ident, "asm") == 0) {
+    return TokenType_ASM;
+} else if (strcmp(ident, "volatile") == 0) {
+    return TokenType_VOLATILE;
+} else if (strcmp(ident, "break") == 0) {
+    return TokenType_BREAK;
+} else if (strcmp(ident, "continue") == 0) {
+    return TokenType_CONTINUE;
+} else {
+    return TokenType_IDENTIFIER;
+}
+}
+TokenValue make_keyword_value(const char* ident, TokenType ttype) {
+    if (ttype == TokenType_BOOL_LIT) {
+    if (strcmp(ident, "true") == 0) {
+    return (TokenValue){ .tag = TokenValue_tv_bool_TAG, .payload = { .tv_bool = { .v = true } } };
+}
+    return (TokenValue){ .tag = TokenValue_tv_bool_TAG, .payload = { .tv_bool = { .v = false } } };
+}
+    return (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ident } } };
+}
+Lexer Lexer_init(KaiAllocator* allocator, const char* source, const char* source_file) {
+    Lexer self = (Lexer){0};
+    self.allocator = allocator;
+    self.source = source;
+    self.cursor = 0LL;
+    self.line = 1LL;
+    self.column = 1LL;
+    self.paren_depth = 0LL;
+    self.brace_depth = 0LL;
+    self.has_error = false;
+    self.source_file = source_file;
+    {
+    self.tokens = (ArrayList_Token*)(KaiAllocator_alloc(allocator, sizeof(ArrayList_Token), 1LL));
+    self.indent_stack = (ArrayList_Int*)(KaiAllocator_alloc(allocator, sizeof(ArrayList_Int), 1LL));
+}
+    *(self.tokens) = ArrayList_Token_init(allocator);
+    *(self.indent_stack) = ArrayList_Int_init(allocator);
+    ArrayList_Int_push(self.indent_stack, 0LL);
+    {
+    self.source_len = strlen(source);
+}
+    return self;
+}
+char Lexer_peek(Lexer* self, int64_t offset) {
+    int64_t pos = (self->cursor + offset);
+    if (pos >= self->source_len) {
+    return ((char)(0LL));
+}
+    return (self->source)[pos];
+}
+char Lexer_advance(Lexer* self) {
+    if (self->cursor >= self->source_len) {
+    return ((char)(0LL));
+}
+    char c = (self->source)[self->cursor];
+    self->cursor = (self->cursor + 1LL);
+    if (c == '\n') {
+    self->line = (self->line + 1LL);
+    self->column = 1LL;
+} else {
+    self->column = (self->column + 1LL);
+}
+    return c;
+}
+void Lexer_emit(Lexer* self, TokenType ttype, TokenValue value) {
+    ArrayList_Token_push(self->tokens, (Token){ .tok_type = ttype, .value = value, .line = self->line, .column = self->column });
+}
+void Lexer_lex_error(Lexer* self, const char* msg) {
+    parser_err(self->source_file, self->source, "E0100", msg, self->line, self->column);
+    self->has_error = true;
+}
+void Lexer_skip_line_comment(Lexer* self) {
+    while ((self->cursor < self->source_len) && (Lexer_peek(self, 0LL) != '\n')) {
+    (void)(Lexer_advance(self));
+}
+}
+void Lexer_skip_block_comment(Lexer* self) {
+    (void)(Lexer_advance(self));
+    while (self->cursor < self->source_len) {
+    if ((Lexer_peek(self, 0LL) == '*') && (Lexer_peek(self, 1LL) == '/')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    return;
+}
+    (void)(Lexer_advance(self));
+}
+}
+void Lexer_skip_whitespace(Lexer* self) {
+    bool done = false;
+    while ((self->cursor < self->source_len) && (!done)) {
+    char c = Lexer_peek(self, 0LL);
+    if (((c == ' ') || (c == '\t')) || (c == '\r')) {
+    (void)(Lexer_advance(self));
+} else if (c == '/') {
+    if (Lexer_peek(self, 1LL) == '/') {
+    Lexer_skip_line_comment(self);
+} else if (Lexer_peek(self, 1LL) == '*') {
+    Lexer_skip_block_comment(self);
+} else {
+    done = true;
+}
+} else {
+    done = true;
+}
+}
+}
+void Lexer_lex_identifier(Lexer* self) {
+    StringBuilder sb = StringBuilder_init(self->allocator);
+    bool done = false;
+    while ((self->cursor < self->source_len) && (!done)) {
+    char c = Lexer_peek(self, 0LL);
+    if (is_alnum(c) || (c == '_')) {
+    StringBuilder_append_char(&(sb), Lexer_advance(self));
+} else {
+    done = true;
+}
+}
+    const char* ident = StringBuilder_to_str(&(sb));
+    TokenType ktype = keyword_type(ident);
+    if (ktype == TokenType_IDENTIFIER) {
+    Lexer_emit(self, TokenType_IDENTIFIER, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ident } } });
+} else if (ktype == TokenType_BOOL_LIT) {
+    Lexer_emit(self, TokenType_BOOL_LIT, make_keyword_value(ident, TokenType_BOOL_LIT));
+} else {
+    Lexer_emit(self, ktype, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ident } } });
+}
+}
+void Lexer_lex_number(Lexer* self) {
+    StringBuilder sb = StringBuilder_init(self->allocator);
+    bool done = false;
+    while ((self->cursor < self->source_len) && (!done)) {
+    char c = Lexer_peek(self, 0LL);
+    if (is_digit(c)) {
+    StringBuilder_append_char(&(sb), Lexer_advance(self));
+} else {
+    done = true;
+}
+}
+    if ((Lexer_peek(self, 0LL) == '.') && (Lexer_peek(self, 1LL) != '.')) {
+    StringBuilder_append_char(&(sb), Lexer_advance(self));
+    done = false;
+    while ((self->cursor < self->source_len) && (!done)) {
+    char c = Lexer_peek(self, 0LL);
+    if (is_digit(c)) {
+    StringBuilder_append_char(&(sb), Lexer_advance(self));
+} else {
+    done = true;
+}
+}
+    const char* num_str = StringBuilder_to_str(&(sb));
+    Lexer_emit(self, TokenType_FLOAT_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = num_str } } });
+} else {
+    const char* num_str = StringBuilder_to_str(&(sb));
+    Lexer_emit(self, TokenType_INT_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = num_str } } });
+}
+}
+void Lexer_lex_string(Lexer* self) {
+    (void)(Lexer_advance(self));
+    StringBuilder sb = StringBuilder_init(self->allocator);
+    bool done = false;
+    while ((self->cursor < self->source_len) && (!done)) {
+    char c = Lexer_peek(self, 0LL);
+    if (c == '"') {
+    done = true;
+} else if (c == '\\') {
+    (void)(Lexer_advance(self));
+    char esc = Lexer_advance(self);
+    if (esc == 'n') {
+    StringBuilder_append_char(&(sb), '\n');
+} else if (esc == 't') {
+    StringBuilder_append_char(&(sb), '\t');
+} else if (esc == 'r') {
+    StringBuilder_append_char(&(sb), '\r');
+} else if (esc == '"') {
+    StringBuilder_append_char(&(sb), '"');
+} else if (esc == '\\') {
+    StringBuilder_append_char(&(sb), '\\');
+} else {
+    StringBuilder_append_char(&(sb), '\\');
+    StringBuilder_append_char(&(sb), esc);
+}
+} else {
+    StringBuilder_append_char(&(sb), Lexer_advance(self));
+}
+}
+    if (self->cursor < self->source_len) {
+    (void)(Lexer_advance(self));
+}
+    const char* s = StringBuilder_to_str(&(sb));
+    Lexer_emit(self, TokenType_STRING_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = s } } });
+}
+void Lexer_lex_char(Lexer* self) {
+    (void)(Lexer_advance(self));
+    char c = Lexer_advance(self);
+    char ch = ((char)(0LL));
+    if (c == '\\') {
+    char esc = Lexer_advance(self);
+    if (esc == 'n') {
+    ch = '\n';
+} else if (esc == 't') {
+    ch = '\t';
+} else if (esc == 'r') {
+    ch = '\r';
+} else if (esc == '\'') {
+    ch = '\'';
+} else if (esc == '\\') {
+    ch = '\\';
+} else {
+    ch = esc;
+}
+} else {
+    ch = c;
+}
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_CHAR_LIT, (TokenValue){ .tag = TokenValue_tv_char_TAG, .payload = { .tv_char = { .v = ch } } });
+}
+int64_t Lexer_compute_indent(Lexer* self) {
+    int64_t indent = 0LL;
+    int64_t temp = self->cursor;
+    bool done = false;
+    bool has_content = false;
+    while ((temp < self->source_len) && (!done)) {
+    char c = (self->source)[temp];
+    if (c == ' ') {
+    indent = (indent + 1LL);
+    temp = (temp + 1LL);
+} else if (c == '\t') {
+    indent = (indent + 4LL);
+    temp = (temp + 1LL);
+} else if (c == '\r') {
+    temp = (temp + 1LL);
+} else if (c == '\n') {
+    indent = 0LL;
+    temp = (temp + 1LL);
+} else if (((c == '/') && ((temp + 1LL) < self->source_len)) && ((self->source)[(temp + 1LL)] == '/')) {
+    while ((temp < self->source_len) && ((self->source)[temp] != '\n')) {
+    temp = (temp + 1LL);
+}
+    indent = 0LL;
+} else if (((c == '/') && ((temp + 1LL) < self->source_len)) && ((self->source)[(temp + 1LL)] == '*')) {
+    temp = (temp + 2LL);
+    while ((temp < self->source_len) && (!((((temp + 1LL) < self->source_len) && ((self->source)[temp] == '*')) && ((self->source)[(temp + 1LL)] == '/')))) {
+    if ((self->source)[temp] == '\n') {
+    indent = 0LL;
+}
+    temp = (temp + 1LL);
+}
+    if (temp < self->source_len) {
+    temp = (temp + 2LL);
+}
+} else {
+    has_content = true;
+    done = true;
+}
+}
+    if (has_content) {
+    return indent;
+}
+    return (-1LL);
+}
+void Lexer_lex(Lexer* self) {
+    bool is_line_start = true;
+    while (self->cursor < self->source_len) {
+    if (false) {
+    int64_t indent = Lexer_compute_indent(self);
+    if (indent >= 0LL) {
+    if ((self->paren_depth == 0LL) && (self->brace_depth == 0LL)) {
+    int64_t current = ArrayList_Int_get(self->indent_stack, (ArrayList_Int_length(self->indent_stack) - 1LL));
+    if (indent > current) {
+    ArrayList_Int_push(self->indent_stack, indent);
+    Lexer_emit(self, TokenType_INDENT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .payload = { .tv_int = { .v = indent } } });
+} else if (indent < current) {
+    while (indent < ArrayList_Int_get(self->indent_stack, (ArrayList_Int_length(self->indent_stack) - 1LL))) {
+    (void)(ArrayList_Int_pop(self->indent_stack));
+    Lexer_emit(self, TokenType_DEDENT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .payload = { .tv_int = { .v = indent } } });
+}
+    if (indent != ArrayList_Int_get(self->indent_stack, (ArrayList_Int_length(self->indent_stack) - 1LL))) {
+    self->has_error = true;
+}
+}
+}
+}
+    is_line_start = false;
+}
+    Lexer_skip_whitespace(self);
+    if (self->cursor < self->source_len) {
+    char c = Lexer_peek(self, 0LL);
+    if (c == '\n') {
+    (void)(Lexer_advance(self));
+    if (self->paren_depth == 0LL) {
+    int64_t last = ArrayList_Token_length(self->tokens);
+    if (last > 0LL) {
+    Token last_tok = ArrayList_Token_get(self->tokens, (last - 1LL));
+    if (((last_tok.tok_type != TokenType_NEWLINE) && (last_tok.tok_type != TokenType_INDENT)) && (last_tok.tok_type != TokenType_DEDENT)) {
+    Lexer_emit(self, TokenType_NEWLINE, (TokenValue){ .tag = TokenValue_tv_none_TAG });
+}
+}
+}
+    is_line_start = true;
+} else if (is_alpha(c) || (c == '_')) {
+    Lexer_lex_identifier(self);
+} else if (is_digit(c)) {
+    Lexer_lex_number(self);
+} else if (c == '"') {
+    Lexer_lex_string(self);
+} else if (c == '\'') {
+    Lexer_lex_char(self);
+} else if ((c == '-') && (Lexer_peek(self, 1LL) == '>')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_ARROW, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "->" } } });
+} else if ((c == '=') && (Lexer_peek(self, 1LL) == '>')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_FAT_ARROW, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "=>" } } });
+} else if ((c == '+') && (Lexer_peek(self, 1LL) == '=')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_PLUS_ASSIGN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "+=" } } });
+} else if ((c == '-') && (Lexer_peek(self, 1LL) == '=')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_MINUS_ASSIGN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "-=" } } });
+} else if ((c == '=') && (Lexer_peek(self, 1LL) == '=')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_EQ, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "==" } } });
+} else if ((c == '!') && (Lexer_peek(self, 1LL) == '=')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_NE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "!=" } } });
+} else if ((c == '<') && (Lexer_peek(self, 1LL) == '=')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_LE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "<=" } } });
+} else if ((c == '>') && (Lexer_peek(self, 1LL) == '=')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_GE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ">=" } } });
+} else if ((c == '&') && (Lexer_peek(self, 1LL) == '&')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_AND, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "&&" } } });
+} else if ((c == '|') && (Lexer_peek(self, 1LL) == '|')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_OR, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "||" } } });
+} else if ((c == '<') && (Lexer_peek(self, 1LL) == '<')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_LSHIFT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "<<" } } });
+} else if ((c == '>') && (Lexer_peek(self, 1LL) == '>')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_RSHIFT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ">>" } } });
+} else if (((c == '.') && (Lexer_peek(self, 1LL) == '.')) && (Lexer_peek(self, 2LL) == '=')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_DOTDOTEQ, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "..=" } } });
+} else if ((c == '.') && (Lexer_peek(self, 1LL) == '.')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_DOTDOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ".." } } });
+} else if (c == '+') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_PLUS, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "+" } } });
+} else if (c == '-') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_MINUS, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "-" } } });
+} else if (c == '*') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_MUL, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "*" } } });
+} else if (c == '/') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_DIV, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "/" } } });
+} else if (c == '%') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_MOD, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "%" } } });
+} else if (c == '=') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_ASSIGN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "=" } } });
+} else if (c == '<') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_LT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "<" } } });
+} else if (c == '>') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_GT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ">" } } });
+} else if (c == ':') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_COLON, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ":" } } });
+} else if (c == ';') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_SEMICOLON, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ";" } } });
+} else if (c == ',') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_COMMA, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "," } } });
+} else if (c == '(') {
+    (void)(Lexer_advance(self));
+    self->paren_depth = (self->paren_depth + 1LL);
+    Lexer_emit(self, TokenType_LPAREN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "(" } } });
+} else if (c == ')') {
+    (void)(Lexer_advance(self));
+    if (self->paren_depth > 0LL) {
+    self->paren_depth = (self->paren_depth - 1LL);
+}
+    Lexer_emit(self, TokenType_RPAREN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ")" } } });
+} else if (c == '[') {
+    (void)(Lexer_advance(self));
+    self->paren_depth = (self->paren_depth + 1LL);
+    Lexer_emit(self, TokenType_LBRACKET, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "[" } } });
+} else if (c == ']') {
+    (void)(Lexer_advance(self));
+    if (self->paren_depth > 0LL) {
+    self->paren_depth = (self->paren_depth - 1LL);
+}
+    Lexer_emit(self, TokenType_RBRACKET, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "]" } } });
+} else if (c == '{') {
+    (void)(Lexer_advance(self));
+    self->brace_depth = (self->brace_depth + 1LL);
+    Lexer_emit(self, TokenType_LBRACE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "{" } } });
+} else if (c == '}') {
+    (void)(Lexer_advance(self));
+    if (self->brace_depth > 0LL) {
+    self->brace_depth = (self->brace_depth - 1LL);
+}
+    Lexer_emit(self, TokenType_RBRACE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "}" } } });
+} else if (c == '&') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_AMP, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "&" } } });
+} else if (c == '#') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_HASH, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "#" } } });
+} else if (c == '!') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_NOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "!" } } });
+} else if (c == '?') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_QUESTION, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "?" } } });
+} else if (c == '^') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_BITXOR, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "^" } } });
+} else if (c == '~') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_BITNOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "~" } } });
+} else if (c == '|') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_PIPE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "|" } } });
+} else if (c == '.') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_DOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "." } } });
+} else {
+    (void)(Lexer_advance(self));
+    parser_err(self->source_file, self->source, "E0100", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("unexpected character '", char_to_str(c)), "'"), self->line, self->column);
+    self->has_error = true;
+}
+}
+}
+    while (false) {
+    (void)(ArrayList_Int_pop(self->indent_stack));
+    Lexer_emit(self, TokenType_DEDENT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .payload = { .tv_int = { .v = 0LL } } });
+}
+    Lexer_emit(self, TokenType_EOF, (TokenValue){ .tag = TokenValue_tv_none_TAG });
 }
 ArrayList_Symbol ArrayList_Symbol_init(KaiAllocator* allocator) {
     ArrayList_Symbol self = (ArrayList_Symbol){0};
@@ -5280,7 +5508,7 @@ SymbolTable SymbolTable_init(KaiAllocator* allocator, int64_t parent_idx) {
     return self;
 }
 void SymbolTable_define(SymbolTable* self, const char* name, const char* type_name, bool is_mutable, const char* kind, const char* llvm_value) {
-    ArrayList_Symbol_push(&(self->entries), (Symbol){ .name = name, .type_name = type_name, .is_mutable = is_mutable, .kind = kind, .llvm_value = llvm_value, .moved = false });
+    ArrayList_Symbol_push(&(self->entries), (Symbol){ .name = name, .type_name = type_name, .is_mutable = is_mutable, .kind = kind, .llvm_value = llvm_value, .moved = false, .freed = false });
 }
 ArrayList_SymbolTable ArrayList_SymbolTable_init(KaiAllocator* allocator) {
     ArrayList_SymbolTable self = (ArrayList_SymbolTable){0};
@@ -5369,7 +5597,7 @@ Symbol SymbolTable_lookup_symbol(SymbolTable* self, const char* name, ArrayList_
     SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
     return SymbolTable_lookup_symbol(&(parent), name, tables);
 }
-    return (Symbol){ .name = "", .type_name = "", .is_mutable = false, .kind = "", .llvm_value = "", .moved = false };
+    return (Symbol){ .name = "", .type_name = "", .is_mutable = false, .kind = "", .llvm_value = "", .moved = false, .freed = false };
 }
 void SymbolTable_mark_moved(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables) {
     int64_t i = 0LL;
@@ -5388,6 +5616,23 @@ void SymbolTable_mark_moved(SymbolTable* self, const char* name, ArrayList_Symbo
     ArrayList_SymbolTable_set(tables, self->parent_idx, parent);
 }
 }
+void SymbolTable_mark_freed(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables) {
+    int64_t i = 0LL;
+    while (i < ArrayList_Symbol_length(&(self->entries))) {
+    if (strcmp(ArrayList_Symbol_get(&(self->entries), i).name, name) == 0) {
+    Symbol sym = ArrayList_Symbol_get(&(self->entries), i);
+    sym.freed = true;
+    ArrayList_Symbol_set(&(self->entries), i, sym);
+    return;
+}
+    i = (i + 1LL);
+}
+    if (self->parent_idx >= 0LL) {
+    SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
+    SymbolTable_mark_freed(&(parent), name, tables);
+    ArrayList_SymbolTable_set(tables, self->parent_idx, parent);
+}
+}
 int64_t SymbolTable_lookup_current(SymbolTable* self, const char* name) {
     int64_t i = 0LL;
     while (i < ArrayList_Symbol_length(&(self->entries))) {
@@ -5397,143 +5642,6 @@ int64_t SymbolTable_lookup_current(SymbolTable* self, const char* name) {
     i = (i + 1LL);
 }
     return (-1LL);
-}
-bool fs_exists(const char* path) {
-    {
-    return kai_fs_exists(path);
-}
-}
-bool fs_is_dir(const char* path) {
-    {
-    return kai_fs_is_dir(path);
-}
-}
-bool fs_mkdir(const char* path) {
-    {
-    return kai_fs_mkdir(path);
-}
-}
-bool fs_remove(const char* path) {
-    {
-    return kai_fs_remove(path);
-}
-}
-Dir fs_opendir(const char* path) {
-    {
-    return (Dir){ .handle = kai_fs_opendir(path) };
-}
-}
-const char* fs_readdir(Dir dir) {
-    {
-    char* name_ptr = kai_fs_readdir(dir.handle);
-    if (name_ptr == (char*)(unsigned long long)(0LL)) {
-    return "";
-}
-    return (const char*)(name_ptr);
-}
-}
-void fs_closedir(Dir dir) {
-    {
-    kai_fs_closedir(dir.handle);
-}
-}
-const char* get_source_line(const char* source, int64_t line_num) {
-    int64_t current = 0LL;
-    int64_t line_start = 0LL;
-    int64_t i = 0LL;
-    int64_t len = strlen(source);
-    while ((i < len) && (current < line_num)) {
-    if ((source)[i] == ((char)(10LL))) {
-    current = (current + 1LL);
-    line_start = (i + 1LL);
-}
-    i = (i + 1LL);
-}
-    if (current != line_num) {
-    return "";
-}
-    int64_t line_end = line_start;
-    while ((line_end < len) && ((source)[line_end] != ((char)(10LL)))) {
-    line_end = (line_end + 1LL);
-}
-    return substring(source, line_start, line_end);
-}
-int64_t find_last(const char* path, char c) {
-    int64_t i = (strlen(path) - 1LL);
-    while (i >= 0LL) {
-    if ((path)[i] == c) {
-    return i;
-}
-    i = (i - 1LL);
-}
-    return (-1LL);
-}
-bool mkdir_p(const char* path) {
-    if (fs_exists(path)) {
-    return true;
-}
-    int64_t slash_pos = find_last(path, ((char)(47LL)));
-    if (slash_pos > 0LL) {
-    const char* parent = substring(path, 0LL, slash_pos);
-    if (!mkdir_p(parent)) {
-    return false;
-}
-}
-    return fs_mkdir(path);
-}
-const char* str_replace(const char* s, const char* old, const char* new_val) {
-    int64_t s_len = strlen(s);
-    int64_t old_len = strlen(old);
-    if (old_len == 0LL) {
-    return s;
-}
-    const char* result = "";
-    int64_t i = 0LL;
-    while (i < s_len) {
-    int64_t j = 0LL;
-    bool matched = true;
-    while (j < old_len) {
-    {
-    if ((s)[(i + j)] != (old)[j]) {
-    matched = false;
-    break;
-}
-}
-    j = (j + 1LL);
-}
-    if (matched) {
-    result = __kai_std_str_concat_alloc(result, new_val);
-    i = (i + old_len);
-} else {
-    result = __kai_std_str_concat_alloc(result, substring(s, i, (i + 1LL)));
-    i = (i + 1LL);
-}
-}
-    return result;
-}
-const char* get_base_name(const char* path) {
-    int64_t last_slash = (-1LL);
-    int64_t dot_pos = (-1LL);
-    int64_t i = 0LL;
-    int64_t l = strlen(path);
-    while (i < l) {
-    char c = (path)[i];
-    if (c == ((char)(47LL))) {
-    last_slash = i;
-} else if (c == ((char)(46LL))) {
-    dot_pos = i;
-}
-    i = (i + 1LL);
-}
-    int64_t start = 0LL;
-    if (last_slash >= 0LL) {
-    start = (last_slash + 1LL);
-}
-    int64_t end = l;
-    if (dot_pos > last_slash) {
-    end = dot_pos;
-}
-    return substring(path, start, end);
 }
 ArrayList_StructInfo ArrayList_StructInfo_init(KaiAllocator* allocator) {
     ArrayList_StructInfo self = (ArrayList_StructInfo){0};
@@ -5596,6 +5704,67 @@ void ArrayList_StructInfo_deinit(ArrayList_StructInfo* self) {
     KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
 }
 }
+ArrayList_Bool ArrayList_Bool_init(KaiAllocator* allocator) {
+    ArrayList_Bool self = (ArrayList_Bool){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (bool*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(bool))), 1LL));
+}
+    return self;
+}
+void ArrayList_Bool_push(ArrayList_Bool* self, bool item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    bool* new_data = (bool*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(bool))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+bool ArrayList_Bool_get(ArrayList_Bool* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_Bool_set(ArrayList_Bool* self, int64_t index, bool item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+bool ArrayList_Bool_pop(ArrayList_Bool* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_Bool_length(ArrayList_Bool* self) {
+    return self->len;
+}
+void ArrayList_Bool_deinit(ArrayList_Bool* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
 TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, const char* source_file, const char* source) {
     TypeChecker self = (TypeChecker){0};
     self.allocator = allocator;
@@ -5609,7 +5778,10 @@ TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_p
     self.current_func_ret_type = "";
     self.source_file = source_file;
     self.source = source;
-    self.has_any_import = false;
+    self.imported_names = ArrayList_Str_init(allocator);
+    self.import_used = ArrayList_Bool_init(allocator);
+    self.import_lines = ArrayList_Int_init(allocator);
+    self.import_cols = ArrayList_Int_init(allocator);
     self.loop_depth = 0LL;
     return self;
 }
@@ -5660,6 +5832,15 @@ bool TypeChecker_check_program(TypeChecker* self, int64_t top_stmt_idx) {
     TypeChecker_enter_scope(self);
     TypeChecker_check_stmt(self, top_stmt_idx);
     TypeChecker_exit_scope(self);
+    int64_t ui = 0LL;
+    while (ui < ArrayList_Str_length(&(self->imported_names))) {
+    if (!ArrayList_Bool_get(&(self->import_used), ui)) {
+    int64_t line = ArrayList_Int_get(&(self->import_lines), ui);
+    int64_t col = ArrayList_Int_get(&(self->import_cols), ui);
+    TypeChecker_err(self, "E0033", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("unused import: '", ArrayList_Str_get(&(self->imported_names), ui)), "'"), line, col);
+}
+    ui = (ui + 1LL);
+}
     return (!self->has_error);
 }
 void TypeChecker_detect_imports(TypeChecker* self, int64_t top_stmt_idx) {
@@ -5669,9 +5850,13 @@ void TypeChecker_detect_imports(TypeChecker* self, int64_t top_stmt_idx) {
     while (i < ArrayList_Int_length(&(stmt.block_stmts))) {
     int64_t s_idx = ArrayList_Int_get(&(stmt.block_stmts), i);
     StmtNode s = ArrayList_StmtNode_get(self->stmt_pool, s_idx);
-    if ((s.kind == StmtKind_sk_import) || (s.kind == StmtKind_sk_cimport)) {
-    self->has_any_import = true;
-    return;
+    if (s.kind == StmtKind_sk_import) {
+    if (strlen(s.import_alias) > 0LL) {
+    ArrayList_Str_push(&(self->imported_names), s.import_alias);
+    ArrayList_Bool_push(&(self->import_used), false);
+    ArrayList_Int_push(&(self->import_lines), s.line);
+    ArrayList_Int_push(&(self->import_cols), s.col);
+}
 }
     i = (i + 1LL);
 }
@@ -5728,7 +5913,7 @@ void TypeChecker_collect_block_drops(TypeChecker* self, int64_t stmt_idx) {
     int64_t i = (ArrayList_Symbol_length(&(table.entries)) - 1LL);
     while (i >= 0LL) {
     Symbol sym = ArrayList_Symbol_get(&(table.entries), i);
-    if (((strcmp(sym.kind, "var") == 0) || (strcmp(sym.kind, "param") == 0)) && (!sym.moved)) {
+    if ((((strcmp(sym.kind, "var") == 0) || (strcmp(sym.kind, "param") == 0)) && (!sym.moved)) && (!sym.freed)) {
     const char* base_type = sym.type_name;
     if (TypeChecker_has_drop_method(self, base_type)) {
     ArrayList_DropVarEntry_push(&(drop_vars), (DropVarEntry){ .name = sym.name, .base_type = base_type });
@@ -5781,6 +5966,59 @@ bool TypeChecker_is_numeric_type(TypeChecker* self, const char* type_name) {
     return true;
 }
     if (strcmp(type_name, "Float") == 0) {
+    return true;
+}
+    return false;
+}
+bool TypeChecker_is_builtin_type(TypeChecker* self, const char* name) {
+    return ((((((((strcmp(name, "Int") == 0) || (strcmp(name, "Float") == 0)) || (strcmp(name, "Bool") == 0)) || (strcmp(name, "Char") == 0)) || (strcmp(name, "Str") == 0)) || (strcmp(name, "Void") == 0)) || (strcmp(name, "NoneType") == 0)) || (strcmp(name, "usize") == 0));
+}
+bool TypeChecker_is_struct_type(TypeChecker* self, const char* name) {
+    if (((strcmp(name, "ArrayList") == 0) || (strcmp(name, "HashMap") == 0)) || (strcmp(name, "StringBuilder") == 0)) {
+    return true;
+}
+    int64_t i = 0LL;
+    while (i < ArrayList_StmtNode_length(self->stmt_pool)) {
+    StmtNode s = ArrayList_StmtNode_get(self->stmt_pool, i);
+    if ((s.kind == StmtKind_sk_struct_decl) && (strcmp(s.struct_name, name) == 0)) {
+    return true;
+}
+    i = (i + 1LL);
+}
+    return false;
+}
+bool TypeChecker_is_standard_c_func(TypeChecker* self, const char* name) {
+    if ((((strcmp(name, "malloc") == 0) || (strcmp(name, "free") == 0)) || (strcmp(name, "realloc") == 0)) || (strcmp(name, "calloc") == 0)) {
+    return true;
+}
+    if ((((strcmp(name, "printf") == 0) || (strcmp(name, "fprintf") == 0)) || (strcmp(name, "sprintf") == 0)) || (strcmp(name, "snprintf") == 0)) {
+    return true;
+}
+    if (((((((strcmp(name, "fopen") == 0) || (strcmp(name, "fread") == 0)) || (strcmp(name, "fwrite") == 0)) || (strcmp(name, "fclose") == 0)) || (strcmp(name, "fseek") == 0)) || (strcmp(name, "ftell") == 0)) || (strcmp(name, "rewind") == 0)) {
+    return true;
+}
+    if ((strcmp(name, "strlen") == 0) || (strcmp(name, "strcmp") == 0)) {
+    return true;
+}
+    if ((strcmp(name, "exit") == 0) || (strcmp(name, "system") == 0)) {
+    return true;
+}
+    if ((((strcmp(name, "isdigit") == 0) || (strcmp(name, "isalpha") == 0)) || (strcmp(name, "isalnum") == 0)) || (strcmp(name, "isspace") == 0)) {
+    return true;
+}
+    if ((strcmp(name, "toupper") == 0) || (strcmp(name, "tolower") == 0)) {
+    return true;
+}
+    if (strcmp(name, "atoll") == 0) {
+    return true;
+}
+    if (strcmp(name, "sqrt") == 0) {
+    return true;
+}
+    if (((strcmp(name, "memset") == 0) || (strcmp(name, "memcpy") == 0)) || (strcmp(name, "memmove") == 0)) {
+    return true;
+}
+    if (strcmp(name, "abort") == 0) {
     return true;
 }
     return false;
@@ -6199,6 +6437,38 @@ void TypeChecker_mark_expr_moved(TypeChecker* self, int64_t expr_idx) {
 }
 }
 }
+void TypeChecker_mark_expr_freed(TypeChecker* self, int64_t expr_idx) {
+    if (expr_idx < 0LL) {
+    return;
+}
+    int64_t inner = expr_idx;
+    bool done = false;
+    while (!done) {
+    ExprNode e = ArrayList_ExprNode_get(self->expr_pool, inner);
+    if (((e.kind == ExprKind_ek_func_call) && (strcmp(e.func_name, "as") == 0)) && (ArrayList_Int_length(&(e.func_args)) >= 1LL)) {
+    inner = ArrayList_Int_get(&(e.func_args), 0LL);
+} else {
+    done = true;
+}
+}
+    ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, inner);
+    if (expr.kind == ExprKind_ek_identifier) {
+    SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
+    Symbol sym = SymbolTable_lookup_symbol(&(table), expr.ident_name, &(self->symbol_tables));
+    if (strlen(sym.name) > 0LL) {
+    if (sym.freed) {
+    TypeChecker_err(self, "E0032", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("double-free: '", expr.ident_name), "' is already freed"), expr.line, expr.col);
+    return;
+}
+    if (sym.moved) {
+    TypeChecker_err(self, "E0009", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("use of moved value: '", expr.ident_name), "'"), expr.line, expr.col);
+    return;
+}
+    SymbolTable_mark_freed(&(table), expr.ident_name, &(self->symbol_tables));
+    ArrayList_SymbolTable_set(&(self->symbol_tables), self->current_table_idx, table);
+}
+}
+}
 const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx) {
     if (expr_idx < 0LL) {
     return "Void";
@@ -6497,17 +6767,42 @@ bool TypeChecker_is_enum_or_error_type(TypeChecker* self, const char* name) {
 }
     return false;
 }
+bool TypeChecker_is_imported_name(TypeChecker* self, const char* name) {
+    int64_t i = 0LL;
+    while (i < ArrayList_Str_length(&(self->imported_names))) {
+    if (strcmp(ArrayList_Str_get(&(self->imported_names), i), name) == 0) {
+    return true;
+}
+    i = (i + 1LL);
+}
+    return false;
+}
+void TypeChecker_mark_import_used(TypeChecker* self, const char* name) {
+    int64_t i = 0LL;
+    while (i < ArrayList_Str_length(&(self->imported_names))) {
+    if (strcmp(ArrayList_Str_get(&(self->imported_names), i), name) == 0) {
+    ArrayList_Bool_set(&(self->import_used), i, true);
+    return;
+}
+    i = (i + 1LL);
+}
+}
 void TypeChecker_check_identifier(TypeChecker* self, int64_t expr_idx) {
     ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
     const char* name = expr.ident_name;
     SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
     Symbol sym = SymbolTable_lookup_symbol(&(table), name, &(self->symbol_tables));
     if (strlen(sym.name) > 0LL) {
-    if (sym.moved) {
+    if (sym.freed) {
+    TypeChecker_err(self, "E0031", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("use of freed value: '", name), "'"), expr.line, expr.col);
+} else if (sym.moved) {
     TypeChecker_err(self, "E0009", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("use of moved value: '", name), "'"), expr.line, expr.col);
 }
-} else if ((!TypeChecker_is_enum_or_error_type(self, name)) && (!self->has_any_import)) {
+} else if (((!TypeChecker_is_enum_or_error_type(self, name)) && (!TypeChecker_is_builtin_type(self, name))) && (!TypeChecker_is_imported_name(self, name))) {
     TypeChecker_err(self, "E0019", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined identifier: '", name), "'"), expr.line, expr.col);
+}
+    if (TypeChecker_is_imported_name(self, name)) {
+    TypeChecker_mark_import_used(self, name);
 }
 }
 void TypeChecker_check_field_access(TypeChecker* self, int64_t expr_idx) {
@@ -6596,8 +6891,12 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     if (target_expr.kind == ExprKind_ek_identifier) {
     SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
     Symbol sym = SymbolTable_lookup_symbol(&(table), target_expr.ident_name, &(self->symbol_tables));
-    if ((strlen(sym.name) > 0LL) && (!sym.is_mutable)) {
+    if (strlen(sym.name) > 0LL) {
+    if (sym.freed) {
+    TypeChecker_err(self, "E0031", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot assign to freed variable '", target_expr.ident_name), "'"), target_expr.line, target_expr.col);
+} else if (!sym.is_mutable) {
     TypeChecker_err(self, "E0008", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot assign to immutable variable '", target_expr.ident_name), "'"), target_expr.line, target_expr.col);
+}
 }
 }
 }
@@ -6863,6 +7162,21 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     return;
 }
     if (expr.kind == ExprKind_ek_func_call) {
+    const char* name = expr.func_name;
+    if (strcmp(name, "free") == 0) {
+    int64_t i = 0LL;
+    while (i < ArrayList_Int_length(&(expr.func_args))) {
+    int64_t arg = ArrayList_Int_get(&(expr.func_args), i);
+    TypeChecker_check_expr(self, arg);
+    i = (i + 1LL);
+}
+    if (ArrayList_Int_length(&(expr.func_args)) >= 1LL) {
+    TypeChecker_mark_expr_freed(self, ArrayList_Int_get(&(expr.func_args), 0LL));
+}
+    if (TypeChecker_is_imported_name(self, name)) {
+    TypeChecker_mark_import_used(self, name);
+}
+} else {
     int64_t i = 0LL;
     while (i < ArrayList_Int_length(&(expr.func_args))) {
     int64_t arg = ArrayList_Int_get(&(expr.func_args), i);
@@ -6870,8 +7184,8 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     TypeChecker_mark_expr_moved(self, arg);
     i = (i + 1LL);
 }
-    const char* name = expr.func_name;
-    if (((((((strcmp(name, "cast") == 0) || (strcmp(name, "as") == 0)) || (strcmp(name, "size_of") == 0)) || (strcmp(name, "Char") == 0)) || (strcmp(name, "Int") == 0)) || (strcmp(name, "Float") == 0)) || (strcmp(name, "Bool") == 0)) {
+}
+    if ((((((((strcmp(name, "cast") == 0) || (strcmp(name, "as") == 0)) || (strcmp(name, "size_of") == 0)) || (strcmp(name, "free") == 0)) || (strcmp(name, "Char") == 0)) || (strcmp(name, "Int") == 0)) || (strcmp(name, "Float") == 0)) || (strcmp(name, "Bool") == 0)) {
     return;
 }
     int64_t func_idx = TypeChecker_find_func_decl(self, name);
@@ -6910,8 +7224,14 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     arg_i = (arg_i + 1LL);
 }
 }
-} else if (!self->has_any_import) {
+} else if ((!TypeChecker_is_imported_name(self, name)) && (!TypeChecker_is_standard_c_func(self, name))) {
+    if (TypeChecker_is_builtin_type(self, name) || TypeChecker_is_struct_type(self, name)) {
+} else {
     TypeChecker_err(self, "E0020", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined function: '", name), "'"), expr.line, expr.col);
+}
+}
+    if (TypeChecker_is_imported_name(self, name)) {
+    TypeChecker_mark_import_used(self, name);
 }
     return;
 }
@@ -6956,8 +7276,11 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     arg_i = (arg_i + 1LL);
 }
 }
-} else if (!self->has_any_import) {
+} else if (!TypeChecker_is_imported_name(self, meth_name)) {
     TypeChecker_err(self, "E0022", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined method: '", meth_name), "' for type '"), recv_type), "'"), expr.line, expr.col);
+}
+    if (TypeChecker_is_imported_name(self, meth_name)) {
+    TypeChecker_mark_import_used(self, meth_name);
 }
     return;
 }
@@ -7012,7 +7335,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     const char* struct_name = expr.struct_name;
     int64_t struct_idx = TypeChecker_find_struct_decl(self, struct_name);
     if (struct_idx < 0LL) {
-    if (!self->has_any_import) {
+    if (!TypeChecker_is_imported_name(self, struct_name)) {
     TypeChecker_err(self, "E0021", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined struct: '", struct_name), "'"), expr.line, expr.col);
 }
     return;
@@ -9942,7 +10265,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     if (lexer.has_error) {
     return "";
 }
-    Parser parser = Parser_init_with_pools(self->allocator, "", lexer.tokens, self->expr_pool, self->stmt_pool, self->pattern_pool);
+    Parser parser = Parser_init_with_pools(self->allocator, "", lexer.tokens, self->expr_pool, self->stmt_pool, self->pattern_pool, source);
     int64_t program_idx = Parser_parse_program(&(parser));
     if (program_idx >= 0LL) {
     Codegen_build_func_types(self);
@@ -14413,7 +14736,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     Lexer lexer = Lexer_init(self->allocator, source, current_file_path);
     Lexer_lex(&(lexer));
     if (!lexer.has_error) {
-    Parser parser = Parser_init_with_pools(self->allocator, current_file_path, lexer.tokens, self->expr_pool, self->stmt_pool, self->pattern_pool);
+    Parser parser = Parser_init_with_pools(self->allocator, current_file_path, lexer.tokens, self->expr_pool, self->stmt_pool, self->pattern_pool, source);
     int64_t program_idx = Parser_parse_program(&(parser));
     if (program_idx >= 0LL) {
     StmtNode prog = ArrayList_StmtNode_get(self->stmt_pool, program_idx);
@@ -15084,6 +15407,15 @@ ErrorInfo get_error_info(const char* code) {
     if (strcmp(code, "E0022") == 0) {
     return (ErrorInfo){ .code = code, .title = "Undefined method", .description = "A method was called on a type that does not have that method in any 'impl' block.", .fix = "Add an 'impl' block with the method, check the spelling of the method name, or check the receiver type." };
 }
+    if (strcmp(code, "E0031") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Use of freed value", .description = "A value was used after it had been freed. Memory-safe languages prevent accessing freed memory.", .fix = "Restructure the code to avoid using the value after it has been freed. Consider using a longer-lived allocation or deferring the free operation." };
+}
+    if (strcmp(code, "E0032") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Double free", .description = "A value was freed more than once. Freeing the same memory twice can lead to heap corruption and security vulnerabilities.", .fix = "Ensure each allocation is freed exactly once. Remove the duplicate free call, or use a flag to track whether the value has already been freed." };
+}
+    if (strcmp(code, "E0033") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Unused import", .description = "An imported symbol was never used in the current compilation unit.", .fix = "Remove the unused import, or use the imported symbol in the code." };
+}
     if (strcmp(code, "E0100") == 0) {
     return (ErrorInfo){ .code = code, .title = "Lexer error", .description = "The lexer encountered an unexpected character or syntax that could not be tokenized.", .fix = "Check for unexpected characters, unclosed strings, or invalid syntax near the reported position." };
 }
@@ -15507,67 +15839,6 @@ void print_patch(const char* path, bool json_mode, bool apply, bool applied, Arr
 }
     printf("\n  ]\n}\n");
 }
-ArrayList_Bool ArrayList_Bool_init(KaiAllocator* allocator) {
-    ArrayList_Bool self = (ArrayList_Bool){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-    self.data = (bool*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(bool))), 1LL));
-}
-    return self;
-}
-void ArrayList_Bool_push(ArrayList_Bool* self, bool item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    bool* new_data = (bool*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(bool))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
-}
-}
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-bool ArrayList_Bool_get(ArrayList_Bool* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_Bool_set(ArrayList_Bool* self, int64_t index, bool item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-bool ArrayList_Bool_pop(ArrayList_Bool* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_Bool_length(ArrayList_Bool* self) {
-    return self->len;
-}
-void ArrayList_Bool_deinit(ArrayList_Bool* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
-}
 int64_t run_fix(const char* fix_mode, const char* fix_file, bool json) {
     KaiAllocator fix_alloc = KaiAllocator_new();
     _kai_set_current_allocator((void*)(&(fix_alloc)));
@@ -15582,7 +15853,7 @@ int64_t run_fix(const char* fix_mode, const char* fix_file, bool json) {
     Lexer fix_lexer = Lexer_init(&(fix_alloc), source, fix_file);
     Lexer_lex(&(fix_lexer));
     if (!fix_lexer.has_error) {
-    Parser fix_parser = Parser_init(&(fix_alloc), fix_file, fix_lexer.tokens);
+    Parser fix_parser = Parser_init(&(fix_alloc), fix_file, fix_lexer.tokens, source);
     int64_t prog_idx = Parser_parse_program(&(fix_parser));
     if (prog_idx >= 0LL) {
     TypeChecker chk = TypeChecker_init(&(fix_alloc), fix_parser.stmt_pool, fix_parser.expr_pool, fix_parser.pattern_pool, fix_file, source);
@@ -16474,7 +16745,7 @@ int64_t run_graph(int64_t argc, char** argv) {
     printf("Error: Lexer error in '%s'\n", graph_file);
     return 1LL;
 }
-    Parser graph_parser = Parser_init(&(graph_alloc), graph_file, graph_lexer.tokens);
+    Parser graph_parser = Parser_init(&(graph_alloc), graph_file, graph_lexer.tokens, graph_source);
     int64_t graph_program_idx = Parser_parse_program(&(graph_parser));
     if (graph_program_idx < 0LL) {
     printf("Error: Parse error in '%s'\n", graph_file);
@@ -16989,7 +17260,7 @@ int main(int argc, char** argv) {
 }
     return 2LL;
 }
-    Parser parser = Parser_init(&(allocator), input_file, lexer.tokens);
+    Parser parser = Parser_init(&(allocator), input_file, lexer.tokens, source);
     int64_t program_idx = Parser_parse_program(&(parser));
     if (program_idx < 0LL) {
     if (json_mode) {

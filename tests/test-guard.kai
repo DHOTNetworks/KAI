@@ -1,0 +1,8 @@
+import free from std.core.allocator
+
+fn main()
+{
+    var ptr = alloc(Int)  
+    free(ptr)  
+    free(ptr)
+}

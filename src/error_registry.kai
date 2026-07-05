@@ -190,6 +190,30 @@ fn get_error_info(code: Str) -> ErrorInfo {
             fix: "Add an 'impl' block with the method, check the spelling of the method name, or check the receiver type."
         )
     }
+    if code == "E0031" {
+        return ErrorInfo(
+            code: code,
+            title: "Use of freed value",
+            description: "A value was used after it had been freed. Memory-safe languages prevent accessing freed memory.",
+            fix: "Restructure the code to avoid using the value after it has been freed. Consider using a longer-lived allocation or deferring the free operation."
+        )
+    }
+    if code == "E0032" {
+        return ErrorInfo(
+            code: code,
+            title: "Double free",
+            description: "A value was freed more than once. Freeing the same memory twice can lead to heap corruption and security vulnerabilities.",
+            fix: "Ensure each allocation is freed exactly once. Remove the duplicate free call, or use a flag to track whether the value has already been freed."
+        )
+    }
+    if code == "E0033" {
+        return ErrorInfo(
+            code: code,
+            title: "Unused import",
+            description: "An imported symbol was never used in the current compilation unit.",
+            fix: "Remove the unused import, or use the imported symbol in the code."
+        )
+    }
     if code == "E0100" {
         return ErrorInfo(
             code: code,

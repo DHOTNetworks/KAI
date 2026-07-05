@@ -1432,7 +1432,7 @@ impl Parser {
                     done = true
                 }
             }
-            var alias: Str = ""
+            var alias = first_name
             if self.peek(0).tok_type == TokenType.AS {
                 let _ = self.advance()
                 alias = tv_get_str(self.expect(TokenType.IDENTIFIER).value)

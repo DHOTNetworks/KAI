@@ -523,6 +523,13 @@ struct ArrayList_SymbolTable {
     int64_t cap;
     KaiAllocator* allocator;
 };
+typedef struct ArrayList_Bool ArrayList_Bool;
+struct ArrayList_Bool {
+    bool* data;
+    int64_t len;
+    int64_t cap;
+    KaiAllocator* allocator;
+};
 typedef struct ArrayList_StructInfo ArrayList_StructInfo;
 struct ArrayList_StructInfo {
     StructInfo* data;
@@ -547,13 +554,6 @@ struct ArrayList_CExprNode {
 typedef struct ArrayList_CStmtNode ArrayList_CStmtNode;
 struct ArrayList_CStmtNode {
     CStmtNode* data;
-    int64_t len;
-    int64_t cap;
-    KaiAllocator* allocator;
-};
-typedef struct ArrayList_Bool ArrayList_Bool;
-struct ArrayList_Bool {
-    bool* data;
     int64_t len;
     int64_t cap;
     KaiAllocator* allocator;
@@ -829,7 +829,11 @@ struct TypeChecker {
     const char* current_func_ret_type;
     const char* source_file;
     const char* source;
-    bool has_any_import;
+    ArrayList_Str imported_names;
+    ArrayList_Bool import_used;
+    ArrayList_Int import_lines;
+    ArrayList_Int import_cols;
+    bool has_bare_import;
     int64_t loop_depth;
 };
 struct Symbol {
@@ -839,6 +843,7 @@ struct Symbol {
     const char* kind;
     const char* llvm_value;
     bool moved;
+    bool freed;
 };
 struct SymbolTable {
     ArrayList_Symbol entries;
@@ -1367,6 +1372,13 @@ void ArrayList_SymbolTable_deinit(ArrayList_SymbolTable* self);
 void TypeChecker_exit_scope(TypeChecker* self);
 void TypeChecker_define_symbol(TypeChecker* self, const char* name, const char* type_name, bool is_mutable, const char* kind);
 bool TypeChecker_check_program(TypeChecker* self, int64_t top_stmt_idx);
+ArrayList_Bool ArrayList_Bool_init(KaiAllocator* allocator);
+void ArrayList_Bool_push(ArrayList_Bool* self, bool item);
+bool ArrayList_Bool_get(ArrayList_Bool* self, int64_t index);
+void ArrayList_Bool_set(ArrayList_Bool* self, int64_t index, bool item);
+bool ArrayList_Bool_pop(ArrayList_Bool* self);
+int64_t ArrayList_Bool_length(ArrayList_Bool* self);
+void ArrayList_Bool_deinit(ArrayList_Bool* self);
 void TypeChecker_detect_imports(TypeChecker* self, int64_t top_stmt_idx);
 void TypeChecker_register_struct_info(TypeChecker* self, int64_t top_stmt_idx);
 ArrayList_StructInfo ArrayList_StructInfo_init(KaiAllocator* allocator);
@@ -1387,6 +1399,9 @@ int64_t ArrayList_Symbol_length(ArrayList_Symbol* self);
 void ArrayList_Symbol_deinit(ArrayList_Symbol* self);
 bool TypeChecker_is_integer_type(TypeChecker* self, const char* type_name);
 bool TypeChecker_is_numeric_type(TypeChecker* self, const char* type_name);
+bool TypeChecker_is_builtin_type(TypeChecker* self, const char* name);
+bool TypeChecker_is_struct_type(TypeChecker* self, const char* name);
+bool TypeChecker_is_standard_c_func(TypeChecker* self, const char* name);
 bool TypeChecker_fits_in_type(TypeChecker* self, int64_t val, const char* type_name);
 bool TypeChecker_is_integer_literal(TypeChecker* self, int64_t expr_idx);
 int64_t TypeChecker_int_literal_value(TypeChecker* self, ExprNode expr);
@@ -1398,9 +1413,12 @@ int64_t TypeChecker_find_method_decl(TypeChecker* self, const char* struct_name,
 int64_t TypeChecker_find_struct_decl(TypeChecker* self, const char* name);
 const char* TypeChecker_get_block_yield_type(TypeChecker* self, int64_t stmt_idx);
 void TypeChecker_mark_expr_moved(TypeChecker* self, int64_t expr_idx);
+void TypeChecker_mark_expr_freed(TypeChecker* self, int64_t expr_idx);
 const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx);
 bool TypeChecker_expr_is_mutable(TypeChecker* self, int64_t expr_idx);
 bool TypeChecker_is_enum_or_error_type(TypeChecker* self, const char* name);
+bool TypeChecker_is_imported_name(TypeChecker* self, const char* name);
+void TypeChecker_mark_import_used(TypeChecker* self, const char* name);
 void TypeChecker_check_identifier(TypeChecker* self, int64_t expr_idx);
 void TypeChecker_check_field_access(TypeChecker* self, int64_t expr_idx);
 void TypeChecker_check_method_call(TypeChecker* self, int64_t expr_idx);
@@ -1412,6 +1430,7 @@ void SymbolTable_define(SymbolTable* self, const char* name, const char* type_na
 int64_t SymbolTable_lookup(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
 Symbol SymbolTable_lookup_symbol(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
 void SymbolTable_mark_moved(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
+void SymbolTable_mark_freed(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
 int64_t SymbolTable_lookup_current(SymbolTable* self, const char* name);
 extern int64_t get_exe_dir(char* buf, int64_t max_len);
 extern char* strstr(const char* haystack, const char* needle);
@@ -1567,13 +1586,6 @@ void print_fix_json(const char* code, bool applies);
 void print_plan(const char* path, bool json_mode, ArrayList_Str* codes, ArrayList_Str* messages, ArrayList_Int* dlines, ArrayList_Int* dcolumns, ArrayList_Int* dlengths, ArrayList_Str* expected, ArrayList_Str* actual, ArrayList_Str* helpv);
 void print_patch(const char* path, bool json_mode, bool apply, bool applied, ArrayList_Str* codes, ArrayList_Str* messages, ArrayList_Int* dlines, ArrayList_Int* dcolumns, ArrayList_Int* dlengths, ArrayList_Str* expected, ArrayList_Str* actual, ArrayList_Str* helpv, ArrayList_Int* patch_lines, ArrayList_Str* patch_old, ArrayList_Str* patch_new, ArrayList_Str* patch_codes);
 int64_t run_fix(const char* fix_mode, const char* fix_file, bool json);
-ArrayList_Bool ArrayList_Bool_init(KaiAllocator* allocator);
-void ArrayList_Bool_push(ArrayList_Bool* self, bool item);
-bool ArrayList_Bool_get(ArrayList_Bool* self, int64_t index);
-void ArrayList_Bool_set(ArrayList_Bool* self, int64_t index, bool item);
-bool ArrayList_Bool_pop(ArrayList_Bool* self);
-int64_t ArrayList_Bool_length(ArrayList_Bool* self);
-void ArrayList_Bool_deinit(ArrayList_Bool* self);
 bool __kai_std_ascii_is_digit(char byte);
 bool __kai_std_ascii_is_lower(char byte);
 bool __kai_std_ascii_is_upper(char byte);
@@ -5981,7 +5993,11 @@ TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_p
     self.current_func_ret_type = "";
     self.source_file = source_file;
     self.source = source;
-    self.has_any_import = false;
+    self.imported_names = ArrayList_Str_init(allocator);
+    self.import_used = ArrayList_Bool_init(allocator);
+    self.import_lines = ArrayList_Int_init(allocator);
+    self.import_cols = ArrayList_Int_init(allocator);
+    self.has_bare_import = false;
     self.loop_depth = 0LL;    return self;
 }void TypeChecker_err(TypeChecker* self, const char* code, const char* msg, int64_t line, int64_t col)
 {
@@ -6043,6 +6059,17 @@ bool TypeChecker_check_program(TypeChecker* self, int64_t top_stmt_idx)
     TypeChecker_enter_scope(self);
     TypeChecker_check_stmt(self, top_stmt_idx);
     TypeChecker_exit_scope(self);
+    int64_t ui = 0LL;
+    while (ui < ArrayList_Str_length(&(self->imported_names)))
+    {
+        if (!ArrayList_Bool_get(&(self->import_used), ui))
+        {
+            int64_t line = ArrayList_Int_get(&(self->import_lines), ui);
+            int64_t col = ArrayList_Int_get(&(self->import_cols), ui);
+            TypeChecker_err(self, "E0033", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("unused import: '", ArrayList_Str_get(&(self->imported_names), ui)), "'"), line, col);
+        }
+        ui = (ui + 1LL);
+    }
     return (!self->has_error);
 }
 void TypeChecker_detect_imports(TypeChecker* self, int64_t top_stmt_idx)
@@ -6055,10 +6082,23 @@ void TypeChecker_detect_imports(TypeChecker* self, int64_t top_stmt_idx)
         {
             int64_t s_idx = ArrayList_Int_get(&(stmt.block_stmts), i);
             StmtNode s = ArrayList_StmtNode_get(self->stmt_pool, s_idx);
-            if ((s.kind == StmtKind_sk_import) || (s.kind == StmtKind_sk_cimport))
+            if (s.kind == StmtKind_sk_import)
             {
-                self->has_any_import = true;
-                return;
+                if (strlen(s.import_alias) > 0LL)
+                {
+                    ArrayList_Str_push(&(self->imported_names), s.import_alias);
+                    ArrayList_Bool_push(&(self->import_used), false);
+                    ArrayList_Int_push(&(self->import_lines), s.line);
+                    ArrayList_Int_push(&(self->import_cols), s.col);
+                }
+                else
+                {
+                    self->has_bare_import = true;
+                }
+            }
+            if (s.kind == StmtKind_sk_cimport)
+            {
+                self->has_bare_import = true;
             }
             i = (i + 1LL);
         }
@@ -6129,7 +6169,7 @@ void TypeChecker_collect_block_drops(TypeChecker* self, int64_t stmt_idx)
     while (i >= 0LL)
     {
         Symbol sym = ArrayList_Symbol_get(&(table.entries), i);
-        if (((strcmp(sym.kind, "var") == 0LL) || (strcmp(sym.kind, "param") == 0LL)) && (!sym.moved))
+        if ((((strcmp(sym.kind, "var") == 0LL) || (strcmp(sym.kind, "param") == 0LL)) && (!sym.moved)) && (!sym.freed))
         {
             const char* base_type = sym.type_name;
             if (TypeChecker_has_drop_method(self, base_type))
@@ -6198,6 +6238,76 @@ bool TypeChecker_is_numeric_type(TypeChecker* self, const char* type_name)
         return true;
     }
     if (strcmp(type_name, "Float") == 0LL)
+    {
+        return true;
+    }
+    return false;
+}
+bool TypeChecker_is_builtin_type(TypeChecker* self, const char* name)
+{
+    return ((((((((strcmp(name, "Int") == 0LL) || (strcmp(name, "Float") == 0LL)) || (strcmp(name, "Bool") == 0LL)) || (strcmp(name, "Char") == 0LL)) || (strcmp(name, "Str") == 0LL)) || (strcmp(name, "Void") == 0LL)) || (strcmp(name, "NoneType") == 0LL)) || (strcmp(name, "usize") == 0LL));
+}
+bool TypeChecker_is_struct_type(TypeChecker* self, const char* name)
+{
+    if (((strcmp(name, "ArrayList") == 0LL) || (strcmp(name, "HashMap") == 0LL)) || (strcmp(name, "StringBuilder") == 0LL))
+    {
+        return true;
+    }
+    int64_t i = 0LL;
+    while (i < ArrayList_StmtNode_length(self->stmt_pool))
+    {
+        StmtNode s = ArrayList_StmtNode_get(self->stmt_pool, i);
+        if ((s.kind == StmtKind_sk_struct_decl) && (strcmp(s.struct_name, name) == 0LL))
+        {
+            return true;
+        }
+        i = (i + 1LL);
+    }
+    return false;
+}
+bool TypeChecker_is_standard_c_func(TypeChecker* self, const char* name)
+{
+    if ((((strcmp(name, "malloc") == 0LL) || (strcmp(name, "free") == 0LL)) || (strcmp(name, "realloc") == 0LL)) || (strcmp(name, "calloc") == 0LL))
+    {
+        return true;
+    }
+    if ((((strcmp(name, "printf") == 0LL) || (strcmp(name, "fprintf") == 0LL)) || (strcmp(name, "sprintf") == 0LL)) || (strcmp(name, "snprintf") == 0LL))
+    {
+        return true;
+    }
+    if (((((((strcmp(name, "fopen") == 0LL) || (strcmp(name, "fread") == 0LL)) || (strcmp(name, "fwrite") == 0LL)) || (strcmp(name, "fclose") == 0LL)) || (strcmp(name, "fseek") == 0LL)) || (strcmp(name, "ftell") == 0LL)) || (strcmp(name, "rewind") == 0LL))
+    {
+        return true;
+    }
+    if ((strcmp(name, "strlen") == 0LL) || (strcmp(name, "strcmp") == 0LL))
+    {
+        return true;
+    }
+    if ((strcmp(name, "exit") == 0LL) || (strcmp(name, "system") == 0LL))
+    {
+        return true;
+    }
+    if ((((strcmp(name, "isdigit") == 0LL) || (strcmp(name, "isalpha") == 0LL)) || (strcmp(name, "isalnum") == 0LL)) || (strcmp(name, "isspace") == 0LL))
+    {
+        return true;
+    }
+    if ((strcmp(name, "toupper") == 0LL) || (strcmp(name, "tolower") == 0LL))
+    {
+        return true;
+    }
+    if (strcmp(name, "atoll") == 0LL)
+    {
+        return true;
+    }
+    if (strcmp(name, "sqrt") == 0LL)
+    {
+        return true;
+    }
+    if (((strcmp(name, "memset") == 0LL) || (strcmp(name, "memcpy") == 0LL)) || (strcmp(name, "memmove") == 0LL))
+    {
+        return true;
+    }
+    if (strcmp(name, "abort") == 0LL)
     {
         return true;
     }
@@ -6766,6 +6876,48 @@ void TypeChecker_mark_expr_moved(TypeChecker* self, int64_t expr_idx)
         }
     }
 }
+void TypeChecker_mark_expr_freed(TypeChecker* self, int64_t expr_idx)
+{
+    if (expr_idx < 0LL)
+    {
+        return;
+    }
+    int64_t inner = expr_idx;
+    bool done = false;
+    while (!done)
+    {
+        ExprNode e = ArrayList_ExprNode_get(self->expr_pool, inner);
+        if (((e.kind == ExprKind_ek_func_call) && (strcmp(e.func_name, "as") == 0LL)) && (ArrayList_Int_length(&(e.func_args)) >= 1LL))
+        {
+            inner = ArrayList_Int_get(&(e.func_args), 0LL);
+        }
+        else
+        {
+            done = true;
+        }
+    }
+    ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, inner);
+    if (expr.kind == ExprKind_ek_identifier)
+    {
+        SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
+        Symbol sym = SymbolTable_lookup_symbol(&(table), expr.ident_name, (&self->symbol_tables));
+        if (strlen(sym.name) > 0LL)
+        {
+            if (sym.freed)
+            {
+                TypeChecker_err(self, "E0032", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("double-free: '", expr.ident_name), "' is already freed"), expr.line, expr.col);
+                return;
+            }
+            if (sym.moved)
+            {
+                TypeChecker_err(self, "E0009", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("use of moved value: '", expr.ident_name), "'"), expr.line, expr.col);
+                return;
+            }
+            SymbolTable_mark_freed(&(table), expr.ident_name, (&self->symbol_tables));
+            ArrayList_SymbolTable_set(&(self->symbol_tables), self->current_table_idx, table);
+        }
+    }
+}
 const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx)
 {
     if (expr_idx < 0LL)
@@ -7148,6 +7300,32 @@ bool TypeChecker_is_enum_or_error_type(TypeChecker* self, const char* name)
     }
     return false;
 }
+bool TypeChecker_is_imported_name(TypeChecker* self, const char* name)
+{
+    int64_t i = 0LL;
+    while (i < ArrayList_Str_length(&(self->imported_names)))
+    {
+        if (strcmp(ArrayList_Str_get(&(self->imported_names), i), name) == 0LL)
+        {
+            return true;
+        }
+        i = (i + 1LL);
+    }
+    return false;
+}
+void TypeChecker_mark_import_used(TypeChecker* self, const char* name)
+{
+    int64_t i = 0LL;
+    while (i < ArrayList_Str_length(&(self->imported_names)))
+    {
+        if (strcmp(ArrayList_Str_get(&(self->imported_names), i), name) == 0LL)
+        {
+            ArrayList_Bool_set(&(self->import_used), i, true);
+            return;
+        }
+        i = (i + 1LL);
+    }
+}
 void TypeChecker_check_identifier(TypeChecker* self, int64_t expr_idx)
 {
     ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
@@ -7156,15 +7334,24 @@ void TypeChecker_check_identifier(TypeChecker* self, int64_t expr_idx)
     Symbol sym = SymbolTable_lookup_symbol(&(table), name, (&self->symbol_tables));
     if (strlen(sym.name) > 0LL)
     {
+        if (sym.freed)
+        {
+            TypeChecker_err(self, "E0031", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("use of freed value: '", name), "'"), expr.line, expr.col);
+        }
+        else
         if (sym.moved)
         {
             TypeChecker_err(self, "E0009", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("use of moved value: '", name), "'"), expr.line, expr.col);
         }
     }
     else
-    if ((!TypeChecker_is_enum_or_error_type(self, name)) && (!self->has_any_import))
+    if ((((!TypeChecker_is_enum_or_error_type(self, name)) && (!TypeChecker_is_builtin_type(self, name))) && (!TypeChecker_is_imported_name(self, name))) && (!self->has_bare_import))
     {
         TypeChecker_err(self, "E0019", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined identifier: '", name), "'"), expr.line, expr.col);
+    }
+    if (TypeChecker_is_imported_name(self, name))
+    {
+        TypeChecker_mark_import_used(self, name);
     }
 }
 void TypeChecker_check_field_access(TypeChecker* self, int64_t expr_idx)
@@ -7280,9 +7467,17 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx)
             {
                 SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
                 Symbol sym = SymbolTable_lookup_symbol(&(table), target_expr.ident_name, (&self->symbol_tables));
-                if ((strlen(sym.name) > 0LL) && (!sym.is_mutable))
+                if (strlen(sym.name) > 0LL)
                 {
-                    TypeChecker_err(self, "E0008", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot assign to immutable variable '", target_expr.ident_name), "'"), target_expr.line, target_expr.col);
+                    if (sym.freed)
+                    {
+                        TypeChecker_err(self, "E0031", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot assign to freed variable '", target_expr.ident_name), "'"), target_expr.line, target_expr.col);
+                    }
+                    else
+                    if (!sym.is_mutable)
+                    {
+                        TypeChecker_err(self, "E0008", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot assign to immutable variable '", target_expr.ident_name), "'"), target_expr.line, target_expr.col);
+                    }
                 }
             }
         }
@@ -7628,16 +7823,37 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx)
     }
     if (expr.kind == ExprKind_ek_func_call)
     {
-        int64_t i = 0LL;
-        while (i < ArrayList_Int_length(&(expr.func_args)))
-        {
-            int64_t arg = ArrayList_Int_get(&(expr.func_args), i);
-            TypeChecker_check_expr(self, arg);
-            TypeChecker_mark_expr_moved(self, arg);
-            i = (i + 1LL);
-        }
         const char* name = expr.func_name;
-        if (((((((strcmp(name, "cast") == 0LL) || (strcmp(name, "as") == 0LL)) || (strcmp(name, "size_of") == 0LL)) || (strcmp(name, "Char") == 0LL)) || (strcmp(name, "Int") == 0LL)) || (strcmp(name, "Float") == 0LL)) || (strcmp(name, "Bool") == 0LL))
+        if (strcmp(name, "free") == 0LL)
+        {
+            int64_t i = 0LL;
+            while (i < ArrayList_Int_length(&(expr.func_args)))
+            {
+                int64_t arg = ArrayList_Int_get(&(expr.func_args), i);
+                TypeChecker_check_expr(self, arg);
+                i = (i + 1LL);
+            }
+            if (ArrayList_Int_length(&(expr.func_args)) >= 1LL)
+            {
+                TypeChecker_mark_expr_freed(self, ArrayList_Int_get(&(expr.func_args), 0LL));
+            }
+            if (TypeChecker_is_imported_name(self, name))
+            {
+                TypeChecker_mark_import_used(self, name);
+            }
+        }
+        else
+        {
+            int64_t i = 0LL;
+            while (i < ArrayList_Int_length(&(expr.func_args)))
+            {
+                int64_t arg = ArrayList_Int_get(&(expr.func_args), i);
+                TypeChecker_check_expr(self, arg);
+                TypeChecker_mark_expr_moved(self, arg);
+                i = (i + 1LL);
+            }
+        }
+        if ((((((((strcmp(name, "cast") == 0LL) || (strcmp(name, "as") == 0LL)) || (strcmp(name, "size_of") == 0LL)) || (strcmp(name, "free") == 0LL)) || (strcmp(name, "Char") == 0LL)) || (strcmp(name, "Int") == 0LL)) || (strcmp(name, "Float") == 0LL)) || (strcmp(name, "Bool") == 0LL))
         {
             return;
         }
@@ -7691,9 +7907,19 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx)
             }
         }
         else
-        if (!self->has_any_import)
+        if (((!TypeChecker_is_imported_name(self, name)) && (!TypeChecker_is_standard_c_func(self, name))) && (!self->has_bare_import))
         {
-            TypeChecker_err(self, "E0020", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined function: '", name), "'"), expr.line, expr.col);
+            if (TypeChecker_is_builtin_type(self, name) || TypeChecker_is_struct_type(self, name))
+            {
+            }
+            else
+            {
+                TypeChecker_err(self, "E0020", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined function: '", name), "'"), expr.line, expr.col);
+            }
+        }
+        if (TypeChecker_is_imported_name(self, name))
+        {
+            TypeChecker_mark_import_used(self, name);
         }
         return;
     }
@@ -7753,9 +7979,13 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx)
             }
         }
         else
-        if (!self->has_any_import)
+        if ((!TypeChecker_is_imported_name(self, meth_name)) && (!self->has_bare_import))
         {
             TypeChecker_err(self, "E0022", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined method: '", meth_name), "' for type '"), recv_type), "'"), expr.line, expr.col);
+        }
+        if (TypeChecker_is_imported_name(self, meth_name))
+        {
+            TypeChecker_mark_import_used(self, meth_name);
         }
         return;
     }
@@ -7824,7 +8054,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx)
         int64_t struct_idx = TypeChecker_find_struct_decl(self, struct_name);
         if (struct_idx < 0LL)
         {
-            if (!self->has_any_import)
+            if ((!TypeChecker_is_imported_name(self, struct_name)) && (!self->has_bare_import))
             {
                 TypeChecker_err(self, "E0021", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined struct: '", struct_name), "'"), expr.line, expr.col);
             }
@@ -7984,7 +8214,7 @@ SymbolTable SymbolTable_init(KaiAllocator* allocator, int64_t parent_idx)
     self.parent_idx = parent_idx;    return self;
 }void SymbolTable_define(SymbolTable* self, const char* name, const char* type_name, bool is_mutable, const char* kind, const char* llvm_value)
 {
-    ArrayList_Symbol_push(&(self->entries), (Symbol){ .name = name, .type_name = type_name, .is_mutable = is_mutable, .kind = kind, .llvm_value = llvm_value, .moved = false });
+    ArrayList_Symbol_push(&(self->entries), (Symbol){ .name = name, .type_name = type_name, .is_mutable = is_mutable, .kind = kind, .llvm_value = llvm_value, .moved = false, .freed = false });
 }
 int64_t SymbolTable_lookup(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables)
 {
@@ -8020,7 +8250,7 @@ Symbol SymbolTable_lookup_symbol(SymbolTable* self, const char* name, ArrayList_
         SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
         return SymbolTable_lookup_symbol(&(parent), name, tables);
     }
-    return (Symbol){ .name = "", .type_name = "", .is_mutable = false, .kind = "", .llvm_value = "", .moved = false };
+    return (Symbol){ .name = "", .type_name = "", .is_mutable = false, .kind = "", .llvm_value = "", .moved = false, .freed = false };
 }
 void SymbolTable_mark_moved(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables)
 {
@@ -8040,6 +8270,27 @@ void SymbolTable_mark_moved(SymbolTable* self, const char* name, ArrayList_Symbo
     {
         SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
         SymbolTable_mark_moved(&(parent), name, tables);
+        ArrayList_SymbolTable_set(tables, self->parent_idx, parent);
+    }
+}
+void SymbolTable_mark_freed(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables)
+{
+    int64_t i = 0LL;
+    while (i < ArrayList_Symbol_length(&(self->entries)))
+    {
+        if (strcmp(ArrayList_Symbol_get(&(self->entries), i).name, name) == 0LL)
+        {
+            Symbol sym = ArrayList_Symbol_get(&(self->entries), i);
+            sym.freed = true;
+            ArrayList_Symbol_set(&(self->entries), i, sym);
+            return;
+        }
+        i = (i + 1LL);
+    }
+    if (self->parent_idx >= 0LL)
+    {
+        SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
+        SymbolTable_mark_freed(&(parent), name, tables);
         ArrayList_SymbolTable_set(tables, self->parent_idx, parent);
     }
 }
@@ -17933,6 +18184,18 @@ ErrorInfo get_error_info(const char* code)
     {
         return (ErrorInfo){ .code = code, .title = "Undefined method", .description = "A method was called on a type that does not have that method in any 'impl' block.", .fix = "Add an 'impl' block with the method, check the spelling of the method name, or check the receiver type." };
     }
+    if (strcmp(code, "E0031") == 0LL)
+    {
+        return (ErrorInfo){ .code = code, .title = "Use of freed value", .description = "A value was used after it had been freed. Memory-safe languages prevent accessing freed memory.", .fix = "Restructure the code to avoid using the value after it has been freed. Consider using a longer-lived allocation or deferring the free operation." };
+    }
+    if (strcmp(code, "E0032") == 0LL)
+    {
+        return (ErrorInfo){ .code = code, .title = "Double free", .description = "A value was freed more than once. Freeing the same memory twice can lead to heap corruption and security vulnerabilities.", .fix = "Ensure each allocation is freed exactly once. Remove the duplicate free call, or use a flag to track whether the value has already been freed." };
+    }
+    if (strcmp(code, "E0033") == 0LL)
+    {
+        return (ErrorInfo){ .code = code, .title = "Unused import", .description = "An imported symbol was never used in the current compilation unit.", .fix = "Remove the unused import, or use the imported symbol in the code." };
+    }
     if (strcmp(code, "E0100") == 0LL)
     {
         return (ErrorInfo){ .code = code, .title = "Lexer error", .description = "The lexer encountered an unexpected character or syntax that could not be tokenized.", .fix = "Check for unexpected characters, unclosed strings, or invalid syntax near the reported position." };
@@ -21514,6 +21777,77 @@ void ArrayList_SymbolTable_deinit(ArrayList_SymbolTable* self)
         KaiAllocator_free(self->allocator, ((uint8_t*)(self->data)));
     }
 }
+ArrayList_Bool ArrayList_Bool_init(KaiAllocator* allocator)
+{
+    ArrayList_Bool self = (ArrayList_Bool){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+        self.data = ((bool*)(KaiAllocator_alloc(allocator, (self.cap * ((int64_t)(sizeof(bool)))), 1LL)));
+    }    return self;
+}void ArrayList_Bool_push(ArrayList_Bool* self, bool item)
+{
+    if (self->len == self->cap)
+    {
+        int64_t new_cap = (self->cap * 2LL);
+        {
+            bool* new_data = ((bool*)(KaiAllocator_alloc(self->allocator, (new_cap * ((int64_t)(sizeof(bool)))), 1LL)));
+            int64_t i = 0LL;
+            while (i < self->len)
+            {
+                new_data[i] = self->data[i];
+                i = (i + 1LL);
+            }
+            KaiAllocator_free(self->allocator, ((uint8_t*)(self->data)));
+            self->data = new_data;
+            self->cap = new_cap;
+        }
+    }
+    self->data[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+bool ArrayList_Bool_get(ArrayList_Bool* self, int64_t index)
+{
+    if ((index < 0LL) || (index >= self->len))
+    {
+        {
+            exit(1LL);
+        }
+    }
+    return self->data[index];
+}
+void ArrayList_Bool_set(ArrayList_Bool* self, int64_t index, bool item)
+{
+    if ((index < 0LL) || (index >= self->len))
+    {
+        {
+            exit(1LL);
+        }
+    }
+    self->data[index] = item;
+}
+bool ArrayList_Bool_pop(ArrayList_Bool* self)
+{
+    if (self->len == 0LL)
+    {
+        {
+            exit(1LL);
+        }
+    }
+    self->len = (self->len - 1LL);
+    return self->data[self->len];
+}
+int64_t ArrayList_Bool_length(ArrayList_Bool* self)
+{
+    return self->len;
+}
+void ArrayList_Bool_deinit(ArrayList_Bool* self)
+{
+    {
+        KaiAllocator_free(self->allocator, ((uint8_t*)(self->data)));
+    }
+}
 ArrayList_StructInfo ArrayList_StructInfo_init(KaiAllocator* allocator)
 {
     ArrayList_StructInfo self = (ArrayList_StructInfo){0};
@@ -21793,77 +22127,6 @@ int64_t ArrayList_CStmtNode_length(ArrayList_CStmtNode* self)
     return self->len;
 }
 void ArrayList_CStmtNode_deinit(ArrayList_CStmtNode* self)
-{
-    {
-        KaiAllocator_free(self->allocator, ((uint8_t*)(self->data)));
-    }
-}
-ArrayList_Bool ArrayList_Bool_init(KaiAllocator* allocator)
-{
-    ArrayList_Bool self = (ArrayList_Bool){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-        self.data = ((bool*)(KaiAllocator_alloc(allocator, (self.cap * ((int64_t)(sizeof(bool)))), 1LL)));
-    }    return self;
-}void ArrayList_Bool_push(ArrayList_Bool* self, bool item)
-{
-    if (self->len == self->cap)
-    {
-        int64_t new_cap = (self->cap * 2LL);
-        {
-            bool* new_data = ((bool*)(KaiAllocator_alloc(self->allocator, (new_cap * ((int64_t)(sizeof(bool)))), 1LL)));
-            int64_t i = 0LL;
-            while (i < self->len)
-            {
-                new_data[i] = self->data[i];
-                i = (i + 1LL);
-            }
-            KaiAllocator_free(self->allocator, ((uint8_t*)(self->data)));
-            self->data = new_data;
-            self->cap = new_cap;
-        }
-    }
-    self->data[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-bool ArrayList_Bool_get(ArrayList_Bool* self, int64_t index)
-{
-    if ((index < 0LL) || (index >= self->len))
-    {
-        {
-            exit(1LL);
-        }
-    }
-    return self->data[index];
-}
-void ArrayList_Bool_set(ArrayList_Bool* self, int64_t index, bool item)
-{
-    if ((index < 0LL) || (index >= self->len))
-    {
-        {
-            exit(1LL);
-        }
-    }
-    self->data[index] = item;
-}
-bool ArrayList_Bool_pop(ArrayList_Bool* self)
-{
-    if (self->len == 0LL)
-    {
-        {
-            exit(1LL);
-        }
-    }
-    self->len = (self->len - 1LL);
-    return self->data[self->len];
-}
-int64_t ArrayList_Bool_length(ArrayList_Bool* self)
-{
-    return self->len;
-}
-void ArrayList_Bool_deinit(ArrayList_Bool* self)
 {
     {
         KaiAllocator_free(self->allocator, ((uint8_t*)(self->data)));
