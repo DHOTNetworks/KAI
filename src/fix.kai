@@ -275,8 +275,7 @@ fn print_patch(path: Str, json_mode: Bool, apply: Bool, applied: Bool,
 // ====================================================================
 
 fn run_fix(fix_mode: Str, fix_file: Str, json: Bool) -> Int {
-    var fix_alloc = KaiAllocator(heads: 0 as *Char, used: 0)
-    fix_alloc.init()
+    var fix_alloc = KaiAllocator_new()
     _kai_set_current_allocator(&fix_alloc as *Void)
 
     let src_res = read_to_string(&fix_alloc, fix_file)

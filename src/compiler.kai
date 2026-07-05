@@ -135,8 +135,7 @@ fn main(argc: Int, argv: **Char) -> Int {
         return 1
     }
 
-    var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
-    allocator.init()
+    var allocator = KaiAllocator_new()
     _kai_set_current_allocator(&allocator as *Void)
 
     var exe_include_flag = ""

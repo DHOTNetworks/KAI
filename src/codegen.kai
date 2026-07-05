@@ -2856,7 +2856,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
                         let full_path = exe_dir + "/" + rel_path
                         let parent_path = exe_dir + "/../" + rel_path
                         let lib_path = exe_dir + "/../lib/kai/" + rel_path
-                        self.allocator.free(buf)
+                        self.allocator.free(buf as *u8)
                         
                         let s2 = read_to_string(self.allocator, full_path) catch |err| ""
                         if length(s2) > 0 {
@@ -2878,7 +2878,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
                             }
                         }
                     } else {
-                        self.allocator.free(buf)
+                        self.allocator.free(buf as *u8)
                     }
                 }
             }
@@ -3354,11 +3354,11 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     result.append("    printf(\"%f\\n\", (double)(v));\n")
     result.append("}\n")
     result.append("\n")
-    result.append("static inline char* _kai_mmap(char* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {\n")
-    result.append("    return (char*)mmap(addr, length, prot, MAP_PRIVATE | MAP_ANONYMOUS, fd, offset);\n")
+    result.append("static inline uint8_t* _kai_mmap(uint8_t* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {\n")
+    result.append("    return (uint8_t*)mmap(addr, length, prot, MAP_PRIVATE | MAP_ANONYMOUS, fd, offset);\n")
     result.append("}\n")
     result.append("\n")
-    result.append("static inline int64_t _kai_munmap(char* addr, int64_t length) {\n")
+    result.append("static inline int64_t _kai_munmap(uint8_t* addr, int64_t length) {\n")
     result.append("    return munmap(addr, length);\n")
     result.append("}\n")
     result.append("\n")

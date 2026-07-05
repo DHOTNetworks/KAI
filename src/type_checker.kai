@@ -309,10 +309,8 @@ impl TypeChecker {
         if t == s {
             return true
         }
-        // Integer type strict compatibility: Int is an alias for i64 only
+        // Integer types are fully explicit — no implicit cross-type coercion
         if self.is_integer_type(t) && self.is_integer_type(s) {
-            if t == "Int" && s == "i64" { return true }
-            if t == "i64" && s == "Int" { return true }
             return false
         }
         if (t == "Str" && s == "*Char") || (t == "*Char" && s == "Str") {
@@ -359,6 +357,24 @@ impl TypeChecker {
             if s == target_err {
                 return true
             }
+        }
+        // []T and *T are compatible — both are thin pointers (T*) in C
+        let t_is_slice = length(t) >= 2 && t[0..2] == "[]"
+        let s_is_slice = length(s) >= 2 && s[0..2] == "[]"
+        if t_is_slice || s_is_slice {
+            var t_inner = t
+            if t_is_slice {
+                t_inner = t[2..length(t)]
+            } else if length(t) > 0 && t[0] == Char(42) {
+                t_inner = t[1..length(t)]
+            }
+            var s_inner = s
+            if s_is_slice {
+                s_inner = s[2..length(s)]
+            } else if length(s) > 0 && s[0] == Char(42) {
+                s_inner = s[1..length(s)]
+            }
+            return self.types_compatible(t_inner, s_inner)
         }
         let t_ptr = self.parse_ptr_ref(t)
         let s_ptr = self.parse_ptr_ref(s)
@@ -536,7 +552,7 @@ impl TypeChecker {
                 return expr.func_type_args.get(0)
             }
             if name == "size_of" {
-                return "Int"
+                return "usize"
             }
             if name == "Char" || name == "Int" || name == "Float" || name == "Bool" {
                 return name
@@ -1158,8 +1174,16 @@ impl TypeChecker {
                         let ptype = param.ptype
                         let is_generic_param = length(ptype) == 1 && ptype[0] >= Char(65) && ptype[0] <= Char(90)
                         if !is_generic_param && !self.types_compatible(ptype, arg_type) {
-                            printf("%s:%ld:%ld: error[E0003]: argument type mismatch for function '%s', parameter '%s': expected '%s', got '%s'\n", self.source_file, expr.line, expr.col, name, param.name, ptype, arg_type)
-                            self.has_error = true
+                            if self.is_integer_type(ptype) && self.is_integer_literal(arg) {
+                                let v = self.int_literal_value(self.expr_pool.get(arg))
+                                if !self.fits_in_type(v, ptype) {
+                                    printf("%s:%ld:%ld: error[E0030]: integer literal %ld does not fit in type '%s'\n", self.source_file, expr.line, expr.col, v, ptype)
+                                    self.has_error = true
+                                }
+                            } else {
+                                printf("%s:%ld:%ld: error[E0003]: argument type mismatch for function '%s', parameter '%s': expected '%s', got '%s'\n", self.source_file, expr.line, expr.col, name, param.name, ptype, arg_type)
+                                self.has_error = true
+                            }
                         }
                         arg_i = arg_i + 1
                     }
@@ -1200,8 +1224,16 @@ impl TypeChecker {
                         let param = decl.func_params.get(arg_i + 1)
                         let arg_type = self.get_expr_type(arg)
                         if !self.types_compatible(param.ptype, arg_type) {
-                            printf("%s:%ld:%ld: error[E0003]: argument type mismatch for method '%s', parameter '%s': expected '%s', got '%s'\n", self.source_file, expr.line, expr.col, meth_name, param.name, param.ptype, arg_type)
-                            self.has_error = true
+                            if self.is_integer_type(param.ptype) && self.is_integer_literal(arg) {
+                                let v = self.int_literal_value(self.expr_pool.get(arg))
+                                if !self.fits_in_type(v, param.ptype) {
+                                    printf("%s:%ld:%ld: error[E0030]: integer literal %ld does not fit in type '%s'\n", self.source_file, expr.line, expr.col, v, param.ptype)
+                                    self.has_error = true
+                                }
+                            } else {
+                                printf("%s:%ld:%ld: error[E0003]: argument type mismatch for method '%s', parameter '%s': expected '%s', got '%s'\n", self.source_file, expr.line, expr.col, meth_name, param.name, param.ptype, arg_type)
+                                self.has_error = true
+                            }
                         }
                         arg_i = arg_i + 1
                     }

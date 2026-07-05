@@ -57,7 +57,7 @@ impl StringBuilder {
         self.cap = 16
         self.allocator = allocator
         unsafe {
-            self.data = allocator.alloc(self.cap * sizeof(Char), 1) as *Char
+            self.data = allocator.alloc(self.cap * sizeof(Char) as Int, 1) as *Char
         }
     }
 
@@ -65,13 +65,13 @@ impl StringBuilder {
         if self.len + 1 >= self.cap {
             let new_cap = self.cap * 2
             unsafe {
-                let new_data = self.allocator.alloc(new_cap * sizeof(Char), 1) as *Char
+                let new_data = self.allocator.alloc(new_cap * sizeof(Char) as Int, 1) as *Char
                 var i = 0
                 while i < self.len {
                     new_data[i] = self.data[i]
                     i = i + 1
                 }
-                self.allocator.free(self.data)
+                self.allocator.free(self.data as []u8)
                 self.data = new_data
                 self.cap = new_cap
             }
@@ -99,14 +99,14 @@ impl StringBuilder {
 
     fn deinit(self) {
         unsafe {
-            self.allocator.free(self.data)
+            self.allocator.free(self.data as []u8)
         }
     }
 }
 
 fn int_to_str(n: Int) -> Str {
     unsafe {
-        var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
+        var allocator = KaiAllocator(heads: 0 as *u8, used: 0)
         allocator.init()
         let alloc_ptr = &allocator as *Allocator
         var sb = StringBuilder(alloc_ptr)
@@ -132,7 +132,7 @@ fn int_to_str(n: Int) -> Str {
 
 fn char_to_str(c: Char) -> Str {
     unsafe {
-        var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
+        var allocator = KaiAllocator(heads: 0 as *u8, used: 0)
         allocator.init()
         var sb = StringBuilder(&allocator as *Allocator)
         sb.append_char(c)
@@ -152,14 +152,14 @@ fn substring(s: Str, start: Int, end: Int) -> Str {
             real_start = 0
         }
         if real_start >= real_end {
-            let empty = malloc(1)
+            let empty = malloc(1 as usize) as *Char
             if empty != (0 as *Char) {
                 empty[0] = Char(0)
             }
             return empty as Str
         }
         let sub_len = real_end - real_start
-        let buf = malloc(sub_len + 1)
+        let buf = malloc((sub_len + 1) as usize) as *Char
         if buf != (0 as *Char) {
             var i = 0
             while i < sub_len {

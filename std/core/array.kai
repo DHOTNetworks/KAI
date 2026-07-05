@@ -15,7 +15,7 @@ impl ArrayList {
         self.cap = 4
         self.allocator = allocator
         unsafe {
-            self.data = allocator.alloc(self.cap * sizeof(T), 1) as *T
+            self.data = allocator.alloc(self.cap * sizeof(T) as Int, 1) as *T
         }
     }
 
@@ -23,13 +23,13 @@ impl ArrayList {
         if self.len == self.cap {
             let new_cap = self.cap * 2
             unsafe {
-                let new_data = self.allocator.alloc(new_cap * sizeof(T), 1) as *T
+                let new_data = self.allocator.alloc(new_cap * sizeof(T) as Int, 1) as *T
                 var i = 0
                 while i < self.len {
                     new_data[i] = self.data[i]
                     i = i + 1
                 }
-                self.allocator.free(self.data as *Char)
+                self.allocator.free(self.data as []u8)
                 self.data = new_data
                 self.cap = new_cap
             }
@@ -72,7 +72,7 @@ impl ArrayList {
 
     fn deinit(self) {
         unsafe {
-            self.allocator.free(self.data as *Char)
+            self.allocator.free(self.data as []u8)
         }
     }
 }

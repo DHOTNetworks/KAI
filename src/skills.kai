@@ -7,8 +7,7 @@ extern fn _kai_set_current_allocator(allocator: *Void)
 extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
 
 fn run_skills(argc: Int, argv: **Char) -> Int {
-    var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
-    allocator.init()
+    var allocator = KaiAllocator_new()
     _kai_set_current_allocator(&allocator as *Void)
     var exe_dir = ""
     unsafe {

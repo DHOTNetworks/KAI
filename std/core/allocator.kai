@@ -1,9 +1,9 @@
 trait Allocator {
-    fn alloc(self, size: Int, alignment: Int) -> *Char {
+    fn alloc(self, size: Int, alignment: Int) -> []u8 {
     }
-    fn realloc(self, ptr: *Char, old_size: Int, new_size: Int, alignment: Int) -> *Char {
+    fn realloc(self, ptr: []u8, old_size: Int, new_size: Int, alignment: Int) -> []u8 {
     }
-    fn free(self, ptr: *Char) {
+    fn free(self, ptr: []u8) {
     }
     fn deinit(self) {
     }
@@ -13,9 +13,9 @@ trait Allocator {
 // CAlloc — thin wrapper over system malloc/realloc/free
 // ============================================================================
 
-extern fn malloc(size: Int) -> *Char
-extern fn realloc(ptr: *Char, size: Int) -> *Char
-extern fn free(ptr: *Char)
+extern fn malloc(size: usize) -> *u8
+extern fn realloc(ptr: *u8, size: usize) -> *u8
+extern fn free(ptr: *u8)
 
 struct CAlloc {
     dummy: Int
@@ -23,14 +23,14 @@ struct CAlloc {
 }
 
 impl Allocator for CAlloc {
-    fn alloc(self, size: Int, alignment: Int) -> *Char {
-        unsafe { return malloc(size) }
+    fn alloc(self, size: Int, alignment: Int) -> []u8 {
+        unsafe { return malloc(size as usize) }
     }
-    fn realloc(self, ptr: *Char, old_size: Int, new_size: Int, alignment: Int) -> *Char {
-        unsafe { return realloc(ptr, new_size) }
+    fn realloc(self, ptr: []u8, old_size: Int, new_size: Int, alignment: Int) -> []u8 {
+        unsafe { return realloc(ptr as *u8, new_size as usize) }
     }
-    fn free(self, ptr: *Char) {
-        unsafe { free(ptr) }
+    fn free(self, ptr: []u8) {
+        unsafe { free(ptr as *u8) }
     }
     fn deinit(self) {
     }
@@ -41,26 +41,26 @@ impl Allocator for CAlloc {
 //                 > 16 KB via direct mmap)
 // ============================================================================
 
-extern fn _kai_mmap(addr: *Char, length: Int, prot: Int, flags: Int, fd: Int, offset: Int) -> *Char
-extern fn _kai_munmap(addr: *Char, length: Int) -> Int
+extern fn _kai_mmap(addr: *u8, length: Int, prot: Int, flags: Int, fd: Int, offset: Int) -> *u8
+extern fn _kai_munmap(addr: *u8, length: Int) -> Int
 
 struct SlabHeader {
     magic: Int
     obj_size: Int
     capacity: Int
     free_cnt: Int
-    free_head: *Char
+    free_head: *u8
     next_bump_idx: Int
     pad: Int
-    next: *Char
+    next: *u8
 }
 
 struct FreeBlock {
-    next: *Char
+    next: *u8
 }
 
 struct KaiAllocator {
-    heads: *Char
+    heads: *u8
     used: Int
 }
 
@@ -100,33 +100,33 @@ fn page_align_up(n: Int) -> Int {
 impl KaiAllocator {
     fn init(self) {
         unsafe {
-            let ptr = _kai_mmap(0 as *Char, 4096, 3, 4098, -1, 0)
+            let ptr = _kai_mmap(0 as *u8, 4096, 3, 4098, -1, 0)
             self.heads = ptr
             self.used = 0
         }
     }
 
-    fn get_head(self, idx: Int) -> *Char {
+    fn get_head(self, idx: Int) -> *u8 {
         unsafe {
-            let arr = self.heads as **Char
+            let arr = self.heads as **u8
             return arr[idx]
         }
     }
 
-    fn set_head(self, idx: Int, head: *Char) {
+    fn set_head(self, idx: Int, head: *u8) {
         unsafe {
-            let arr = self.heads as **Char
+            let arr = self.heads as **u8
             arr[idx] = head
         }
     }
 
-    fn allocate_slab(self, idx: Int) -> *Char {
+    fn allocate_slab(self, idx: Int) -> *u8 {
         unsafe {
             // Overallocate 2x to guarantee 64KB alignment
-            let raw = _kai_mmap(0 as *Char, 131072, 3, 4098, -1, 0)
-            if raw as Int == -1 { return 0 as *Char }
+            let raw = _kai_mmap(0 as *u8, 131072, 3, 4098, -1, 0)
+            if raw as Int == -1 { return 0 as *u8 }
             let aligned_addr = (raw as Int + 65535) & (-65536)
-            let slab = aligned_addr as *Char
+            let slab = aligned_addr as *u8
             // Unmap the unused region before the aligned slab
             let before = aligned_addr - raw as Int
             if before > 0 {
@@ -136,7 +136,7 @@ impl KaiAllocator {
             let after_start = aligned_addr + 65536
             let after_len = raw as Int + 131072 - after_start
             if after_len > 0 {
-                _kai_munmap(after_start as *Char, after_len)
+                _kai_munmap(after_start as *u8, after_len)
             }
             let objsz = class_obj_size(idx)
             var hdr = slab as *SlabHeader
@@ -144,7 +144,7 @@ impl KaiAllocator {
             hdr.obj_size = objsz
             hdr.capacity = (65536 - 64) / objsz
             hdr.free_cnt = 0
-            hdr.free_head = 0 as *Char
+            hdr.free_head = 0 as *u8
             hdr.next_bump_idx = 0
             hdr.pad = 0
             hdr.next = self.get_head(idx)
@@ -153,38 +153,38 @@ impl KaiAllocator {
         }
     }
 
-    fn alloc_large(self, size: Int) -> *Char {
+    fn alloc_large(self, size: Int) -> *u8 {
         unsafe {
             let total = size + 16
             let page_aligned = page_align_up(total)
             // Overallocate by 64KB to guarantee 64KB alignment
-            let raw = _kai_mmap(0 as *Char, page_aligned + 65536, 3, 4098, -1, 0)
-            if raw as Int == -1 { return 0 as *Char }
+            let raw = _kai_mmap(0 as *u8, page_aligned + 65536, 3, 4098, -1, 0)
+            if raw as Int == -1 { return 0 as *u8 }
             let aligned_addr = (raw as Int + 65535) & (-65536)
-            let slab = aligned_addr as *Char
+            let slab = aligned_addr as *u8
             // Store the original mmap base for free_large
             (slab as *Int)[0] = raw as Int
             (slab as *Int)[1] = size
             self.used = self.used + size
-            return (aligned_addr + 16) as *Char
+            return (aligned_addr + 16) as *u8
         }
     }
 
-    fn free_large(self, ptr: *Char) {
+    fn free_large(self, ptr: *u8) {
         unsafe {
             let slab_addr = ptr as Int & (-65536)
-            let raw_ptr = (slab_addr as *Char as *Int)[0]
-            let orig_size = (slab_addr as *Char as *Int)[1]
+            let raw_ptr = (slab_addr as *u8 as *Int)[0]
+            let orig_size = (slab_addr as *u8 as *Int)[1]
             // Calculate original mmap size: page_align_up(orig_size + 16) + 65536
             let mmap_size = page_align_up(orig_size + 16) + 65536
             self.used = self.used - orig_size
-            _kai_munmap(raw_ptr as *Char, mmap_size)
+            _kai_munmap(raw_ptr as *u8, mmap_size)
         }
     }
 }
 
 impl Allocator for KaiAllocator {
-    fn alloc(self, size: Int, align: Int) -> *Char {
+    fn alloc(self, size: Int, align: Int) -> []u8 {
         if !is_small(size) {
             return self.alloc_large(size)
         }
@@ -192,9 +192,9 @@ impl Allocator for KaiAllocator {
         let objsz = class_obj_size(idx)
         unsafe {
             var slab = self.get_head(idx)
-            while slab != 0 as *Char {
+            while slab != 0 as *u8 {
                 var hdr = slab as *SlabHeader
-                if hdr.free_head != 0 as *Char {
+                if hdr.free_head != 0 as *u8 {
                     let ptr = hdr.free_head
                     hdr.free_head = (ptr as *FreeBlock).next
                     hdr.free_cnt = hdr.free_cnt - 1
@@ -203,7 +203,7 @@ impl Allocator for KaiAllocator {
                 }
                 if hdr.next_bump_idx < hdr.capacity {
                     let off = 64 + hdr.next_bump_idx * objsz
-                    let ptr = (slab as Int + off) as *Char
+                    let ptr = (slab as Int + off) as *u8
                     hdr.next_bump_idx = hdr.next_bump_idx + 1
                     self.used = self.used + objsz
                     return ptr
@@ -211,24 +211,24 @@ impl Allocator for KaiAllocator {
                 slab = hdr.next
             }
             let ns = self.allocate_slab(idx)
-            if ns == 0 as *Char { return 0 as *Char }
+            if ns == 0 as *u8 { return 0 as *u8 }
             var hdr = ns as *SlabHeader
             hdr.next_bump_idx = 1
             self.used = self.used + objsz
-            return (ns as Int + 64) as *Char
+            return (ns as Int + 64) as *u8
         }
     }
 
-    fn realloc(self, ptr: *Char, old_size: Int, new_size: Int, align: Int) -> *Char {
-        if ptr == 0 as *Char { return self.alloc(new_size, align) }
+    fn realloc(self, ptr: []u8, old_size: Int, new_size: Int, align: Int) -> []u8 {
+        if ptr == 0 as *u8 { return self.alloc(new_size, align) }
         if new_size <= old_size { return ptr }
         unsafe {
             let slab_addr = ptr as Int & (-65536)
-            var hdr = (slab_addr as *Char) as *SlabHeader
+            var hdr = (slab_addr as *u8) as *SlabHeader
             if hdr.magic == 1262569811 {
                 if new_size <= hdr.obj_size { return ptr }
                 let np = self.alloc(new_size, align)
-                if np == 0 as *Char { return 0 as *Char }
+                if np == 0 as *u8 { return 0 as *u8 }
                 var i = 0
                 while i < old_size {
                     np[i] = ptr[i]
@@ -239,7 +239,7 @@ impl Allocator for KaiAllocator {
             }
         }
         let np = self.alloc(new_size, align)
-        if np == 0 as *Char { return 0 as *Char }
+        if np == 0 as *u8 { return 0 as *u8 }
         unsafe {
             var i = 0
             while i < old_size {
@@ -251,18 +251,18 @@ impl Allocator for KaiAllocator {
         return np
     }
 
-    fn free(self, ptr: *Char) {
-        if ptr == 0 as *Char { return }
+    fn free(self, ptr: []u8) {
+        if ptr == 0 as *u8 { return }
         unsafe {
             let slab_addr = ptr as Int & (-65536)
-            var hdr = (slab_addr as *Char) as *SlabHeader
+            var hdr = (slab_addr as *u8) as *SlabHeader
             if hdr.magic == 1262569811 {
                 var fb = ptr as *FreeBlock
                 fb.next = hdr.free_head
-                hdr.free_head = ptr
+                hdr.free_head = ptr as *u8
                 hdr.free_cnt = hdr.free_cnt + 1
             } else {
-                self.free_large(ptr)
+                self.free_large(ptr as *u8)
             }
         }
     }
@@ -272,7 +272,7 @@ impl Allocator for KaiAllocator {
         while i < 12 {
             unsafe {
                 var slab = self.get_head(i)
-                while slab != 0 as *Char {
+                while slab != 0 as *u8 {
                     let next = (slab as *SlabHeader).next
                     _kai_munmap(slab, 65536)
                     slab = next
@@ -284,4 +284,14 @@ impl Allocator for KaiAllocator {
             _kai_munmap(self.heads, page_align_up(96))
         }
     }
+}
+
+// ============================================================================
+// KaiAllocator_new — one-liner constructor
+// ============================================================================
+
+fn KaiAllocator_new() -> KaiAllocator {
+    var a = KaiAllocator(heads: 0 as *u8, used: 0)
+    a.init()
+    return a
 }

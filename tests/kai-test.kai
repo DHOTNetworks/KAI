@@ -48,7 +48,7 @@ fn get_optional_value(flag: Bool) -> ?Int {
 }
 
 fn main() -> Int {
-    var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
+    var allocator = KaiAllocator(heads: 0 as *u8, used: 0)
     allocator.init()
     _kai_set_current_allocator(&allocator as *Void)
     

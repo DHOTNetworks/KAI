@@ -23,7 +23,7 @@ impl HashMap {
         self.cap = 16
         self.allocator = allocator
         unsafe {
-            self.entries = allocator.alloc(self.cap * sizeof(MapEntry<V>), 1) as *MapEntry<V>
+            self.entries = allocator.alloc(self.cap * sizeof(MapEntry<V>) as Int, 1) as *MapEntry<V>
             var i = 0
             while i < self.cap {
                 self.entries[i].occupied = false
@@ -91,7 +91,7 @@ impl HashMap {
         self.cap = old_cap * 2
         self.len = 0
         unsafe {
-            self.entries = self.allocator.alloc(self.cap * sizeof(MapEntry<V>), 1) as *MapEntry<V>
+            self.entries = self.allocator.alloc(self.cap * sizeof(MapEntry<V>) as Int, 1) as *MapEntry<V>
             var i = 0
             while i < self.cap {
                 self.entries[i].occupied = false
@@ -104,13 +104,13 @@ impl HashMap {
                 }
                 i = i + 1
             }
-            self.allocator.free(old_entries as *Char)
+            self.allocator.free(old_entries as []u8)
         }
     }
 
     fn deinit(self) {
         unsafe {
-            self.allocator.free(self.entries as *Char)
+            self.allocator.free(self.entries as []u8)
         }
     }
 }

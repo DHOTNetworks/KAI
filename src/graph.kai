@@ -44,8 +44,7 @@ fn run_graph(argc: Int, argv: **Char) -> Int {
         return 1
     }
 
-    var graph_alloc = KaiAllocator(heads: 0 as *Char, used: 0)
-    graph_alloc.init()
+    var graph_alloc = KaiAllocator_new()
     _kai_set_current_allocator(&graph_alloc as *Void)
 
     let src_res2 = read_to_string(&graph_alloc, graph_file)
