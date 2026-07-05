@@ -1,6 +1,5 @@
 import ArrayList from std.core.array
 import Allocator from std.core.allocator
-import read_to_string from std.io.file
 
 import ExprKind from ast_nodes
 import ExprNode from ast_nodes
@@ -16,12 +15,10 @@ import MatchCase from ast_nodes
 import AsmOutput from ast_nodes
 import AsmInput from ast_nodes
 import TokenValue from token_defs
-import Lexer from lexer
-import Parser from parser
 import CCodeBuilder from codegen_c_builder
 import cgb_char_to_str from codegen_c_builder
 import cgb_int_to_str from codegen_c_builder
-import std.io.print
+import ImportResolver from imports
 
 import CType from codegen_c_ast
 import CExprNode from codegen_c_ast
@@ -103,6 +100,7 @@ struct CodegenBuilder {
     stmt_pool: *ArrayList<StmtNode>
     expr_pool: *ArrayList<ExprNode>
     pattern_pool: *ArrayList<PatternNode>
+    import_resolver: *ImportResolver
 
     builder: CCodeBuilder
     struct_decls: StrBuf
@@ -115,8 +113,6 @@ struct CodegenBuilder {
 
     func_types: ArrayList<CgbMapEntry>
     var_types: ArrayList<CgbMapEntry>
-    loaded_modules: ArrayList<Str>
-    cimport_headers: ArrayList<Str>
     block_stack: ArrayList<Int>
 
     generic_struct_decls: ArrayList<CgbMapEntry>
@@ -217,11 +213,12 @@ fn add_init_return(self, body_str: Str, struct_name: Str) -> Str {
     return "{\n" + self_decl + content + "    return self;\n}"
 }
 
-fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>) {
+fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, import_resolver: *ImportResolver) {
     self.allocator = allocator
     self.stmt_pool = stmt_pool
     self.expr_pool = expr_pool
     self.pattern_pool = pattern_pool
+    self.import_resolver = import_resolver
     self.builder.init(allocator)
     self.struct_decls.init(allocator)
     self.func_decls.init(allocator)
@@ -231,8 +228,6 @@ fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool:
     self.cur_method_is_init = false
     self.func_types.init(allocator)
     self.var_types.init(allocator)
-    self.loaded_modules.init(allocator)
-    self.cimport_headers.init(allocator)
     self.block_stack.init(allocator)
     self.generic_struct_decls.init(allocator)
     self.generic_enum_decls.init(allocator)
@@ -1525,9 +1520,9 @@ fn gen_expr(self, expr_idx: Int) -> Int {
                     fn_name = fn_name + "_" + clean
                     tai = tai + 1
                 }
-                fn_name = fn_name + "_init"
+                fn_name = fn_name + "_new"
             } else {
-                fn_name = name + "_init"
+                fn_name = name + "_new"
             }
         }
 
@@ -2648,112 +2643,9 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     if stmt.kind == StmtKind.sk_struct_decl { return }
     if stmt.kind == StmtKind.sk_enum_decl { return }
     if stmt.kind == StmtKind.sk_impl_block { return }
-    if stmt.kind == StmtKind.sk_import {
-        let path = stmt.import_path
-        var module_key = ""
-        var pi = 0
-        while pi < path.length() {
-            if pi > 0 { module_key = module_key + "." }
-            module_key = module_key + path.get(pi)
-            pi = pi + 1
-        }
-        if module_key == "" { return }
-        if cgb_strlist_find(&self.loaded_modules, module_key) >= 0 { return }
-        self.loaded_modules.push(module_key)
-
-        var has_source = false
-        var source = ""
-        if path.length() > 0 && path.get(0) == "std" {
-            var path_str = ""
-            var i = 0
-            while i < path.length() {
-                if i > 0 { path_str = path_str + "/" }
-                path_str = path_str + path.get(i)
-                i = i + 1
-            }
-            let rel_path = path_str + ".kai"
-            let s1 = read_to_string(self.allocator, rel_path)
-            if s1.tag == 0 && strlen(s1.value) > 0 {
-                source = s1.value
-                has_source = true
-            } else {
-                unsafe {
-                    let buf = malloc(1024) as *Char
-                    if get_exe_dir(buf, 1024) == 0 {
-                        let exe_dir = buf as Str
-                        let full_path = exe_dir + "/" + rel_path
-                        let s2 = read_to_string(self.allocator, full_path)
-                        if s2.tag == 0 && strlen(s2.value) > 0 {
-                            source = s2.value
-                            has_source = true
-                        } else {
-                            let parent_path = exe_dir + "/../" + rel_path
-                            let s3 = read_to_string(self.allocator, parent_path)
-                            if s3.tag == 0 && strlen(s3.value) > 0 {
-                                source = s3.value
-                                has_source = true
-                            } else {
-                                let lib_path = exe_dir + "/../lib/kai/" + rel_path
-                                let s4 = read_to_string(self.allocator, lib_path)
-                                if s4.tag == 0 && strlen(s4.value) > 0 {
-                                    source = s4.value
-                                    has_source = true
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } else if path.length() > 0 {
-            let file_path = "src/" + module_key + ".kai"
-            let s = read_to_string(self.allocator, file_path)
-            if s.tag == 0 && strlen(s.value) > 0 {
-                source = s.value
-                has_source = true
-            }
-        }
-
-        if has_source {
-            var current_file_path = ""
-            if path.length() > 0 && path.get(0) == "std" {
-                var path_str = ""
-                var i = 0
-                while i < path.length() {
-                    if i > 0 { path_str = path_str + "/" }
-                    path_str = path_str + path.get(i)
-                    i = i + 1
-                }
-                current_file_path = path_str + ".kai"
-            } else {
-                current_file_path = "src/" + module_key + ".kai"
-            }
-            var lexer = Lexer(self.allocator, source, current_file_path)
-            lexer.lex()
-            if !lexer.has_error {
-                var parser = Parser.init_with_pools(self.allocator, current_file_path, lexer.tokens, self.expr_pool, self.stmt_pool, self.pattern_pool, source)
-                let program_idx = parser.parse_program()
-                if program_idx >= 0 {
-                    let prog = self.stmt_pool.get(program_idx)
-                    if prog.kind == StmtKind.sk_block {
-                        var pi = 0
-                        while pi < prog.block_stmts.length() {
-                            let sub = self.stmt_pool.get(prog.block_stmts.get(pi))
-                            if sub.kind == StmtKind.sk_import || sub.kind == StmtKind.sk_cimport {
-                                self.gen_stmt(prog.block_stmts.get(pi))
-                            }
-                            pi = pi + 1
-                        }
-                    }
-                }
-            }
-        }
-        return
-    }
+    if stmt.kind == StmtKind.sk_import { return }
     if stmt.kind == StmtKind.sk_cimport {
-        let hdr = stmt.cimport_header
-        if cgb_strlist_find(&self.cimport_headers, hdr) < 0 {
-            self.cimport_headers.push(hdr)
-        }
+        self.import_resolver.record_cimport(stmt.cimport_header)
         return
     }
     if stmt.kind == StmtKind.sk_trait_decl { return }
@@ -2997,6 +2889,7 @@ fn build_func_types(self) -> Void {
             unsafe { if strcmp(stmt.func_name, "__kai_std_str_concat_alloc") == 0 { is_runtime_helper = true } }
             if has_self_param { /* skip impl methods — handled by sk_impl_block */ }
             else if is_runtime_helper { /* skip — emitted as runtime helper */ }
+            else if stmt.func_type_params.length() > 0 { /* skip generic functions — monomorphized separately */ }
             else {
                 self.var_types.init(self.allocator)
                 self.block_stack.init(self.allocator)
@@ -3329,31 +3222,13 @@ fn emit_struct_body_with_deps(self, stmt_idx: Int, emitted: *ArrayList<Str>) {
 }
 
 fn generate(self, top_stmt_idx: Int) -> Str {
-    // Process imports first to populate stmt_pool with all functions
-    if top_stmt_idx >= 0 {
-        let top_stmt = self.stmt_pool.get(top_stmt_idx)
-        if top_stmt.kind == StmtKind.sk_block {
-            var ii = 0
-            while ii < top_stmt.block_stmts.length() {
-                let sub_stmt = self.stmt_pool.get(top_stmt.block_stmts.get(ii))
-                if sub_stmt.kind == StmtKind.sk_import {
-                    self.gen_stmt(top_stmt.block_stmts.get(ii))
-                }
-                if sub_stmt.kind == StmtKind.sk_cimport {
-                    self.gen_stmt(top_stmt.block_stmts.get(ii))
-                }
-                ii = ii + 1
-            }
-        }
-    }
-
     self.build_func_types()
 
     var result = StrBuf(self.allocator)
     var preamble_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
     preamble_builder.init(self.allocator)
     var preamble_printer = CPrinter(builder: &preamble_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
-    preamble_printer.emit_runtime_preamble(&self.cimport_headers)
+    preamble_printer.emit_runtime_preamble(&self.import_resolver.cimport_headers)
     result.append(preamble_builder.to_str())
     result.append("\n")
 
@@ -3383,3 +3258,4 @@ fn generate(self, top_stmt_idx: Int) -> Str {
 }
 
 }
+// MARKER_CHECK_1523

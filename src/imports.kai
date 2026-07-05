@@ -1,0 +1,168 @@
+import ArrayList from std.core.array
+import Allocator from std.core.allocator
+import read_to_string from std.io.file
+import Lexer from lexer
+import Parser from parser
+import StmtNode from ast_nodes
+import StmtKind from ast_nodes
+import ExprNode from ast_nodes
+import PatternNode from ast_nodes
+
+extern fn malloc(size: Int) -> *Char
+extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
+extern fn strlen(s: Str) -> Int
+
+struct ImportResolver {
+    allocator: *Allocator
+    loaded_modules: ArrayList<Str>
+    cimport_headers: ArrayList<Str>
+}
+
+impl ImportResolver {
+    fn init(self, allocator: *Allocator) {
+        self.allocator = allocator
+        self.loaded_modules = ArrayList<Str>(allocator)
+        self.cimport_headers = ArrayList<Str>(allocator)
+    }
+
+    fn record_cimport(self, header: Str) {
+        var found = false
+        var i = 0
+        while i < self.cimport_headers.length() {
+            if self.cimport_headers.get(i) == header { found = true }
+            i = i + 1
+        }
+        if !found { self.cimport_headers.push(header) }
+    }
+
+    fn resolve_import(self, stmt_idx: Int, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>) {
+        let stmt = stmt_pool.get(stmt_idx)
+        var path = stmt.import_path
+        var module_key = ""
+        var pi = 0
+        while pi < path.length() {
+            if pi > 0 { module_key = module_key + "." }
+            module_key = module_key + path.get(pi)
+            pi = pi + 1
+        }
+        if module_key == "" { return }
+
+        var li = 0
+        while li < self.loaded_modules.length() {
+            if self.loaded_modules.get(li) == module_key { return }
+            li = li + 1
+        }
+        self.loaded_modules.push(module_key)
+
+        var has_source = false
+        var source = ""
+        if path.length() > 0 && path.get(0) == "std" {
+            var path_str = ""
+            var ii = 0
+            while ii < path.length() {
+                if ii > 0 { path_str = path_str + "/" }
+                path_str = path_str + path.get(ii)
+                ii = ii + 1
+            }
+            let rel_path = path_str + ".kai"
+            let s1 = read_to_string(self.allocator, rel_path)
+            if s1.tag == 0 && strlen(s1.value) > 0 {
+                source = s1.value
+                has_source = true
+            }
+            if !has_source {
+                unsafe {
+                    let buf = malloc(1024) as *Char
+                    if get_exe_dir(buf, 1024) == 0 {
+                        let exe_dir = buf as Str
+                        let full_path = exe_dir + "/" + rel_path
+                        let s2 = read_to_string(self.allocator, full_path)
+                        if s2.tag == 0 && strlen(s2.value) > 0 {
+                            source = s2.value
+                            has_source = true
+                        }
+                        if !has_source {
+                            let parent_path = exe_dir + "/../" + rel_path
+                            let s3 = read_to_string(self.allocator, parent_path)
+                            if s3.tag == 0 && strlen(s3.value) > 0 {
+                                source = s3.value
+                                has_source = true
+                            }
+                            if !has_source {
+                                let lib_path = exe_dir + "/../lib/kai/" + rel_path
+                                let s4 = read_to_string(self.allocator, lib_path)
+                                if s4.tag == 0 && strlen(s4.value) > 0 {
+                                    source = s4.value
+                                    has_source = true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else if path.length() > 0 {
+            let file_path = "src/" + module_key + ".kai"
+            let s = read_to_string(self.allocator, file_path)
+            if s.tag == 0 && strlen(s.value) > 0 {
+                source = s.value
+                has_source = true
+            }
+        }
+
+        if has_source {
+            var current_file_path = ""
+            if path.length() > 0 && path.get(0) == "std" {
+                var path_str = ""
+                var ii = 0
+                while ii < path.length() {
+                    if ii > 0 { path_str = path_str + "/" }
+                    path_str = path_str + path.get(ii)
+                    ii = ii + 1
+                }
+                current_file_path = path_str + ".kai"
+            } else {
+                current_file_path = "src/" + module_key + ".kai"
+            }
+            var lexer = Lexer(self.allocator, source, current_file_path)
+            lexer.lex()
+            if !lexer.has_error {
+                var parser = Parser.init_with_pools(self.allocator, current_file_path, lexer.tokens, expr_pool, stmt_pool, pattern_pool, source)
+                let program_idx = parser.parse_program()
+                if program_idx >= 0 {
+                    let prog = stmt_pool.get(program_idx)
+                    if prog.kind == StmtKind.sk_block {
+                        var pi = 0
+                        while pi < prog.block_stmts.length() {
+                            let sub = stmt_pool.get(prog.block_stmts.get(pi))
+                            if sub.kind == StmtKind.sk_import {
+                                self.resolve_import(prog.block_stmts.get(pi), stmt_pool, expr_pool, pattern_pool)
+                            }
+                            if sub.kind == StmtKind.sk_cimport {
+                                self.record_cimport(sub.cimport_header)
+                            }
+                            pi = pi + 1
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn resolve_all(self, program_idx: Int, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>) {
+        let prog = stmt_pool.get(program_idx)
+        if prog.kind == StmtKind.sk_block {
+            var i = 0
+            while i < prog.block_stmts.length() {
+                let s_idx = prog.block_stmts.get(i)
+                let s = stmt_pool.get(s_idx)
+                if s.kind == StmtKind.sk_import {
+                    self.resolve_import(s_idx, stmt_pool, expr_pool, pattern_pool)
+                }
+                if s.kind == StmtKind.sk_cimport {
+                    self.record_cimport(s.cimport_header)
+                }
+                i = i + 1
+            }
+        }
+    }
+}

@@ -555,6 +555,16 @@ impl Parser {
         node.struct_methods = methods
         node.struct_trait_impls = impls
         self.stmt_pool.push(node)
+
+        // Generate constructor function: name + "_new"
+        var ctor = self.mk_stmt_node(StmtKind.sk_func_decl)
+        ctor.func_name = name + "_new"
+        ctor.func_params = ArrayList<Param>(self.allocator)
+        ctor.func_return_type = name
+        ctor.func_body = -1
+        ctor.func_type_params = tp
+        self.stmt_pool.push(ctor)
+
         return self.stmt_pool.length() - 1
 
     }

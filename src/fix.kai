@@ -11,6 +11,7 @@ import std.io.print
 import Lexer from lexer
 import Parser from parser
 import TypeChecker from type_checker
+import ImportResolver from imports
 import get_error_info from error_registry
 import __kai_std_ascii_is_alpha from std.lib.ascii
 import __kai_std_ascii_is_alnum from std.lib.ascii
@@ -294,7 +295,8 @@ fn run_fix(fix_mode: Str, fix_file: Str, json: Bool) -> Int {
             var fix_parser = Parser(&fix_alloc, fix_file, fix_lexer.tokens, source)
             let prog_idx = fix_parser.parse_program()
             if prog_idx >= 0 {
-                var chk = TypeChecker(&fix_alloc, fix_parser.stmt_pool, fix_parser.expr_pool, fix_parser.pattern_pool, fix_file, source)
+                var resolver = ImportResolver(&fix_alloc)
+                var chk = TypeChecker(&fix_alloc, fix_parser.stmt_pool, fix_parser.expr_pool, fix_parser.pattern_pool, fix_file, source, &resolver)
                 let ttmp = chk.check_program(prog_idx)
                 if ttmp { } else { }
             }

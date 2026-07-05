@@ -125,13 +125,51 @@ void __kai_panic(const char* msg) {
 }
 #endif
 
-/* trait Allocator: alloc, realloc, free, deinit */
 typedef struct CAlloc CAlloc;
+typedef struct SlabHeader SlabHeader;
+typedef struct FreeBlock FreeBlock;
+typedef struct KaiAllocator KaiAllocator;
+typedef struct Lexer Lexer;
+typedef struct StringBuilder StringBuilder;
+typedef struct Parser Parser;
+typedef struct Token Token;
+typedef struct DropVarEntry DropVarEntry;
+typedef struct FieldInit FieldInit;
+typedef struct Param Param;
+typedef struct StructField StructField;
+typedef struct Variant Variant;
+typedef struct MatchCase MatchCase;
+typedef struct StrInterpPart StrInterpPart;
+typedef struct AsmOutput AsmOutput;
+typedef struct AsmInput AsmInput;
+typedef struct PatternNode PatternNode;
+typedef struct ExprNode ExprNode;
+typedef struct StmtNode StmtNode;
+typedef struct Dir Dir;
+typedef struct PtrRefResult PtrRefResult;
+typedef struct StructInfo StructInfo;
+typedef struct TypeChecker TypeChecker;
+typedef struct Symbol Symbol;
+typedef struct SymbolTable SymbolTable;
+typedef struct ImportResolver ImportResolver;
+typedef struct StrMapEntry StrMapEntry;
+typedef struct Codegen Codegen;
+typedef struct StrBuf StrBuf;
+typedef struct CgbMapEntry CgbMapEntry;
+typedef struct CodegenBuilder CodegenBuilder;
+typedef struct CCodeBuilder CCodeBuilder;
+typedef struct CType CType;
+typedef struct CExprNode CExprNode;
+typedef struct CStmtNode CStmtNode;
+typedef struct CDeclNode CDeclNode;
+typedef struct CUnit CUnit;
+typedef struct CPrinter CPrinter;
+typedef struct ErrorInfo ErrorInfo;
+typedef struct ErrorEntry ErrorEntry;
 struct CAlloc {
     int64_t dummy;
     int64_t _pad;
 };
-typedef struct SlabHeader SlabHeader;
 struct SlabHeader {
     int64_t magic;
     int64_t obj_size;
@@ -142,11 +180,9 @@ struct SlabHeader {
     int64_t pad;
     uint8_t* next;
 };
-typedef struct FreeBlock FreeBlock;
 struct FreeBlock {
     uint8_t* next;
 };
-typedef struct KaiAllocator KaiAllocator;
 struct KaiAllocator {
     uint8_t* heads;
     int64_t used;
@@ -154,22 +190,75 @@ struct KaiAllocator {
 typedef enum {
     IoError_open_failed = 1,
 } IoError;
-typedef struct Result_Str_IoError Result_Str_IoError;
-struct Result_Str_IoError {
-    int64_t tag;
-    const char* value;
+typedef struct ArrayList_Token ArrayList_Token;
+struct ArrayList_Token {
+    Token* data;
+    int64_t len;
+    int64_t cap;
+    KaiAllocator* allocator;
 };
-typedef struct Result_Bool_IoError Result_Bool_IoError;
-struct Result_Bool_IoError {
-    int64_t tag;
-    bool value;
+typedef struct ArrayList_Int ArrayList_Int;
+struct ArrayList_Int {
+    int64_t* data;
+    int64_t len;
+    int64_t cap;
+    KaiAllocator* allocator;
 };
-typedef struct StringBuilder StringBuilder;
+struct Lexer {
+    KaiAllocator* allocator;
+    const char* source;
+    const char* source_file;
+    int64_t source_len;
+    int64_t cursor;
+    int64_t line;
+    int64_t column;
+    ArrayList_Token* tokens;
+    ArrayList_Int* indent_stack;
+    int64_t paren_depth;
+    int64_t brace_depth;
+    bool has_error;
+};
 struct StringBuilder {
     char* data;
     int64_t len;
     int64_t cap;
     KaiAllocator* allocator;
+};
+typedef struct ArrayList_ExprNode ArrayList_ExprNode;
+struct ArrayList_ExprNode {
+    ExprNode* data;
+    int64_t len;
+    int64_t cap;
+    KaiAllocator* allocator;
+};
+typedef struct ArrayList_StmtNode ArrayList_StmtNode;
+struct ArrayList_StmtNode {
+    StmtNode* data;
+    int64_t len;
+    int64_t cap;
+    KaiAllocator* allocator;
+};
+typedef struct ArrayList_PatternNode ArrayList_PatternNode;
+struct ArrayList_PatternNode {
+    PatternNode* data;
+    int64_t len;
+    int64_t cap;
+    KaiAllocator* allocator;
+};
+struct Parser {
+    KaiAllocator* allocator;
+    const char* source_file;
+    const char* source;
+    ArrayList_Token* tokens;
+    int64_t cursor;
+    bool pending_gt;
+    int64_t pending_gt_line;
+    int64_t pending_gt_col;
+    ArrayList_ExprNode* expr_pool;
+    ArrayList_StmtNode* stmt_pool;
+    ArrayList_PatternNode* pattern_pool;
+    int64_t stmt_line;
+    int64_t stmt_col;
 };
 typedef enum {
     TokenType_INT_LIT,
@@ -289,29 +378,24 @@ struct TokenValue {
         } tv_str;
     } payload;
 };
-typedef struct Token Token;
 struct Token {
     TokenType tok_type;
     TokenValue value;
     int64_t line;
     int64_t column;
 };
-typedef struct DropVarEntry DropVarEntry;
 struct DropVarEntry {
     const char* name;
     const char* base_type;
 };
-typedef struct FieldInit FieldInit;
 struct FieldInit {
     const char* name;
     int64_t value;
 };
-typedef struct Param Param;
 struct Param {
     const char* name;
     const char* ptype;
 };
-typedef struct StructField StructField;
 struct StructField {
     const char* name;
     const char* ftype;
@@ -323,30 +407,25 @@ struct ArrayList_Param {
     int64_t cap;
     KaiAllocator* allocator;
 };
-typedef struct Variant Variant;
 struct Variant {
     const char* vname;
     ArrayList_Param params;
 };
-typedef struct MatchCase MatchCase;
 struct MatchCase {
     int64_t pattern;
     int64_t body;
 };
-typedef struct StrInterpPart StrInterpPart;
 struct StrInterpPart {
     int64_t kind;
     const char* str_val;
     int64_t expr_idx;
 };
-typedef struct AsmOutput AsmOutput;
 struct AsmOutput {
     const char* name;
     const char* constraint;
     const char* type_name;
     int64_t expr_idx;
 };
-typedef struct AsmInput AsmInput;
 struct AsmInput {
     const char* name;
     const char* constraint;
@@ -364,7 +443,6 @@ struct ArrayList_Str {
     int64_t cap;
     KaiAllocator* allocator;
 };
-typedef struct PatternNode PatternNode;
 struct PatternNode {
     PatternKind kind;
     const char* variant_name;
@@ -401,13 +479,6 @@ struct ArrayList_StrInterpPart {
     int64_t cap;
     KaiAllocator* allocator;
 };
-typedef struct ArrayList_Int ArrayList_Int;
-struct ArrayList_Int {
-    int64_t* data;
-    int64_t len;
-    int64_t cap;
-    KaiAllocator* allocator;
-};
 typedef struct ArrayList_FieldInit ArrayList_FieldInit;
 struct ArrayList_FieldInit {
     FieldInit* data;
@@ -429,7 +500,6 @@ struct ArrayList_AsmInput {
     int64_t cap;
     KaiAllocator* allocator;
 };
-typedef struct ExprNode ExprNode;
 struct ExprNode {
     ExprKind kind;
     int64_t line;
@@ -536,7 +606,6 @@ struct ArrayList_MatchCase {
     int64_t cap;
     KaiAllocator* allocator;
 };
-typedef struct StmtNode StmtNode;
 struct StmtNode {
     StmtKind kind;
     int64_t line;
@@ -606,70 +675,58 @@ struct StmtNode {
     const char* error_name;
     ArrayList_Str error_variants;
 };
-typedef struct Dir Dir;
 struct Dir {
     void* handle;
 };
-typedef struct ArrayList_Token ArrayList_Token;
-struct ArrayList_Token {
-    Token* data;
+struct PtrRefResult {
+    bool is_ptr;
+    bool is_mut;
+    const char* inner;
+};
+struct StructInfo {
+    const char* name;
+    bool has_drop;
+};
+typedef struct ArrayList_SymbolTable ArrayList_SymbolTable;
+struct ArrayList_SymbolTable {
+    SymbolTable* data;
     int64_t len;
     int64_t cap;
     KaiAllocator* allocator;
 };
-typedef struct ArrayList_ExprNode ArrayList_ExprNode;
-struct ArrayList_ExprNode {
-    ExprNode* data;
+typedef struct ArrayList_StructInfo ArrayList_StructInfo;
+struct ArrayList_StructInfo {
+    StructInfo* data;
     int64_t len;
     int64_t cap;
     KaiAllocator* allocator;
 };
-typedef struct ArrayList_StmtNode ArrayList_StmtNode;
-struct ArrayList_StmtNode {
-    StmtNode* data;
+typedef struct ArrayList_Bool ArrayList_Bool;
+struct ArrayList_Bool {
+    bool* data;
     int64_t len;
     int64_t cap;
     KaiAllocator* allocator;
 };
-typedef struct ArrayList_PatternNode ArrayList_PatternNode;
-struct ArrayList_PatternNode {
-    PatternNode* data;
-    int64_t len;
-    int64_t cap;
+struct TypeChecker {
     KaiAllocator* allocator;
-};
-typedef struct Parser Parser;
-struct Parser {
-    KaiAllocator* allocator;
-    const char* source_file;
-    const char* source;
-    ArrayList_Token* tokens;
-    int64_t cursor;
-    bool pending_gt;
-    int64_t pending_gt_line;
-    int64_t pending_gt_col;
-    ArrayList_ExprNode* expr_pool;
     ArrayList_StmtNode* stmt_pool;
+    ArrayList_ExprNode* expr_pool;
     ArrayList_PatternNode* pattern_pool;
-    int64_t stmt_line;
-    int64_t stmt_col;
-};
-typedef struct Lexer Lexer;
-struct Lexer {
-    KaiAllocator* allocator;
-    const char* source;
-    const char* source_file;
-    int64_t source_len;
-    int64_t cursor;
-    int64_t line;
-    int64_t column;
-    ArrayList_Token* tokens;
-    ArrayList_Int* indent_stack;
-    int64_t paren_depth;
-    int64_t brace_depth;
+    ArrayList_SymbolTable symbol_tables;
+    int64_t current_table_idx;
+    ArrayList_StructInfo struct_info;
     bool has_error;
+    const char* current_func_ret_type;
+    const char* source_file;
+    const char* source;
+    ImportResolver* import_resolver;
+    ArrayList_Str imported_names;
+    ArrayList_Bool import_used;
+    ArrayList_Int import_lines;
+    ArrayList_Int import_cols;
+    int64_t loop_depth;
 };
-typedef struct Symbol Symbol;
 struct Symbol {
     const char* name;
     const char* type_name;
@@ -686,64 +743,16 @@ struct ArrayList_Symbol {
     int64_t cap;
     KaiAllocator* allocator;
 };
-typedef struct SymbolTable SymbolTable;
 struct SymbolTable {
     ArrayList_Symbol entries;
     int64_t parent_idx;
     KaiAllocator* allocator;
 };
-typedef struct ArrayList_SymbolTable ArrayList_SymbolTable;
-struct ArrayList_SymbolTable {
-    SymbolTable* data;
-    int64_t len;
-    int64_t cap;
+struct ImportResolver {
     KaiAllocator* allocator;
+    ArrayList_Str loaded_modules;
+    ArrayList_Str cimport_headers;
 };
-typedef struct PtrRefResult PtrRefResult;
-struct PtrRefResult {
-    bool is_ptr;
-    bool is_mut;
-    const char* inner;
-};
-typedef struct StructInfo StructInfo;
-struct StructInfo {
-    const char* name;
-    bool has_drop;
-};
-typedef struct ArrayList_StructInfo ArrayList_StructInfo;
-struct ArrayList_StructInfo {
-    StructInfo* data;
-    int64_t len;
-    int64_t cap;
-    KaiAllocator* allocator;
-};
-typedef struct ArrayList_Bool ArrayList_Bool;
-struct ArrayList_Bool {
-    bool* data;
-    int64_t len;
-    int64_t cap;
-    KaiAllocator* allocator;
-};
-typedef struct TypeChecker TypeChecker;
-struct TypeChecker {
-    KaiAllocator* allocator;
-    ArrayList_StmtNode* stmt_pool;
-    ArrayList_ExprNode* expr_pool;
-    ArrayList_PatternNode* pattern_pool;
-    ArrayList_SymbolTable symbol_tables;
-    int64_t current_table_idx;
-    ArrayList_StructInfo struct_info;
-    bool has_error;
-    const char* current_func_ret_type;
-    const char* source_file;
-    const char* source;
-    ArrayList_Str imported_names;
-    ArrayList_Bool import_used;
-    ArrayList_Int import_lines;
-    ArrayList_Int import_cols;
-    int64_t loop_depth;
-};
-typedef struct StrMapEntry StrMapEntry;
 struct StrMapEntry {
     const char* key;
     const char* value;
@@ -755,12 +764,12 @@ struct ArrayList_StrMapEntry {
     int64_t cap;
     KaiAllocator* allocator;
 };
-typedef struct Codegen Codegen;
 struct Codegen {
     KaiAllocator* allocator;
     ArrayList_StmtNode* stmt_pool;
     ArrayList_ExprNode* expr_pool;
     ArrayList_PatternNode* pattern_pool;
+    ImportResolver* import_resolver;
     StringBuilder output;
     StringBuilder struct_decls;
     StringBuilder func_decls;
@@ -769,8 +778,6 @@ struct Codegen {
     bool cur_method_is_init;
     ArrayList_StrMapEntry func_types;
     ArrayList_StrMapEntry var_types;
-    ArrayList_Str loaded_modules;
-    ArrayList_Str cimport_headers;
     ArrayList_Int block_stack;
     ArrayList_StrMapEntry generic_struct_decls;
     ArrayList_StrMapEntry generic_enum_decls;
@@ -784,13 +791,72 @@ struct Codegen {
     ArrayList_Int defer_depths;
     ArrayList_StrMapEntry func_param_types;
 };
-typedef struct CCodeBuilder CCodeBuilder;
+struct StrBuf {
+    KaiAllocator* alloc;
+    ArrayList_Str parts;
+};
+struct CgbMapEntry {
+    const char* key;
+    const char* value;
+};
 struct CCodeBuilder {
     KaiAllocator* alloc;
     ArrayList_Str lines;
     int64_t indent_level;
 };
-typedef struct CType CType;
+typedef struct ArrayList_CgbMapEntry ArrayList_CgbMapEntry;
+struct ArrayList_CgbMapEntry {
+    CgbMapEntry* data;
+    int64_t len;
+    int64_t cap;
+    KaiAllocator* allocator;
+};
+typedef struct ArrayList_CExprNode ArrayList_CExprNode;
+struct ArrayList_CExprNode {
+    CExprNode* data;
+    int64_t len;
+    int64_t cap;
+    KaiAllocator* allocator;
+};
+typedef struct ArrayList_CStmtNode ArrayList_CStmtNode;
+struct ArrayList_CStmtNode {
+    CStmtNode* data;
+    int64_t len;
+    int64_t cap;
+    KaiAllocator* allocator;
+};
+struct CodegenBuilder {
+    KaiAllocator* allocator;
+    ArrayList_StmtNode* stmt_pool;
+    ArrayList_ExprNode* expr_pool;
+    ArrayList_PatternNode* pattern_pool;
+    ImportResolver* import_resolver;
+    CCodeBuilder builder;
+    StrBuf struct_decls;
+    StrBuf func_decls;
+    StrBuf output_body;
+    const char* cur_func_name;
+    const char* cur_return_type;
+    bool cur_method_is_init;
+    ArrayList_CgbMapEntry func_types;
+    ArrayList_CgbMapEntry var_types;
+    ArrayList_Int block_stack;
+    ArrayList_CgbMapEntry generic_struct_decls;
+    ArrayList_CgbMapEntry generic_enum_decls;
+    ArrayList_CgbMapEntry generic_func_decls;
+    ArrayList_CgbMapEntry generic_impl_blocks;
+    ArrayList_Str monomorphized_types;
+    ArrayList_CgbMapEntry current_type_map;
+    ArrayList_CgbMapEntry enum_decls;
+    ArrayList_Str result_definitions;
+    ArrayList_Int defer_stack;
+    ArrayList_Int defer_depths;
+    ArrayList_CgbMapEntry func_param_types;
+    StrBuf type_defs;
+    StrBuf monomorphized_bodies;
+    ArrayList_CExprNode c_exprs;
+    ArrayList_CStmtNode c_stmts;
+};
 struct CType {
     const char* base;
     int64_t pointer;
@@ -821,7 +887,6 @@ typedef enum {
     CExprKind_ck_stmt_expr,
     CExprKind_ck_member_access,
 } CExprKind;
-typedef struct CExprNode CExprNode;
 struct CExprNode {
     CExprKind kind;
     const char* int_val;
@@ -878,7 +943,6 @@ typedef enum {
     CStmtKind_cs_label,
     CStmtKind_cs_asm,
 } CStmtKind;
-typedef struct CStmtNode CStmtNode;
 struct CStmtNode {
     CStmtKind kind;
     ArrayList_Int block_stmts;
@@ -904,7 +968,6 @@ struct CStmtNode {
     const char* asm_code;
     bool asm_volatile;
 };
-typedef struct CDeclNode CDeclNode;
 struct CDeclNode {
     bool is_function;
     CType func_ret;
@@ -937,94 +1000,35 @@ struct ArrayList_CDeclNode {
     int64_t cap;
     KaiAllocator* allocator;
 };
-typedef struct CUnit CUnit;
 struct CUnit {
     ArrayList_Str includes;
     ArrayList_CDeclNode decls;
 };
-typedef struct ArrayList_CExprNode ArrayList_CExprNode;
-struct ArrayList_CExprNode {
-    CExprNode* data;
-    int64_t len;
-    int64_t cap;
-    KaiAllocator* allocator;
-};
-typedef struct ArrayList_CStmtNode ArrayList_CStmtNode;
-struct ArrayList_CStmtNode {
-    CStmtNode* data;
-    int64_t len;
-    int64_t cap;
-    KaiAllocator* allocator;
-};
-typedef struct CPrinter CPrinter;
 struct CPrinter {
     CCodeBuilder* builder;
     ArrayList_CExprNode* expr_pool;
     ArrayList_CStmtNode* stmt_pool;
 };
-typedef struct StrBuf StrBuf;
-struct StrBuf {
-    KaiAllocator* alloc;
-    ArrayList_Str parts;
-};
-typedef struct CgbMapEntry CgbMapEntry;
-struct CgbMapEntry {
-    const char* key;
-    const char* value;
-};
-typedef struct ArrayList_CgbMapEntry ArrayList_CgbMapEntry;
-struct ArrayList_CgbMapEntry {
-    CgbMapEntry* data;
-    int64_t len;
-    int64_t cap;
-    KaiAllocator* allocator;
-};
-typedef struct CodegenBuilder CodegenBuilder;
-struct CodegenBuilder {
-    KaiAllocator* allocator;
-    ArrayList_StmtNode* stmt_pool;
-    ArrayList_ExprNode* expr_pool;
-    ArrayList_PatternNode* pattern_pool;
-    CCodeBuilder builder;
-    StrBuf struct_decls;
-    StrBuf func_decls;
-    StrBuf output_body;
-    const char* cur_func_name;
-    const char* cur_return_type;
-    bool cur_method_is_init;
-    ArrayList_CgbMapEntry func_types;
-    ArrayList_CgbMapEntry var_types;
-    ArrayList_Str loaded_modules;
-    ArrayList_Str cimport_headers;
-    ArrayList_Int block_stack;
-    ArrayList_CgbMapEntry generic_struct_decls;
-    ArrayList_CgbMapEntry generic_enum_decls;
-    ArrayList_CgbMapEntry generic_func_decls;
-    ArrayList_CgbMapEntry generic_impl_blocks;
-    ArrayList_Str monomorphized_types;
-    ArrayList_CgbMapEntry current_type_map;
-    ArrayList_CgbMapEntry enum_decls;
-    ArrayList_Str result_definitions;
-    ArrayList_Int defer_stack;
-    ArrayList_Int defer_depths;
-    ArrayList_CgbMapEntry func_param_types;
-    StrBuf type_defs;
-    StrBuf monomorphized_bodies;
-    ArrayList_CExprNode c_exprs;
-    ArrayList_CStmtNode c_stmts;
-};
-typedef struct ErrorInfo ErrorInfo;
 struct ErrorInfo {
     const char* code;
     const char* title;
     const char* description;
     const char* fix;
 };
-typedef struct ErrorEntry ErrorEntry;
 struct ErrorEntry {
     const char* code;
     const char* message;
     const char* file;
+};
+typedef struct Result_Str_IoError Result_Str_IoError;
+struct Result_Str_IoError {
+    int64_t tag;
+    const char* value;
+};
+typedef struct Result_Bool_IoError Result_Bool_IoError;
+struct Result_Bool_IoError {
+    int64_t tag;
+    bool value;
 };
 typedef struct Optional_Char Optional_Char;
 struct Optional_Char {
@@ -1037,53 +1041,41 @@ struct Optional_Int {
     int64_t value;
 };
 
-uint8_t* CAlloc_alloc(CAlloc* self, int64_t size, int64_t alignment);
-uint8_t* CAlloc_realloc(CAlloc* self, uint8_t* ptr, int64_t old_size, int64_t new_size, int64_t alignment);
-void CAlloc_free(CAlloc* self, uint8_t* ptr);
-void CAlloc_deinit(CAlloc* self);
-extern uint8_t* _kai_mmap(uint8_t* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset);
-extern int64_t _kai_munmap(uint8_t* addr, int64_t length);
-int64_t class_obj_size(int64_t idx);
-int64_t class_for(int64_t sz);
-bool is_small(int64_t sz);
-int64_t page_align_up(int64_t n);
-KaiAllocator KaiAllocator_init(void);
-uint8_t* KaiAllocator_get_head(KaiAllocator* self, int64_t idx);
-void KaiAllocator_set_head(KaiAllocator* self, int64_t idx, uint8_t* head);
-uint8_t* KaiAllocator_allocate_slab(KaiAllocator* self, int64_t idx);
-uint8_t* KaiAllocator_alloc_large(KaiAllocator* self, int64_t size);
-void KaiAllocator_free_large(KaiAllocator* self, uint8_t* ptr);
-uint8_t* KaiAllocator_alloc(KaiAllocator* self, int64_t size, int64_t align);
-uint8_t* KaiAllocator_realloc(KaiAllocator* self, uint8_t* ptr, int64_t old_size, int64_t new_size, int64_t align);
-void KaiAllocator_free(KaiAllocator* self, uint8_t* ptr);
-void KaiAllocator_deinit(KaiAllocator* self);
-KaiAllocator KaiAllocator_new(void);
-Result_Str_IoError read_to_string(KaiAllocator* allocator, const char* path);
-Result_Bool_IoError write_string(const char* path, const char* content);
-char char_at(const char* s, int64_t i);
-bool is_digit(char c);
-bool is_alpha(char c);
-bool is_alnum(char c);
-bool is_space(char c);
-char to_upper(char c);
-char to_lower(char c);
-int64_t length(const char* s);
-StringBuilder StringBuilder_init(KaiAllocator* allocator);
-void StringBuilder_append_char(StringBuilder* self, char c);
-void StringBuilder_append_str(StringBuilder* self, const char* s);
-void StringBuilder_append(StringBuilder* self, const char* s);
-const char* StringBuilder_to_str(StringBuilder* self);
-void StringBuilder_deinit(StringBuilder* self);
-const char* int_to_str(int64_t n);
-const char* char_to_str(char c);
-const char* substring(const char* s, int64_t start, int64_t end);
-extern void __kai_print_int(int64_t i);
-extern void __kai_print_float(double f);
-void print_separator(void);
-void printi(int64_t i);
-void printff(double f);
-void prints(const char* s);
-void printc(char c);
+ArrayList_Token ArrayList_Token_init(KaiAllocator* allocator);
+void ArrayList_Token_push(ArrayList_Token* self, Token item);
+Token ArrayList_Token_get(ArrayList_Token* self, int64_t index);
+void ArrayList_Token_set(ArrayList_Token* self, int64_t index, Token item);
+Token ArrayList_Token_pop(ArrayList_Token* self);
+int64_t ArrayList_Token_length(ArrayList_Token* self);
+void ArrayList_Token_deinit(ArrayList_Token* self);
+ArrayList_Int ArrayList_Int_init(KaiAllocator* allocator);
+void ArrayList_Int_push(ArrayList_Int* self, int64_t item);
+int64_t ArrayList_Int_get(ArrayList_Int* self, int64_t index);
+void ArrayList_Int_set(ArrayList_Int* self, int64_t index, int64_t item);
+int64_t ArrayList_Int_pop(ArrayList_Int* self);
+int64_t ArrayList_Int_length(ArrayList_Int* self);
+void ArrayList_Int_deinit(ArrayList_Int* self);
+ArrayList_ExprNode ArrayList_ExprNode_init(KaiAllocator* allocator);
+void ArrayList_ExprNode_push(ArrayList_ExprNode* self, ExprNode item);
+ExprNode ArrayList_ExprNode_get(ArrayList_ExprNode* self, int64_t index);
+void ArrayList_ExprNode_set(ArrayList_ExprNode* self, int64_t index, ExprNode item);
+ExprNode ArrayList_ExprNode_pop(ArrayList_ExprNode* self);
+int64_t ArrayList_ExprNode_length(ArrayList_ExprNode* self);
+void ArrayList_ExprNode_deinit(ArrayList_ExprNode* self);
+ArrayList_StmtNode ArrayList_StmtNode_init(KaiAllocator* allocator);
+void ArrayList_StmtNode_push(ArrayList_StmtNode* self, StmtNode item);
+StmtNode ArrayList_StmtNode_get(ArrayList_StmtNode* self, int64_t index);
+void ArrayList_StmtNode_set(ArrayList_StmtNode* self, int64_t index, StmtNode item);
+StmtNode ArrayList_StmtNode_pop(ArrayList_StmtNode* self);
+int64_t ArrayList_StmtNode_length(ArrayList_StmtNode* self);
+void ArrayList_StmtNode_deinit(ArrayList_StmtNode* self);
+ArrayList_PatternNode ArrayList_PatternNode_init(KaiAllocator* allocator);
+void ArrayList_PatternNode_push(ArrayList_PatternNode* self, PatternNode item);
+PatternNode ArrayList_PatternNode_get(ArrayList_PatternNode* self, int64_t index);
+void ArrayList_PatternNode_set(ArrayList_PatternNode* self, int64_t index, PatternNode item);
+PatternNode ArrayList_PatternNode_pop(ArrayList_PatternNode* self);
+int64_t ArrayList_PatternNode_length(ArrayList_PatternNode* self);
+void ArrayList_PatternNode_deinit(ArrayList_PatternNode* self);
 ArrayList_Param ArrayList_Param_init(KaiAllocator* allocator);
 void ArrayList_Param_push(ArrayList_Param* self, Param item);
 Param ArrayList_Param_get(ArrayList_Param* self, int64_t index);
@@ -1105,13 +1097,6 @@ void ArrayList_StrInterpPart_set(ArrayList_StrInterpPart* self, int64_t index, S
 StrInterpPart ArrayList_StrInterpPart_pop(ArrayList_StrInterpPart* self);
 int64_t ArrayList_StrInterpPart_length(ArrayList_StrInterpPart* self);
 void ArrayList_StrInterpPart_deinit(ArrayList_StrInterpPart* self);
-ArrayList_Int ArrayList_Int_init(KaiAllocator* allocator);
-void ArrayList_Int_push(ArrayList_Int* self, int64_t item);
-int64_t ArrayList_Int_get(ArrayList_Int* self, int64_t index);
-void ArrayList_Int_set(ArrayList_Int* self, int64_t index, int64_t item);
-int64_t ArrayList_Int_pop(ArrayList_Int* self);
-int64_t ArrayList_Int_length(ArrayList_Int* self);
-void ArrayList_Int_deinit(ArrayList_Int* self);
 ArrayList_FieldInit ArrayList_FieldInit_init(KaiAllocator* allocator);
 void ArrayList_FieldInit_push(ArrayList_FieldInit* self, FieldInit item);
 FieldInit ArrayList_FieldInit_get(ArrayList_FieldInit* self, int64_t index);
@@ -1161,71 +1146,137 @@ void ArrayList_MatchCase_set(ArrayList_MatchCase* self, int64_t index, MatchCase
 MatchCase ArrayList_MatchCase_pop(ArrayList_MatchCase* self);
 int64_t ArrayList_MatchCase_length(ArrayList_MatchCase* self);
 void ArrayList_MatchCase_deinit(ArrayList_MatchCase* self);
-ArrayList_DropVarEntry empty_dropvarentry_array(void);
-ArrayList_Str empty_str_array(void);
-ArrayList_Int empty_int_array(void);
-ArrayList_FieldInit empty_fieldinit_array(void);
-ArrayList_Param empty_param_array(void);
-ArrayList_StructField empty_structfield_array(void);
-ArrayList_Variant empty_variant_array(void);
-ArrayList_MatchCase empty_matchcase_array(void);
-ArrayList_StrInterpPart empty_strinterp_array(void);
-ArrayList_AsmOutput empty_asmoutput_array(void);
-ArrayList_AsmInput empty_asminput_array(void);
-ExprNode new_expr_node(ExprKind kind, int64_t line, int64_t col);
-StmtNode new_stmt_node(StmtKind kind, int64_t line, int64_t col);
-PatternNode new_pattern_node(PatternKind kind);
-extern bool kai_fs_exists(const char* path);
-extern bool kai_fs_is_dir(const char* path);
-extern bool kai_fs_mkdir(const char* path);
-extern bool kai_fs_remove(const char* path);
-extern void* kai_fs_opendir(const char* path);
-extern char* kai_fs_readdir(void* handle);
-extern void kai_fs_closedir(void* handle);
-bool fs_exists(const char* path);
-bool fs_is_dir(const char* path);
-bool fs_mkdir(const char* path);
-bool fs_remove(const char* path);
-Dir fs_opendir(const char* path);
-const char* fs_readdir(Dir dir);
-void fs_closedir(Dir dir);
-const char* get_source_line(const char* source, int64_t line_num);
-int64_t find_last(const char* path, char c);
-bool mkdir_p(const char* path);
-const char* str_replace(const char* s, const char* old, const char* new_val);
-const char* get_base_name(const char* path);
+ArrayList_SymbolTable ArrayList_SymbolTable_init(KaiAllocator* allocator);
+void ArrayList_SymbolTable_push(ArrayList_SymbolTable* self, SymbolTable item);
+SymbolTable ArrayList_SymbolTable_get(ArrayList_SymbolTable* self, int64_t index);
+void ArrayList_SymbolTable_set(ArrayList_SymbolTable* self, int64_t index, SymbolTable item);
+SymbolTable ArrayList_SymbolTable_pop(ArrayList_SymbolTable* self);
+int64_t ArrayList_SymbolTable_length(ArrayList_SymbolTable* self);
+void ArrayList_SymbolTable_deinit(ArrayList_SymbolTable* self);
+ArrayList_StructInfo ArrayList_StructInfo_init(KaiAllocator* allocator);
+void ArrayList_StructInfo_push(ArrayList_StructInfo* self, StructInfo item);
+StructInfo ArrayList_StructInfo_get(ArrayList_StructInfo* self, int64_t index);
+void ArrayList_StructInfo_set(ArrayList_StructInfo* self, int64_t index, StructInfo item);
+StructInfo ArrayList_StructInfo_pop(ArrayList_StructInfo* self);
+int64_t ArrayList_StructInfo_length(ArrayList_StructInfo* self);
+void ArrayList_StructInfo_deinit(ArrayList_StructInfo* self);
+ArrayList_Bool ArrayList_Bool_init(KaiAllocator* allocator);
+void ArrayList_Bool_push(ArrayList_Bool* self, bool item);
+bool ArrayList_Bool_get(ArrayList_Bool* self, int64_t index);
+void ArrayList_Bool_set(ArrayList_Bool* self, int64_t index, bool item);
+bool ArrayList_Bool_pop(ArrayList_Bool* self);
+int64_t ArrayList_Bool_length(ArrayList_Bool* self);
+void ArrayList_Bool_deinit(ArrayList_Bool* self);
+ArrayList_Symbol ArrayList_Symbol_init(KaiAllocator* allocator);
+void ArrayList_Symbol_push(ArrayList_Symbol* self, Symbol item);
+Symbol ArrayList_Symbol_get(ArrayList_Symbol* self, int64_t index);
+void ArrayList_Symbol_set(ArrayList_Symbol* self, int64_t index, Symbol item);
+Symbol ArrayList_Symbol_pop(ArrayList_Symbol* self);
+int64_t ArrayList_Symbol_length(ArrayList_Symbol* self);
+void ArrayList_Symbol_deinit(ArrayList_Symbol* self);
+ArrayList_StrMapEntry ArrayList_StrMapEntry_init(KaiAllocator* allocator);
+void ArrayList_StrMapEntry_push(ArrayList_StrMapEntry* self, StrMapEntry item);
+StrMapEntry ArrayList_StrMapEntry_get(ArrayList_StrMapEntry* self, int64_t index);
+void ArrayList_StrMapEntry_set(ArrayList_StrMapEntry* self, int64_t index, StrMapEntry item);
+StrMapEntry ArrayList_StrMapEntry_pop(ArrayList_StrMapEntry* self);
+int64_t ArrayList_StrMapEntry_length(ArrayList_StrMapEntry* self);
+void ArrayList_StrMapEntry_deinit(ArrayList_StrMapEntry* self);
+ArrayList_CgbMapEntry ArrayList_CgbMapEntry_init(KaiAllocator* allocator);
+void ArrayList_CgbMapEntry_push(ArrayList_CgbMapEntry* self, CgbMapEntry item);
+CgbMapEntry ArrayList_CgbMapEntry_get(ArrayList_CgbMapEntry* self, int64_t index);
+void ArrayList_CgbMapEntry_set(ArrayList_CgbMapEntry* self, int64_t index, CgbMapEntry item);
+CgbMapEntry ArrayList_CgbMapEntry_pop(ArrayList_CgbMapEntry* self);
+int64_t ArrayList_CgbMapEntry_length(ArrayList_CgbMapEntry* self);
+void ArrayList_CgbMapEntry_deinit(ArrayList_CgbMapEntry* self);
+ArrayList_CExprNode ArrayList_CExprNode_init(KaiAllocator* allocator);
+void ArrayList_CExprNode_push(ArrayList_CExprNode* self, CExprNode item);
+CExprNode ArrayList_CExprNode_get(ArrayList_CExprNode* self, int64_t index);
+void ArrayList_CExprNode_set(ArrayList_CExprNode* self, int64_t index, CExprNode item);
+CExprNode ArrayList_CExprNode_pop(ArrayList_CExprNode* self);
+int64_t ArrayList_CExprNode_length(ArrayList_CExprNode* self);
+void ArrayList_CExprNode_deinit(ArrayList_CExprNode* self);
+ArrayList_CStmtNode ArrayList_CStmtNode_init(KaiAllocator* allocator);
+void ArrayList_CStmtNode_push(ArrayList_CStmtNode* self, CStmtNode item);
+CStmtNode ArrayList_CStmtNode_get(ArrayList_CStmtNode* self, int64_t index);
+void ArrayList_CStmtNode_set(ArrayList_CStmtNode* self, int64_t index, CStmtNode item);
+CStmtNode ArrayList_CStmtNode_pop(ArrayList_CStmtNode* self);
+int64_t ArrayList_CStmtNode_length(ArrayList_CStmtNode* self);
+void ArrayList_CStmtNode_deinit(ArrayList_CStmtNode* self);
+ArrayList_CDeclNode ArrayList_CDeclNode_init(KaiAllocator* allocator);
+void ArrayList_CDeclNode_push(ArrayList_CDeclNode* self, CDeclNode item);
+CDeclNode ArrayList_CDeclNode_get(ArrayList_CDeclNode* self, int64_t index);
+void ArrayList_CDeclNode_set(ArrayList_CDeclNode* self, int64_t index, CDeclNode item);
+CDeclNode ArrayList_CDeclNode_pop(ArrayList_CDeclNode* self);
+int64_t ArrayList_CDeclNode_length(ArrayList_CDeclNode* self);
+void ArrayList_CDeclNode_deinit(ArrayList_CDeclNode* self);
+extern int64_t get_exe_dir(char* buf, int64_t max_len);
+CAlloc CAlloc_new(void);
+uint8_t* CAlloc_alloc(CAlloc* self, int64_t size, int64_t alignment);
+uint8_t* CAlloc_realloc(CAlloc* self, uint8_t* ptr, int64_t old_size, int64_t new_size, int64_t alignment);
+void CAlloc_free(CAlloc* self, uint8_t* ptr);
+void CAlloc_deinit(CAlloc* self);
+extern uint8_t* _kai_mmap(uint8_t* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset);
+extern int64_t _kai_munmap(uint8_t* addr, int64_t length);
+SlabHeader SlabHeader_new(void);
+FreeBlock FreeBlock_new(void);
+KaiAllocator KaiAllocator_new(void);
+int64_t class_obj_size(int64_t idx);
+int64_t class_for(int64_t sz);
+bool is_small(int64_t sz);
+int64_t page_align_up(int64_t n);
+KaiAllocator KaiAllocator_init(void);
+uint8_t* KaiAllocator_get_head(KaiAllocator* self, int64_t idx);
+void KaiAllocator_set_head(KaiAllocator* self, int64_t idx, uint8_t* head);
+uint8_t* KaiAllocator_allocate_slab(KaiAllocator* self, int64_t idx);
+uint8_t* KaiAllocator_alloc_large(KaiAllocator* self, int64_t size);
+void KaiAllocator_free_large(KaiAllocator* self, uint8_t* ptr);
+uint8_t* KaiAllocator_alloc(KaiAllocator* self, int64_t size, int64_t align);
+uint8_t* KaiAllocator_realloc(KaiAllocator* self, uint8_t* ptr, int64_t old_size, int64_t new_size, int64_t align);
+void KaiAllocator_free(KaiAllocator* self, uint8_t* ptr);
+void KaiAllocator_deinit(KaiAllocator* self);
+KaiAllocator KaiAllocator_new(void);
+Result_Str_IoError read_to_string(KaiAllocator* allocator, const char* path);
+Result_Bool_IoError write_string(const char* path, const char* content);
+TokenType keyword_type(const char* ident);
+TokenValue make_keyword_value(const char* ident, TokenType ttype);
+Lexer Lexer_new(void);
+Lexer Lexer_init(KaiAllocator* allocator, const char* source, const char* source_file);
+char Lexer_peek(Lexer* self, int64_t offset);
+char Lexer_advance(Lexer* self);
+void Lexer_emit(Lexer* self, TokenType ttype, TokenValue value);
+void Lexer_lex_error(Lexer* self, const char* msg);
+void Lexer_skip_line_comment(Lexer* self);
+void Lexer_skip_block_comment(Lexer* self);
+void Lexer_skip_whitespace(Lexer* self);
+void Lexer_lex_identifier(Lexer* self);
+void Lexer_lex_number(Lexer* self);
+void Lexer_lex_string(Lexer* self);
+void Lexer_lex_char(Lexer* self);
+int64_t Lexer_compute_indent(Lexer* self);
+void Lexer_lex(Lexer* self);
+char char_at(const char* s, int64_t i);
+bool is_digit(char c);
+bool is_alpha(char c);
+bool is_alnum(char c);
+bool is_space(char c);
+char to_upper(char c);
+char to_lower(char c);
+int64_t length(const char* s);
+StringBuilder StringBuilder_new(void);
+StringBuilder StringBuilder_init(KaiAllocator* allocator);
+void StringBuilder_append_char(StringBuilder* self, char c);
+void StringBuilder_append_str(StringBuilder* self, const char* s);
+void StringBuilder_append(StringBuilder* self, const char* s);
+const char* StringBuilder_to_str(StringBuilder* self);
+void StringBuilder_deinit(StringBuilder* self);
+const char* int_to_str(int64_t n);
+const char* char_to_str(char c);
+const char* substring(const char* s, int64_t start, int64_t end);
 const char* tv_get_str(TokenValue val);
 int64_t token_precedence(TokenType ttype);
 const char* token_op_str(TokenType ttype);
 const char* str_array_join(ArrayList_Str arr, const char* sep);
-ArrayList_Token ArrayList_Token_init(KaiAllocator* allocator);
-void ArrayList_Token_push(ArrayList_Token* self, Token item);
-Token ArrayList_Token_get(ArrayList_Token* self, int64_t index);
-void ArrayList_Token_set(ArrayList_Token* self, int64_t index, Token item);
-Token ArrayList_Token_pop(ArrayList_Token* self);
-int64_t ArrayList_Token_length(ArrayList_Token* self);
-void ArrayList_Token_deinit(ArrayList_Token* self);
-ArrayList_ExprNode ArrayList_ExprNode_init(KaiAllocator* allocator);
-void ArrayList_ExprNode_push(ArrayList_ExprNode* self, ExprNode item);
-ExprNode ArrayList_ExprNode_get(ArrayList_ExprNode* self, int64_t index);
-void ArrayList_ExprNode_set(ArrayList_ExprNode* self, int64_t index, ExprNode item);
-ExprNode ArrayList_ExprNode_pop(ArrayList_ExprNode* self);
-int64_t ArrayList_ExprNode_length(ArrayList_ExprNode* self);
-void ArrayList_ExprNode_deinit(ArrayList_ExprNode* self);
-ArrayList_StmtNode ArrayList_StmtNode_init(KaiAllocator* allocator);
-void ArrayList_StmtNode_push(ArrayList_StmtNode* self, StmtNode item);
-StmtNode ArrayList_StmtNode_get(ArrayList_StmtNode* self, int64_t index);
-void ArrayList_StmtNode_set(ArrayList_StmtNode* self, int64_t index, StmtNode item);
-StmtNode ArrayList_StmtNode_pop(ArrayList_StmtNode* self);
-int64_t ArrayList_StmtNode_length(ArrayList_StmtNode* self);
-void ArrayList_StmtNode_deinit(ArrayList_StmtNode* self);
-ArrayList_PatternNode ArrayList_PatternNode_init(KaiAllocator* allocator);
-void ArrayList_PatternNode_push(ArrayList_PatternNode* self, PatternNode item);
-PatternNode ArrayList_PatternNode_get(ArrayList_PatternNode* self, int64_t index);
-void ArrayList_PatternNode_set(ArrayList_PatternNode* self, int64_t index, PatternNode item);
-PatternNode ArrayList_PatternNode_pop(ArrayList_PatternNode* self);
-int64_t ArrayList_PatternNode_length(ArrayList_PatternNode* self);
-void ArrayList_PatternNode_deinit(ArrayList_PatternNode* self);
+Parser Parser_new(void);
 void parser_err(const char* source_file, const char* source, const char* code, const char* msg, int64_t line, int64_t col);
 Parser Parser_init_with_pools(KaiAllocator* allocator, const char* source_file, ArrayList_Token* tokens, ArrayList_ExprNode* expr_pool, ArrayList_StmtNode* stmt_pool, ArrayList_PatternNode* pattern_pool, const char* source);
 Parser Parser_init(KaiAllocator* allocator, const char* source_file, ArrayList_Token* tokens, const char* source);
@@ -1314,58 +1365,64 @@ int64_t Parser_parse_import_stmt_new(Parser* self);
 int64_t Parser_parse_cimport_stmt(Parser* self);
 int64_t Parser_parse_expression(Parser* self, int64_t precedence);
 int64_t Parser_parse_primary(Parser* self);
-TokenType keyword_type(const char* ident);
-TokenValue make_keyword_value(const char* ident, TokenType ttype);
-Lexer Lexer_init(KaiAllocator* allocator, const char* source, const char* source_file);
-char Lexer_peek(Lexer* self, int64_t offset);
-char Lexer_advance(Lexer* self);
-void Lexer_emit(Lexer* self, TokenType ttype, TokenValue value);
-void Lexer_lex_error(Lexer* self, const char* msg);
-void Lexer_skip_line_comment(Lexer* self);
-void Lexer_skip_block_comment(Lexer* self);
-void Lexer_skip_whitespace(Lexer* self);
-void Lexer_lex_identifier(Lexer* self);
-void Lexer_lex_number(Lexer* self);
-void Lexer_lex_string(Lexer* self);
-void Lexer_lex_char(Lexer* self);
-int64_t Lexer_compute_indent(Lexer* self);
-void Lexer_lex(Lexer* self);
-ArrayList_Symbol ArrayList_Symbol_init(KaiAllocator* allocator);
-void ArrayList_Symbol_push(ArrayList_Symbol* self, Symbol item);
-Symbol ArrayList_Symbol_get(ArrayList_Symbol* self, int64_t index);
-void ArrayList_Symbol_set(ArrayList_Symbol* self, int64_t index, Symbol item);
-Symbol ArrayList_Symbol_pop(ArrayList_Symbol* self);
-int64_t ArrayList_Symbol_length(ArrayList_Symbol* self);
-void ArrayList_Symbol_deinit(ArrayList_Symbol* self);
-SymbolTable SymbolTable_init(KaiAllocator* allocator, int64_t parent_idx);
-void SymbolTable_define(SymbolTable* self, const char* name, const char* type_name, bool is_mutable, const char* kind, const char* llvm_value);
-ArrayList_SymbolTable ArrayList_SymbolTable_init(KaiAllocator* allocator);
-void ArrayList_SymbolTable_push(ArrayList_SymbolTable* self, SymbolTable item);
-SymbolTable ArrayList_SymbolTable_get(ArrayList_SymbolTable* self, int64_t index);
-void ArrayList_SymbolTable_set(ArrayList_SymbolTable* self, int64_t index, SymbolTable item);
-SymbolTable ArrayList_SymbolTable_pop(ArrayList_SymbolTable* self);
-int64_t ArrayList_SymbolTable_length(ArrayList_SymbolTable* self);
-void ArrayList_SymbolTable_deinit(ArrayList_SymbolTable* self);
-int64_t SymbolTable_lookup(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
-Symbol SymbolTable_lookup_symbol(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
-void SymbolTable_mark_moved(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
-void SymbolTable_mark_freed(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
-int64_t SymbolTable_lookup_current(SymbolTable* self, const char* name);
-ArrayList_StructInfo ArrayList_StructInfo_init(KaiAllocator* allocator);
-void ArrayList_StructInfo_push(ArrayList_StructInfo* self, StructInfo item);
-StructInfo ArrayList_StructInfo_get(ArrayList_StructInfo* self, int64_t index);
-void ArrayList_StructInfo_set(ArrayList_StructInfo* self, int64_t index, StructInfo item);
-StructInfo ArrayList_StructInfo_pop(ArrayList_StructInfo* self);
-int64_t ArrayList_StructInfo_length(ArrayList_StructInfo* self);
-void ArrayList_StructInfo_deinit(ArrayList_StructInfo* self);
-ArrayList_Bool ArrayList_Bool_init(KaiAllocator* allocator);
-void ArrayList_Bool_push(ArrayList_Bool* self, bool item);
-bool ArrayList_Bool_get(ArrayList_Bool* self, int64_t index);
-void ArrayList_Bool_set(ArrayList_Bool* self, int64_t index, bool item);
-bool ArrayList_Bool_pop(ArrayList_Bool* self);
-int64_t ArrayList_Bool_length(ArrayList_Bool* self);
-void ArrayList_Bool_deinit(ArrayList_Bool* self);
-TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, const char* source_file, const char* source);
+extern void __kai_print_int(int64_t i);
+extern void __kai_print_float(double f);
+void print_separator(void);
+void printi(int64_t i);
+void printff(double f);
+void prints(const char* s);
+void printc(char c);
+Token Token_new(void);
+DropVarEntry DropVarEntry_new(void);
+FieldInit FieldInit_new(void);
+Param Param_new(void);
+StructField StructField_new(void);
+Variant Variant_new(void);
+MatchCase MatchCase_new(void);
+StrInterpPart StrInterpPart_new(void);
+AsmOutput AsmOutput_new(void);
+AsmInput AsmInput_new(void);
+PatternNode PatternNode_new(void);
+ExprNode ExprNode_new(void);
+StmtNode StmtNode_new(void);
+ArrayList_DropVarEntry empty_dropvarentry_array(void);
+ArrayList_Str empty_str_array(void);
+ArrayList_Int empty_int_array(void);
+ArrayList_FieldInit empty_fieldinit_array(void);
+ArrayList_Param empty_param_array(void);
+ArrayList_StructField empty_structfield_array(void);
+ArrayList_Variant empty_variant_array(void);
+ArrayList_MatchCase empty_matchcase_array(void);
+ArrayList_StrInterpPart empty_strinterp_array(void);
+ArrayList_AsmOutput empty_asmoutput_array(void);
+ArrayList_AsmInput empty_asminput_array(void);
+ExprNode new_expr_node(ExprKind kind, int64_t line, int64_t col);
+StmtNode new_stmt_node(StmtKind kind, int64_t line, int64_t col);
+PatternNode new_pattern_node(PatternKind kind);
+const char* get_source_line(const char* source, int64_t line_num);
+int64_t find_last(const char* path, char c);
+bool mkdir_p(const char* path);
+const char* str_replace(const char* s, const char* old, const char* new_val);
+const char* get_base_name(const char* path);
+extern bool kai_fs_exists(const char* path);
+extern bool kai_fs_is_dir(const char* path);
+extern bool kai_fs_mkdir(const char* path);
+extern bool kai_fs_remove(const char* path);
+extern void* kai_fs_opendir(const char* path);
+extern char* kai_fs_readdir(void* handle);
+extern void kai_fs_closedir(void* handle);
+bool fs_exists(const char* path);
+bool fs_is_dir(const char* path);
+bool fs_mkdir(const char* path);
+bool fs_remove(const char* path);
+Dir Dir_new(void);
+Dir fs_opendir(const char* path);
+const char* fs_readdir(Dir dir);
+void fs_closedir(Dir dir);
+PtrRefResult PtrRefResult_new(void);
+StructInfo StructInfo_new(void);
+TypeChecker TypeChecker_new(void);
+TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, const char* source_file, const char* source, ImportResolver* import_resolver);
 void TypeChecker_err(TypeChecker* self, const char* code, const char* msg, int64_t line, int64_t col);
 void TypeChecker_enter_scope(TypeChecker* self);
 void TypeChecker_exit_scope(TypeChecker* self);
@@ -1403,22 +1460,32 @@ void TypeChecker_check_method_call(TypeChecker* self, int64_t expr_idx);
 void TypeChecker_check_return_stmt(TypeChecker* self, int64_t stmt_idx);
 void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx);
 void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx);
+Symbol Symbol_new(void);
+SymbolTable SymbolTable_new(void);
+SymbolTable SymbolTable_init(KaiAllocator* allocator, int64_t parent_idx);
+void SymbolTable_define(SymbolTable* self, const char* name, const char* type_name, bool is_mutable, const char* kind, const char* llvm_value);
+int64_t SymbolTable_lookup(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
+Symbol SymbolTable_lookup_symbol(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
+void SymbolTable_mark_moved(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
+void SymbolTable_mark_freed(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
+int64_t SymbolTable_lookup_current(SymbolTable* self, const char* name);
+extern int64_t get_exe_dir(char* buf, int64_t max_len);
+ImportResolver ImportResolver_new(void);
+ImportResolver ImportResolver_init(KaiAllocator* allocator);
+void ImportResolver_record_cimport(ImportResolver* self, const char* header);
+void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool);
+void ImportResolver_resolve_all(ImportResolver* self, int64_t program_idx, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool);
 extern int64_t get_exe_dir(char* buf, int64_t max_len);
 extern char* strstr(const char* haystack, const char* needle);
 const char* __kai_std_str_concat_alloc(const char* left, const char* right);
-ArrayList_StrMapEntry ArrayList_StrMapEntry_init(KaiAllocator* allocator);
-void ArrayList_StrMapEntry_push(ArrayList_StrMapEntry* self, StrMapEntry item);
-StrMapEntry ArrayList_StrMapEntry_get(ArrayList_StrMapEntry* self, int64_t index);
-void ArrayList_StrMapEntry_set(ArrayList_StrMapEntry* self, int64_t index, StrMapEntry item);
-StrMapEntry ArrayList_StrMapEntry_pop(ArrayList_StrMapEntry* self);
-int64_t ArrayList_StrMapEntry_length(ArrayList_StrMapEntry* self);
-void ArrayList_StrMapEntry_deinit(ArrayList_StrMapEntry* self);
+StrMapEntry StrMapEntry_new(void);
+Codegen Codegen_new(void);
 int64_t type_map_find(ArrayList_StrMapEntry* arr, const char* key);
 const char* type_map_get(ArrayList_StrMapEntry* arr, const char* key);
 void type_map_put(ArrayList_StrMapEntry* arr, const char* key, const char* value);
 int64_t strlist_find(ArrayList_Str* arr, const char* key);
 const char* Codegen_add_init_return(Codegen* self, const char* body_str, const char* struct_name);
-Codegen Codegen_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool);
+Codegen Codegen_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, ImportResolver* import_resolver);
 bool Codegen_is_pointer_type(Codegen* self, const char* t);
 const char* Codegen_map_type(Codegen* self, const char* type_name);
 const char* Codegen_substitute_generic_type(Codegen* self, const char* type_name);
@@ -1445,101 +1512,22 @@ bool Codegen_is_enum_type(Codegen* self, const char* type_name);
 bool Codegen_enum_has_payload(Codegen* self, const char* enum_name);
 const char* Codegen_escape_string(Codegen* self, const char* s);
 ArrayList_Str Codegen__collect_loop_drops(Codegen* self);
+void Codegen_emit_struct_body_with_deps(Codegen* self, int64_t stmt_idx, ArrayList_Str* emitted);
 const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx);
-extern const char* __kai_std_str_concat_alloc(const char* left, const char* right);
-CCodeBuilder CCodeBuilder_init(KaiAllocator* allocator);
-void CCodeBuilder_clear(CCodeBuilder* self);
-void CCodeBuilder_emit_line(CCodeBuilder* self, const char* code);
-void CCodeBuilder_emit_blank(CCodeBuilder* self);
-void CCodeBuilder_emit_raw(CCodeBuilder* self, const char* code);
-void CCodeBuilder_emit_include(CCodeBuilder* self, const char* header, bool is_system);
-void CCodeBuilder_emit_directive(CCodeBuilder* self, const char* code);
-void CCodeBuilder_indent(CCodeBuilder* self);
-void CCodeBuilder_dedent(CCodeBuilder* self);
-void CCodeBuilder_begin_block(CCodeBuilder* self);
-void CCodeBuilder_end_block(CCodeBuilder* self);
-const char* CCodeBuilder_to_str(CCodeBuilder* self);
-int64_t CCodeBuilder_line_count(CCodeBuilder* self);
-const char* cb_escape_string(const char* s);
-const char* cb_escape_asm(const char* s);
-const char* cgb_char_to_str(char c);
-const char* cgb_int_to_str(int64_t n);
-CType ctype_new(const char* base, int64_t pointer, bool is_const, bool is_unsigned);
-CType ctype_void(void);
-CType ctype_int(void);
-CType ctype_bool(void);
-CType ctype_char(void);
-CType ctype_float(void);
-CType ctype_str(void);
-CType ctype_ptr(CType inner);
-CType ctype_const(CType inner);
-const char* ctype_to_str(CType t);
-CType ctype_from_kai(const char* kai_type);
-CType ctype_copy(CType t);
-ArrayList_CDeclNode ArrayList_CDeclNode_init(KaiAllocator* allocator);
-void ArrayList_CDeclNode_push(ArrayList_CDeclNode* self, CDeclNode item);
-CDeclNode ArrayList_CDeclNode_get(ArrayList_CDeclNode* self, int64_t index);
-void ArrayList_CDeclNode_set(ArrayList_CDeclNode* self, int64_t index, CDeclNode item);
-CDeclNode ArrayList_CDeclNode_pop(ArrayList_CDeclNode* self);
-int64_t ArrayList_CDeclNode_length(ArrayList_CDeclNode* self);
-void ArrayList_CDeclNode_deinit(ArrayList_CDeclNode* self);
-CUnit cunit_new(ArrayList_Str includes, ArrayList_CDeclNode decls);
-CExprNode cexpr_new_int(const char* val);
-CExprNode cexpr_new_ident(const char* name);
-CExprNode cexpr_new_binary(int64_t left, const char* op, int64_t right);
-CExprNode cexpr_new_call(const char* callee, ArrayList_Int args);
-CStmtNode cstmt_new_expr(int64_t expr_idx);
-CStmtNode cstmt_new_block(ArrayList_Int stmts);
-CStmtNode cstmt_new_if(int64_t cond, int64_t then_branch, int64_t else_branch);
-CExprNode cexpr_new_float(const char* val);
-CExprNode cexpr_new_str(const char* val);
-CExprNode cexpr_new_bool(bool val);
-CExprNode cexpr_new_char(const char* val);
-CExprNode cexpr_new_unary(const char* op, int64_t operand, bool is_prefix);
-CExprNode cexpr_new_compound(CType t, ArrayList_Str compound_fs);
-CExprNode cexpr_new_field(int64_t base, const char* name);
-CExprNode cexpr_new_arrow(int64_t base, const char* name);
-CExprNode cexpr_new_index(int64_t base, int64_t idx_val);
-CExprNode cexpr_new_cast(CType t, int64_t cast_e);
-CExprNode cexpr_new_sizeof_type(CType t);
-CDeclNode cdecl_new_func(const char* name, const char* ret_type, ArrayList_Str params, bool is_extern, bool is_vararg);
-ArrayList_CExprNode ArrayList_CExprNode_init(KaiAllocator* allocator);
-void ArrayList_CExprNode_push(ArrayList_CExprNode* self, CExprNode item);
-CExprNode ArrayList_CExprNode_get(ArrayList_CExprNode* self, int64_t index);
-void ArrayList_CExprNode_set(ArrayList_CExprNode* self, int64_t index, CExprNode item);
-CExprNode ArrayList_CExprNode_pop(ArrayList_CExprNode* self);
-int64_t ArrayList_CExprNode_length(ArrayList_CExprNode* self);
-void ArrayList_CExprNode_deinit(ArrayList_CExprNode* self);
-ArrayList_CStmtNode ArrayList_CStmtNode_init(KaiAllocator* allocator);
-void ArrayList_CStmtNode_push(ArrayList_CStmtNode* self, CStmtNode item);
-CStmtNode ArrayList_CStmtNode_get(ArrayList_CStmtNode* self, int64_t index);
-void ArrayList_CStmtNode_set(ArrayList_CStmtNode* self, int64_t index, CStmtNode item);
-CStmtNode ArrayList_CStmtNode_pop(ArrayList_CStmtNode* self);
-int64_t ArrayList_CStmtNode_length(ArrayList_CStmtNode* self);
-void ArrayList_CStmtNode_deinit(ArrayList_CStmtNode* self);
-CPrinter CPrinter_init(CCodeBuilder* builder, ArrayList_CExprNode* expr_pool, ArrayList_CStmtNode* stmt_pool);
-const char* CPrinter_print_expr(CPrinter* self, int64_t idx);
-void CPrinter_print_stmt(CPrinter* self, int64_t idx);
-void CPrinter_print_decl(CPrinter* self, CDeclNode decl);
-void CPrinter_emit_runtime_preamble(CPrinter* self, ArrayList_Str* cimport_headers);
 extern char* strstr(const char* haystack, const char* needle);
 extern int64_t get_exe_dir(char* buf, int64_t max_len);
+StrBuf StrBuf_new(void);
 StrBuf StrBuf_init(KaiAllocator* a);
 void StrBuf_append(StrBuf* self, const char* s);
 const char* StrBuf_to_str(StrBuf* self);
-ArrayList_CgbMapEntry ArrayList_CgbMapEntry_init(KaiAllocator* allocator);
-void ArrayList_CgbMapEntry_push(ArrayList_CgbMapEntry* self, CgbMapEntry item);
-CgbMapEntry ArrayList_CgbMapEntry_get(ArrayList_CgbMapEntry* self, int64_t index);
-void ArrayList_CgbMapEntry_set(ArrayList_CgbMapEntry* self, int64_t index, CgbMapEntry item);
-CgbMapEntry ArrayList_CgbMapEntry_pop(ArrayList_CgbMapEntry* self);
-int64_t ArrayList_CgbMapEntry_length(ArrayList_CgbMapEntry* self);
-void ArrayList_CgbMapEntry_deinit(ArrayList_CgbMapEntry* self);
+CgbMapEntry CgbMapEntry_new(void);
+CodegenBuilder CodegenBuilder_new(void);
 int64_t cgb_map_find(ArrayList_CgbMapEntry* arr, const char* key);
 const char* cgb_map_get(ArrayList_CgbMapEntry* arr, const char* key);
 void cgb_map_put(ArrayList_CgbMapEntry* arr, const char* key, const char* value);
 int64_t cgb_strlist_find(ArrayList_Str* arr, const char* key);
 const char* CodegenBuilder_add_init_return(CodegenBuilder* self, const char* body_str, const char* struct_name);
-CodegenBuilder CodegenBuilder_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool);
+CodegenBuilder CodegenBuilder_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, ImportResolver* import_resolver);
 bool CodegenBuilder_is_pointer_type(CodegenBuilder* self, const char* t);
 bool CodegenBuilder_is_numeric_type(CodegenBuilder* self, const char* t);
 bool CodegenBuilder_is_integer_type(CodegenBuilder* self, const char* t);
@@ -1569,6 +1557,80 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx);
 void CodegenBuilder_build_func_types(CodegenBuilder* self);
 void CodegenBuilder_emit_struct_body_with_deps(CodegenBuilder* self, int64_t stmt_idx, ArrayList_Str* emitted);
 const char* CodegenBuilder_generate(CodegenBuilder* self, int64_t top_stmt_idx);
+extern const char* __kai_std_str_concat_alloc(const char* left, const char* right);
+CCodeBuilder CCodeBuilder_new(void);
+CCodeBuilder CCodeBuilder_init(KaiAllocator* allocator);
+void CCodeBuilder_clear(CCodeBuilder* self);
+void CCodeBuilder_emit_line(CCodeBuilder* self, const char* code);
+void CCodeBuilder_emit_blank(CCodeBuilder* self);
+void CCodeBuilder_emit_raw(CCodeBuilder* self, const char* code);
+void CCodeBuilder_emit_include(CCodeBuilder* self, const char* header, bool is_system);
+void CCodeBuilder_emit_directive(CCodeBuilder* self, const char* code);
+void CCodeBuilder_indent(CCodeBuilder* self);
+void CCodeBuilder_dedent(CCodeBuilder* self);
+void CCodeBuilder_begin_block(CCodeBuilder* self);
+void CCodeBuilder_end_block(CCodeBuilder* self);
+const char* CCodeBuilder_to_str(CCodeBuilder* self);
+int64_t CCodeBuilder_line_count(CCodeBuilder* self);
+const char* cb_escape_string(const char* s);
+const char* cb_escape_asm(const char* s);
+const char* cgb_char_to_str(char c);
+const char* cgb_int_to_str(int64_t n);
+CType CType_new(void);
+CType ctype_new(const char* base, int64_t pointer, bool is_const, bool is_unsigned);
+CType ctype_void(void);
+CType ctype_int(void);
+CType ctype_bool(void);
+CType ctype_char(void);
+CType ctype_float(void);
+CType ctype_str(void);
+CType ctype_ptr(CType inner);
+CType ctype_const(CType inner);
+const char* ctype_to_str(CType t);
+CType ctype_from_kai(const char* kai_type);
+CType ctype_copy(CType t);
+CExprNode CExprNode_new(void);
+CStmtNode CStmtNode_new(void);
+CDeclNode CDeclNode_new(void);
+CUnit CUnit_new(void);
+CUnit cunit_new(ArrayList_Str includes, ArrayList_CDeclNode decls);
+CExprNode cexpr_new_int(const char* val);
+CExprNode cexpr_new_ident(const char* name);
+CExprNode cexpr_new_binary(int64_t left, const char* op, int64_t right);
+CExprNode cexpr_new_call(const char* callee, ArrayList_Int args);
+CStmtNode cstmt_new_expr(int64_t expr_idx);
+CStmtNode cstmt_new_block(ArrayList_Int stmts);
+CStmtNode cstmt_new_if(int64_t cond, int64_t then_branch, int64_t else_branch);
+CExprNode cexpr_new_float(const char* val);
+CExprNode cexpr_new_str(const char* val);
+CExprNode cexpr_new_bool(bool val);
+CExprNode cexpr_new_char(const char* val);
+CExprNode cexpr_new_unary(const char* op, int64_t operand, bool is_prefix);
+CExprNode cexpr_new_compound(CType t, ArrayList_Str compound_fs);
+CExprNode cexpr_new_field(int64_t base, const char* name);
+CExprNode cexpr_new_arrow(int64_t base, const char* name);
+CExprNode cexpr_new_index(int64_t base, int64_t idx_val);
+CExprNode cexpr_new_cast(CType t, int64_t cast_e);
+CExprNode cexpr_new_sizeof_type(CType t);
+CDeclNode cdecl_new_func(const char* name, const char* ret_type, ArrayList_Str params, bool is_extern, bool is_vararg);
+CPrinter CPrinter_new(void);
+CPrinter CPrinter_init(CCodeBuilder* builder, ArrayList_CExprNode* expr_pool, ArrayList_CStmtNode* stmt_pool);
+const char* CPrinter_print_expr(CPrinter* self, int64_t idx);
+void CPrinter_print_stmt(CPrinter* self, int64_t idx);
+void CPrinter_print_decl(CPrinter* self, CDeclNode decl);
+void CPrinter_emit_runtime_preamble(CPrinter* self, ArrayList_Str* cimport_headers);
+const char* diag_fix_safety(const char* code);
+const char* diag_repair_id(const char* code);
+const char* diag_repair_summary(const char* code);
+bool diagnostic_can_apply_edits(const char* code);
+void print_json_string(const char* s);
+void print_diag_json(const char* code, const char* message, const char* path, int64_t line, int64_t column, int64_t len_val, const char* expected, const char* actual, const char* help);
+void print_fix_json(const char* code, bool applies);
+void print_plan(const char* path, bool json_mode, ArrayList_Str* codes, ArrayList_Str* messages, ArrayList_Int* dlines, ArrayList_Int* dcolumns, ArrayList_Int* dlengths, ArrayList_Str* expected, ArrayList_Str* actual, ArrayList_Str* helpv);
+void print_patch(const char* path, bool json_mode, bool apply, bool applied, ArrayList_Str* codes, ArrayList_Str* messages, ArrayList_Int* dlines, ArrayList_Int* dcolumns, ArrayList_Int* dlengths, ArrayList_Str* expected, ArrayList_Str* actual, ArrayList_Str* helpv, ArrayList_Int* patch_lines, ArrayList_Str* patch_old, ArrayList_Str* patch_new, ArrayList_Str* patch_codes);
+int64_t run_fix(const char* fix_mode, const char* fix_file, bool json);
+ErrorInfo ErrorInfo_new(void);
+ErrorEntry ErrorEntry_new(void);
 ErrorInfo get_error_info(const char* code);
 bool __kai_std_ascii_is_digit(char byte);
 bool __kai_std_ascii_is_lower(char byte);
@@ -1593,358 +1655,28 @@ Optional_Int diag_write_span(char* buffer, int64_t offset, const char* bytes);
 Optional_Int diag_write_usize(char* buffer, int64_t offset, int64_t value);
 const char* diag_format_location(char* buffer, const char* path, int64_t line, int64_t column);
 const char* diag_format_offset_location(char* buffer, const char* path, const char* bytes, int64_t offset);
-const char* diag_fix_safety(const char* code);
-const char* diag_repair_id(const char* code);
-const char* diag_repair_summary(const char* code);
-bool diagnostic_can_apply_edits(const char* code);
-void print_json_string(const char* s);
-void print_diag_json(const char* code, const char* message, const char* path, int64_t line, int64_t column, int64_t len_val, const char* expected, const char* actual, const char* help);
-void print_fix_json(const char* code, bool applies);
-void print_plan(const char* path, bool json_mode, ArrayList_Str* codes, ArrayList_Str* messages, ArrayList_Int* dlines, ArrayList_Int* dcolumns, ArrayList_Int* dlengths, ArrayList_Str* expected, ArrayList_Str* actual, ArrayList_Str* helpv);
-void print_patch(const char* path, bool json_mode, bool apply, bool applied, ArrayList_Str* codes, ArrayList_Str* messages, ArrayList_Int* dlines, ArrayList_Int* dcolumns, ArrayList_Int* dlengths, ArrayList_Str* expected, ArrayList_Str* actual, ArrayList_Str* helpv, ArrayList_Int* patch_lines, ArrayList_Str* patch_old, ArrayList_Str* patch_new, ArrayList_Str* patch_codes);
-int64_t run_fix(const char* fix_mode, const char* fix_file, bool json);
 int64_t run_patch(int64_t argc, char** argv);
 int64_t run_graph(int64_t argc, char** argv);
 int64_t run_init(int64_t argc, char** argv);
 extern int64_t get_exe_dir(char* buf, int64_t max_len);
 int64_t run_skills(int64_t argc, char** argv);
 int64_t run_explain(int64_t argc, char** argv);
-extern int64_t get_exe_dir(char* buf, int64_t max_len);
 
-uint8_t* CAlloc_alloc(CAlloc* self, int64_t size, int64_t alignment) {
-    {
-    return malloc((size_t)(size));
-}
-}
-uint8_t* CAlloc_realloc(CAlloc* self, uint8_t* ptr, int64_t old_size, int64_t new_size, int64_t alignment) {
-    {
-    return realloc((uint8_t*)(ptr), (size_t)(new_size));
-}
-}
-void CAlloc_free(CAlloc* self, uint8_t* ptr) {
-    {
-    free((uint8_t*)(ptr));
-}
-}
-void CAlloc_deinit(CAlloc* self) {
-}
-int64_t class_obj_size(int64_t idx) {
-    return (8LL << idx);
-}
-int64_t class_for(int64_t sz) {
-    if (sz <= 8LL) {
-    return 0LL;
-}
-    if (sz <= 16LL) {
-    return 1LL;
-}
-    if (sz <= 32LL) {
-    return 2LL;
-}
-    if (sz <= 64LL) {
-    return 3LL;
-}
-    if (sz <= 128LL) {
-    return 4LL;
-}
-    if (sz <= 256LL) {
-    return 5LL;
-}
-    if (sz <= 512LL) {
-    return 6LL;
-}
-    if (sz <= 1024LL) {
-    return 7LL;
-}
-    if (sz <= 2048LL) {
-    return 8LL;
-}
-    if (sz <= 4096LL) {
-    return 9LL;
-}
-    if (sz <= 8192LL) {
-    return 10LL;
-}
-    if (sz <= 16384LL) {
-    return 11LL;
-}
-    return (-1LL);
-}
-bool is_small(int64_t sz) {
-    return (sz <= 16384LL);
-}
-int64_t page_align_up(int64_t n) {
-    return ((n + 4095LL) & (-4096LL));
-}
-KaiAllocator KaiAllocator_init(void) {
-    KaiAllocator self = (KaiAllocator){0};
-    {
-    uint8_t* ptr = _kai_mmap((uint8_t*)(unsigned long long)(0LL), 4096LL, 3LL, 4098LL, (-1LL), 0LL);
-    self.heads = ptr;
-    self.used = 0LL;
-}
-    return self;
-}
-uint8_t* KaiAllocator_get_head(KaiAllocator* self, int64_t idx) {
-    {
-    uint8_t** arr = (uint8_t**)(self->heads);
-    return (arr)[idx];
-}
-}
-void KaiAllocator_set_head(KaiAllocator* self, int64_t idx, uint8_t* head) {
-    {
-    uint8_t** arr = (uint8_t**)(self->heads);
-    (arr)[idx] = head;
-}
-}
-uint8_t* KaiAllocator_allocate_slab(KaiAllocator* self, int64_t idx) {
-    {
-    uint8_t* raw = _kai_mmap((uint8_t*)(unsigned long long)(0LL), 131072LL, 3LL, 4098LL, (-1LL), 0LL);
-    if ((int64_t)(raw) == (-1LL)) {
-    return (uint8_t*)(unsigned long long)(0LL);
-}
-    int64_t aligned_addr = (((int64_t)(raw) + 65535LL) & (-65536LL));
-    uint8_t* slab = (uint8_t*)(unsigned long long)(aligned_addr);
-    int64_t before = (aligned_addr - (int64_t)(raw));
-    if (before > 0LL) {
-    _kai_munmap(raw, before);
-}
-    int64_t after_start = (aligned_addr + 65536LL);
-    int64_t after_len = (((int64_t)(raw) + 131072LL) - after_start);
-    if (after_len > 0LL) {
-    _kai_munmap((uint8_t*)(unsigned long long)(after_start), after_len);
-}
-    int64_t objsz = class_obj_size(idx);
-    SlabHeader* hdr = (SlabHeader*)(slab);
-    hdr->magic = 1262569811LL;
-    hdr->obj_size = objsz;
-    hdr->capacity = ((65536LL - 64LL) / objsz);
-    hdr->free_cnt = 0LL;
-    hdr->free_head = (uint8_t*)(unsigned long long)(0LL);
-    hdr->next_bump_idx = 0LL;
-    hdr->pad = 0LL;
-    hdr->next = KaiAllocator_get_head(self, idx);
-    KaiAllocator_set_head(self, idx, slab);
-    return slab;
-}
-}
-uint8_t* KaiAllocator_alloc_large(KaiAllocator* self, int64_t size) {
-    {
-    int64_t total = (size + 16LL);
-    int64_t page_aligned = page_align_up(total);
-    uint8_t* raw = _kai_mmap((uint8_t*)(unsigned long long)(0LL), (page_aligned + 65536LL), 3LL, 4098LL, (-1LL), 0LL);
-    if ((int64_t)(raw) == (-1LL)) {
-    return (uint8_t*)(unsigned long long)(0LL);
-}
-    int64_t aligned_addr = (((int64_t)(raw) + 65535LL) & (-65536LL));
-    uint8_t* slab = (uint8_t*)(unsigned long long)(aligned_addr);
-    ((int64_t*)(slab))[0LL] = (int64_t)(raw);
-    ((int64_t*)(slab))[1LL] = size;
-    self->used = (self->used + size);
-    return (uint8_t*)(unsigned long long)((aligned_addr + 16LL));
-}
-}
-void KaiAllocator_free_large(KaiAllocator* self, uint8_t* ptr) {
-    {
-    int64_t slab_addr = ((int64_t)(ptr) & (-65536LL));
-    int64_t raw_ptr = ((int64_t*)((uint8_t*)(unsigned long long)(slab_addr)))[0LL];
-    int64_t orig_size = ((int64_t*)((uint8_t*)(unsigned long long)(slab_addr)))[1LL];
-    int64_t mmap_size = (page_align_up((orig_size + 16LL)) + 65536LL);
-    self->used = (self->used - orig_size);
-    _kai_munmap((uint8_t*)(unsigned long long)(raw_ptr), mmap_size);
-}
-}
-uint8_t* KaiAllocator_alloc(KaiAllocator* self, int64_t size, int64_t align) {
-    if (!is_small(size)) {
-    return KaiAllocator_alloc_large(self, size);
-}
-    int64_t idx = class_for(size);
-    int64_t objsz = class_obj_size(idx);
-    {
-    uint8_t* slab = KaiAllocator_get_head(self, idx);
-    while (slab != (uint8_t*)(unsigned long long)(0LL)) {
-    SlabHeader* hdr = (SlabHeader*)(slab);
-    if (hdr->free_head != (uint8_t*)(unsigned long long)(0LL)) {
-    uint8_t* ptr = hdr->free_head;
-    hdr->free_head = ((FreeBlock*)(ptr))->next;
-    hdr->free_cnt = (hdr->free_cnt - 1LL);
-    self->used = (self->used + objsz);
-    return ptr;
-}
-    if (hdr->next_bump_idx < hdr->capacity) {
-    int64_t off = (64LL + (hdr->next_bump_idx * objsz));
-    uint8_t* ptr = (uint8_t*)(unsigned long long)(((int64_t)(slab) + off));
-    hdr->next_bump_idx = (hdr->next_bump_idx + 1LL);
-    self->used = (self->used + objsz);
-    return ptr;
-}
-    slab = hdr->next;
-}
-    uint8_t* ns = KaiAllocator_allocate_slab(self, idx);
-    if (ns == (uint8_t*)(unsigned long long)(0LL)) {
-    return (uint8_t*)(unsigned long long)(0LL);
-}
-    SlabHeader* hdr = (SlabHeader*)(ns);
-    hdr->next_bump_idx = 1LL;
-    self->used = (self->used + objsz);
-    return (uint8_t*)(unsigned long long)(((int64_t)(ns) + 64LL));
-}
-}
-uint8_t* KaiAllocator_realloc(KaiAllocator* self, uint8_t* ptr, int64_t old_size, int64_t new_size, int64_t align) {
-    if (ptr == (uint8_t*)(unsigned long long)(0LL)) {
-    return KaiAllocator_alloc(self, new_size, align);
-}
-    if (new_size <= old_size) {
-    return ptr;
-}
-    {
-    int64_t slab_addr = ((int64_t)(ptr) & (-65536LL));
-    SlabHeader* hdr = (SlabHeader*)((uint8_t*)(unsigned long long)(slab_addr));
-    if (hdr->magic == 1262569811LL) {
-    if (new_size <= hdr->obj_size) {
-    return ptr;
-}
-    uint8_t* np = KaiAllocator_alloc(self, new_size, align);
-    if (np == (uint8_t*)(unsigned long long)(0LL)) {
-    return (uint8_t*)(unsigned long long)(0LL);
-}
-    int64_t i = 0LL;
-    while (i < old_size) {
-    (np)[i] = (ptr)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self, ptr);
-    return np;
-}
-}
-    uint8_t* np = KaiAllocator_alloc(self, new_size, align);
-    if (np == (uint8_t*)(unsigned long long)(0LL)) {
-    return (uint8_t*)(unsigned long long)(0LL);
-}
-    {
-    int64_t i = 0LL;
-    while (i < old_size) {
-    (np)[i] = (ptr)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self, ptr);
-}
-    return np;
-}
-void KaiAllocator_free(KaiAllocator* self, uint8_t* ptr) {
-    if (ptr == (uint8_t*)(unsigned long long)(0LL)) {
-    return;
-}
-    {
-    int64_t slab_addr = ((int64_t)(ptr) & (-65536LL));
-    SlabHeader* hdr = (SlabHeader*)((uint8_t*)(unsigned long long)(slab_addr));
-    if (hdr->magic == 1262569811LL) {
-    FreeBlock* fb = (FreeBlock*)(ptr);
-    fb->next = hdr->free_head;
-    hdr->free_head = (uint8_t*)(ptr);
-    hdr->free_cnt = (hdr->free_cnt + 1LL);
-} else {
-    KaiAllocator_free_large(self, (uint8_t*)(ptr));
-}
-}
-}
-void KaiAllocator_deinit(KaiAllocator* self) {
-    int64_t i = 0LL;
-    while (i < 12LL) {
-    {
-    uint8_t* slab = KaiAllocator_get_head(self, i);
-    while (slab != (uint8_t*)(unsigned long long)(0LL)) {
-    uint8_t* next = ((SlabHeader*)(slab))->next;
-    _kai_munmap(slab, 65536LL);
-    slab = next;
-}
-}
-    i = (i + 1LL);
-}
-    {
-    _kai_munmap(self->heads, page_align_up(96LL));
-}
-}
-KaiAllocator KaiAllocator_new(void) {
-    KaiAllocator a = (KaiAllocator){ .heads = (uint8_t*)(unsigned long long)(0LL), .used = 0LL };
-    a = KaiAllocator_init();
-    return a;
-}
-Result_Str_IoError read_to_string(KaiAllocator* allocator, const char* path) {
-    {
-    void* file = fopen((char*)(path), (char*)("rb"));
-    if ((char*)(file) == NULL) {
-    return (Result_Str_IoError){ .tag = IoError_open_failed };
-}
-    fseek(file, 0LL, 2LL);
-    int64_t size = ftell(file);
-    rewind(file);
-    char* buf = (char*)(KaiAllocator_alloc(allocator, (size + 1LL), 1LL));
-    int64_t bytes_read = fread(buf, 1LL, size, file);
-    (buf)[bytes_read] = ((char)(0LL));
-    fclose(file);
-    return (Result_Str_IoError){ .tag = 0, .value = (const char*)(buf) };
-}
-}
-Result_Bool_IoError write_string(const char* path, const char* content) {
-    {
-    void* file = fopen((char*)(path), (char*)("wb"));
-    if ((char*)(file) == NULL) {
-    return (Result_Bool_IoError){ .tag = IoError_open_failed };
-}
-    int64_t len = strlen(content);
-    int64_t bytes_written = fwrite((char*)(content), 1LL, len, file);
-    fclose(file);
-    return (Result_Bool_IoError){ .tag = 0, .value = true };
-}
-}
-char char_at(const char* s, int64_t i) {
-    return (s)[i];
-}
-bool is_digit(char c) {
-    return ((c >= ((char)(48LL))) && (c <= ((char)(57LL))));
-}
-bool is_alpha(char c) {
-    return (((c >= ((char)(97LL))) && (c <= ((char)(122LL)))) || ((c >= ((char)(65LL))) && (c <= ((char)(90LL)))));
-}
-bool is_alnum(char c) {
-    return (is_digit(c) || is_alpha(c));
-}
-bool is_space(char c) {
-    return ((((((c == ((char)(32LL))) || (c == ((char)(9LL)))) || (c == ((char)(10LL)))) || (c == ((char)(13LL)))) || (c == ((char)(11LL)))) || (c == ((char)(12LL))));
-}
-char to_upper(char c) {
-    if ((c >= ((char)(97LL))) && (c <= ((char)(122LL)))) {
-    return (c - ((char)(32LL)));
-}
-    return c;
-}
-char to_lower(char c) {
-    if ((c >= ((char)(65LL))) && (c <= ((char)(90LL)))) {
-    return (c + ((char)(32LL)));
-}
-    return c;
-}
-int64_t length(const char* s) {
-    {
-    return strlen(s);
-}
-}
-StringBuilder StringBuilder_init(KaiAllocator* allocator) {
-    StringBuilder self = (StringBuilder){0};
+ArrayList_Token ArrayList_Token_init(KaiAllocator* allocator) {
+    ArrayList_Token self = (ArrayList_Token){0};
     self.len = 0LL;
-    self.cap = 16LL;
+    self.cap = 4LL;
     self.allocator = allocator;
     {
-    self.data = (char*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(char))), 1LL));
+    self.data = (Token*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(Token))), 1LL));
 }
     return self;
 }
-void StringBuilder_append_char(StringBuilder* self, char c) {
-    if ((self->len + 1LL) >= self->cap) {
+void ArrayList_Token_push(ArrayList_Token* self, Token item) {
+    if (self->len == self->cap) {
     int64_t new_cap = (self->cap * 2LL);
     {
-    char* new_data = (char*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(char))), 1LL));
+    Token* new_data = (Token*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(Token))), 1LL));
     int64_t i = 0LL;
     while (i < self->len) {
     (new_data)[i] = (self->data)[i];
@@ -1955,107 +1687,285 @@ void StringBuilder_append_char(StringBuilder* self, char c) {
     self->cap = new_cap;
 }
 }
-    (self->data)[self->len] = c;
+    (self->data)[self->len] = item;
     self->len = (self->len + 1LL);
-    (self->data)[self->len] = ((char)(0LL));
 }
-void StringBuilder_append_str(StringBuilder* self, const char* s) {
-    int64_t i = 0LL;
-    while ((s)[i] != ((char)(0LL))) {
-    StringBuilder_append_char(self, (s)[i]);
-    i = (i + 1LL);
+Token ArrayList_Token_get(ArrayList_Token* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
 }
 }
-void StringBuilder_append(StringBuilder* self, const char* s) {
-    StringBuilder_append_str(self, s);
+    return (self->data)[index];
 }
-const char* StringBuilder_to_str(StringBuilder* self) {
-    return (const char*)(self->data);
+void ArrayList_Token_set(ArrayList_Token* self, int64_t index, Token item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
 }
-void StringBuilder_deinit(StringBuilder* self) {
+}
+    (self->data)[index] = item;
+}
+Token ArrayList_Token_pop(ArrayList_Token* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_Token_length(ArrayList_Token* self) {
+    return self->len;
+}
+void ArrayList_Token_deinit(ArrayList_Token* self) {
     {
     KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
 }
 }
-const char* int_to_str(int64_t n) {
+ArrayList_Int ArrayList_Int_init(KaiAllocator* allocator) {
+    ArrayList_Int self = (ArrayList_Int){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
     {
-    KaiAllocator allocator = (KaiAllocator){ .heads = (uint8_t*)(unsigned long long)(0LL), .used = 0LL };
-    allocator = KaiAllocator_init();
-    KaiAllocator* alloc_ptr = (KaiAllocator*)(&(allocator));
-    StringBuilder sb = StringBuilder_init(alloc_ptr);
-    int64_t num = n;
-    if (num < 0LL) {
-    StringBuilder_append_char(&(sb), ((char)(45LL)));
-    num = (-num);
+    self.data = (int64_t*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(int64_t))), 1LL));
 }
-    int64_t divisor = 1LL;
-    int64_t tmp = num;
-    while (tmp >= 10LL) {
-    divisor = (divisor * 10LL);
-    tmp = (tmp / 10LL);
+    return self;
 }
-    while (divisor > 0LL) {
-    int64_t digit = ((num / divisor) % 10LL);
-    StringBuilder_append_char(&(sb), ((char)((48LL + digit))));
-    divisor = (divisor / 10LL);
-}
-    return StringBuilder_to_str(&(sb));
-}
-}
-const char* char_to_str(char c) {
+void ArrayList_Int_push(ArrayList_Int* self, int64_t item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
     {
-    KaiAllocator allocator = (KaiAllocator){ .heads = (uint8_t*)(unsigned long long)(0LL), .used = 0LL };
-    allocator = KaiAllocator_init();
-    StringBuilder sb = StringBuilder_init((KaiAllocator*)(&(allocator)));
-    StringBuilder_append_char(&(sb), c);
-    return StringBuilder_to_str(&(sb));
-}
-}
-const char* substring(const char* s, int64_t start, int64_t end) {
-    {
-    int64_t len = strlen(s);
-    int64_t real_end = end;
-    if (real_end > len) {
-    real_end = len;
-}
-    int64_t real_start = start;
-    if (real_start < 0LL) {
-    real_start = 0LL;
-}
-    if (real_start >= real_end) {
-    char* empty = (char*)(malloc((size_t)(1LL)));
-    if (empty != (char*)(unsigned long long)(0LL)) {
-    (empty)[0LL] = ((char)(0LL));
-}
-    return (const char*)(empty);
-}
-    int64_t sub_len = (real_end - real_start);
-    char* buf = (char*)(malloc((size_t)((sub_len + 1LL))));
-    if (buf != (char*)(unsigned long long)(0LL)) {
+    int64_t* new_data = (int64_t*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(int64_t))), 1LL));
     int64_t i = 0LL;
-    while (i < sub_len) {
-    (buf)[i] = (s)[(real_start + i)];
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
     i = (i + 1LL);
 }
-    (buf)[sub_len] = ((char)(0LL));
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
 }
-    return (const char*)(buf);
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+int64_t ArrayList_Int_get(ArrayList_Int* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
 }
 }
-void print_separator(void) {
-    printf("---\n");
+    return (self->data)[index];
 }
-void printi(int64_t i) {
-    __kai_print_int(i);
+void ArrayList_Int_set(ArrayList_Int* self, int64_t index, int64_t item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
 }
-void printff(double f) {
-    __kai_print_float(f);
 }
-void prints(const char* s) {
-    printf("%s\n", s);
+    (self->data)[index] = item;
 }
-void printc(char c) {
-    printf("%c\n", c);
+int64_t ArrayList_Int_pop(ArrayList_Int* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_Int_length(ArrayList_Int* self) {
+    return self->len;
+}
+void ArrayList_Int_deinit(ArrayList_Int* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+ArrayList_ExprNode ArrayList_ExprNode_init(KaiAllocator* allocator) {
+    ArrayList_ExprNode self = (ArrayList_ExprNode){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (ExprNode*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(ExprNode))), 1LL));
+}
+    return self;
+}
+void ArrayList_ExprNode_push(ArrayList_ExprNode* self, ExprNode item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    ExprNode* new_data = (ExprNode*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(ExprNode))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+ExprNode ArrayList_ExprNode_get(ArrayList_ExprNode* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_ExprNode_set(ArrayList_ExprNode* self, int64_t index, ExprNode item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+ExprNode ArrayList_ExprNode_pop(ArrayList_ExprNode* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_ExprNode_length(ArrayList_ExprNode* self) {
+    return self->len;
+}
+void ArrayList_ExprNode_deinit(ArrayList_ExprNode* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+ArrayList_StmtNode ArrayList_StmtNode_init(KaiAllocator* allocator) {
+    ArrayList_StmtNode self = (ArrayList_StmtNode){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (StmtNode*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(StmtNode))), 1LL));
+}
+    return self;
+}
+void ArrayList_StmtNode_push(ArrayList_StmtNode* self, StmtNode item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    StmtNode* new_data = (StmtNode*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(StmtNode))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+StmtNode ArrayList_StmtNode_get(ArrayList_StmtNode* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_StmtNode_set(ArrayList_StmtNode* self, int64_t index, StmtNode item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+StmtNode ArrayList_StmtNode_pop(ArrayList_StmtNode* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_StmtNode_length(ArrayList_StmtNode* self) {
+    return self->len;
+}
+void ArrayList_StmtNode_deinit(ArrayList_StmtNode* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+ArrayList_PatternNode ArrayList_PatternNode_init(KaiAllocator* allocator) {
+    ArrayList_PatternNode self = (ArrayList_PatternNode){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (PatternNode*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(PatternNode))), 1LL));
+}
+    return self;
+}
+void ArrayList_PatternNode_push(ArrayList_PatternNode* self, PatternNode item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    PatternNode* new_data = (PatternNode*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(PatternNode))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+PatternNode ArrayList_PatternNode_get(ArrayList_PatternNode* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_PatternNode_set(ArrayList_PatternNode* self, int64_t index, PatternNode item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+PatternNode ArrayList_PatternNode_pop(ArrayList_PatternNode* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_PatternNode_length(ArrayList_PatternNode* self) {
+    return self->len;
+}
+void ArrayList_PatternNode_deinit(ArrayList_PatternNode* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
 }
 ArrayList_Param ArrayList_Param_init(KaiAllocator* allocator) {
     ArrayList_Param self = (ArrayList_Param){0};
@@ -2236,67 +2146,6 @@ int64_t ArrayList_StrInterpPart_length(ArrayList_StrInterpPart* self) {
     return self->len;
 }
 void ArrayList_StrInterpPart_deinit(ArrayList_StrInterpPart* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
-}
-ArrayList_Int ArrayList_Int_init(KaiAllocator* allocator) {
-    ArrayList_Int self = (ArrayList_Int){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-    self.data = (int64_t*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(int64_t))), 1LL));
-}
-    return self;
-}
-void ArrayList_Int_push(ArrayList_Int* self, int64_t item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    int64_t* new_data = (int64_t*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(int64_t))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
-}
-}
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-int64_t ArrayList_Int_get(ArrayList_Int* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_Int_set(ArrayList_Int* self, int64_t index, int64_t item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-int64_t ArrayList_Int_pop(ArrayList_Int* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_Int_length(ArrayList_Int* self) {
-    return self->len;
-}
-void ArrayList_Int_deinit(ArrayList_Int* self) {
     {
     KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
 }
@@ -2728,187 +2577,1742 @@ void ArrayList_MatchCase_deinit(ArrayList_MatchCase* self) {
     KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
 }
 }
-ArrayList_DropVarEntry empty_dropvarentry_array(void) {
-    return (ArrayList_DropVarEntry){ .data = (DropVarEntry*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-}
-ArrayList_Str empty_str_array(void) {
-    return (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-}
-ArrayList_Int empty_int_array(void) {
-    return (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-}
-ArrayList_FieldInit empty_fieldinit_array(void) {
-    return (ArrayList_FieldInit){ .data = (FieldInit*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-}
-ArrayList_Param empty_param_array(void) {
-    return (ArrayList_Param){ .data = (Param*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-}
-ArrayList_StructField empty_structfield_array(void) {
-    return (ArrayList_StructField){ .data = (StructField*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-}
-ArrayList_Variant empty_variant_array(void) {
-    return (ArrayList_Variant){ .data = (Variant*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-}
-ArrayList_MatchCase empty_matchcase_array(void) {
-    return (ArrayList_MatchCase){ .data = (MatchCase*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-}
-ArrayList_StrInterpPart empty_strinterp_array(void) {
-    return (ArrayList_StrInterpPart){ .data = (StrInterpPart*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-}
-ArrayList_AsmOutput empty_asmoutput_array(void) {
-    return (ArrayList_AsmOutput){ .data = (AsmOutput*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-}
-ArrayList_AsmInput empty_asminput_array(void) {
-    return (ArrayList_AsmInput){ .data = (AsmInput*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-}
-ExprNode new_expr_node(ExprKind kind, int64_t line, int64_t col) {
-    ExprNode node = (ExprNode){ .kind = kind, .line = line, .col = col, .inferred_type = "", .lit_value = (TokenValue){ .tag = TokenValue_tv_none_TAG }, .lit_vkind = "", .interp_parts = empty_strinterp_array(), .ident_name = "", .ident_type_args = empty_str_array(), .binop_op = "", .binop_left = (-1LL), .binop_right = (-1LL), .unop_op = "", .unop_operand = (-1LL), .func_name = "", .func_args = empty_int_array(), .func_type_args = empty_str_array(), .struct_name = "", .struct_fields = empty_fieldinit_array(), .field_expr = (-1LL), .field_name = "", .meth_expr = (-1LL), .meth_name = "", .meth_args = empty_int_array(), .idx_expr = (-1LL), .idx_index = (-1LL), .check_expr = (-1LL), .slice_expr = (-1LL), .slice_lower = (-1LL), .slice_upper = (-1LL), .slice_inclusive = false, .range_start = (-1LL), .range_end = (-1LL), .range_inclusive = false, .arr_elements = empty_int_array(), .tup_elements = empty_int_array(), .borrow_expr = (-1LL), .borrow_mut = false, .deref_expr = (-1LL), .try_expr = (-1LL), .catch_expr = (-1LL), .catch_var = "", .catch_fallback = (-1LL), .asm_code = "", .asm_is_volatile = false, .asm_outputs = empty_asmoutput_array(), .asm_inputs = empty_asminput_array(), .asm_clobbers = empty_str_array() };
-    return node;
-}
-StmtNode new_stmt_node(StmtKind kind, int64_t line, int64_t col) {
-    StmtNode node = (StmtNode){ .kind = kind, .line = line, .col = col, .block_stmts = empty_int_array(), .vardecl_name = "", .vardecl_type = "", .vardecl_value = (-1LL), .vardecl_mut = false, .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .func_name = "", .func_params = empty_param_array(), .func_return_type = "", .func_body = (-1LL), .func_capability = "", .func_type_params = empty_str_array(), .func_public = false, .struct_name = "", .struct_fields = empty_structfield_array(), .struct_type_params = empty_str_array(), .struct_methods = empty_int_array(), .struct_trait_impls = empty_int_array(), .struct_public = false, .impl_struct_name = "", .impl_trait_name = "", .impl_methods = empty_int_array(), .trait_name = "", .trait_methods = empty_int_array(), .trait_public = false, .enum_name = "", .enum_variants = empty_variant_array(), .enum_type_params = empty_str_array(), .enum_public = false, .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .iflet_var = "", .iflet_expr = (-1LL), .iflet_then = (-1LL), .iflet_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_var = "", .for_start = (-1LL), .for_end = (-1LL), .for_inclusive = false, .for_body = (-1LL), .return_value = (-1LL), .print_value = (-1LL), .expr_stmt = (-1LL), .defer_body = (-1LL), .errdefer_body = (-1LL), .unsafe_body = (-1LL), .extern_name = "", .extern_params = empty_param_array(), .extern_return = "", .import_path = empty_str_array(), .import_alias = "", .cimport_header = "", .cimport_alias = "", .block_drop_vars = empty_dropvarentry_array(), .block_is_loop_body = false, .match_expr = (-1LL), .match_cases = empty_matchcase_array(), .error_name = "", .error_variants = empty_str_array() };
-    return node;
-}
-PatternNode new_pattern_node(PatternKind kind) {
-    PatternNode node = (PatternNode){ .kind = kind, .variant_name = "", .bindings = empty_str_array(), .lit_value = (TokenValue){ .tag = TokenValue_tv_none_TAG } };
-    return node;
-}
-bool fs_exists(const char* path) {
+ArrayList_SymbolTable ArrayList_SymbolTable_init(KaiAllocator* allocator) {
+    ArrayList_SymbolTable self = (ArrayList_SymbolTable){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
     {
-    return kai_fs_exists(path);
+    self.data = (SymbolTable*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(SymbolTable))), 1LL));
 }
+    return self;
 }
-bool fs_is_dir(const char* path) {
+void ArrayList_SymbolTable_push(ArrayList_SymbolTable* self, SymbolTable item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
     {
-    return kai_fs_is_dir(path);
-}
-}
-bool fs_mkdir(const char* path) {
-    {
-    return kai_fs_mkdir(path);
-}
-}
-bool fs_remove(const char* path) {
-    {
-    return kai_fs_remove(path);
-}
-}
-Dir fs_opendir(const char* path) {
-    {
-    return (Dir){ .handle = kai_fs_opendir(path) };
-}
-}
-const char* fs_readdir(Dir dir) {
-    {
-    char* name_ptr = kai_fs_readdir(dir.handle);
-    if (name_ptr == (char*)(unsigned long long)(0LL)) {
-    return "";
-}
-    return (const char*)(name_ptr);
-}
-}
-void fs_closedir(Dir dir) {
-    {
-    kai_fs_closedir(dir.handle);
-}
-}
-const char* get_source_line(const char* source, int64_t line_num) {
-    int64_t current = 0LL;
-    int64_t line_start = 0LL;
+    SymbolTable* new_data = (SymbolTable*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(SymbolTable))), 1LL));
     int64_t i = 0LL;
-    int64_t len = strlen(source);
-    while ((i < len) && (current < line_num)) {
-    if ((source)[i] == ((char)(10LL))) {
-    current = (current + 1LL);
-    line_start = (i + 1LL);
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+SymbolTable ArrayList_SymbolTable_get(ArrayList_SymbolTable* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_SymbolTable_set(ArrayList_SymbolTable* self, int64_t index, SymbolTable item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+SymbolTable ArrayList_SymbolTable_pop(ArrayList_SymbolTable* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_SymbolTable_length(ArrayList_SymbolTable* self) {
+    return self->len;
+}
+void ArrayList_SymbolTable_deinit(ArrayList_SymbolTable* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+ArrayList_StructInfo ArrayList_StructInfo_init(KaiAllocator* allocator) {
+    ArrayList_StructInfo self = (ArrayList_StructInfo){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (StructInfo*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(StructInfo))), 1LL));
+}
+    return self;
+}
+void ArrayList_StructInfo_push(ArrayList_StructInfo* self, StructInfo item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    StructInfo* new_data = (StructInfo*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(StructInfo))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+StructInfo ArrayList_StructInfo_get(ArrayList_StructInfo* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_StructInfo_set(ArrayList_StructInfo* self, int64_t index, StructInfo item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+StructInfo ArrayList_StructInfo_pop(ArrayList_StructInfo* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_StructInfo_length(ArrayList_StructInfo* self) {
+    return self->len;
+}
+void ArrayList_StructInfo_deinit(ArrayList_StructInfo* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+ArrayList_Bool ArrayList_Bool_init(KaiAllocator* allocator) {
+    ArrayList_Bool self = (ArrayList_Bool){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (bool*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(bool))), 1LL));
+}
+    return self;
+}
+void ArrayList_Bool_push(ArrayList_Bool* self, bool item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    bool* new_data = (bool*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(bool))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+bool ArrayList_Bool_get(ArrayList_Bool* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_Bool_set(ArrayList_Bool* self, int64_t index, bool item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+bool ArrayList_Bool_pop(ArrayList_Bool* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_Bool_length(ArrayList_Bool* self) {
+    return self->len;
+}
+void ArrayList_Bool_deinit(ArrayList_Bool* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+ArrayList_Symbol ArrayList_Symbol_init(KaiAllocator* allocator) {
+    ArrayList_Symbol self = (ArrayList_Symbol){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (Symbol*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(Symbol))), 1LL));
+}
+    return self;
+}
+void ArrayList_Symbol_push(ArrayList_Symbol* self, Symbol item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    Symbol* new_data = (Symbol*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(Symbol))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+Symbol ArrayList_Symbol_get(ArrayList_Symbol* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_Symbol_set(ArrayList_Symbol* self, int64_t index, Symbol item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+Symbol ArrayList_Symbol_pop(ArrayList_Symbol* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_Symbol_length(ArrayList_Symbol* self) {
+    return self->len;
+}
+void ArrayList_Symbol_deinit(ArrayList_Symbol* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+ArrayList_StrMapEntry ArrayList_StrMapEntry_init(KaiAllocator* allocator) {
+    ArrayList_StrMapEntry self = (ArrayList_StrMapEntry){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (StrMapEntry*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(StrMapEntry))), 1LL));
+}
+    return self;
+}
+void ArrayList_StrMapEntry_push(ArrayList_StrMapEntry* self, StrMapEntry item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    StrMapEntry* new_data = (StrMapEntry*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(StrMapEntry))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+StrMapEntry ArrayList_StrMapEntry_get(ArrayList_StrMapEntry* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_StrMapEntry_set(ArrayList_StrMapEntry* self, int64_t index, StrMapEntry item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+StrMapEntry ArrayList_StrMapEntry_pop(ArrayList_StrMapEntry* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_StrMapEntry_length(ArrayList_StrMapEntry* self) {
+    return self->len;
+}
+void ArrayList_StrMapEntry_deinit(ArrayList_StrMapEntry* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+ArrayList_CgbMapEntry ArrayList_CgbMapEntry_init(KaiAllocator* allocator) {
+    ArrayList_CgbMapEntry self = (ArrayList_CgbMapEntry){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (CgbMapEntry*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(CgbMapEntry))), 1LL));
+}
+    return self;
+}
+void ArrayList_CgbMapEntry_push(ArrayList_CgbMapEntry* self, CgbMapEntry item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    CgbMapEntry* new_data = (CgbMapEntry*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(CgbMapEntry))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+CgbMapEntry ArrayList_CgbMapEntry_get(ArrayList_CgbMapEntry* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_CgbMapEntry_set(ArrayList_CgbMapEntry* self, int64_t index, CgbMapEntry item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+CgbMapEntry ArrayList_CgbMapEntry_pop(ArrayList_CgbMapEntry* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_CgbMapEntry_length(ArrayList_CgbMapEntry* self) {
+    return self->len;
+}
+void ArrayList_CgbMapEntry_deinit(ArrayList_CgbMapEntry* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+ArrayList_CExprNode ArrayList_CExprNode_init(KaiAllocator* allocator) {
+    ArrayList_CExprNode self = (ArrayList_CExprNode){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (CExprNode*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(CExprNode))), 1LL));
+}
+    return self;
+}
+void ArrayList_CExprNode_push(ArrayList_CExprNode* self, CExprNode item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    CExprNode* new_data = (CExprNode*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(CExprNode))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+CExprNode ArrayList_CExprNode_get(ArrayList_CExprNode* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_CExprNode_set(ArrayList_CExprNode* self, int64_t index, CExprNode item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+CExprNode ArrayList_CExprNode_pop(ArrayList_CExprNode* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_CExprNode_length(ArrayList_CExprNode* self) {
+    return self->len;
+}
+void ArrayList_CExprNode_deinit(ArrayList_CExprNode* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+ArrayList_CStmtNode ArrayList_CStmtNode_init(KaiAllocator* allocator) {
+    ArrayList_CStmtNode self = (ArrayList_CStmtNode){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (CStmtNode*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(CStmtNode))), 1LL));
+}
+    return self;
+}
+void ArrayList_CStmtNode_push(ArrayList_CStmtNode* self, CStmtNode item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    CStmtNode* new_data = (CStmtNode*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(CStmtNode))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+CStmtNode ArrayList_CStmtNode_get(ArrayList_CStmtNode* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_CStmtNode_set(ArrayList_CStmtNode* self, int64_t index, CStmtNode item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+CStmtNode ArrayList_CStmtNode_pop(ArrayList_CStmtNode* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_CStmtNode_length(ArrayList_CStmtNode* self) {
+    return self->len;
+}
+void ArrayList_CStmtNode_deinit(ArrayList_CStmtNode* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+ArrayList_CDeclNode ArrayList_CDeclNode_init(KaiAllocator* allocator) {
+    ArrayList_CDeclNode self = (ArrayList_CDeclNode){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (CDeclNode*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(CDeclNode))), 1LL));
+}
+    return self;
+}
+void ArrayList_CDeclNode_push(ArrayList_CDeclNode* self, CDeclNode item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    CDeclNode* new_data = (CDeclNode*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(CDeclNode))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+CDeclNode ArrayList_CDeclNode_get(ArrayList_CDeclNode* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_CDeclNode_set(ArrayList_CDeclNode* self, int64_t index, CDeclNode item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+CDeclNode ArrayList_CDeclNode_pop(ArrayList_CDeclNode* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_CDeclNode_length(ArrayList_CDeclNode* self) {
+    return self->len;
+}
+void ArrayList_CDeclNode_deinit(ArrayList_CDeclNode* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+int main(int argc, char** argv) {
+    if (argc < 2LL) {
+    printf("Usage: kai <command> [options]\n");
+    printf("Commands:\n");
+    printf("  init [path]     Create a new Kai project\n");
+    printf("  check <file>    Type-check only (no code generation)\n");
+    printf("  run <file>      Compile and run a .kai file\n");
+    printf("  <file>          Compile and run (shorthand)\n");
+    printf("  patch <file>    Apply an operation-based edit\n");
+    printf("  explain <code>  Explain an error code\n");
+    printf("  skills          List available agent skills\n");
+    printf("  fix <file>      Auto-fix diagnostics (--plan|--patch|--apply)\n");
+    printf("  graph <file>    Export or query the AST graph\n");
+    printf("Flags:\n");
+    printf("  --json          Output diagnostics in JSON format\n");
+    printf("  -o <file>       Specify output binary name\n");
+    printf("  -c              Emit C code only (no linking)\n");
+    printf("  -CC             Use builder-based codegen (experimental)\n");
+    printf("  -O0|-O1|-O2|-O3|-Os  Optimization level (default: -O2)\n");
+    return 1LL;
+}
+    const char* first_arg = "";
+    {
+    first_arg = (const char*)((argv)[1LL]);
+}
+    {
+    if (strcmp(first_arg, "explain") == 0LL) {
+    return run_explain(argc, argv);
+}
+    if (strcmp(first_arg, "skills") == 0LL) {
+    return run_skills(argc, argv);
+}
+    if (strcmp(first_arg, "init") == 0LL) {
+    return run_init(argc, argv);
+}
+    if (strcmp(first_arg, "patch") == 0LL) {
+    return run_patch(argc, argv);
+}
+    if (strcmp(first_arg, "fix") == 0LL) {
+    const char* fix_mode = "plan";
+    const char* fix_file = "";
+    bool json = false;
+    int64_t i2 = 2LL;
+    while (i2 < argc) {
+    const char* a = (const char*)((argv)[i2]);
+    if (strcmp(a, "--plan") == 0LL) {
+    fix_mode = "plan";
+} else if (strcmp(a, "--patch") == 0LL) {
+    fix_mode = "patch";
+} else if (strcmp(a, "--apply") == 0LL) {
+    fix_mode = "apply";
+} else if (strcmp(a, "--json") == 0LL) {
+    json = true;
+} else if (strcmp(fix_file, "") == 0) {
+    fix_file = a;
+}
+    i2 = (i2 + 1LL);
+}
+    if (strlen(fix_file) == 0LL) {
+    printf("Usage: kai fix (--plan|--patch|--apply) [--json] <file>\n");
+    return 1LL;
+}
+    return run_fix(fix_mode, fix_file, json);
+}
+    if (strcmp(first_arg, "graph") == 0LL) {
+    return run_graph(argc, argv);
+}
+}
+    const char* input_file = "";
+    bool is_run = false;
+    {
+    if (strcmp(first_arg, "run") == 0LL) {
+    is_run = true;
+}
+}
+    if (is_run) {
+    if (argc < 3LL) {
+    printf("Error: No input file specified\n");
+    printf("Usage: kai run <file>\n");
+    return 1LL;
+}
+    {
+    input_file = (const char*)((argv)[2LL]);
+}
+} else {
+    input_file = first_arg;
+}
+    const char* output_bin = "";
+    bool emit_c_only = false;
+    bool use_builder = false;
+    const char* opt_level = "-O2";
+    bool json_mode = false;
+    bool check_only = false;
+    int64_t i = 1LL;
+    if (is_run) {
+    i = 2LL;
+}
+    while (i < argc) {
+    const char* arg = (const char*)((argv)[i]);
+    bool matched = true;
+    {
+    if (strcmp(arg, "run") == 0LL) {
+} else if (strcmp(arg, "-c") == 0LL) {
+    emit_c_only = true;
+} else if (strcmp(arg, "-CC") == 0LL) {
+    use_builder = true;
+} else if (strcmp(arg, "-o") == 0LL) {
+    if ((i + 1LL) < argc) {
+    i = (i + 1LL);
+    output_bin = (const char*)((argv)[i]);
+} else {
+    printf("Error: -o requires an argument\n");
+    return 1LL;
+}
+} else if (strcmp(arg, "-O0") == 0LL) {
+    opt_level = "-O0";
+} else if (strcmp(arg, "-O1") == 0LL) {
+    opt_level = "-O1";
+} else if (strcmp(arg, "-O2") == 0LL) {
+    opt_level = "-O2";
+} else if (strcmp(arg, "-O3") == 0LL) {
+    opt_level = "-O3";
+} else if (strcmp(arg, "-Os") == 0LL) {
+    opt_level = "-Os";
+} else if (strcmp(arg, "--json") == 0LL) {
+    json_mode = true;
+} else if (strcmp(arg, "check") == 0LL) {
+    check_only = true;
+} else {
+    matched = false;
+}
+}
+    if (matched == false) {
+    if ((strlen(arg) > 0LL) && ((arg)[0LL] != ((char)(45LL)))) {
+    input_file = arg;
+}
 }
     i = (i + 1LL);
 }
-    if (current != line_num) {
-    return "";
+    if (strlen(input_file) == 0LL) {
+    printf("Error: No input file specified\n");
+    return 1LL;
 }
-    int64_t line_end = line_start;
-    while ((line_end < len) && ((source)[line_end] != ((char)(10LL)))) {
-    line_end = (line_end + 1LL);
+    KaiAllocator allocator = KaiAllocator_new();
+    _kai_set_current_allocator((void*)(&(allocator)));
+    const char* exe_include_flag = "";
+    const char* exe_dir = "";
+    {
+    char* buf = (char*)(KaiAllocator_alloc(&(allocator), 1024LL, 1LL));
+    if (get_exe_dir(buf, 1024LL) == 0LL) {
+    exe_dir = (const char*)(buf);
+    exe_include_flag = __kai_std_str_concat_alloc("-I", exe_dir);
 }
-    return substring(source, line_start, line_end);
 }
-int64_t find_last(const char* path, char c) {
-    int64_t i = (strlen(path) - 1LL);
-    while (i >= 0LL) {
-    if ((path)[i] == c) {
-    return i;
+    const char* base = get_base_name(input_file);
+    const char* bin_name = base;
+    if (strlen(output_bin) > 0LL) {
+    bin_name = output_bin;
 }
-    i = (i - 1LL);
+    const char* c_file = __kai_std_str_concat_alloc(base, ".c");
+    if (use_builder) {
+    c_file = __kai_std_str_concat_alloc("CC", c_file);
+}
+    Result_Str_IoError source_res = read_to_string(&(allocator), input_file);
+    if (source_res.tag != 0LL) {
+    if (json_mode) {
+    printf("{\"messages\":[{\"code\":\"E0099\",\"message\":\"Failed to read input file: '%s'\"}]}\n", input_file);
+}
+    return 4LL;
+}
+    const char* source = (const char*)(source_res.value);
+    Lexer lexer = Lexer_init(&(allocator), source, input_file);
+    Lexer_lex(&(lexer));
+    if (lexer.has_error) {
+    if (json_mode) {
+    printf("{\"messages\":[{\"code\":\"E0100\",\"message\":\"Lexer error\",\"file\":\"%s\"}],\"error\":true}\n", input_file);
+}
+    return 2LL;
+}
+    Parser parser = Parser_init(&(allocator), input_file, lexer.tokens, source);
+    int64_t program_idx = Parser_parse_program(&(parser));
+    if (program_idx < 0LL) {
+    if (json_mode) {
+    printf("{\"messages\":[{\"code\":\"E0101\",\"message\":\"Parse error\",\"file\":\"%s\"}],\"error\":true}\n", input_file);
+}
+    return 3LL;
+}
+    ImportResolver resolver = ImportResolver_init(&(allocator));
+    TypeChecker checker = TypeChecker_init(&(allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool, input_file, source, &(resolver));
+    bool success = TypeChecker_check_program(&(checker), program_idx);
+    if (!success) {
+    if (json_mode) {
+    printf("{\"result\":\"typecheck_failed\",\"file\":\"%s\"}\n", input_file);
+}
+    return 4LL;
+}
+    if (check_only) {
+    if (json_mode) {
+    printf("{\"result\":\"ok\",\"file\":\"%s\"}\n", input_file);
+}
+    return 0LL;
+}
+    const char* output = "";
+    if (use_builder) {
+    CodegenBuilder builder_gen = CodegenBuilder_init(&(allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool, &(resolver));
+    output = CodegenBuilder_generate(&(builder_gen), program_idx);
+} else {
+    Codegen gen = Codegen_init(&(allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool, &(resolver));
+    output = Codegen_generate(&(gen), program_idx);
+}
+    Result_Bool_IoError write_res = write_string(c_file, output);
+    if (write_res.tag != 0LL) {
+    return 5LL;
+}
+    if (emit_c_only) {
+    return 0LL;
+}
+    const char* cmd = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("clang ", exe_include_flag), " "), opt_level), " "), c_file), " -o "), bin_name);
+    {
+    return system((char*)(cmd));
+}
+}uint8_t* CAlloc_alloc(CAlloc* self, int64_t size, int64_t alignment) {
+    {
+    return malloc((size_t)(size));
+}
+}
+uint8_t* CAlloc_realloc(CAlloc* self, uint8_t* ptr, int64_t old_size, int64_t new_size, int64_t alignment) {
+    {
+    return realloc((uint8_t*)(ptr), (size_t)(new_size));
+}
+}
+void CAlloc_free(CAlloc* self, uint8_t* ptr) {
+    {
+    free((uint8_t*)(ptr));
+}
+}
+void CAlloc_deinit(CAlloc* self) {
+}
+int64_t class_obj_size(int64_t idx) {
+    return (8LL << idx);
+}
+int64_t class_for(int64_t sz) {
+    if (sz <= 8LL) {
+    return 0LL;
+}
+    if (sz <= 16LL) {
+    return 1LL;
+}
+    if (sz <= 32LL) {
+    return 2LL;
+}
+    if (sz <= 64LL) {
+    return 3LL;
+}
+    if (sz <= 128LL) {
+    return 4LL;
+}
+    if (sz <= 256LL) {
+    return 5LL;
+}
+    if (sz <= 512LL) {
+    return 6LL;
+}
+    if (sz <= 1024LL) {
+    return 7LL;
+}
+    if (sz <= 2048LL) {
+    return 8LL;
+}
+    if (sz <= 4096LL) {
+    return 9LL;
+}
+    if (sz <= 8192LL) {
+    return 10LL;
+}
+    if (sz <= 16384LL) {
+    return 11LL;
 }
     return (-1LL);
 }
-bool mkdir_p(const char* path) {
-    if (fs_exists(path)) {
-    return true;
+bool is_small(int64_t sz) {
+    return (sz <= 16384LL);
 }
-    int64_t slash_pos = find_last(path, ((char)(47LL)));
-    if (slash_pos > 0LL) {
-    const char* parent = substring(path, 0LL, slash_pos);
-    if (!mkdir_p(parent)) {
-    return false;
+int64_t page_align_up(int64_t n) {
+    return ((n + 4095LL) & (-4096LL));
 }
-}
-    return fs_mkdir(path);
-}
-const char* str_replace(const char* s, const char* old, const char* new_val) {
-    int64_t s_len = strlen(s);
-    int64_t old_len = strlen(old);
-    if (old_len == 0LL) {
-    return s;
-}
-    const char* result = "";
-    int64_t i = 0LL;
-    while (i < s_len) {
-    int64_t j = 0LL;
-    bool matched = true;
-    while (j < old_len) {
+KaiAllocator KaiAllocator_init(void) {
+    KaiAllocator self = (KaiAllocator){0};
     {
-    if ((s)[(i + j)] != (old)[j]) {
-    matched = false;
-    break;
+    uint8_t* ptr = _kai_mmap((uint8_t*)(unsigned long long)(0LL), 4096LL, 3LL, 4098LL, (-1LL), 0LL);
+    self.heads = ptr;
+    self.used = 0LL;
+}
+    return self;
+}
+uint8_t* KaiAllocator_get_head(KaiAllocator* self, int64_t idx) {
+    {
+    uint8_t** arr = (uint8_t**)(self->heads);
+    return (arr)[idx];
 }
 }
-    j = (j + 1LL);
-}
-    if (matched) {
-    result = __kai_std_str_concat_alloc(result, new_val);
-    i = (i + old_len);
-} else {
-    result = __kai_std_str_concat_alloc(result, substring(s, i, (i + 1LL)));
-    i = (i + 1LL);
+void KaiAllocator_set_head(KaiAllocator* self, int64_t idx, uint8_t* head) {
+    {
+    uint8_t** arr = (uint8_t**)(self->heads);
+    (arr)[idx] = head;
 }
 }
-    return result;
+uint8_t* KaiAllocator_allocate_slab(KaiAllocator* self, int64_t idx) {
+    {
+    uint8_t* raw = _kai_mmap((uint8_t*)(unsigned long long)(0LL), 131072LL, 3LL, 4098LL, (-1LL), 0LL);
+    if ((int64_t)(raw) == (-1LL)) {
+    return (uint8_t*)(unsigned long long)(0LL);
 }
-const char* get_base_name(const char* path) {
-    int64_t last_slash = (-1LL);
-    int64_t dot_pos = (-1LL);
+    int64_t aligned_addr = (((int64_t)(raw) + 65535LL) & (-65536LL));
+    uint8_t* slab = (uint8_t*)(unsigned long long)(aligned_addr);
+    int64_t before = (aligned_addr - (int64_t)(raw));
+    if (before > 0LL) {
+    _kai_munmap(raw, before);
+}
+    int64_t after_start = (aligned_addr + 65536LL);
+    int64_t after_len = (((int64_t)(raw) + 131072LL) - after_start);
+    if (after_len > 0LL) {
+    _kai_munmap((uint8_t*)(unsigned long long)(after_start), after_len);
+}
+    int64_t objsz = class_obj_size(idx);
+    SlabHeader* hdr = (SlabHeader*)(slab);
+    hdr->magic = 1262569811LL;
+    hdr->obj_size = objsz;
+    hdr->capacity = ((65536LL - 64LL) / objsz);
+    hdr->free_cnt = 0LL;
+    hdr->free_head = (uint8_t*)(unsigned long long)(0LL);
+    hdr->next_bump_idx = 0LL;
+    hdr->pad = 0LL;
+    hdr->next = KaiAllocator_get_head(self, idx);
+    KaiAllocator_set_head(self, idx, slab);
+    return slab;
+}
+}
+uint8_t* KaiAllocator_alloc_large(KaiAllocator* self, int64_t size) {
+    {
+    int64_t total = (size + 16LL);
+    int64_t page_aligned = page_align_up(total);
+    uint8_t* raw = _kai_mmap((uint8_t*)(unsigned long long)(0LL), (page_aligned + 65536LL), 3LL, 4098LL, (-1LL), 0LL);
+    if ((int64_t)(raw) == (-1LL)) {
+    return (uint8_t*)(unsigned long long)(0LL);
+}
+    int64_t aligned_addr = (((int64_t)(raw) + 65535LL) & (-65536LL));
+    uint8_t* slab = (uint8_t*)(unsigned long long)(aligned_addr);
+    ((int64_t*)(slab))[0LL] = (int64_t)(raw);
+    ((int64_t*)(slab))[1LL] = size;
+    self->used = (self->used + size);
+    return (uint8_t*)(unsigned long long)((aligned_addr + 16LL));
+}
+}
+void KaiAllocator_free_large(KaiAllocator* self, uint8_t* ptr) {
+    {
+    int64_t slab_addr = ((int64_t)(ptr) & (-65536LL));
+    int64_t raw_ptr = ((int64_t*)((uint8_t*)(unsigned long long)(slab_addr)))[0LL];
+    int64_t orig_size = ((int64_t*)((uint8_t*)(unsigned long long)(slab_addr)))[1LL];
+    int64_t mmap_size = (page_align_up((orig_size + 16LL)) + 65536LL);
+    self->used = (self->used - orig_size);
+    _kai_munmap((uint8_t*)(unsigned long long)(raw_ptr), mmap_size);
+}
+}
+uint8_t* KaiAllocator_alloc(KaiAllocator* self, int64_t size, int64_t align) {
+    if (!is_small(size)) {
+    return KaiAllocator_alloc_large(self, size);
+}
+    int64_t idx = class_for(size);
+    int64_t objsz = class_obj_size(idx);
+    {
+    uint8_t* slab = KaiAllocator_get_head(self, idx);
+    while (slab != (uint8_t*)(unsigned long long)(0LL)) {
+    SlabHeader* hdr = (SlabHeader*)(slab);
+    if (hdr->free_head != (uint8_t*)(unsigned long long)(0LL)) {
+    uint8_t* ptr = hdr->free_head;
+    hdr->free_head = ((FreeBlock*)(ptr))->next;
+    hdr->free_cnt = (hdr->free_cnt - 1LL);
+    self->used = (self->used + objsz);
+    return ptr;
+}
+    if (hdr->next_bump_idx < hdr->capacity) {
+    int64_t off = (64LL + (hdr->next_bump_idx * objsz));
+    uint8_t* ptr = (uint8_t*)(unsigned long long)(((int64_t)(slab) + off));
+    hdr->next_bump_idx = (hdr->next_bump_idx + 1LL);
+    self->used = (self->used + objsz);
+    return ptr;
+}
+    slab = hdr->next;
+}
+    uint8_t* ns = KaiAllocator_allocate_slab(self, idx);
+    if (ns == (uint8_t*)(unsigned long long)(0LL)) {
+    return (uint8_t*)(unsigned long long)(0LL);
+}
+    SlabHeader* hdr = (SlabHeader*)(ns);
+    hdr->next_bump_idx = 1LL;
+    self->used = (self->used + objsz);
+    return (uint8_t*)(unsigned long long)(((int64_t)(ns) + 64LL));
+}
+}
+uint8_t* KaiAllocator_realloc(KaiAllocator* self, uint8_t* ptr, int64_t old_size, int64_t new_size, int64_t align) {
+    if (ptr == (uint8_t*)(unsigned long long)(0LL)) {
+    return KaiAllocator_alloc(self, new_size, align);
+}
+    if (new_size <= old_size) {
+    return ptr;
+}
+    {
+    int64_t slab_addr = ((int64_t)(ptr) & (-65536LL));
+    SlabHeader* hdr = (SlabHeader*)((uint8_t*)(unsigned long long)(slab_addr));
+    if (hdr->magic == 1262569811LL) {
+    if (new_size <= hdr->obj_size) {
+    return ptr;
+}
+    uint8_t* np = KaiAllocator_alloc(self, new_size, align);
+    if (np == (uint8_t*)(unsigned long long)(0LL)) {
+    return (uint8_t*)(unsigned long long)(0LL);
+}
     int64_t i = 0LL;
-    int64_t l = strlen(path);
-    while (i < l) {
-    char c = (path)[i];
-    if (c == ((char)(47LL))) {
-    last_slash = i;
-} else if (c == ((char)(46LL))) {
-    dot_pos = i;
+    while (i < old_size) {
+    (np)[i] = (ptr)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self, ptr);
+    return np;
+}
+}
+    uint8_t* np = KaiAllocator_alloc(self, new_size, align);
+    if (np == (uint8_t*)(unsigned long long)(0LL)) {
+    return (uint8_t*)(unsigned long long)(0LL);
+}
+    {
+    int64_t i = 0LL;
+    while (i < old_size) {
+    (np)[i] = (ptr)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self, ptr);
+}
+    return np;
+}
+void KaiAllocator_free(KaiAllocator* self, uint8_t* ptr) {
+    if (ptr == (uint8_t*)(unsigned long long)(0LL)) {
+    return;
+}
+    {
+    int64_t slab_addr = ((int64_t)(ptr) & (-65536LL));
+    SlabHeader* hdr = (SlabHeader*)((uint8_t*)(unsigned long long)(slab_addr));
+    if (hdr->magic == 1262569811LL) {
+    FreeBlock* fb = (FreeBlock*)(ptr);
+    fb->next = hdr->free_head;
+    hdr->free_head = (uint8_t*)(ptr);
+    hdr->free_cnt = (hdr->free_cnt + 1LL);
+} else {
+    KaiAllocator_free_large(self, (uint8_t*)(ptr));
+}
+}
+}
+void KaiAllocator_deinit(KaiAllocator* self) {
+    int64_t i = 0LL;
+    while (i < 12LL) {
+    {
+    uint8_t* slab = KaiAllocator_get_head(self, i);
+    while (slab != (uint8_t*)(unsigned long long)(0LL)) {
+    uint8_t* next = ((SlabHeader*)(slab))->next;
+    _kai_munmap(slab, 65536LL);
+    slab = next;
+}
 }
     i = (i + 1LL);
 }
-    int64_t start = 0LL;
-    if (last_slash >= 0LL) {
-    start = (last_slash + 1LL);
+    {
+    _kai_munmap(self->heads, page_align_up(96LL));
 }
-    int64_t end = l;
-    if (dot_pos > last_slash) {
-    end = dot_pos;
 }
-    return substring(path, start, end);
+KaiAllocator KaiAllocator_new(void) {
+    KaiAllocator a = (KaiAllocator){ .heads = (uint8_t*)(unsigned long long)(0LL), .used = 0LL };
+    a = KaiAllocator_init();
+    return a;
+}
+Result_Str_IoError read_to_string(KaiAllocator* allocator, const char* path) {
+    {
+    void* file = fopen((char*)(path), (char*)("rb"));
+    if ((char*)(file) == NULL) {
+    return (Result_Str_IoError){ .tag = IoError_open_failed };
+}
+    fseek(file, 0LL, 2LL);
+    int64_t size = ftell(file);
+    rewind(file);
+    char* buf = (char*)(KaiAllocator_alloc(allocator, (size + 1LL), 1LL));
+    int64_t bytes_read = fread(buf, 1LL, size, file);
+    (buf)[bytes_read] = ((char)(0LL));
+    fclose(file);
+    return (Result_Str_IoError){ .tag = 0, .value = (const char*)(buf) };
+}
+}
+Result_Bool_IoError write_string(const char* path, const char* content) {
+    {
+    void* file = fopen((char*)(path), (char*)("wb"));
+    if ((char*)(file) == NULL) {
+    return (Result_Bool_IoError){ .tag = IoError_open_failed };
+}
+    int64_t len = strlen(content);
+    int64_t bytes_written = fwrite((char*)(content), 1LL, len, file);
+    fclose(file);
+    return (Result_Bool_IoError){ .tag = 0, .value = true };
+}
+}
+TokenType keyword_type(const char* ident) {
+    if (strcmp(ident, "let") == 0) {
+    return TokenType_LET;
+} else if (strcmp(ident, "var") == 0) {
+    return TokenType_VAR;
+} else if (strcmp(ident, "fn") == 0) {
+    return TokenType_FUNC;
+} else if (strcmp(ident, "if") == 0) {
+    return TokenType_IF;
+} else if (strcmp(ident, "else") == 0) {
+    return TokenType_ELSE;
+} else if (strcmp(ident, "while") == 0) {
+    return TokenType_WHILE;
+} else if (strcmp(ident, "for") == 0) {
+    return TokenType_FOR;
+} else if (strcmp(ident, "in") == 0) {
+    return TokenType_IN;
+} else if (strcmp(ident, "return") == 0) {
+    return TokenType_RETURN;
+} else if (strcmp(ident, "true") == 0) {
+    return TokenType_BOOL_LIT;
+} else if (strcmp(ident, "false") == 0) {
+    return TokenType_BOOL_LIT;
+} else if (strcmp(ident, "struct") == 0) {
+    return TokenType_STRUCT;
+} else if (strcmp(ident, "impl") == 0) {
+    return TokenType_IMPL;
+} else if (strcmp(ident, "mut") == 0) {
+    return TokenType_MUT;
+} else if (strcmp(ident, "unsafe") == 0) {
+    return TokenType_UNSAFE;
+} else if (strcmp(ident, "extern") == 0) {
+    return TokenType_EXTERN;
+} else if (strcmp(ident, "enum") == 0) {
+    return TokenType_ENUM;
+} else if (strcmp(ident, "match") == 0) {
+    return TokenType_MATCH;
+} else if (strcmp(ident, "case") == 0) {
+    return TokenType_CASE;
+} else if (strcmp(ident, "use") == 0) {
+    return TokenType_USE;
+} else if (strcmp(ident, "check") == 0) {
+    return TokenType_CHECK;
+} else if (strcmp(ident, "trait") == 0) {
+    return TokenType_TRAIT;
+} else if (strcmp(ident, "pub") == 0) {
+    return TokenType_PUB;
+} else if (strcmp(ident, "import") == 0) {
+    return TokenType_IMPORT;
+} else if (strcmp(ident, "cimport") == 0) {
+    return TokenType_CIMPORT;
+} else if (strcmp(ident, "from") == 0) {
+    return TokenType_FROM;
+} else if (strcmp(ident, "as") == 0) {
+    return TokenType_AS;
+} else if (strcmp(ident, "sizeof") == 0) {
+    return TokenType_SIZEOF;
+} else if (strcmp(ident, "defer") == 0) {
+    return TokenType_DEFER;
+} else if (strcmp(ident, "errdefer") == 0) {
+    return TokenType_ERRDEFER;
+} else if (strcmp(ident, "none") == 0) {
+    return TokenType_NONE;
+} else if (strcmp(ident, "try") == 0) {
+    return TokenType_TRY;
+} else if (strcmp(ident, "catch") == 0) {
+    return TokenType_CATCH;
+} else if (strcmp(ident, "own") == 0) {
+    return TokenType_OWN;
+} else if (strcmp(ident, "error") == 0) {
+    return TokenType_ERROR;
+} else if (strcmp(ident, "asm") == 0) {
+    return TokenType_ASM;
+} else if (strcmp(ident, "volatile") == 0) {
+    return TokenType_VOLATILE;
+} else if (strcmp(ident, "break") == 0) {
+    return TokenType_BREAK;
+} else if (strcmp(ident, "continue") == 0) {
+    return TokenType_CONTINUE;
+} else {
+    return TokenType_IDENTIFIER;
+}
+}
+TokenValue make_keyword_value(const char* ident, TokenType ttype) {
+    if (ttype == TokenType_BOOL_LIT) {
+    if (strcmp(ident, "true") == 0) {
+    return (TokenValue){ .tag = TokenValue_tv_bool_TAG, .payload = { .tv_bool = { .v = true } } };
+}
+    return (TokenValue){ .tag = TokenValue_tv_bool_TAG, .payload = { .tv_bool = { .v = false } } };
+}
+    return (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ident } } };
+}
+Lexer Lexer_init(KaiAllocator* allocator, const char* source, const char* source_file) {
+    Lexer self = (Lexer){0};
+    self.allocator = allocator;
+    self.source = source;
+    self.cursor = 0LL;
+    self.line = 1LL;
+    self.column = 1LL;
+    self.paren_depth = 0LL;
+    self.brace_depth = 0LL;
+    self.has_error = false;
+    self.source_file = source_file;
+    {
+    self.tokens = (ArrayList_Token*)(KaiAllocator_alloc(allocator, sizeof(ArrayList_Token), 1LL));
+    self.indent_stack = (ArrayList_Int*)(KaiAllocator_alloc(allocator, sizeof(ArrayList_Int), 1LL));
+}
+    *(self.tokens) = ArrayList_Token_init(allocator);
+    *(self.indent_stack) = ArrayList_Int_init(allocator);
+    ArrayList_Int_push(self.indent_stack, 0LL);
+    {
+    self.source_len = strlen(source);
+}
+    return self;
+}
+char Lexer_peek(Lexer* self, int64_t offset) {
+    int64_t pos = (self->cursor + offset);
+    if (pos >= self->source_len) {
+    return ((char)(0LL));
+}
+    return (self->source)[pos];
+}
+char Lexer_advance(Lexer* self) {
+    if (self->cursor >= self->source_len) {
+    return ((char)(0LL));
+}
+    char c = (self->source)[self->cursor];
+    self->cursor = (self->cursor + 1LL);
+    if (c == '\n') {
+    self->line = (self->line + 1LL);
+    self->column = 1LL;
+} else {
+    self->column = (self->column + 1LL);
+}
+    return c;
+}
+void Lexer_emit(Lexer* self, TokenType ttype, TokenValue value) {
+    ArrayList_Token_push(self->tokens, (Token){ .tok_type = ttype, .value = value, .line = self->line, .column = self->column });
+}
+void Lexer_lex_error(Lexer* self, const char* msg) {
+    parser_err(self->source_file, self->source, "E0100", msg, self->line, self->column);
+    self->has_error = true;
+}
+void Lexer_skip_line_comment(Lexer* self) {
+    while ((self->cursor < self->source_len) && (Lexer_peek(self, 0LL) != '\n')) {
+    (void)(Lexer_advance(self));
+}
+}
+void Lexer_skip_block_comment(Lexer* self) {
+    (void)(Lexer_advance(self));
+    while (self->cursor < self->source_len) {
+    if ((Lexer_peek(self, 0LL) == '*') && (Lexer_peek(self, 1LL) == '/')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    return;
+}
+    (void)(Lexer_advance(self));
+}
+}
+void Lexer_skip_whitespace(Lexer* self) {
+    bool done = false;
+    while ((self->cursor < self->source_len) && (!done)) {
+    char c = Lexer_peek(self, 0LL);
+    if (((c == ' ') || (c == '\t')) || (c == '\r')) {
+    (void)(Lexer_advance(self));
+} else if (c == '/') {
+    if (Lexer_peek(self, 1LL) == '/') {
+    Lexer_skip_line_comment(self);
+} else if (Lexer_peek(self, 1LL) == '*') {
+    Lexer_skip_block_comment(self);
+} else {
+    done = true;
+}
+} else {
+    done = true;
+}
+}
+}
+void Lexer_lex_identifier(Lexer* self) {
+    StringBuilder sb = StringBuilder_init(self->allocator);
+    bool done = false;
+    while ((self->cursor < self->source_len) && (!done)) {
+    char c = Lexer_peek(self, 0LL);
+    if (is_alnum(c) || (c == '_')) {
+    StringBuilder_append_char(&(sb), Lexer_advance(self));
+} else {
+    done = true;
+}
+}
+    const char* ident = StringBuilder_to_str(&(sb));
+    TokenType ktype = keyword_type(ident);
+    if (ktype == TokenType_IDENTIFIER) {
+    Lexer_emit(self, TokenType_IDENTIFIER, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ident } } });
+} else if (ktype == TokenType_BOOL_LIT) {
+    Lexer_emit(self, TokenType_BOOL_LIT, make_keyword_value(ident, TokenType_BOOL_LIT));
+} else {
+    Lexer_emit(self, ktype, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ident } } });
+}
+}
+void Lexer_lex_number(Lexer* self) {
+    StringBuilder sb = StringBuilder_init(self->allocator);
+    bool done = false;
+    while ((self->cursor < self->source_len) && (!done)) {
+    char c = Lexer_peek(self, 0LL);
+    if (is_digit(c)) {
+    StringBuilder_append_char(&(sb), Lexer_advance(self));
+} else {
+    done = true;
+}
+}
+    if ((Lexer_peek(self, 0LL) == '.') && (Lexer_peek(self, 1LL) != '.')) {
+    StringBuilder_append_char(&(sb), Lexer_advance(self));
+    done = false;
+    while ((self->cursor < self->source_len) && (!done)) {
+    char c = Lexer_peek(self, 0LL);
+    if (is_digit(c)) {
+    StringBuilder_append_char(&(sb), Lexer_advance(self));
+} else {
+    done = true;
+}
+}
+    const char* num_str = StringBuilder_to_str(&(sb));
+    Lexer_emit(self, TokenType_FLOAT_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = num_str } } });
+} else {
+    const char* num_str = StringBuilder_to_str(&(sb));
+    Lexer_emit(self, TokenType_INT_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = num_str } } });
+}
+}
+void Lexer_lex_string(Lexer* self) {
+    (void)(Lexer_advance(self));
+    StringBuilder sb = StringBuilder_init(self->allocator);
+    bool done = false;
+    while ((self->cursor < self->source_len) && (!done)) {
+    char c = Lexer_peek(self, 0LL);
+    if (c == '"') {
+    done = true;
+} else if (c == '\\') {
+    (void)(Lexer_advance(self));
+    char esc = Lexer_advance(self);
+    if (esc == 'n') {
+    StringBuilder_append_char(&(sb), '\n');
+} else if (esc == 't') {
+    StringBuilder_append_char(&(sb), '\t');
+} else if (esc == 'r') {
+    StringBuilder_append_char(&(sb), '\r');
+} else if (esc == '"') {
+    StringBuilder_append_char(&(sb), '"');
+} else if (esc == '\\') {
+    StringBuilder_append_char(&(sb), '\\');
+} else {
+    StringBuilder_append_char(&(sb), '\\');
+    StringBuilder_append_char(&(sb), esc);
+}
+} else {
+    StringBuilder_append_char(&(sb), Lexer_advance(self));
+}
+}
+    if (self->cursor < self->source_len) {
+    (void)(Lexer_advance(self));
+}
+    const char* s = StringBuilder_to_str(&(sb));
+    Lexer_emit(self, TokenType_STRING_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = s } } });
+}
+void Lexer_lex_char(Lexer* self) {
+    (void)(Lexer_advance(self));
+    char c = Lexer_advance(self);
+    char ch = ((char)(0LL));
+    if (c == '\\') {
+    char esc = Lexer_advance(self);
+    if (esc == 'n') {
+    ch = '\n';
+} else if (esc == 't') {
+    ch = '\t';
+} else if (esc == 'r') {
+    ch = '\r';
+} else if (esc == '\'') {
+    ch = '\'';
+} else if (esc == '\\') {
+    ch = '\\';
+} else {
+    ch = esc;
+}
+} else {
+    ch = c;
+}
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_CHAR_LIT, (TokenValue){ .tag = TokenValue_tv_char_TAG, .payload = { .tv_char = { .v = ch } } });
+}
+int64_t Lexer_compute_indent(Lexer* self) {
+    int64_t indent = 0LL;
+    int64_t temp = self->cursor;
+    bool done = false;
+    bool has_content = false;
+    while ((temp < self->source_len) && (!done)) {
+    char c = (self->source)[temp];
+    if (c == ' ') {
+    indent = (indent + 1LL);
+    temp = (temp + 1LL);
+} else if (c == '\t') {
+    indent = (indent + 4LL);
+    temp = (temp + 1LL);
+} else if (c == '\r') {
+    temp = (temp + 1LL);
+} else if (c == '\n') {
+    indent = 0LL;
+    temp = (temp + 1LL);
+} else if (((c == '/') && ((temp + 1LL) < self->source_len)) && ((self->source)[(temp + 1LL)] == '/')) {
+    while ((temp < self->source_len) && ((self->source)[temp] != '\n')) {
+    temp = (temp + 1LL);
+}
+    indent = 0LL;
+} else if (((c == '/') && ((temp + 1LL) < self->source_len)) && ((self->source)[(temp + 1LL)] == '*')) {
+    temp = (temp + 2LL);
+    while ((temp < self->source_len) && (!((((temp + 1LL) < self->source_len) && ((self->source)[temp] == '*')) && ((self->source)[(temp + 1LL)] == '/')))) {
+    if ((self->source)[temp] == '\n') {
+    indent = 0LL;
+}
+    temp = (temp + 1LL);
+}
+    if (temp < self->source_len) {
+    temp = (temp + 2LL);
+}
+} else {
+    has_content = true;
+    done = true;
+}
+}
+    if (has_content) {
+    return indent;
+}
+    return (-1LL);
+}
+void Lexer_lex(Lexer* self) {
+    bool is_line_start = true;
+    while (self->cursor < self->source_len) {
+    if (false) {
+    int64_t indent = Lexer_compute_indent(self);
+    if (indent >= 0LL) {
+    if ((self->paren_depth == 0LL) && (self->brace_depth == 0LL)) {
+    int64_t current = ArrayList_Int_get(self->indent_stack, (ArrayList_Int_length(self->indent_stack) - 1LL));
+    if (indent > current) {
+    ArrayList_Int_push(self->indent_stack, indent);
+    Lexer_emit(self, TokenType_INDENT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .payload = { .tv_int = { .v = indent } } });
+} else if (indent < current) {
+    while (indent < ArrayList_Int_get(self->indent_stack, (ArrayList_Int_length(self->indent_stack) - 1LL))) {
+    (void)(ArrayList_Int_pop(self->indent_stack));
+    Lexer_emit(self, TokenType_DEDENT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .payload = { .tv_int = { .v = indent } } });
+}
+    if (indent != ArrayList_Int_get(self->indent_stack, (ArrayList_Int_length(self->indent_stack) - 1LL))) {
+    self->has_error = true;
+}
+}
+}
+}
+    is_line_start = false;
+}
+    Lexer_skip_whitespace(self);
+    if (self->cursor < self->source_len) {
+    char c = Lexer_peek(self, 0LL);
+    if (c == '\n') {
+    (void)(Lexer_advance(self));
+    if (self->paren_depth == 0LL) {
+    int64_t last = ArrayList_Token_length(self->tokens);
+    if (last > 0LL) {
+    Token last_tok = ArrayList_Token_get(self->tokens, (last - 1LL));
+    if (((last_tok.tok_type != TokenType_NEWLINE) && (last_tok.tok_type != TokenType_INDENT)) && (last_tok.tok_type != TokenType_DEDENT)) {
+    Lexer_emit(self, TokenType_NEWLINE, (TokenValue){ .tag = TokenValue_tv_none_TAG });
+}
+}
+}
+    is_line_start = true;
+} else if (is_alpha(c) || (c == '_')) {
+    Lexer_lex_identifier(self);
+} else if (is_digit(c)) {
+    Lexer_lex_number(self);
+} else if (c == '"') {
+    Lexer_lex_string(self);
+} else if (c == '\'') {
+    Lexer_lex_char(self);
+} else if ((c == '-') && (Lexer_peek(self, 1LL) == '>')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_ARROW, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "->" } } });
+} else if ((c == '=') && (Lexer_peek(self, 1LL) == '>')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_FAT_ARROW, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "=>" } } });
+} else if ((c == '+') && (Lexer_peek(self, 1LL) == '=')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_PLUS_ASSIGN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "+=" } } });
+} else if ((c == '-') && (Lexer_peek(self, 1LL) == '=')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_MINUS_ASSIGN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "-=" } } });
+} else if ((c == '=') && (Lexer_peek(self, 1LL) == '=')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_EQ, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "==" } } });
+} else if ((c == '!') && (Lexer_peek(self, 1LL) == '=')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_NE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "!=" } } });
+} else if ((c == '<') && (Lexer_peek(self, 1LL) == '=')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_LE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "<=" } } });
+} else if ((c == '>') && (Lexer_peek(self, 1LL) == '=')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_GE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ">=" } } });
+} else if ((c == '&') && (Lexer_peek(self, 1LL) == '&')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_AND, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "&&" } } });
+} else if ((c == '|') && (Lexer_peek(self, 1LL) == '|')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_OR, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "||" } } });
+} else if ((c == '<') && (Lexer_peek(self, 1LL) == '<')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_LSHIFT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "<<" } } });
+} else if ((c == '>') && (Lexer_peek(self, 1LL) == '>')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_RSHIFT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ">>" } } });
+} else if (((c == '.') && (Lexer_peek(self, 1LL) == '.')) && (Lexer_peek(self, 2LL) == '=')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_DOTDOTEQ, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "..=" } } });
+} else if ((c == '.') && (Lexer_peek(self, 1LL) == '.')) {
+    (void)(Lexer_advance(self));
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_DOTDOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ".." } } });
+} else if (c == '+') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_PLUS, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "+" } } });
+} else if (c == '-') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_MINUS, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "-" } } });
+} else if (c == '*') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_MUL, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "*" } } });
+} else if (c == '/') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_DIV, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "/" } } });
+} else if (c == '%') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_MOD, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "%" } } });
+} else if (c == '=') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_ASSIGN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "=" } } });
+} else if (c == '<') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_LT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "<" } } });
+} else if (c == '>') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_GT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ">" } } });
+} else if (c == ':') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_COLON, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ":" } } });
+} else if (c == ';') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_SEMICOLON, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ";" } } });
+} else if (c == ',') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_COMMA, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "," } } });
+} else if (c == '(') {
+    (void)(Lexer_advance(self));
+    self->paren_depth = (self->paren_depth + 1LL);
+    Lexer_emit(self, TokenType_LPAREN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "(" } } });
+} else if (c == ')') {
+    (void)(Lexer_advance(self));
+    if (self->paren_depth > 0LL) {
+    self->paren_depth = (self->paren_depth - 1LL);
+}
+    Lexer_emit(self, TokenType_RPAREN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ")" } } });
+} else if (c == '[') {
+    (void)(Lexer_advance(self));
+    self->paren_depth = (self->paren_depth + 1LL);
+    Lexer_emit(self, TokenType_LBRACKET, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "[" } } });
+} else if (c == ']') {
+    (void)(Lexer_advance(self));
+    if (self->paren_depth > 0LL) {
+    self->paren_depth = (self->paren_depth - 1LL);
+}
+    Lexer_emit(self, TokenType_RBRACKET, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "]" } } });
+} else if (c == '{') {
+    (void)(Lexer_advance(self));
+    self->brace_depth = (self->brace_depth + 1LL);
+    Lexer_emit(self, TokenType_LBRACE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "{" } } });
+} else if (c == '}') {
+    (void)(Lexer_advance(self));
+    if (self->brace_depth > 0LL) {
+    self->brace_depth = (self->brace_depth - 1LL);
+}
+    Lexer_emit(self, TokenType_RBRACE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "}" } } });
+} else if (c == '&') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_AMP, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "&" } } });
+} else if (c == '#') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_HASH, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "#" } } });
+} else if (c == '!') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_NOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "!" } } });
+} else if (c == '?') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_QUESTION, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "?" } } });
+} else if (c == '^') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_BITXOR, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "^" } } });
+} else if (c == '~') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_BITNOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "~" } } });
+} else if (c == '|') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_PIPE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "|" } } });
+} else if (c == '.') {
+    (void)(Lexer_advance(self));
+    Lexer_emit(self, TokenType_DOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "." } } });
+} else {
+    (void)(Lexer_advance(self));
+    parser_err(self->source_file, self->source, "E0100", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("unexpected character '", char_to_str(c)), "'"), self->line, self->column);
+    self->has_error = true;
+}
+}
+}
+    while (false) {
+    (void)(ArrayList_Int_pop(self->indent_stack));
+    Lexer_emit(self, TokenType_DEDENT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .payload = { .tv_int = { .v = 0LL } } });
+}
+    Lexer_emit(self, TokenType_EOF, (TokenValue){ .tag = TokenValue_tv_none_TAG });
+}
+char char_at(const char* s, int64_t i) {
+    return (s)[i];
+}
+bool is_digit(char c) {
+    return ((c >= ((char)(48LL))) && (c <= ((char)(57LL))));
+}
+bool is_alpha(char c) {
+    return (((c >= ((char)(97LL))) && (c <= ((char)(122LL)))) || ((c >= ((char)(65LL))) && (c <= ((char)(90LL)))));
+}
+bool is_alnum(char c) {
+    return (is_digit(c) || is_alpha(c));
+}
+bool is_space(char c) {
+    return ((((((c == ((char)(32LL))) || (c == ((char)(9LL)))) || (c == ((char)(10LL)))) || (c == ((char)(13LL)))) || (c == ((char)(11LL)))) || (c == ((char)(12LL))));
+}
+char to_upper(char c) {
+    if ((c >= ((char)(97LL))) && (c <= ((char)(122LL)))) {
+    return (c - ((char)(32LL)));
+}
+    return c;
+}
+char to_lower(char c) {
+    if ((c >= ((char)(65LL))) && (c <= ((char)(90LL)))) {
+    return (c + ((char)(32LL)));
+}
+    return c;
+}
+int64_t length(const char* s) {
+    {
+    return strlen(s);
+}
+}
+StringBuilder StringBuilder_init(KaiAllocator* allocator) {
+    StringBuilder self = (StringBuilder){0};
+    self.len = 0LL;
+    self.cap = 16LL;
+    self.allocator = allocator;
+    {
+    self.data = (char*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(char))), 1LL));
+}
+    return self;
+}
+void StringBuilder_append_char(StringBuilder* self, char c) {
+    if ((self->len + 1LL) >= self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    char* new_data = (char*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(char))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = c;
+    self->len = (self->len + 1LL);
+    (self->data)[self->len] = ((char)(0LL));
+}
+void StringBuilder_append_str(StringBuilder* self, const char* s) {
+    int64_t i = 0LL;
+    while ((s)[i] != ((char)(0LL))) {
+    StringBuilder_append_char(self, (s)[i]);
+    i = (i + 1LL);
+}
+}
+void StringBuilder_append(StringBuilder* self, const char* s) {
+    StringBuilder_append_str(self, s);
+}
+const char* StringBuilder_to_str(StringBuilder* self) {
+    return (const char*)(self->data);
+}
+void StringBuilder_deinit(StringBuilder* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+const char* int_to_str(int64_t n) {
+    {
+    KaiAllocator allocator = (KaiAllocator){ .heads = (uint8_t*)(unsigned long long)(0LL), .used = 0LL };
+    allocator = KaiAllocator_init();
+    KaiAllocator* alloc_ptr = (KaiAllocator*)(&(allocator));
+    StringBuilder sb = StringBuilder_init(alloc_ptr);
+    int64_t num = n;
+    if (num < 0LL) {
+    StringBuilder_append_char(&(sb), ((char)(45LL)));
+    num = (-num);
+}
+    int64_t divisor = 1LL;
+    int64_t tmp = num;
+    while (tmp >= 10LL) {
+    divisor = (divisor * 10LL);
+    tmp = (tmp / 10LL);
+}
+    while (divisor > 0LL) {
+    int64_t digit = ((num / divisor) % 10LL);
+    StringBuilder_append_char(&(sb), ((char)((48LL + digit))));
+    divisor = (divisor / 10LL);
+}
+    return StringBuilder_to_str(&(sb));
+}
+}
+const char* char_to_str(char c) {
+    {
+    KaiAllocator allocator = (KaiAllocator){ .heads = (uint8_t*)(unsigned long long)(0LL), .used = 0LL };
+    allocator = KaiAllocator_init();
+    StringBuilder sb = StringBuilder_init((KaiAllocator*)(&(allocator)));
+    StringBuilder_append_char(&(sb), c);
+    return StringBuilder_to_str(&(sb));
+}
+}
+const char* substring(const char* s, int64_t start, int64_t end) {
+    {
+    int64_t len = strlen(s);
+    int64_t real_end = end;
+    if (real_end > len) {
+    real_end = len;
+}
+    int64_t real_start = start;
+    if (real_start < 0LL) {
+    real_start = 0LL;
+}
+    if (real_start >= real_end) {
+    char* empty = (char*)(malloc((size_t)(1LL)));
+    if (empty != (char*)(unsigned long long)(0LL)) {
+    (empty)[0LL] = ((char)(0LL));
+}
+    return (const char*)(empty);
+}
+    int64_t sub_len = (real_end - real_start);
+    char* buf = (char*)(malloc((size_t)((sub_len + 1LL))));
+    if (buf != (char*)(unsigned long long)(0LL)) {
+    int64_t i = 0LL;
+    while (i < sub_len) {
+    (buf)[i] = (s)[(real_start + i)];
+    i = (i + 1LL);
+}
+    (buf)[sub_len] = ((char)(0LL));
+}
+    return (const char*)(buf);
+}
 }
 const char* tv_get_str(TokenValue val) {
     const char* result = "";
@@ -3019,250 +4423,6 @@ const char* str_array_join(ArrayList_Str arr, const char* sep) {
     i = (i + 1LL);
 }
     return result;
-}
-ArrayList_Token ArrayList_Token_init(KaiAllocator* allocator) {
-    ArrayList_Token self = (ArrayList_Token){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-    self.data = (Token*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(Token))), 1LL));
-}
-    return self;
-}
-void ArrayList_Token_push(ArrayList_Token* self, Token item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    Token* new_data = (Token*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(Token))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
-}
-}
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-Token ArrayList_Token_get(ArrayList_Token* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_Token_set(ArrayList_Token* self, int64_t index, Token item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-Token ArrayList_Token_pop(ArrayList_Token* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_Token_length(ArrayList_Token* self) {
-    return self->len;
-}
-void ArrayList_Token_deinit(ArrayList_Token* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
-}
-ArrayList_ExprNode ArrayList_ExprNode_init(KaiAllocator* allocator) {
-    ArrayList_ExprNode self = (ArrayList_ExprNode){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-    self.data = (ExprNode*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(ExprNode))), 1LL));
-}
-    return self;
-}
-void ArrayList_ExprNode_push(ArrayList_ExprNode* self, ExprNode item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    ExprNode* new_data = (ExprNode*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(ExprNode))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
-}
-}
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-ExprNode ArrayList_ExprNode_get(ArrayList_ExprNode* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_ExprNode_set(ArrayList_ExprNode* self, int64_t index, ExprNode item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-ExprNode ArrayList_ExprNode_pop(ArrayList_ExprNode* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_ExprNode_length(ArrayList_ExprNode* self) {
-    return self->len;
-}
-void ArrayList_ExprNode_deinit(ArrayList_ExprNode* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
-}
-ArrayList_StmtNode ArrayList_StmtNode_init(KaiAllocator* allocator) {
-    ArrayList_StmtNode self = (ArrayList_StmtNode){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-    self.data = (StmtNode*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(StmtNode))), 1LL));
-}
-    return self;
-}
-void ArrayList_StmtNode_push(ArrayList_StmtNode* self, StmtNode item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    StmtNode* new_data = (StmtNode*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(StmtNode))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
-}
-}
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-StmtNode ArrayList_StmtNode_get(ArrayList_StmtNode* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_StmtNode_set(ArrayList_StmtNode* self, int64_t index, StmtNode item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-StmtNode ArrayList_StmtNode_pop(ArrayList_StmtNode* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_StmtNode_length(ArrayList_StmtNode* self) {
-    return self->len;
-}
-void ArrayList_StmtNode_deinit(ArrayList_StmtNode* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
-}
-ArrayList_PatternNode ArrayList_PatternNode_init(KaiAllocator* allocator) {
-    ArrayList_PatternNode self = (ArrayList_PatternNode){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-    self.data = (PatternNode*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(PatternNode))), 1LL));
-}
-    return self;
-}
-void ArrayList_PatternNode_push(ArrayList_PatternNode* self, PatternNode item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    PatternNode* new_data = (PatternNode*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(PatternNode))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
-}
-}
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-PatternNode ArrayList_PatternNode_get(ArrayList_PatternNode* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_PatternNode_set(ArrayList_PatternNode* self, int64_t index, PatternNode item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-PatternNode ArrayList_PatternNode_pop(ArrayList_PatternNode* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_PatternNode_length(ArrayList_PatternNode* self) {
-    return self->len;
-}
-void ArrayList_PatternNode_deinit(ArrayList_PatternNode* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
 }
 void parser_err(const char* source_file, const char* source, const char* code, const char* msg, int64_t line, int64_t col) {
     printf("%s:%ld:%ld: error[%s]: %s\n", source_file, line, col, code, msg);
@@ -3629,6 +4789,13 @@ int64_t Parser_st_struct(Parser* self, const char* name, ArrayList_StructField f
     node.struct_methods = methods;
     node.struct_trait_impls = impls;
     ArrayList_StmtNode_push(self->stmt_pool, node);
+    StmtNode ctor = Parser_mk_stmt_node(self, StmtKind_sk_func_decl);
+    ctor.func_name = __kai_std_str_concat_alloc(name, "_new");
+    ctor.func_params = ArrayList_Param_init(self->allocator);
+    ctor.func_return_type = name;
+    ctor.func_body = (-1LL);
+    ctor.func_type_params = tp;
+    ArrayList_StmtNode_push(self->stmt_pool, ctor);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_impl(Parser* self, const char* struct_name, const char* trait_name, ArrayList_Int methods) {
@@ -4462,7 +5629,7 @@ int64_t Parser_parse_import_stmt_new(Parser* self) {
     done = true;
 }
 }
-    const char* alias = "";
+    const char* alias = first_name;
     if (Parser_peek(self, 0LL).tok_type == TokenType_AS) {
     (void)(Parser_advance(self));
     alias = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value);
@@ -4903,869 +6070,204 @@ int64_t Parser_parse_primary(Parser* self) {
     return (-1LL);
 }
 }
-TokenType keyword_type(const char* ident) {
-    if (strcmp(ident, "let") == 0) {
-    return TokenType_LET;
-} else if (strcmp(ident, "var") == 0) {
-    return TokenType_VAR;
-} else if (strcmp(ident, "fn") == 0) {
-    return TokenType_FUNC;
-} else if (strcmp(ident, "if") == 0) {
-    return TokenType_IF;
-} else if (strcmp(ident, "else") == 0) {
-    return TokenType_ELSE;
-} else if (strcmp(ident, "while") == 0) {
-    return TokenType_WHILE;
-} else if (strcmp(ident, "for") == 0) {
-    return TokenType_FOR;
-} else if (strcmp(ident, "in") == 0) {
-    return TokenType_IN;
-} else if (strcmp(ident, "return") == 0) {
-    return TokenType_RETURN;
-} else if (strcmp(ident, "true") == 0) {
-    return TokenType_BOOL_LIT;
-} else if (strcmp(ident, "false") == 0) {
-    return TokenType_BOOL_LIT;
-} else if (strcmp(ident, "struct") == 0) {
-    return TokenType_STRUCT;
-} else if (strcmp(ident, "impl") == 0) {
-    return TokenType_IMPL;
-} else if (strcmp(ident, "mut") == 0) {
-    return TokenType_MUT;
-} else if (strcmp(ident, "unsafe") == 0) {
-    return TokenType_UNSAFE;
-} else if (strcmp(ident, "extern") == 0) {
-    return TokenType_EXTERN;
-} else if (strcmp(ident, "enum") == 0) {
-    return TokenType_ENUM;
-} else if (strcmp(ident, "match") == 0) {
-    return TokenType_MATCH;
-} else if (strcmp(ident, "case") == 0) {
-    return TokenType_CASE;
-} else if (strcmp(ident, "use") == 0) {
-    return TokenType_USE;
-} else if (strcmp(ident, "check") == 0) {
-    return TokenType_CHECK;
-} else if (strcmp(ident, "trait") == 0) {
-    return TokenType_TRAIT;
-} else if (strcmp(ident, "pub") == 0) {
-    return TokenType_PUB;
-} else if (strcmp(ident, "import") == 0) {
-    return TokenType_IMPORT;
-} else if (strcmp(ident, "cimport") == 0) {
-    return TokenType_CIMPORT;
-} else if (strcmp(ident, "from") == 0) {
-    return TokenType_FROM;
-} else if (strcmp(ident, "as") == 0) {
-    return TokenType_AS;
-} else if (strcmp(ident, "sizeof") == 0) {
-    return TokenType_SIZEOF;
-} else if (strcmp(ident, "defer") == 0) {
-    return TokenType_DEFER;
-} else if (strcmp(ident, "errdefer") == 0) {
-    return TokenType_ERRDEFER;
-} else if (strcmp(ident, "none") == 0) {
-    return TokenType_NONE;
-} else if (strcmp(ident, "try") == 0) {
-    return TokenType_TRY;
-} else if (strcmp(ident, "catch") == 0) {
-    return TokenType_CATCH;
-} else if (strcmp(ident, "own") == 0) {
-    return TokenType_OWN;
-} else if (strcmp(ident, "error") == 0) {
-    return TokenType_ERROR;
-} else if (strcmp(ident, "asm") == 0) {
-    return TokenType_ASM;
-} else if (strcmp(ident, "volatile") == 0) {
-    return TokenType_VOLATILE;
-} else if (strcmp(ident, "break") == 0) {
-    return TokenType_BREAK;
-} else if (strcmp(ident, "continue") == 0) {
-    return TokenType_CONTINUE;
-} else {
-    return TokenType_IDENTIFIER;
+void print_separator(void) {
+    printf("---\n");
 }
+void printi(int64_t i) {
+    __kai_print_int(i);
 }
-TokenValue make_keyword_value(const char* ident, TokenType ttype) {
-    if (ttype == TokenType_BOOL_LIT) {
-    if (strcmp(ident, "true") == 0) {
-    return (TokenValue){ .tag = TokenValue_tv_bool_TAG, .payload = { .tv_bool = { .v = true } } };
+void printff(double f) {
+    __kai_print_float(f);
 }
-    return (TokenValue){ .tag = TokenValue_tv_bool_TAG, .payload = { .tv_bool = { .v = false } } };
+void prints(const char* s) {
+    printf("%s\n", s);
 }
-    return (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ident } } };
+void printc(char c) {
+    printf("%c\n", c);
 }
-Lexer Lexer_init(KaiAllocator* allocator, const char* source, const char* source_file) {
-    Lexer self = (Lexer){0};
-    self.allocator = allocator;
-    self.source = source;
-    self.cursor = 0LL;
-    self.line = 1LL;
-    self.column = 1LL;
-    self.paren_depth = 0LL;
-    self.brace_depth = 0LL;
-    self.has_error = false;
-    self.source_file = source_file;
-    {
-    self.tokens = (ArrayList_Token*)(KaiAllocator_alloc(allocator, sizeof(ArrayList_Token), 1LL));
-    self.indent_stack = (ArrayList_Int*)(KaiAllocator_alloc(allocator, sizeof(ArrayList_Int), 1LL));
+ArrayList_DropVarEntry empty_dropvarentry_array(void) {
+    return (ArrayList_DropVarEntry){ .data = (DropVarEntry*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
 }
-    *(self.tokens) = ArrayList_Token_init(allocator);
-    *(self.indent_stack) = ArrayList_Int_init(allocator);
-    ArrayList_Int_push(self.indent_stack, 0LL);
-    {
-    self.source_len = strlen(source);
+ArrayList_Str empty_str_array(void) {
+    return (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
 }
-    return self;
+ArrayList_Int empty_int_array(void) {
+    return (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
 }
-char Lexer_peek(Lexer* self, int64_t offset) {
-    int64_t pos = (self->cursor + offset);
-    if (pos >= self->source_len) {
-    return ((char)(0LL));
+ArrayList_FieldInit empty_fieldinit_array(void) {
+    return (ArrayList_FieldInit){ .data = (FieldInit*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
 }
-    return (self->source)[pos];
+ArrayList_Param empty_param_array(void) {
+    return (ArrayList_Param){ .data = (Param*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
 }
-char Lexer_advance(Lexer* self) {
-    if (self->cursor >= self->source_len) {
-    return ((char)(0LL));
+ArrayList_StructField empty_structfield_array(void) {
+    return (ArrayList_StructField){ .data = (StructField*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
 }
-    char c = (self->source)[self->cursor];
-    self->cursor = (self->cursor + 1LL);
-    if (c == '\n') {
-    self->line = (self->line + 1LL);
-    self->column = 1LL;
-} else {
-    self->column = (self->column + 1LL);
+ArrayList_Variant empty_variant_array(void) {
+    return (ArrayList_Variant){ .data = (Variant*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
 }
-    return c;
+ArrayList_MatchCase empty_matchcase_array(void) {
+    return (ArrayList_MatchCase){ .data = (MatchCase*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
 }
-void Lexer_emit(Lexer* self, TokenType ttype, TokenValue value) {
-    ArrayList_Token_push(self->tokens, (Token){ .tok_type = ttype, .value = value, .line = self->line, .column = self->column });
+ArrayList_StrInterpPart empty_strinterp_array(void) {
+    return (ArrayList_StrInterpPart){ .data = (StrInterpPart*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
 }
-void Lexer_lex_error(Lexer* self, const char* msg) {
-    parser_err(self->source_file, self->source, "E0100", msg, self->line, self->column);
-    self->has_error = true;
+ArrayList_AsmOutput empty_asmoutput_array(void) {
+    return (ArrayList_AsmOutput){ .data = (AsmOutput*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
 }
-void Lexer_skip_line_comment(Lexer* self) {
-    while ((self->cursor < self->source_len) && (Lexer_peek(self, 0LL) != '\n')) {
-    (void)(Lexer_advance(self));
+ArrayList_AsmInput empty_asminput_array(void) {
+    return (ArrayList_AsmInput){ .data = (AsmInput*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
 }
+ExprNode new_expr_node(ExprKind kind, int64_t line, int64_t col) {
+    ExprNode node = (ExprNode){ .kind = kind, .line = line, .col = col, .inferred_type = "", .lit_value = (TokenValue){ .tag = TokenValue_tv_none_TAG }, .lit_vkind = "", .interp_parts = empty_strinterp_array(), .ident_name = "", .ident_type_args = empty_str_array(), .binop_op = "", .binop_left = (-1LL), .binop_right = (-1LL), .unop_op = "", .unop_operand = (-1LL), .func_name = "", .func_args = empty_int_array(), .func_type_args = empty_str_array(), .struct_name = "", .struct_fields = empty_fieldinit_array(), .field_expr = (-1LL), .field_name = "", .meth_expr = (-1LL), .meth_name = "", .meth_args = empty_int_array(), .idx_expr = (-1LL), .idx_index = (-1LL), .check_expr = (-1LL), .slice_expr = (-1LL), .slice_lower = (-1LL), .slice_upper = (-1LL), .slice_inclusive = false, .range_start = (-1LL), .range_end = (-1LL), .range_inclusive = false, .arr_elements = empty_int_array(), .tup_elements = empty_int_array(), .borrow_expr = (-1LL), .borrow_mut = false, .deref_expr = (-1LL), .try_expr = (-1LL), .catch_expr = (-1LL), .catch_var = "", .catch_fallback = (-1LL), .asm_code = "", .asm_is_volatile = false, .asm_outputs = empty_asmoutput_array(), .asm_inputs = empty_asminput_array(), .asm_clobbers = empty_str_array() };
+    return node;
 }
-void Lexer_skip_block_comment(Lexer* self) {
-    (void)(Lexer_advance(self));
-    while (self->cursor < self->source_len) {
-    if ((Lexer_peek(self, 0LL) == '*') && (Lexer_peek(self, 1LL) == '/')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    return;
+StmtNode new_stmt_node(StmtKind kind, int64_t line, int64_t col) {
+    StmtNode node = (StmtNode){ .kind = kind, .line = line, .col = col, .block_stmts = empty_int_array(), .vardecl_name = "", .vardecl_type = "", .vardecl_value = (-1LL), .vardecl_mut = false, .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .func_name = "", .func_params = empty_param_array(), .func_return_type = "", .func_body = (-1LL), .func_capability = "", .func_type_params = empty_str_array(), .func_public = false, .struct_name = "", .struct_fields = empty_structfield_array(), .struct_type_params = empty_str_array(), .struct_methods = empty_int_array(), .struct_trait_impls = empty_int_array(), .struct_public = false, .impl_struct_name = "", .impl_trait_name = "", .impl_methods = empty_int_array(), .trait_name = "", .trait_methods = empty_int_array(), .trait_public = false, .enum_name = "", .enum_variants = empty_variant_array(), .enum_type_params = empty_str_array(), .enum_public = false, .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .iflet_var = "", .iflet_expr = (-1LL), .iflet_then = (-1LL), .iflet_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_var = "", .for_start = (-1LL), .for_end = (-1LL), .for_inclusive = false, .for_body = (-1LL), .return_value = (-1LL), .print_value = (-1LL), .expr_stmt = (-1LL), .defer_body = (-1LL), .errdefer_body = (-1LL), .unsafe_body = (-1LL), .extern_name = "", .extern_params = empty_param_array(), .extern_return = "", .import_path = empty_str_array(), .import_alias = "", .cimport_header = "", .cimport_alias = "", .block_drop_vars = empty_dropvarentry_array(), .block_is_loop_body = false, .match_expr = (-1LL), .match_cases = empty_matchcase_array(), .error_name = "", .error_variants = empty_str_array() };
+    return node;
 }
-    (void)(Lexer_advance(self));
+PatternNode new_pattern_node(PatternKind kind) {
+    PatternNode node = (PatternNode){ .kind = kind, .variant_name = "", .bindings = empty_str_array(), .lit_value = (TokenValue){ .tag = TokenValue_tv_none_TAG } };
+    return node;
 }
-}
-void Lexer_skip_whitespace(Lexer* self) {
-    bool done = false;
-    while ((self->cursor < self->source_len) && (!done)) {
-    char c = Lexer_peek(self, 0LL);
-    if (((c == ' ') || (c == '\t')) || (c == '\r')) {
-    (void)(Lexer_advance(self));
-} else if (c == '/') {
-    if (Lexer_peek(self, 1LL) == '/') {
-    Lexer_skip_line_comment(self);
-} else if (Lexer_peek(self, 1LL) == '*') {
-    Lexer_skip_block_comment(self);
-} else {
-    done = true;
-}
-} else {
-    done = true;
-}
-}
-}
-void Lexer_lex_identifier(Lexer* self) {
-    StringBuilder sb = StringBuilder_init(self->allocator);
-    bool done = false;
-    while ((self->cursor < self->source_len) && (!done)) {
-    char c = Lexer_peek(self, 0LL);
-    if (is_alnum(c) || (c == '_')) {
-    StringBuilder_append_char(&(sb), Lexer_advance(self));
-} else {
-    done = true;
-}
-}
-    const char* ident = StringBuilder_to_str(&(sb));
-    TokenType ktype = keyword_type(ident);
-    if (ktype == TokenType_IDENTIFIER) {
-    Lexer_emit(self, TokenType_IDENTIFIER, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ident } } });
-} else if (ktype == TokenType_BOOL_LIT) {
-    Lexer_emit(self, TokenType_BOOL_LIT, make_keyword_value(ident, TokenType_BOOL_LIT));
-} else {
-    Lexer_emit(self, ktype, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ident } } });
-}
-}
-void Lexer_lex_number(Lexer* self) {
-    StringBuilder sb = StringBuilder_init(self->allocator);
-    bool done = false;
-    while ((self->cursor < self->source_len) && (!done)) {
-    char c = Lexer_peek(self, 0LL);
-    if (is_digit(c)) {
-    StringBuilder_append_char(&(sb), Lexer_advance(self));
-} else {
-    done = true;
-}
-}
-    if ((Lexer_peek(self, 0LL) == '.') && (Lexer_peek(self, 1LL) != '.')) {
-    StringBuilder_append_char(&(sb), Lexer_advance(self));
-    done = false;
-    while ((self->cursor < self->source_len) && (!done)) {
-    char c = Lexer_peek(self, 0LL);
-    if (is_digit(c)) {
-    StringBuilder_append_char(&(sb), Lexer_advance(self));
-} else {
-    done = true;
-}
-}
-    const char* num_str = StringBuilder_to_str(&(sb));
-    Lexer_emit(self, TokenType_FLOAT_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = num_str } } });
-} else {
-    const char* num_str = StringBuilder_to_str(&(sb));
-    Lexer_emit(self, TokenType_INT_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = num_str } } });
-}
-}
-void Lexer_lex_string(Lexer* self) {
-    (void)(Lexer_advance(self));
-    StringBuilder sb = StringBuilder_init(self->allocator);
-    bool done = false;
-    while ((self->cursor < self->source_len) && (!done)) {
-    char c = Lexer_peek(self, 0LL);
-    if (c == '"') {
-    done = true;
-} else if (c == '\\') {
-    (void)(Lexer_advance(self));
-    char esc = Lexer_advance(self);
-    if (esc == 'n') {
-    StringBuilder_append_char(&(sb), '\n');
-} else if (esc == 't') {
-    StringBuilder_append_char(&(sb), '\t');
-} else if (esc == 'r') {
-    StringBuilder_append_char(&(sb), '\r');
-} else if (esc == '"') {
-    StringBuilder_append_char(&(sb), '"');
-} else if (esc == '\\') {
-    StringBuilder_append_char(&(sb), '\\');
-} else {
-    StringBuilder_append_char(&(sb), '\\');
-    StringBuilder_append_char(&(sb), esc);
-}
-} else {
-    StringBuilder_append_char(&(sb), Lexer_advance(self));
-}
-}
-    if (self->cursor < self->source_len) {
-    (void)(Lexer_advance(self));
-}
-    const char* s = StringBuilder_to_str(&(sb));
-    Lexer_emit(self, TokenType_STRING_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = s } } });
-}
-void Lexer_lex_char(Lexer* self) {
-    (void)(Lexer_advance(self));
-    char c = Lexer_advance(self);
-    char ch = ((char)(0LL));
-    if (c == '\\') {
-    char esc = Lexer_advance(self);
-    if (esc == 'n') {
-    ch = '\n';
-} else if (esc == 't') {
-    ch = '\t';
-} else if (esc == 'r') {
-    ch = '\r';
-} else if (esc == '\'') {
-    ch = '\'';
-} else if (esc == '\\') {
-    ch = '\\';
-} else {
-    ch = esc;
-}
-} else {
-    ch = c;
-}
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_CHAR_LIT, (TokenValue){ .tag = TokenValue_tv_char_TAG, .payload = { .tv_char = { .v = ch } } });
-}
-int64_t Lexer_compute_indent(Lexer* self) {
-    int64_t indent = 0LL;
-    int64_t temp = self->cursor;
-    bool done = false;
-    bool has_content = false;
-    while ((temp < self->source_len) && (!done)) {
-    char c = (self->source)[temp];
-    if (c == ' ') {
-    indent = (indent + 1LL);
-    temp = (temp + 1LL);
-} else if (c == '\t') {
-    indent = (indent + 4LL);
-    temp = (temp + 1LL);
-} else if (c == '\r') {
-    temp = (temp + 1LL);
-} else if (c == '\n') {
-    indent = 0LL;
-    temp = (temp + 1LL);
-} else if (((c == '/') && ((temp + 1LL) < self->source_len)) && ((self->source)[(temp + 1LL)] == '/')) {
-    while ((temp < self->source_len) && ((self->source)[temp] != '\n')) {
-    temp = (temp + 1LL);
-}
-    indent = 0LL;
-} else if (((c == '/') && ((temp + 1LL) < self->source_len)) && ((self->source)[(temp + 1LL)] == '*')) {
-    temp = (temp + 2LL);
-    while ((temp < self->source_len) && (!((((temp + 1LL) < self->source_len) && ((self->source)[temp] == '*')) && ((self->source)[(temp + 1LL)] == '/')))) {
-    if ((self->source)[temp] == '\n') {
-    indent = 0LL;
-}
-    temp = (temp + 1LL);
-}
-    if (temp < self->source_len) {
-    temp = (temp + 2LL);
-}
-} else {
-    has_content = true;
-    done = true;
-}
-}
-    if (has_content) {
-    return indent;
-}
-    return (-1LL);
-}
-void Lexer_lex(Lexer* self) {
-    bool is_line_start = true;
-    while (self->cursor < self->source_len) {
-    if (false) {
-    int64_t indent = Lexer_compute_indent(self);
-    if (indent >= 0LL) {
-    if ((self->paren_depth == 0LL) && (self->brace_depth == 0LL)) {
-    int64_t current = ArrayList_Int_get(self->indent_stack, (ArrayList_Int_length(self->indent_stack) - 1LL));
-    if (indent > current) {
-    ArrayList_Int_push(self->indent_stack, indent);
-    Lexer_emit(self, TokenType_INDENT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .payload = { .tv_int = { .v = indent } } });
-} else if (indent < current) {
-    while (indent < ArrayList_Int_get(self->indent_stack, (ArrayList_Int_length(self->indent_stack) - 1LL))) {
-    (void)(ArrayList_Int_pop(self->indent_stack));
-    Lexer_emit(self, TokenType_DEDENT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .payload = { .tv_int = { .v = indent } } });
-}
-    if (indent != ArrayList_Int_get(self->indent_stack, (ArrayList_Int_length(self->indent_stack) - 1LL))) {
-    self->has_error = true;
-}
-}
-}
-}
-    is_line_start = false;
-}
-    Lexer_skip_whitespace(self);
-    if (self->cursor < self->source_len) {
-    char c = Lexer_peek(self, 0LL);
-    if (c == '\n') {
-    (void)(Lexer_advance(self));
-    if (self->paren_depth == 0LL) {
-    int64_t last = ArrayList_Token_length(self->tokens);
-    if (last > 0LL) {
-    Token last_tok = ArrayList_Token_get(self->tokens, (last - 1LL));
-    if (((last_tok.tok_type != TokenType_NEWLINE) && (last_tok.tok_type != TokenType_INDENT)) && (last_tok.tok_type != TokenType_DEDENT)) {
-    Lexer_emit(self, TokenType_NEWLINE, (TokenValue){ .tag = TokenValue_tv_none_TAG });
-}
-}
-}
-    is_line_start = true;
-} else if (is_alpha(c) || (c == '_')) {
-    Lexer_lex_identifier(self);
-} else if (is_digit(c)) {
-    Lexer_lex_number(self);
-} else if (c == '"') {
-    Lexer_lex_string(self);
-} else if (c == '\'') {
-    Lexer_lex_char(self);
-} else if ((c == '-') && (Lexer_peek(self, 1LL) == '>')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_ARROW, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "->" } } });
-} else if ((c == '=') && (Lexer_peek(self, 1LL) == '>')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_FAT_ARROW, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "=>" } } });
-} else if ((c == '+') && (Lexer_peek(self, 1LL) == '=')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_PLUS_ASSIGN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "+=" } } });
-} else if ((c == '-') && (Lexer_peek(self, 1LL) == '=')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_MINUS_ASSIGN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "-=" } } });
-} else if ((c == '=') && (Lexer_peek(self, 1LL) == '=')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_EQ, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "==" } } });
-} else if ((c == '!') && (Lexer_peek(self, 1LL) == '=')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_NE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "!=" } } });
-} else if ((c == '<') && (Lexer_peek(self, 1LL) == '=')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_LE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "<=" } } });
-} else if ((c == '>') && (Lexer_peek(self, 1LL) == '=')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_GE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ">=" } } });
-} else if ((c == '&') && (Lexer_peek(self, 1LL) == '&')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_AND, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "&&" } } });
-} else if ((c == '|') && (Lexer_peek(self, 1LL) == '|')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_OR, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "||" } } });
-} else if ((c == '<') && (Lexer_peek(self, 1LL) == '<')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_LSHIFT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "<<" } } });
-} else if ((c == '>') && (Lexer_peek(self, 1LL) == '>')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_RSHIFT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ">>" } } });
-} else if (((c == '.') && (Lexer_peek(self, 1LL) == '.')) && (Lexer_peek(self, 2LL) == '=')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_DOTDOTEQ, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "..=" } } });
-} else if ((c == '.') && (Lexer_peek(self, 1LL) == '.')) {
-    (void)(Lexer_advance(self));
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_DOTDOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ".." } } });
-} else if (c == '+') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_PLUS, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "+" } } });
-} else if (c == '-') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_MINUS, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "-" } } });
-} else if (c == '*') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_MUL, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "*" } } });
-} else if (c == '/') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_DIV, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "/" } } });
-} else if (c == '%') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_MOD, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "%" } } });
-} else if (c == '=') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_ASSIGN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "=" } } });
-} else if (c == '<') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_LT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "<" } } });
-} else if (c == '>') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_GT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ">" } } });
-} else if (c == ':') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_COLON, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ":" } } });
-} else if (c == ';') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_SEMICOLON, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ";" } } });
-} else if (c == ',') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_COMMA, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "," } } });
-} else if (c == '(') {
-    (void)(Lexer_advance(self));
-    self->paren_depth = (self->paren_depth + 1LL);
-    Lexer_emit(self, TokenType_LPAREN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "(" } } });
-} else if (c == ')') {
-    (void)(Lexer_advance(self));
-    if (self->paren_depth > 0LL) {
-    self->paren_depth = (self->paren_depth - 1LL);
-}
-    Lexer_emit(self, TokenType_RPAREN, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = ")" } } });
-} else if (c == '[') {
-    (void)(Lexer_advance(self));
-    self->paren_depth = (self->paren_depth + 1LL);
-    Lexer_emit(self, TokenType_LBRACKET, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "[" } } });
-} else if (c == ']') {
-    (void)(Lexer_advance(self));
-    if (self->paren_depth > 0LL) {
-    self->paren_depth = (self->paren_depth - 1LL);
-}
-    Lexer_emit(self, TokenType_RBRACKET, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "]" } } });
-} else if (c == '{') {
-    (void)(Lexer_advance(self));
-    self->brace_depth = (self->brace_depth + 1LL);
-    Lexer_emit(self, TokenType_LBRACE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "{" } } });
-} else if (c == '}') {
-    (void)(Lexer_advance(self));
-    if (self->brace_depth > 0LL) {
-    self->brace_depth = (self->brace_depth - 1LL);
-}
-    Lexer_emit(self, TokenType_RBRACE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "}" } } });
-} else if (c == '&') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_AMP, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "&" } } });
-} else if (c == '#') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_HASH, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "#" } } });
-} else if (c == '!') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_NOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "!" } } });
-} else if (c == '?') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_QUESTION, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "?" } } });
-} else if (c == '^') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_BITXOR, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "^" } } });
-} else if (c == '~') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_BITNOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "~" } } });
-} else if (c == '|') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_PIPE, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "|" } } });
-} else if (c == '.') {
-    (void)(Lexer_advance(self));
-    Lexer_emit(self, TokenType_DOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "." } } });
-} else {
-    (void)(Lexer_advance(self));
-    parser_err(self->source_file, self->source, "E0100", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("unexpected character '", char_to_str(c)), "'"), self->line, self->column);
-    self->has_error = true;
-}
-}
-}
-    while (false) {
-    (void)(ArrayList_Int_pop(self->indent_stack));
-    Lexer_emit(self, TokenType_DEDENT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .payload = { .tv_int = { .v = 0LL } } });
-}
-    Lexer_emit(self, TokenType_EOF, (TokenValue){ .tag = TokenValue_tv_none_TAG });
-}
-ArrayList_Symbol ArrayList_Symbol_init(KaiAllocator* allocator) {
-    ArrayList_Symbol self = (ArrayList_Symbol){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-    self.data = (Symbol*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(Symbol))), 1LL));
-}
-    return self;
-}
-void ArrayList_Symbol_push(ArrayList_Symbol* self, Symbol item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    Symbol* new_data = (Symbol*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(Symbol))), 1LL));
+const char* get_source_line(const char* source, int64_t line_num) {
+    int64_t current = 0LL;
+    int64_t line_start = 0LL;
     int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
+    int64_t len = strlen(source);
+    while ((i < len) && (current < line_num)) {
+    if ((source)[i] == ((char)(10LL))) {
+    current = (current + 1LL);
+    line_start = (i + 1LL);
+}
     i = (i + 1LL);
 }
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
+    if (current != line_num) {
+    return "";
 }
+    int64_t line_end = line_start;
+    while ((line_end < len) && ((source)[line_end] != ((char)(10LL)))) {
+    line_end = (line_end + 1LL);
 }
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
+    return substring(source, line_start, line_end);
 }
-Symbol ArrayList_Symbol_get(ArrayList_Symbol* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_Symbol_set(ArrayList_Symbol* self, int64_t index, Symbol item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-Symbol ArrayList_Symbol_pop(ArrayList_Symbol* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_Symbol_length(ArrayList_Symbol* self) {
-    return self->len;
-}
-void ArrayList_Symbol_deinit(ArrayList_Symbol* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
-}
-SymbolTable SymbolTable_init(KaiAllocator* allocator, int64_t parent_idx) {
-    SymbolTable self = (SymbolTable){0};
-    self.allocator = allocator;
-    self.entries = ArrayList_Symbol_init(allocator);
-    self.parent_idx = parent_idx;
-    return self;
-}
-void SymbolTable_define(SymbolTable* self, const char* name, const char* type_name, bool is_mutable, const char* kind, const char* llvm_value) {
-    ArrayList_Symbol_push(&(self->entries), (Symbol){ .name = name, .type_name = type_name, .is_mutable = is_mutable, .kind = kind, .llvm_value = llvm_value, .moved = false, .freed = false });
-}
-ArrayList_SymbolTable ArrayList_SymbolTable_init(KaiAllocator* allocator) {
-    ArrayList_SymbolTable self = (ArrayList_SymbolTable){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-    self.data = (SymbolTable*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(SymbolTable))), 1LL));
-}
-    return self;
-}
-void ArrayList_SymbolTable_push(ArrayList_SymbolTable* self, SymbolTable item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    SymbolTable* new_data = (SymbolTable*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(SymbolTable))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
-}
-}
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-SymbolTable ArrayList_SymbolTable_get(ArrayList_SymbolTable* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_SymbolTable_set(ArrayList_SymbolTable* self, int64_t index, SymbolTable item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-SymbolTable ArrayList_SymbolTable_pop(ArrayList_SymbolTable* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_SymbolTable_length(ArrayList_SymbolTable* self) {
-    return self->len;
-}
-void ArrayList_SymbolTable_deinit(ArrayList_SymbolTable* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
-}
-int64_t SymbolTable_lookup(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables) {
-    int64_t i = 0LL;
-    while (i < ArrayList_Symbol_length(&(self->entries))) {
-    if (strcmp(ArrayList_Symbol_get(&(self->entries), i).name, name) == 0) {
+int64_t find_last(const char* path, char c) {
+    int64_t i = (strlen(path) - 1LL);
+    while (i >= 0LL) {
+    if ((path)[i] == c) {
     return i;
 }
-    i = (i + 1LL);
-}
-    if (self->parent_idx >= 0LL) {
-    SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
-    return SymbolTable_lookup(&(parent), name, tables);
+    i = (i - 1LL);
 }
     return (-1LL);
 }
-Symbol SymbolTable_lookup_symbol(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables) {
+bool mkdir_p(const char* path) {
+    if (fs_exists(path)) {
+    return true;
+}
+    int64_t slash_pos = find_last(path, ((char)(47LL)));
+    if (slash_pos > 0LL) {
+    const char* parent = substring(path, 0LL, slash_pos);
+    if (!mkdir_p(parent)) {
+    return false;
+}
+}
+    return fs_mkdir(path);
+}
+const char* str_replace(const char* s, const char* old, const char* new_val) {
+    int64_t s_len = strlen(s);
+    int64_t old_len = strlen(old);
+    if (old_len == 0LL) {
+    return s;
+}
+    const char* result = "";
     int64_t i = 0LL;
-    while (i < ArrayList_Symbol_length(&(self->entries))) {
-    if (strcmp(ArrayList_Symbol_get(&(self->entries), i).name, name) == 0) {
-    return ArrayList_Symbol_get(&(self->entries), i);
+    while (i < s_len) {
+    int64_t j = 0LL;
+    bool matched = true;
+    while (j < old_len) {
+    {
+    if ((s)[(i + j)] != (old)[j]) {
+    matched = false;
+    break;
+}
+}
+    j = (j + 1LL);
+}
+    if (matched) {
+    result = __kai_std_str_concat_alloc(result, new_val);
+    i = (i + old_len);
+} else {
+    result = __kai_std_str_concat_alloc(result, substring(s, i, (i + 1LL)));
+    i = (i + 1LL);
+}
+}
+    return result;
+}
+const char* get_base_name(const char* path) {
+    int64_t last_slash = (-1LL);
+    int64_t dot_pos = (-1LL);
+    int64_t i = 0LL;
+    int64_t l = strlen(path);
+    while (i < l) {
+    char c = (path)[i];
+    if (c == ((char)(47LL))) {
+    last_slash = i;
+} else if (c == ((char)(46LL))) {
+    dot_pos = i;
 }
     i = (i + 1LL);
 }
-    if (self->parent_idx >= 0LL) {
-    SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
-    return SymbolTable_lookup_symbol(&(parent), name, tables);
+    int64_t start = 0LL;
+    if (last_slash >= 0LL) {
+    start = (last_slash + 1LL);
 }
-    return (Symbol){ .name = "", .type_name = "", .is_mutable = false, .kind = "", .llvm_value = "", .moved = false, .freed = false };
+    int64_t end = l;
+    if (dot_pos > last_slash) {
+    end = dot_pos;
 }
-void SymbolTable_mark_moved(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables) {
-    int64_t i = 0LL;
-    while (i < ArrayList_Symbol_length(&(self->entries))) {
-    if (strcmp(ArrayList_Symbol_get(&(self->entries), i).name, name) == 0) {
-    Symbol sym = ArrayList_Symbol_get(&(self->entries), i);
-    sym.moved = true;
-    ArrayList_Symbol_set(&(self->entries), i, sym);
-    return;
+    return substring(path, start, end);
 }
-    i = (i + 1LL);
-}
-    if (self->parent_idx >= 0LL) {
-    SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
-    SymbolTable_mark_moved(&(parent), name, tables);
-    ArrayList_SymbolTable_set(tables, self->parent_idx, parent);
-}
-}
-void SymbolTable_mark_freed(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables) {
-    int64_t i = 0LL;
-    while (i < ArrayList_Symbol_length(&(self->entries))) {
-    if (strcmp(ArrayList_Symbol_get(&(self->entries), i).name, name) == 0) {
-    Symbol sym = ArrayList_Symbol_get(&(self->entries), i);
-    sym.freed = true;
-    ArrayList_Symbol_set(&(self->entries), i, sym);
-    return;
-}
-    i = (i + 1LL);
-}
-    if (self->parent_idx >= 0LL) {
-    SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
-    SymbolTable_mark_freed(&(parent), name, tables);
-    ArrayList_SymbolTable_set(tables, self->parent_idx, parent);
-}
-}
-int64_t SymbolTable_lookup_current(SymbolTable* self, const char* name) {
-    int64_t i = 0LL;
-    while (i < ArrayList_Symbol_length(&(self->entries))) {
-    if (strcmp(ArrayList_Symbol_get(&(self->entries), i).name, name) == 0) {
-    return i;
-}
-    i = (i + 1LL);
-}
-    return (-1LL);
-}
-ArrayList_StructInfo ArrayList_StructInfo_init(KaiAllocator* allocator) {
-    ArrayList_StructInfo self = (ArrayList_StructInfo){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
+bool fs_exists(const char* path) {
     {
-    self.data = (StructInfo*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(StructInfo))), 1LL));
+    return kai_fs_exists(path);
 }
-    return self;
 }
-void ArrayList_StructInfo_push(ArrayList_StructInfo* self, StructInfo item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
+bool fs_is_dir(const char* path) {
     {
-    StructInfo* new_data = (StructInfo*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(StructInfo))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
+    return kai_fs_is_dir(path);
 }
 }
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-StructInfo ArrayList_StructInfo_get(ArrayList_StructInfo* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
+bool fs_mkdir(const char* path) {
     {
-    exit(1LL);
+    return kai_fs_mkdir(path);
 }
 }
-    return (self->data)[index];
-}
-void ArrayList_StructInfo_set(ArrayList_StructInfo* self, int64_t index, StructInfo item) {
-    if ((index < 0LL) || (index >= self->len)) {
+bool fs_remove(const char* path) {
     {
-    exit(1LL);
+    return kai_fs_remove(path);
 }
 }
-    (self->data)[index] = item;
-}
-StructInfo ArrayList_StructInfo_pop(ArrayList_StructInfo* self) {
-    if (self->len == 0LL) {
+Dir fs_opendir(const char* path) {
     {
-    exit(1LL);
+    return (Dir){ .handle = kai_fs_opendir(path) };
 }
 }
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_StructInfo_length(ArrayList_StructInfo* self) {
-    return self->len;
-}
-void ArrayList_StructInfo_deinit(ArrayList_StructInfo* self) {
+const char* fs_readdir(Dir dir) {
     {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    char* name_ptr = kai_fs_readdir(dir.handle);
+    if (name_ptr == (char*)(unsigned long long)(0LL)) {
+    return "";
+}
+    return (const char*)(name_ptr);
 }
 }
-ArrayList_Bool ArrayList_Bool_init(KaiAllocator* allocator) {
-    ArrayList_Bool self = (ArrayList_Bool){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
+void fs_closedir(Dir dir) {
     {
-    self.data = (bool*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(bool))), 1LL));
-}
-    return self;
-}
-void ArrayList_Bool_push(ArrayList_Bool* self, bool item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    bool* new_data = (bool*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(bool))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
+    kai_fs_closedir(dir.handle);
 }
 }
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-bool ArrayList_Bool_get(ArrayList_Bool* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_Bool_set(ArrayList_Bool* self, int64_t index, bool item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-bool ArrayList_Bool_pop(ArrayList_Bool* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_Bool_length(ArrayList_Bool* self) {
-    return self->len;
-}
-void ArrayList_Bool_deinit(ArrayList_Bool* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
-}
-TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, const char* source_file, const char* source) {
+TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, const char* source_file, const char* source, ImportResolver* import_resolver) {
     TypeChecker self = (TypeChecker){0};
     self.allocator = allocator;
     self.stmt_pool = stmt_pool;
@@ -5778,6 +6280,7 @@ TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_p
     self.current_func_ret_type = "";
     self.source_file = source_file;
     self.source = source;
+    self.import_resolver = import_resolver;
     self.imported_names = ArrayList_Str_init(allocator);
     self.import_used = ArrayList_Bool_init(allocator);
     self.import_lines = ArrayList_Int_init(allocator);
@@ -5829,6 +6332,7 @@ void TypeChecker_define_symbol(TypeChecker* self, const char* name, const char* 
 bool TypeChecker_check_program(TypeChecker* self, int64_t top_stmt_idx) {
     TypeChecker_register_struct_info(self, top_stmt_idx);
     TypeChecker_detect_imports(self, top_stmt_idx);
+    ImportResolver_resolve_all(self->import_resolver, top_stmt_idx, self->stmt_pool, self->expr_pool, self->pattern_pool);
     TypeChecker_enter_scope(self);
     TypeChecker_check_stmt(self, top_stmt_idx);
     TypeChecker_exit_scope(self);
@@ -6242,7 +6746,7 @@ bool TypeChecker_types_compatible(TypeChecker* self, const char* target, const c
     if (TypeChecker_is_integer_type(self, t) && TypeChecker_is_integer_type(self, s)) {
     return false;
 }
-    if (((strcmp(t, "Str") == 0) && (strcmp(s, "*Char") == 0)) || ((strcmp(t, "*Char") == 0) && (strcmp(s, "Str") == 0))) {
+    if (((strcmp(t, "Str") == 0) && ((strcmp(s, "*Char") == 0) || (strcmp(s, "*Void") == 0))) || (((strcmp(t, "*Char") == 0) || (strcmp(t, "*Void") == 0)) && (strcmp(s, "Str") == 0))) {
     return true;
 }
     if ((strlen(t) > 0LL) && ((t)[0LL] == ((char)(63LL)))) {
@@ -6322,6 +6826,10 @@ int64_t TypeChecker_find_func_decl(TypeChecker* self, const char* name) {
     while (idx < ArrayList_StmtNode_length(self->stmt_pool)) {
     StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, idx);
     if ((stmt.kind == StmtKind_sk_func_decl) && (strcmp(stmt.func_name, name) == 0)) {
+    if ((ArrayList_Param_length(&(stmt.func_params)) > 0LL) && (strcmp(ArrayList_Param_get(&(stmt.func_params), 0LL).ptype, "self") == 0)) {
+    idx = (idx + 1LL);
+    continue;
+}
     return idx;
 }
     if ((stmt.kind == StmtKind_sk_extern) && (strcmp(stmt.extern_name, name) == 0)) {
@@ -6545,6 +7053,16 @@ const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx) {
 }
     return __kai_std_str_concat_alloc("*", name);
 }
+    int64_t func_idx = TypeChecker_find_func_decl(self, name);
+    if (func_idx >= 0LL) {
+    StmtNode decl = ArrayList_StmtNode_get(self->stmt_pool, func_idx);
+    if (decl.kind == StmtKind_sk_func_decl) {
+    return decl.func_return_type;
+}
+    if (decl.kind == StmtKind_sk_extern) {
+    return decl.extern_return;
+}
+}
     SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
     Symbol sym = SymbolTable_lookup_symbol(&(table), name, &(self->symbol_tables));
     if (strlen(sym.name) > 0LL) {
@@ -6688,6 +7206,68 @@ const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx) {
 }
     if (expr.kind == ExprKind_ek_struct_init) {
     return expr.struct_name;
+}
+    if (expr.kind == ExprKind_ek_method_call) {
+    const char* recv_type = TypeChecker_get_expr_type(self, expr.meth_expr);
+    const char* clean = "";
+    int64_t i = 0LL;
+    while (i < strlen(recv_type)) {
+    char c = (recv_type)[i];
+    if ((c != ((char)(42LL))) && (c != ((char)(38LL)))) {
+    clean = __kai_std_str_concat_alloc(clean, char_to_str(c));
+}
+    i = (i + 1LL);
+}
+    if ((strlen(clean) > 4LL) && (strcmp(substring(clean, 0LL, 4LL), "mut ") == 0)) {
+    clean = substring(clean, 4LL, strlen(clean));
+}
+    int64_t lt_pos = (-1LL);
+    i = 0LL;
+    while (i < strlen(clean)) {
+    if ((clean)[i] == ((char)(60LL))) {
+    lt_pos = i;
+}
+    i = (i + 1LL);
+}
+    if (lt_pos >= 0LL) {
+    clean = substring(clean, 0LL, lt_pos);
+}
+    int64_t m_idx = TypeChecker_find_method_decl(self, recv_type, expr.meth_name);
+    if (m_idx >= 0LL) {
+    StmtNode decl = ArrayList_StmtNode_get(self->stmt_pool, m_idx);
+    const char* ret_type = decl.func_return_type;
+    if (((strlen(ret_type) == 1LL) && ((ret_type)[0LL] >= ((char)(65LL)))) && ((ret_type)[0LL] <= ((char)(90LL)))) {
+    int64_t gt_pos = (-1LL);
+    int64_t gi = 0LL;
+    while (gi < strlen(recv_type)) {
+    if ((recv_type)[gi] == ((char)(60LL))) {
+    gt_pos = gi;
+}
+    gi = (gi + 1LL);
+}
+    if (gt_pos >= 0LL) {
+    int64_t end_pos = strlen(recv_type);
+    gi = (gt_pos + 1LL);
+    while (gi < strlen(recv_type)) {
+    if ((recv_type)[gi] == ((char)(62LL))) {
+    end_pos = gi;
+    gi = strlen(recv_type);
+}
+    gi = (gi + 1LL);
+}
+    if (end_pos > (gt_pos + 1LL)) {
+    const char* first_param = substring(recv_type, (gt_pos + 1LL), end_pos);
+    return first_param;
+}
+}
+    return "Void";
+}
+    return ret_type;
+}
+    if (TypeChecker_is_imported_name(self, expr.meth_name)) {
+    TypeChecker_mark_import_used(self, expr.meth_name);
+}
+    return "Void";
 }
     if (expr.kind == ExprKind_ek_try) {
     const char* inner_ty = TypeChecker_get_expr_type(self, expr.try_expr);
@@ -7185,7 +7765,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1LL);
 }
 }
-    if ((((((((strcmp(name, "cast") == 0) || (strcmp(name, "as") == 0)) || (strcmp(name, "size_of") == 0)) || (strcmp(name, "free") == 0)) || (strcmp(name, "Char") == 0)) || (strcmp(name, "Int") == 0)) || (strcmp(name, "Float") == 0)) || (strcmp(name, "Bool") == 0)) {
+    if ((((((((((((strcmp(name, "cast") == 0) || (strcmp(name, "as") == 0)) || (strcmp(name, "size_of") == 0)) || (strcmp(name, "free") == 0)) || (strcmp(name, "Char") == 0)) || (strcmp(name, "Int") == 0)) || (strcmp(name, "Float") == 0)) || (strcmp(name, "Bool") == 0)) || (strcmp(name, "printf") == 0)) || (strcmp(name, "fprintf") == 0)) || (strcmp(name, "sprintf") == 0)) || (strcmp(name, "snprintf") == 0)) {
     return;
 }
     int64_t func_idx = TypeChecker_find_func_decl(self, name);
@@ -7232,6 +7812,15 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
 }
     if (TypeChecker_is_imported_name(self, name)) {
     TypeChecker_mark_import_used(self, name);
+} else {
+    int64_t ui = 0LL;
+    while (ui < ArrayList_Str_length(&(self->imported_names))) {
+    const char* iname = ArrayList_Str_get(&(self->imported_names), ui);
+    if (((strlen(name) > strlen(iname)) && (strcmp(__kai_str_sub(name, 0LL, strlen(iname)), iname) == 0)) && ((name)[strlen(iname)] == ((char)(95LL)))) {
+    TypeChecker_mark_import_used(self, iname);
+}
+    ui = (ui + 1LL);
+}
 }
     return;
 }
@@ -7276,7 +7865,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     arg_i = (arg_i + 1LL);
 }
 }
-} else if (!TypeChecker_is_imported_name(self, meth_name)) {
+} else if ((strcmp(recv_type, "Void") != 0) && (!TypeChecker_is_imported_name(self, meth_name))) {
     TypeChecker_err(self, "E0022", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined method: '", meth_name), "' for type '"), recv_type), "'"), expr.line, expr.col);
 }
     if (TypeChecker_is_imported_name(self, meth_name)) {
@@ -7339,6 +7928,9 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     TypeChecker_err(self, "E0021", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined struct: '", struct_name), "'"), expr.line, expr.col);
 }
     return;
+}
+    if (TypeChecker_is_imported_name(self, struct_name)) {
+    TypeChecker_mark_import_used(self, struct_name);
 }
     StmtNode decl = ArrayList_StmtNode_get(self->stmt_pool, struct_idx);
     int64_t fi = 0LL;
@@ -7455,6 +8047,244 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     return;
 }
 }
+SymbolTable SymbolTable_init(KaiAllocator* allocator, int64_t parent_idx) {
+    SymbolTable self = (SymbolTable){0};
+    self.allocator = allocator;
+    self.entries = ArrayList_Symbol_init(allocator);
+    self.parent_idx = parent_idx;
+    return self;
+}
+void SymbolTable_define(SymbolTable* self, const char* name, const char* type_name, bool is_mutable, const char* kind, const char* llvm_value) {
+    ArrayList_Symbol_push(&(self->entries), (Symbol){ .name = name, .type_name = type_name, .is_mutable = is_mutable, .kind = kind, .llvm_value = llvm_value, .moved = false, .freed = false });
+}
+int64_t SymbolTable_lookup(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables) {
+    int64_t i = 0LL;
+    while (i < ArrayList_Symbol_length(&(self->entries))) {
+    if (strcmp(ArrayList_Symbol_get(&(self->entries), i).name, name) == 0) {
+    return i;
+}
+    i = (i + 1LL);
+}
+    if (self->parent_idx >= 0LL) {
+    SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
+    return SymbolTable_lookup(&(parent), name, tables);
+}
+    return (-1LL);
+}
+Symbol SymbolTable_lookup_symbol(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables) {
+    int64_t i = 0LL;
+    while (i < ArrayList_Symbol_length(&(self->entries))) {
+    if (strcmp(ArrayList_Symbol_get(&(self->entries), i).name, name) == 0) {
+    return ArrayList_Symbol_get(&(self->entries), i);
+}
+    i = (i + 1LL);
+}
+    if (self->parent_idx >= 0LL) {
+    SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
+    return SymbolTable_lookup_symbol(&(parent), name, tables);
+}
+    return (Symbol){ .name = "", .type_name = "", .is_mutable = false, .kind = "", .llvm_value = "", .moved = false, .freed = false };
+}
+void SymbolTable_mark_moved(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables) {
+    int64_t i = 0LL;
+    while (i < ArrayList_Symbol_length(&(self->entries))) {
+    if (strcmp(ArrayList_Symbol_get(&(self->entries), i).name, name) == 0) {
+    Symbol sym = ArrayList_Symbol_get(&(self->entries), i);
+    sym.moved = true;
+    ArrayList_Symbol_set(&(self->entries), i, sym);
+    return;
+}
+    i = (i + 1LL);
+}
+    if (self->parent_idx >= 0LL) {
+    SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
+    SymbolTable_mark_moved(&(parent), name, tables);
+    ArrayList_SymbolTable_set(tables, self->parent_idx, parent);
+}
+}
+void SymbolTable_mark_freed(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables) {
+    int64_t i = 0LL;
+    while (i < ArrayList_Symbol_length(&(self->entries))) {
+    if (strcmp(ArrayList_Symbol_get(&(self->entries), i).name, name) == 0) {
+    Symbol sym = ArrayList_Symbol_get(&(self->entries), i);
+    sym.freed = true;
+    ArrayList_Symbol_set(&(self->entries), i, sym);
+    return;
+}
+    i = (i + 1LL);
+}
+    if (self->parent_idx >= 0LL) {
+    SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
+    SymbolTable_mark_freed(&(parent), name, tables);
+    ArrayList_SymbolTable_set(tables, self->parent_idx, parent);
+}
+}
+int64_t SymbolTable_lookup_current(SymbolTable* self, const char* name) {
+    int64_t i = 0LL;
+    while (i < ArrayList_Symbol_length(&(self->entries))) {
+    if (strcmp(ArrayList_Symbol_get(&(self->entries), i).name, name) == 0) {
+    return i;
+}
+    i = (i + 1LL);
+}
+    return (-1LL);
+}
+ImportResolver ImportResolver_init(KaiAllocator* allocator) {
+    ImportResolver self = (ImportResolver){0};
+    self.allocator = allocator;
+    self.loaded_modules = ArrayList_Str_init(allocator);
+    self.cimport_headers = ArrayList_Str_init(allocator);
+    return self;
+}
+void ImportResolver_record_cimport(ImportResolver* self, const char* header) {
+    bool found = false;
+    int64_t i = 0LL;
+    while (i < ArrayList_Str_length(&(self->cimport_headers))) {
+    if (strcmp(ArrayList_Str_get(&(self->cimport_headers), i), header) == 0) {
+    found = true;
+}
+    i = (i + 1LL);
+}
+    if (!found) {
+    ArrayList_Str_push(&(self->cimport_headers), header);
+}
+}
+void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool) {
+    StmtNode stmt = ArrayList_StmtNode_get(stmt_pool, stmt_idx);
+    ArrayList_Str path = stmt.import_path;
+    const char* module_key = "";
+    int64_t pi = 0LL;
+    while (pi < ArrayList_Str_length(&(path))) {
+    if (pi > 0LL) {
+    module_key = __kai_std_str_concat_alloc(module_key, ".");
+}
+    module_key = __kai_std_str_concat_alloc(module_key, ArrayList_Str_get(&(path), pi));
+    pi = (pi + 1LL);
+}
+    if (strcmp(module_key, "") == 0) {
+    return;
+}
+    int64_t li = 0LL;
+    while (li < ArrayList_Str_length(&(self->loaded_modules))) {
+    if (strcmp(ArrayList_Str_get(&(self->loaded_modules), li), module_key) == 0) {
+    return;
+}
+    li = (li + 1LL);
+}
+    ArrayList_Str_push(&(self->loaded_modules), module_key);
+    bool has_source = false;
+    const char* source = "";
+    if ((ArrayList_Str_length(&(path)) > 0LL) && (strcmp(ArrayList_Str_get(&(path), 0LL), "std") == 0)) {
+    const char* path_str = "";
+    int64_t ii = 0LL;
+    while (ii < ArrayList_Str_length(&(path))) {
+    if (ii > 0LL) {
+    path_str = __kai_std_str_concat_alloc(path_str, "/");
+}
+    path_str = __kai_std_str_concat_alloc(path_str, ArrayList_Str_get(&(path), ii));
+    ii = (ii + 1LL);
+}
+    const char* rel_path = __kai_std_str_concat_alloc(path_str, ".kai");
+    Result_Str_IoError s1 = read_to_string(self->allocator, rel_path);
+    if ((s1.tag == 0LL) && (strlen(s1.value) > 0LL)) {
+    source = s1.value;
+    has_source = true;
+}
+    if (!has_source) {
+    {
+    char* buf = (char*)(malloc(1024LL));
+    if (get_exe_dir(buf, 1024LL) == 0LL) {
+    const char* exe_dir = (const char*)(buf);
+    const char* full_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/"), rel_path);
+    Result_Str_IoError s2 = read_to_string(self->allocator, full_path);
+    if ((s2.tag == 0LL) && (strlen(s2.value) > 0LL)) {
+    source = s2.value;
+    has_source = true;
+}
+    if (!has_source) {
+    const char* parent_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../"), rel_path);
+    Result_Str_IoError s3 = read_to_string(self->allocator, parent_path);
+    if ((s3.tag == 0LL) && (strlen(s3.value) > 0LL)) {
+    source = s3.value;
+    has_source = true;
+}
+    if (!has_source) {
+    const char* lib_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../lib/kai/"), rel_path);
+    Result_Str_IoError s4 = read_to_string(self->allocator, lib_path);
+    if ((s4.tag == 0LL) && (strlen(s4.value) > 0LL)) {
+    source = s4.value;
+    has_source = true;
+}
+}
+}
+}
+}
+}
+} else if (ArrayList_Str_length(&(path)) > 0LL) {
+    const char* file_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("src/", module_key), ".kai");
+    Result_Str_IoError s = read_to_string(self->allocator, file_path);
+    if ((s.tag == 0LL) && (strlen(s.value) > 0LL)) {
+    source = s.value;
+    has_source = true;
+}
+}
+    if (has_source) {
+    const char* current_file_path = "";
+    if ((ArrayList_Str_length(&(path)) > 0LL) && (strcmp(ArrayList_Str_get(&(path), 0LL), "std") == 0)) {
+    const char* path_str = "";
+    int64_t ii = 0LL;
+    while (ii < ArrayList_Str_length(&(path))) {
+    if (ii > 0LL) {
+    path_str = __kai_std_str_concat_alloc(path_str, "/");
+}
+    path_str = __kai_std_str_concat_alloc(path_str, ArrayList_Str_get(&(path), ii));
+    ii = (ii + 1LL);
+}
+    current_file_path = __kai_std_str_concat_alloc(path_str, ".kai");
+} else {
+    current_file_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("src/", module_key), ".kai");
+}
+    Lexer lexer = Lexer_init(self->allocator, source, current_file_path);
+    Lexer_lex(&(lexer));
+    if (!lexer.has_error) {
+    Parser parser = Parser_init_with_pools(self->allocator, current_file_path, lexer.tokens, expr_pool, stmt_pool, pattern_pool, source);
+    int64_t program_idx = Parser_parse_program(&(parser));
+    if (program_idx >= 0LL) {
+    StmtNode prog = ArrayList_StmtNode_get(stmt_pool, program_idx);
+    if (prog.kind == StmtKind_sk_block) {
+    int64_t pi = 0LL;
+    while (pi < ArrayList_Int_length(&(prog.block_stmts))) {
+    StmtNode sub = ArrayList_StmtNode_get(stmt_pool, ArrayList_Int_get(&(prog.block_stmts), pi));
+    if (sub.kind == StmtKind_sk_import) {
+    ImportResolver_resolve_import(self, ArrayList_Int_get(&(prog.block_stmts), pi), stmt_pool, expr_pool, pattern_pool);
+}
+    if (sub.kind == StmtKind_sk_cimport) {
+    ImportResolver_record_cimport(self, sub.cimport_header);
+}
+    pi = (pi + 1LL);
+}
+}
+}
+}
+}
+}
+void ImportResolver_resolve_all(ImportResolver* self, int64_t program_idx, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool) {
+    StmtNode prog = ArrayList_StmtNode_get(stmt_pool, program_idx);
+    if (prog.kind == StmtKind_sk_block) {
+    int64_t i = 0LL;
+    while (i < ArrayList_Int_length(&(prog.block_stmts))) {
+    int64_t s_idx = ArrayList_Int_get(&(prog.block_stmts), i);
+    StmtNode s = ArrayList_StmtNode_get(stmt_pool, s_idx);
+    if (s.kind == StmtKind_sk_import) {
+    ImportResolver_resolve_import(self, s_idx, stmt_pool, expr_pool, pattern_pool);
+}
+    if (s.kind == StmtKind_sk_cimport) {
+    ImportResolver_record_cimport(self, s.cimport_header);
+}
+    i = (i + 1LL);
+}
+}
+}
 const char* __kai_std_str_concat_alloc(const char* left, const char* right) {
     int64_t left_len = strlen(left);
     int64_t right_len = strlen(right);
@@ -7474,67 +8304,6 @@ const char* __kai_std_str_concat_alloc(const char* left, const char* right) {
     (buf)[(total - 1LL)] = ((char)(0LL));
 }
     return (const char*)(buf);
-}
-ArrayList_StrMapEntry ArrayList_StrMapEntry_init(KaiAllocator* allocator) {
-    ArrayList_StrMapEntry self = (ArrayList_StrMapEntry){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-    self.data = (StrMapEntry*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(StrMapEntry))), 1LL));
-}
-    return self;
-}
-void ArrayList_StrMapEntry_push(ArrayList_StrMapEntry* self, StrMapEntry item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    StrMapEntry* new_data = (StrMapEntry*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(StrMapEntry))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
-}
-}
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-StrMapEntry ArrayList_StrMapEntry_get(ArrayList_StrMapEntry* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_StrMapEntry_set(ArrayList_StrMapEntry* self, int64_t index, StrMapEntry item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-StrMapEntry ArrayList_StrMapEntry_pop(ArrayList_StrMapEntry* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_StrMapEntry_length(ArrayList_StrMapEntry* self) {
-    return self->len;
-}
-void ArrayList_StrMapEntry_deinit(ArrayList_StrMapEntry* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
 }
 int64_t type_map_find(ArrayList_StrMapEntry* arr, const char* key) {
     int64_t i = (ArrayList_StrMapEntry_length(arr) - 1LL);
@@ -7586,12 +8355,13 @@ const char* Codegen_add_init_return(Codegen* self, const char* body_str, const c
     const char* self_ret = "    return self;\n}";
     return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("{\n", self_decl), stripped_body), self_ret);
 }
-Codegen Codegen_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool) {
+Codegen Codegen_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, ImportResolver* import_resolver) {
     Codegen self = (Codegen){0};
     self.allocator = allocator;
     self.stmt_pool = stmt_pool;
     self.expr_pool = expr_pool;
     self.pattern_pool = pattern_pool;
+    self.import_resolver = import_resolver;
     self.output = StringBuilder_init(allocator);
     self.struct_decls = StringBuilder_init(allocator);
     self.func_decls = StringBuilder_init(allocator);
@@ -7600,8 +8370,6 @@ Codegen Codegen_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, Arr
     self.cur_method_is_init = false;
     self.func_types = ArrayList_StrMapEntry_init(allocator);
     self.var_types = ArrayList_StrMapEntry_init(allocator);
-    self.loaded_modules = ArrayList_Str_init(allocator);
-    self.cimport_headers = ArrayList_Str_init(allocator);
     self.block_stack = ArrayList_Int_init(allocator);
     self.generic_struct_decls = ArrayList_StrMapEntry_init(allocator);
     self.generic_enum_decls = ArrayList_StrMapEntry_init(allocator);
@@ -9671,6 +10439,14 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     type_map_put(&(self->var_types), p.name, p.ptype);
     p_reg2 = (p_reg2 + 1LL);
 }
+    if (stmt.func_body < 0LL) {
+    const char* proto = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), name), "("), params_str), ");\n");
+    (void)(StringBuilder_append(&(self->func_decls), proto));
+    self->cur_func_name = old_fn;
+    self->cur_return_type = old_ret;
+    self->cur_method_is_init = old_init;
+    return "";
+}
     const char* body_str = Codegen_gen_stmt(self, stmt.func_body);
     while (ArrayList_StrMapEntry_length(&(self->var_types)) > old_var_len2) {
     (void)(ArrayList_StrMapEntry_pop(&(self->var_types)));
@@ -9695,24 +10471,6 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     if (stmt.kind == StmtKind_sk_struct_decl) {
     if (ArrayList_Str_length(&(stmt.struct_type_params)) > 0LL) {
     type_map_put(&(self->generic_struct_decls), stmt.struct_name, int_to_str(stmt_idx));
-    return "";
-}
-    const char* name = Codegen_map_type(self, stmt.struct_name);
-    const char* struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", name), " "), name), ";\n");
-    struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "struct "), name), " {\n");
-    int64_t i = 0LL;
-    while (i < ArrayList_StructField_length(&(stmt.struct_fields))) {
-    StructField f = ArrayList_StructField_get(&(stmt.struct_fields), i);
-    struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "    "), Codegen_map_type(self, f.ftype)), " "), f.name), ";\n");
-    i = (i + 1LL);
-}
-    struct_str = __kai_std_str_concat_alloc(struct_str, "};\n");
-    (void)(StringBuilder_append(&(self->struct_decls), struct_str));
-    int64_t ti = 0LL;
-    while (ti < ArrayList_Int_length(&(stmt.struct_trait_impls))) {
-    int64_t impl_idx = ArrayList_Int_get(&(stmt.struct_trait_impls), ti);
-    (void)(Codegen_gen_stmt(self, impl_idx));
-    ti = (ti + 1LL);
 }
     return "";
 }
@@ -10179,101 +10937,10 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     return "";
 }
     if (stmt.kind == StmtKind_sk_cimport) {
-    const char* hdr = stmt.cimport_header;
-    if (strlist_find(&(self->cimport_headers), hdr) < 0LL) {
-    ArrayList_Str_push(&(self->cimport_headers), hdr);
-}
+    ImportResolver_record_cimport(self->import_resolver, stmt.cimport_header);
     return "";
 }
     if (stmt.kind == StmtKind_sk_import) {
-    ArrayList_Str path = stmt.import_path;
-    const char* module_key = "";
-    int64_t pi = 0LL;
-    while (pi < ArrayList_Str_length(&(path))) {
-    if (pi > 0LL) {
-    module_key = __kai_std_str_concat_alloc(module_key, ".");
-}
-    module_key = __kai_std_str_concat_alloc(module_key, ArrayList_Str_get(&(path), pi));
-    pi = (pi + 1LL);
-}
-    if (strcmp(module_key, "") == 0) {
-    return "";
-}
-    if (strlist_find(&(self->loaded_modules), module_key) >= 0LL) {
-    return "";
-}
-    ArrayList_Str_push(&(self->loaded_modules), module_key);
-    bool has_source = false;
-    const char* source = "";
-    if ((ArrayList_Str_length(&(path)) > 0LL) && (strcmp(ArrayList_Str_get(&(path), 0LL), "std") == 0)) {
-    const char* path_str = "";
-    int64_t i = 0LL;
-    while (i < ArrayList_Str_length(&(path))) {
-    if (i > 0LL) {
-    path_str = __kai_std_str_concat_alloc(path_str, "/");
-}
-    path_str = __kai_std_str_concat_alloc(path_str, ArrayList_Str_get(&(path), i));
-    i = (i + 1LL);
-}
-    const char* rel_path = __kai_std_str_concat_alloc(path_str, ".kai");
-    const char* s1 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, rel_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (""); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
-    if (strlen(s1) > 0LL) {
-    source = s1;
-    has_source = true;
-} else {
-    {
-    char* buf = (char*)(KaiAllocator_alloc(self->allocator, 1024LL, 1LL));
-    if (get_exe_dir(buf, 1024LL) == 0LL) {
-    const char* exe_dir = (const char*)(buf);
-    const char* full_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/"), rel_path);
-    const char* parent_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../"), rel_path);
-    const char* lib_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../lib/kai/"), rel_path);
-    KaiAllocator_free(self->allocator, (uint8_t*)(buf));
-    const char* s2 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, full_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (""); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
-    if (strlen(s2) > 0LL) {
-    source = s2;
-    has_source = true;
-} else {
-    const char* s3 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, parent_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (""); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
-    if (strlen(s3) > 0LL) {
-    source = s3;
-    has_source = true;
-} else {
-    const char* s4 = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, lib_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (""); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
-    if (strlen(s4) > 0LL) {
-    source = s4;
-    has_source = true;
-}
-}
-}
-} else {
-    KaiAllocator_free(self->allocator, (uint8_t*)(buf));
-}
-}
-}
-} else if (ArrayList_Str_length(&(path)) > 0LL) {
-    const char* file_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("src/", module_key), ".kai");
-    const char* s = ({ Result_Str_IoError _kai_cr = (read_to_string(self->allocator, file_path)); const char* _kai_cv; if (_kai_cr.tag != 0) { int64_t err = _kai_cr.tag; _kai_cv = (""); } else { _kai_cv = _kai_cr.value; } _kai_cv; });
-    if (strlen(s) > 0LL) {
-    source = s;
-    has_source = true;
-}
-}
-    if (has_source) {
-    Lexer lexer = Lexer_init(self->allocator, source, "");
-    Lexer_lex(&(lexer));
-    if (lexer.has_error) {
-    return "";
-}
-    Parser parser = Parser_init_with_pools(self->allocator, "", lexer.tokens, self->expr_pool, self->stmt_pool, self->pattern_pool, source);
-    int64_t program_idx = Parser_parse_program(&(parser));
-    if (program_idx >= 0LL) {
-    Codegen_build_func_types(self);
-    (void)(Codegen_gen_stmt(self, program_idx));
-}
-} else if (strcmp(module_key, "") != 0) {
-    printf("warning: module '%s' not found at any search path\n", module_key);
-}
     return "";
 }
     if (stmt.kind == StmtKind_sk_break) {
@@ -10562,9 +11229,122 @@ ArrayList_Str Codegen__collect_loop_drops(Codegen* self) {
 }
     return drop_calls;
 }
+void Codegen_emit_struct_body_with_deps(Codegen* self, int64_t stmt_idx, ArrayList_Str* emitted) {
+    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt_idx);
+    if (stmt.kind != StmtKind_sk_struct_decl) {
+    return;
+}
+    if (ArrayList_Str_length(&(stmt.struct_type_params)) > 0LL) {
+    return;
+}
+    const char* name = Codegen_map_type(self, stmt.struct_name);
+    if (strlist_find(emitted, name) >= 0LL) {
+    return;
+}
+    ArrayList_Str_push(emitted, name);
+    int64_t fi = 0LL;
+    while (fi < ArrayList_StructField_length(&(stmt.struct_fields))) {
+    StructField f = ArrayList_StructField_get(&(stmt.struct_fields), fi);
+    const char* ftype = f.ftype;
+    {
+    if (((strlen(ftype) > 0LL) && ((ftype)[0LL] != ((char)(42LL)))) && ((ftype)[0LL] != ((char)(38LL)))) {
+    int64_t si = 0LL;
+    while (si < ArrayList_StmtNode_length(self->stmt_pool)) {
+    StmtNode s2 = ArrayList_StmtNode_get(self->stmt_pool, si);
+    if ((s2.kind == StmtKind_sk_struct_decl) && (ArrayList_Str_length(&(s2.struct_type_params)) == 0LL)) {
+    if (strcmp(s2.struct_name, ftype) == 0) {
+    Codegen_emit_struct_body_with_deps(self, si, emitted);
+}
+}
+    si = (si + 1LL);
+}
+}
+}
+    fi = (fi + 1LL);
+}
+    const char* struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", name), " {\n");
+    int64_t i = 0LL;
+    while (i < ArrayList_StructField_length(&(stmt.struct_fields))) {
+    StructField f = ArrayList_StructField_get(&(stmt.struct_fields), i);
+    struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "    "), Codegen_map_type(self, f.ftype)), " "), f.name), ";\n");
+    i = (i + 1LL);
+}
+    struct_str = __kai_std_str_concat_alloc(struct_str, "};\n");
+    (void)(StringBuilder_append(&(self->struct_decls), struct_str));
+    int64_t ti = 0LL;
+    while (ti < ArrayList_Int_length(&(stmt.struct_trait_impls))) {
+    int64_t impl_idx = ArrayList_Int_get(&(stmt.struct_trait_impls), ti);
+    (void)(Codegen_gen_stmt(self, impl_idx));
+    ti = (ti + 1LL);
+}
+}
 const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
+    int64_t g_i = 0LL;
+    while (g_i < ArrayList_StmtNode_length(self->stmt_pool)) {
+    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, g_i);
+    if (stmt.kind == StmtKind_sk_struct_decl) {
+    if (ArrayList_Str_length(&(stmt.struct_type_params)) > 0LL) {
+    type_map_put(&(self->generic_struct_decls), stmt.struct_name, int_to_str(g_i));
+}
+}
+    if (stmt.kind == StmtKind_sk_enum_decl) {
+    if (ArrayList_Str_length(&(stmt.enum_type_params)) > 0LL) {
+    type_map_put(&(self->generic_enum_decls), stmt.enum_name, int_to_str(g_i));
+}
+}
+    g_i = (g_i + 1LL);
+}
+    int64_t fd_i = 0LL;
+    while (fd_i < ArrayList_StmtNode_length(self->stmt_pool)) {
+    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, fd_i);
+    if ((stmt.kind == StmtKind_sk_struct_decl) && (ArrayList_Str_length(&(stmt.struct_type_params)) == 0LL)) {
+    const char* name = Codegen_map_type(self, stmt.struct_name);
+    (void)(StringBuilder_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", name), " "), name), ";\n")));
+}
+    fd_i = (fd_i + 1LL);
+}
     Codegen_build_func_types(self);
-    const char* body = Codegen_gen_stmt(self, top_stmt_idx);
+    ArrayList_Str emitted_structs = ArrayList_Str_init(self->allocator);
+    int64_t s_i = 0LL;
+    while (s_i < ArrayList_StmtNode_length(self->stmt_pool)) {
+    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, s_i);
+    if (stmt.kind == StmtKind_sk_struct_decl) {
+    Codegen_emit_struct_body_with_deps(self, s_i, &(emitted_structs));
+}
+    if (stmt.kind == StmtKind_sk_enum_decl) {
+    (void)(Codegen_gen_stmt(self, s_i));
+}
+    if (stmt.kind == StmtKind_sk_error_decl) {
+    (void)(Codegen_gen_stmt(self, s_i));
+}
+    s_i = (s_i + 1LL);
+}
+    int64_t f_i = 0LL;
+    while (f_i < ArrayList_StmtNode_length(self->stmt_pool)) {
+    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, f_i);
+    if (stmt.kind == StmtKind_sk_func_decl) {
+    bool has_self = false;
+    int64_t pi = 0LL;
+    while (pi < ArrayList_Param_length(&(stmt.func_params))) {
+    {
+    if (strcmp(ArrayList_Param_get(&(stmt.func_params), pi).name, "self") == 0LL) {
+    has_self = true;
+}
+}
+    pi = (pi + 1LL);
+}
+    if ((!has_self) && (ArrayList_Str_length(&(stmt.func_type_params)) == 0LL)) {
+    (void)(Codegen_gen_stmt(self, f_i));
+}
+}
+    if (stmt.kind == StmtKind_sk_extern) {
+    (void)(Codegen_gen_stmt(self, f_i));
+}
+    if (stmt.kind == StmtKind_sk_impl_block) {
+    (void)(Codegen_gen_stmt(self, f_i));
+}
+    f_i = (f_i + 1LL);
+}
     StringBuilder result = StringBuilder_init(self->allocator);
     StringBuilder_append(&(result), "#include <stdint.h>\n");
     StringBuilder_append(&(result), "#include <stdbool.h>\n");
@@ -10645,8 +11425,8 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
     StringBuilder_append(&(result), "\n");
     int64_t ci = 0LL;
     bool has_cimports = false;
-    while (ci < ArrayList_Str_length(&(self->cimport_headers))) {
-    const char* hdr = ArrayList_Str_get(&(self->cimport_headers), ci);
+    while (ci < ArrayList_Str_length(&(self->import_resolver->cimport_headers))) {
+    const char* hdr = ArrayList_Str_get(&(self->import_resolver->cimport_headers), ci);
     bool is_baseline = false;
     if (strcmp(hdr, "stdint.h") == 0) {
     is_baseline = true;
@@ -10744,1004 +11524,6 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
     StringBuilder_append(&(result), StringBuilder_to_str(&(self->output)));
     return StringBuilder_to_str(&(result));
 }
-CCodeBuilder CCodeBuilder_init(KaiAllocator* allocator) {
-    CCodeBuilder self = (CCodeBuilder){0};
-    self.alloc = allocator;
-    self.lines = ArrayList_Str_init(allocator);
-    self.indent_level = 0LL;
-    return self;
-}
-void CCodeBuilder_clear(CCodeBuilder* self) {
-    self->lines = ArrayList_Str_init(self->alloc);
-    self->indent_level = 0LL;
-}
-void CCodeBuilder_emit_line(CCodeBuilder* self, const char* code) {
-    const char* indent_str = "";
-    int64_t i = 0LL;
-    while (i < self->indent_level) {
-    indent_str = __kai_std_str_concat_alloc(indent_str, "    ");
-    i = (i + 1LL);
-}
-    ArrayList_Str_push(&(self->lines), __kai_std_str_concat_alloc(indent_str, code));
-}
-void CCodeBuilder_emit_blank(CCodeBuilder* self) {
-    ArrayList_Str_push(&(self->lines), "");
-}
-void CCodeBuilder_emit_raw(CCodeBuilder* self, const char* code) {
-    ArrayList_Str_push(&(self->lines), code);
-}
-void CCodeBuilder_emit_include(CCodeBuilder* self, const char* header, bool is_system) {
-    if (is_system) {
-    ArrayList_Str_push(&(self->lines), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include <", header), ">"));
-} else {
-    ArrayList_Str_push(&(self->lines), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include \"", header), "\""));
-}
-}
-void CCodeBuilder_emit_directive(CCodeBuilder* self, const char* code) {
-    ArrayList_Str_push(&(self->lines), code);
-}
-void CCodeBuilder_indent(CCodeBuilder* self) {
-    self->indent_level = (self->indent_level + 1LL);
-}
-void CCodeBuilder_dedent(CCodeBuilder* self) {
-    if (self->indent_level > 0LL) {
-    self->indent_level = (self->indent_level - 1LL);
-}
-}
-void CCodeBuilder_begin_block(CCodeBuilder* self) {
-    CCodeBuilder_emit_line(self, "{");
-    CCodeBuilder_indent(self);
-}
-void CCodeBuilder_end_block(CCodeBuilder* self) {
-    CCodeBuilder_dedent(self);
-    CCodeBuilder_emit_line(self, "}");
-}
-const char* CCodeBuilder_to_str(CCodeBuilder* self) {
-    const char* result = "";
-    int64_t i = 0LL;
-    while (i < ArrayList_Str_length(&(self->lines))) {
-    if (i > 0LL) {
-    result = __kai_std_str_concat_alloc(result, "\n");
-}
-    result = __kai_std_str_concat_alloc(result, ArrayList_Str_get(&(self->lines), i));
-    i = (i + 1LL);
-}
-    result = __kai_std_str_concat_alloc(result, "\n");
-    return result;
-}
-int64_t CCodeBuilder_line_count(CCodeBuilder* self) {
-    return ArrayList_Str_length(&(self->lines));
-}
-const char* cb_escape_string(const char* s) {
-    const char* res = "";
-    int64_t i = 0LL;
-    while (i < strlen(s)) {
-    char c = (s)[i];
-    if (c == ((char)(10LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\n");
-} else if (c == ((char)(13LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\r");
-} else if (c == ((char)(9LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\t");
-} else if (c == ((char)(92LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\\\");
-} else if (c == ((char)(34LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\\"");
-} else {
-    res = __kai_std_str_concat_alloc(res, cgb_char_to_str(c));
-}
-    i = (i + 1LL);
-}
-    return res;
-}
-const char* cb_escape_asm(const char* s) {
-    const char* res = "";
-    int64_t i = 0LL;
-    while (i < strlen(s)) {
-    char c = (s)[i];
-    if (c == ((char)(10LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\n\\t");
-} else if (c == ((char)(34LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\\"");
-} else {
-    res = __kai_std_str_concat_alloc(res, cgb_char_to_str(c));
-}
-    i = (i + 1LL);
-}
-    return res;
-}
-const char* cgb_char_to_str(char c) {
-    {
-    char* buf = (char*)(malloc(2LL));
-    if (buf != (char*)(unsigned long long)(0LL)) {
-    (buf)[0LL] = c;
-    (buf)[1LL] = ((char)(0LL));
-}
-    return (const char*)(buf);
-}
-}
-const char* cgb_int_to_str(int64_t n) {
-    if (n == 0LL) {
-    return "0";
-}
-    int64_t num = n;
-    int64_t digits = 0LL;
-    int64_t tmp = num;
-    if (tmp < 0LL) {
-    tmp = (-tmp);
-}
-    while (tmp > 0LL) {
-    digits = (digits + 1LL);
-    tmp = (tmp / 10LL);
-}
-    bool negative = false;
-    if (num < 0LL) {
-    negative = true;
-    num = (-num);
-}
-    int64_t total_len = digits;
-    if (negative) {
-    total_len = (total_len + 1LL);
-}
-    {
-    char* buf = (char*)(malloc((int64_t)((total_len + 1LL))));
-    if (buf != (char*)(unsigned long long)(0LL)) {
-    int64_t pos = total_len;
-    (buf)[pos] = ((char)(0LL));
-    while ((pos > 0LL) && (digits > 0LL)) {
-    pos = (pos - 1LL);
-    digits = (digits - 1LL);
-    int64_t dv = (num % 10LL);
-    (buf)[pos] = ((char)((48LL + dv)));
-    num = (num / 10LL);
-}
-    if (negative) {
-    pos = (pos - 1LL);
-    (buf)[pos] = ((char)(45LL));
-}
-}
-    return (const char*)(buf);
-}
-}
-CType ctype_new(const char* base, int64_t pointer, bool is_const, bool is_unsigned) {
-    CType t = (CType){ .base = base, .pointer = pointer, .is_const = is_const, .is_unsigned = is_unsigned, .array_sizes = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) } };
-    return t;
-}
-CType ctype_void(void) {
-    return ctype_new("void", 0LL, false, false);
-}
-CType ctype_int(void) {
-    return ctype_new("int64_t", 0LL, false, false);
-}
-CType ctype_bool(void) {
-    return ctype_new("bool", 0LL, false, false);
-}
-CType ctype_char(void) {
-    return ctype_new("char", 0LL, false, false);
-}
-CType ctype_float(void) {
-    return ctype_new("double", 0LL, false, false);
-}
-CType ctype_str(void) {
-    return ctype_new("char", 1LL, true, false);
-}
-CType ctype_ptr(CType inner) {
-    CType t = inner;
-    t.pointer = (t.pointer + 1LL);
-    return t;
-}
-CType ctype_const(CType inner) {
-    CType t = inner;
-    t.is_const = true;
-    return t;
-}
-const char* ctype_to_str(CType t) {
-    const char* result = "";
-    if (t.is_const) {
-    result = "const ";
-}
-    if (t.is_unsigned) {
-    result = __kai_std_str_concat_alloc(result, "unsigned ");
-}
-    result = __kai_std_str_concat_alloc(result, t.base);
-    int64_t i = 0LL;
-    while (i < t.pointer) {
-    result = __kai_std_str_concat_alloc(result, "*");
-    i = (i + 1LL);
-}
-    int64_t j = 0LL;
-    while (j < ArrayList_Str_length(&(t.array_sizes))) {
-    result = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(result, "["), ArrayList_Str_get(&(t.array_sizes), j)), "]");
-    j = (j + 1LL);
-}
-    return result;
-}
-CType ctype_from_kai(const char* kai_type) {
-    if (strcmp(kai_type, "Int") == 0) {
-    return ctype_int();
-}
-    if (strcmp(kai_type, "i8") == 0) {
-    return ctype_new("int8_t", 0LL, false, false);
-}
-    if (strcmp(kai_type, "i32") == 0) {
-    return ctype_new("int32_t", 0LL, false, false);
-}
-    if (strcmp(kai_type, "i16") == 0) {
-    return ctype_new("int16_t", 0LL, false, false);
-}
-    if (strcmp(kai_type, "i64") == 0) {
-    return ctype_new("int64_t", 0LL, false, false);
-}
-    if (strcmp(kai_type, "isize") == 0) {
-    return ctype_new("intptr_t", 0LL, false, false);
-}
-    if (strcmp(kai_type, "u8") == 0) {
-    return ctype_new("uint8_t", 0LL, false, true);
-}
-    if (strcmp(kai_type, "u16") == 0) {
-    return ctype_new("uint16_t", 0LL, false, true);
-}
-    if (strcmp(kai_type, "u32") == 0) {
-    return ctype_new("uint32_t", 0LL, false, true);
-}
-    if (strcmp(kai_type, "u64") == 0) {
-    return ctype_new("uint64_t", 0LL, false, true);
-}
-    if (strcmp(kai_type, "usize") == 0) {
-    return ctype_new("size_t", 0LL, false, true);
-}
-    if (strcmp(kai_type, "Bool") == 0) {
-    return ctype_bool();
-}
-    if (strcmp(kai_type, "Char") == 0) {
-    return ctype_char();
-}
-    if (strcmp(kai_type, "Float") == 0) {
-    return ctype_float();
-}
-    if (strcmp(kai_type, "Void") == 0) {
-    return ctype_void();
-}
-    if (strcmp(kai_type, "Str") == 0) {
-    return ctype_str();
-}
-    return ctype_new(kai_type, 0LL, false, false);
-}
-CType ctype_copy(CType t) {
-    ArrayList_Str sizes = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CType){ .base = t.base, .pointer = t.pointer, .is_const = t.is_const, .is_unsigned = t.is_unsigned, .array_sizes = sizes };
-}
-ArrayList_CDeclNode ArrayList_CDeclNode_init(KaiAllocator* allocator) {
-    ArrayList_CDeclNode self = (ArrayList_CDeclNode){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-    self.data = (CDeclNode*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(CDeclNode))), 1LL));
-}
-    return self;
-}
-void ArrayList_CDeclNode_push(ArrayList_CDeclNode* self, CDeclNode item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    CDeclNode* new_data = (CDeclNode*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(CDeclNode))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
-}
-}
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-CDeclNode ArrayList_CDeclNode_get(ArrayList_CDeclNode* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_CDeclNode_set(ArrayList_CDeclNode* self, int64_t index, CDeclNode item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-CDeclNode ArrayList_CDeclNode_pop(ArrayList_CDeclNode* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_CDeclNode_length(ArrayList_CDeclNode* self) {
-    return self->len;
-}
-void ArrayList_CDeclNode_deinit(ArrayList_CDeclNode* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
-}
-CUnit cunit_new(ArrayList_Str includes, ArrayList_CDeclNode decls) {
-    return (CUnit){ .includes = includes, .decls = decls };
-}
-CExprNode cexpr_new_int(const char* val) {
-    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CExprNode){ .kind = CExprKind_ck_int_lit, .int_val = val, .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
-}
-CExprNode cexpr_new_ident(const char* name) {
-    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CExprNode){ .kind = CExprKind_ck_ident, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = name, .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
-}
-CExprNode cexpr_new_binary(int64_t left, const char* op, int64_t right) {
-    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CExprNode){ .kind = CExprKind_ck_binary, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = left, .binop_right = right, .binop_op = op, .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
-}
-CExprNode cexpr_new_call(const char* callee, ArrayList_Int args) {
-    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CExprNode){ .kind = CExprKind_ck_call, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = callee, .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
-}
-CStmtNode cstmt_new_expr(int64_t expr_idx) {
-    ArrayList_Int block_stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CStmtNode){ .kind = CStmtKind_cs_expr, .block_stmts = block_stmts, .expr_stmt = expr_idx, .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_init = (-1LL), .for_cond = (-1LL), .for_inc = (-1LL), .for_body = (-1LL), .do_body = (-1LL), .do_cond = (-1LL), .return_val = (-1LL), .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .switch_expr = (-1LL), .case_val = "", .label_name = "", .asm_code = "", .asm_volatile = false };
-}
-CStmtNode cstmt_new_block(ArrayList_Int stmts) {
-    return (CStmtNode){ .kind = CStmtKind_cs_block, .block_stmts = stmts, .expr_stmt = (-1LL), .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_init = (-1LL), .for_cond = (-1LL), .for_inc = (-1LL), .for_body = (-1LL), .do_body = (-1LL), .do_cond = (-1LL), .return_val = (-1LL), .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .switch_expr = (-1LL), .case_val = "", .label_name = "", .asm_code = "", .asm_volatile = false };
-}
-CStmtNode cstmt_new_if(int64_t cond, int64_t then_branch, int64_t else_branch) {
-    ArrayList_Int block_stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CStmtNode){ .kind = CStmtKind_cs_if, .block_stmts = block_stmts, .expr_stmt = (-1LL), .if_cond = cond, .if_then = then_branch, .if_else = else_branch, .while_cond = (-1LL), .while_body = (-1LL), .for_init = (-1LL), .for_cond = (-1LL), .for_inc = (-1LL), .for_body = (-1LL), .do_body = (-1LL), .do_cond = (-1LL), .return_val = (-1LL), .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .switch_expr = (-1LL), .case_val = "", .label_name = "", .asm_code = "", .asm_volatile = false };
-}
-CExprNode cexpr_new_float(const char* val) {
-    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CExprNode){ .kind = CExprKind_ck_float_lit, .int_val = "", .float_val = val, .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
-}
-CExprNode cexpr_new_str(const char* val) {
-    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CExprNode){ .kind = CExprKind_ck_str_lit, .int_val = "", .float_val = "", .str_val = val, .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
-}
-CExprNode cexpr_new_bool(bool val) {
-    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CExprNode){ .kind = CExprKind_ck_bool_lit, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = val, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
-}
-CExprNode cexpr_new_char(const char* val) {
-    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CExprNode){ .kind = CExprKind_ck_char_lit, .int_val = "", .float_val = "", .str_val = "", .char_val = val, .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
-}
-CExprNode cexpr_new_unary(const char* op, int64_t operand, bool is_prefix) {
-    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CExprNode){ .kind = CExprKind_ck_unary, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = operand, .unop_op = op, .is_prefix = is_prefix, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
-}
-CExprNode cexpr_new_compound(CType t, ArrayList_Str compound_fs) {
-    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CExprNode){ .kind = CExprKind_ck_compound, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = t, .compound_fields = compound_fs, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
-}
-CExprNode cexpr_new_field(int64_t base, const char* name) {
-    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CExprNode){ .kind = CExprKind_ck_field, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = base, .field_name = name, .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
-}
-CExprNode cexpr_new_arrow(int64_t base, const char* name) {
-    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CExprNode){ .kind = CExprKind_ck_arrow, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = base, .field_name = name, .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
-}
-CExprNode cexpr_new_index(int64_t base, int64_t idx_val) {
-    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CExprNode){ .kind = CExprKind_ck_index, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = base, .idx_index = idx_val, .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
-}
-CExprNode cexpr_new_cast(CType t, int64_t cast_e) {
-    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CExprNode){ .kind = CExprKind_ck_cast, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = t, .cast_expr = cast_e, .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
-}
-CExprNode cexpr_new_sizeof_type(CType t) {
-    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CExprNode){ .kind = CExprKind_ck_sizeof_type, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = t, .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
-}
-CDeclNode cdecl_new_func(const char* name, const char* ret_type, ArrayList_Str params, bool is_extern, bool is_vararg) {
-    ArrayList_Int empty_stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    ArrayList_Str empty_strs = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
-    return (CDeclNode){ .is_function = true, .func_ret = ctype_new(ret_type, 0LL, false, false), .func_name = name, .func_params = params, .func_vararg = is_vararg, .func_body = empty_stmts, .is_extern = is_extern, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .is_struct = false, .struct_name = "", .struct_fields = empty_strs, .is_enum = false, .enum_name = "", .enum_variants = empty_strs, .is_tagged_enum = false, .tagged_name = "", .tagged_variants = empty_strs, .is_tagged_union_struct = false, .is_typedef = false, .typedef_alias = "", .typedef_def = ctype_void() };
-}
-ArrayList_CExprNode ArrayList_CExprNode_init(KaiAllocator* allocator) {
-    ArrayList_CExprNode self = (ArrayList_CExprNode){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-    self.data = (CExprNode*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(CExprNode))), 1LL));
-}
-    return self;
-}
-void ArrayList_CExprNode_push(ArrayList_CExprNode* self, CExprNode item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    CExprNode* new_data = (CExprNode*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(CExprNode))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
-}
-}
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-CExprNode ArrayList_CExprNode_get(ArrayList_CExprNode* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_CExprNode_set(ArrayList_CExprNode* self, int64_t index, CExprNode item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-CExprNode ArrayList_CExprNode_pop(ArrayList_CExprNode* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_CExprNode_length(ArrayList_CExprNode* self) {
-    return self->len;
-}
-void ArrayList_CExprNode_deinit(ArrayList_CExprNode* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
-}
-ArrayList_CStmtNode ArrayList_CStmtNode_init(KaiAllocator* allocator) {
-    ArrayList_CStmtNode self = (ArrayList_CStmtNode){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-    self.data = (CStmtNode*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(CStmtNode))), 1LL));
-}
-    return self;
-}
-void ArrayList_CStmtNode_push(ArrayList_CStmtNode* self, CStmtNode item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    CStmtNode* new_data = (CStmtNode*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(CStmtNode))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
-}
-}
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-CStmtNode ArrayList_CStmtNode_get(ArrayList_CStmtNode* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_CStmtNode_set(ArrayList_CStmtNode* self, int64_t index, CStmtNode item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-CStmtNode ArrayList_CStmtNode_pop(ArrayList_CStmtNode* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_CStmtNode_length(ArrayList_CStmtNode* self) {
-    return self->len;
-}
-void ArrayList_CStmtNode_deinit(ArrayList_CStmtNode* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
-}
-CPrinter CPrinter_init(CCodeBuilder* builder, ArrayList_CExprNode* expr_pool, ArrayList_CStmtNode* stmt_pool) {
-    CPrinter self = (CPrinter){0};
-    self.builder = builder;
-    self.expr_pool = expr_pool;
-    self.stmt_pool = stmt_pool;
-    return self;
-}
-const char* CPrinter_print_expr(CPrinter* self, int64_t idx) {
-    if (idx < 0LL) {
-    return "";
-}
-    CExprNode node = ArrayList_CExprNode_get(self->expr_pool, idx);
-    if (node.kind == CExprKind_ck_int_lit) {
-    return __kai_std_str_concat_alloc(node.int_val, "LL");
-}
-    if (node.kind == CExprKind_ck_float_lit) {
-    return node.float_val;
-}
-    if (node.kind == CExprKind_ck_str_lit) {
-    return node.str_val;
-}
-    if (node.kind == CExprKind_ck_char_lit) {
-    return node.char_val;
-}
-    if (node.kind == CExprKind_ck_bool_lit) {
-    if (node.bool_val) {
-    return "true";
-}
-    return "false";
-}
-    if (node.kind == CExprKind_ck_ident) {
-    return node.ident_name;
-}
-    if (node.kind == CExprKind_ck_binary) {
-    const char* left = CPrinter_print_expr(self, node.binop_left);
-    const char* right = CPrinter_print_expr(self, node.binop_right);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", left), " "), node.binop_op), " "), right), ")");
-}
-    if (node.kind == CExprKind_ck_unary) {
-    const char* operand = CPrinter_print_expr(self, node.unop_operand);
-    if (node.is_prefix) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", node.unop_op), operand), ")");
-}
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", operand), node.unop_op), ")");
-}
-    if (node.kind == CExprKind_ck_call) {
-    const char* args_str = "";
-    int64_t i = 0LL;
-    while (i < ArrayList_Int_length(&(node.call_args))) {
-    if (i > 0LL) {
-    args_str = __kai_std_str_concat_alloc(args_str, ", ");
-}
-    args_str = __kai_std_str_concat_alloc(args_str, CPrinter_print_expr(self, ArrayList_Int_get(&(node.call_args), i)));
-    i = (i + 1LL);
-}
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(node.callee_name, "("), args_str), ")");
-}
-    if (node.kind == CExprKind_ck_field) {
-    const char* base = CPrinter_print_expr(self, node.field_expr);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(base, "."), node.field_name);
-}
-    if (node.kind == CExprKind_ck_arrow) {
-    const char* base = CPrinter_print_expr(self, node.field_expr);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(base, "->"), node.field_name);
-}
-    if (node.kind == CExprKind_ck_index) {
-    const char* base = CPrinter_print_expr(self, node.idx_expr);
-    const char* idx = CPrinter_print_expr(self, node.idx_index);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(base, "["), idx), "]");
-}
-    if (node.kind == CExprKind_ck_cast) {
-    const char* base = CPrinter_print_expr(self, node.cast_expr);
-    const char* target = ctype_to_str(node.cast_type);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", target), ")("), base), "))");
-}
-    if (node.kind == CExprKind_ck_ternary) {
-    const char* cond = CPrinter_print_expr(self, node.tern_cond);
-    const char* then_expr = CPrinter_print_expr(self, node.tern_then);
-    const char* else_expr = CPrinter_print_expr(self, node.tern_else);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", cond), " ? "), then_expr), " : "), else_expr), ")");
-}
-    if (node.kind == CExprKind_ck_sizeof_type) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("sizeof(", ctype_to_str(node.sizeof_type)), ")");
-}
-    if (node.kind == CExprKind_ck_sizeof_expr) {
-    const char* base = CPrinter_print_expr(self, node.sizeof_expr);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("sizeof(", base), ")");
-}
-    if (node.kind == CExprKind_ck_assign) {
-    const char* target = CPrinter_print_expr(self, node.assign_target);
-    const char* val = CPrinter_print_expr(self, node.assign_value);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", target), " "), node.assign_op), " "), val), ")");
-}
-    if (node.kind == CExprKind_ck_compound) {
-    const char* type_str = ctype_to_str(node.compound_type);
-    const char* fields_str = "";
-    int64_t ci = 0LL;
-    while (ci < ArrayList_Str_length(&(node.compound_fields))) {
-    if (ci > 0LL) {
-    fields_str = __kai_std_str_concat_alloc(fields_str, ", ");
-}
-    fields_str = __kai_std_str_concat_alloc(fields_str, ArrayList_Str_get(&(node.compound_fields), ci));
-    ci = (ci + 1LL);
-}
-    if (strlen(fields_str) > 0LL) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", type_str), "){ "), fields_str), " }");
-}
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", type_str), "){0}");
-}
-    if (node.kind == CExprKind_ck_stmt_expr) {
-    CCodeBuilder temp_builder = CCodeBuilder_init(self->builder->alloc);
-    CPrinter temp_printer = (CPrinter){ .builder = &(temp_builder), .expr_pool = self->expr_pool, .stmt_pool = self->stmt_pool };
-    CCodeBuilder_emit_line(&(temp_builder), "({");
-    CCodeBuilder_indent(&(temp_builder));
-    int64_t si = 0LL;
-    while (si < ArrayList_Int_length(&(node.stmts))) {
-    CPrinter_print_stmt(&(temp_printer), ArrayList_Int_get(&(node.stmts), si));
-    si = (si + 1LL);
-}
-    if (node.stmt_result >= 0LL) {
-    CCodeBuilder_emit_line(&(temp_builder), __kai_std_str_concat_alloc(CPrinter_print_expr(self, node.stmt_result), ";"));
-}
-    CCodeBuilder_dedent(&(temp_builder));
-    CCodeBuilder_emit_line(&(temp_builder), "})");
-    return CCodeBuilder_to_str(&(temp_builder));
-}
-    return "";
-}
-void CPrinter_print_stmt(CPrinter* self, int64_t idx) {
-    if (idx < 0LL) {
-    return;
-}
-    CStmtNode node = ArrayList_CStmtNode_get(self->stmt_pool, idx);
-    if (node.kind == CStmtKind_cs_block) {
-    CCodeBuilder_begin_block(self->builder);
-    int64_t i = 0LL;
-    while (i < ArrayList_Int_length(&(node.block_stmts))) {
-    CPrinter_print_stmt(self, ArrayList_Int_get(&(node.block_stmts), i));
-    i = (i + 1LL);
-}
-    CCodeBuilder_end_block(self->builder);
-}
-    if (node.kind == CStmtKind_cs_expr) {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(CPrinter_print_expr(self, node.expr_stmt), ";"));
-}
-    if (node.kind == CStmtKind_cs_if) {
-    const char* cond = CPrinter_print_expr(self, node.if_cond);
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", cond), ")"));
-    CPrinter_print_stmt(self, node.if_then);
-    if (node.if_else >= 0LL) {
-    CCodeBuilder_emit_line(self->builder, "else");
-    CPrinter_print_stmt(self, node.if_else);
-}
-}
-    if (node.kind == CStmtKind_cs_while) {
-    const char* cond = CPrinter_print_expr(self, node.while_cond);
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("while (", cond), ")"));
-    CPrinter_print_stmt(self, node.while_body);
-}
-    if (node.kind == CStmtKind_cs_return) {
-    if (node.return_val >= 0LL) {
-    const char* val = CPrinter_print_expr(self, node.return_val);
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return ", val), ";"));
-} else {
-    CCodeBuilder_emit_line(self->builder, "return;");
-}
-}
-    if (node.kind == CStmtKind_cs_break) {
-    CCodeBuilder_emit_line(self->builder, "break;");
-}
-    if (node.kind == CStmtKind_cs_continue) {
-    CCodeBuilder_emit_line(self->builder, "continue;");
-}
-    if (node.kind == CStmtKind_cs_var_decl) {
-    const char* type_str = ctype_to_str(node.var_type);
-    if (node.var_init >= 0LL) {
-    const char* init_val = CPrinter_print_expr(self, node.var_init);
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(type_str, " "), node.var_name), " = "), init_val), ";"));
-} else {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(type_str, " "), node.var_name), ";"));
-}
-}
-}
-void CPrinter_print_decl(CPrinter* self, CDeclNode decl) {
-    if (decl.is_typedef) {
-    const char* def_str = ctype_to_str(decl.typedef_def);
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef ", def_str), " "), decl.typedef_alias), ";"));
-    return;
-}
-    if (decl.is_struct) {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", decl.struct_name), " {"));
-    CCodeBuilder_indent(self->builder);
-    int64_t i = 0LL;
-    while (i < ArrayList_Str_length(&(decl.struct_fields))) {
-    CCodeBuilder_emit_line(self->builder, ArrayList_Str_get(&(decl.struct_fields), i));
-    i = (i + 1LL);
-}
-    CCodeBuilder_dedent(self->builder);
-    CCodeBuilder_emit_line(self->builder, "};");
-    return;
-}
-    if (decl.is_enum) {
-    CCodeBuilder_emit_line(self->builder, "typedef enum {");
-    CCodeBuilder_indent(self->builder);
-    int64_t i = 0LL;
-    while (i < ArrayList_Str_length(&(decl.enum_variants))) {
-    CCodeBuilder_emit_line(self->builder, ArrayList_Str_get(&(decl.enum_variants), i));
-    i = (i + 1LL);
-}
-    CCodeBuilder_dedent(self->builder);
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("} ", decl.enum_name), ";"));
-    return;
-}
-    if (decl.is_tagged_union_struct) {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", decl.struct_name), " {"));
-    CCodeBuilder_indent(self->builder);
-    CCodeBuilder_emit_line(self->builder, "uint8_t tag;");
-    CCodeBuilder_emit_line(self->builder, "union {");
-    CCodeBuilder_indent(self->builder);
-    int64_t vi = 0LL;
-    while (vi < ArrayList_Str_length(&(decl.tagged_variants))) {
-    CCodeBuilder_emit_line(self->builder, ArrayList_Str_get(&(decl.tagged_variants), vi));
-    vi = (vi + 1LL);
-}
-    CCodeBuilder_dedent(self->builder);
-    CCodeBuilder_emit_line(self->builder, "};");
-    CCodeBuilder_dedent(self->builder);
-    CCodeBuilder_emit_line(self->builder, "};");
-    return;
-}
-    if (decl.is_function) {
-    const char* params_str = "";
-    int64_t i = 0LL;
-    while (i < ArrayList_Str_length(&(decl.func_params))) {
-    if (i > 0LL) {
-    params_str = __kai_std_str_concat_alloc(params_str, ", ");
-}
-    params_str = __kai_std_str_concat_alloc(params_str, ArrayList_Str_get(&(decl.func_params), i));
-    i = (i + 1LL);
-}
-    if (decl.func_vararg) {
-    if (strlen(params_str) > 0LL) {
-    params_str = __kai_std_str_concat_alloc(params_str, ", ...");
-} else {
-    params_str = "...";
-}
-}
-    const char* ret_str = ctype_to_str(decl.func_ret);
-    const char* header = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_str, " "), decl.func_name), "("), params_str), ")");
-    if (decl.is_extern) {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("extern ", header), ";"));
-    return;
-}
-    if (ArrayList_Int_length(&(decl.func_body)) == 0LL) {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(header, ";"));
-} else {
-    CCodeBuilder_emit_line(self->builder, header);
-    CCodeBuilder_begin_block(self->builder);
-    int64_t j = 0LL;
-    while (j < ArrayList_Int_length(&(decl.func_body))) {
-    CPrinter_print_stmt(self, ArrayList_Int_get(&(decl.func_body), j));
-    j = (j + 1LL);
-}
-    CCodeBuilder_end_block(self->builder);
-}
-}
-}
-void CPrinter_emit_runtime_preamble(CPrinter* self, ArrayList_Str* cimport_headers) {
-    CCodeBuilder_emit_line(self->builder, "/* BUILDER CODEGEN ACTIVE */");
-    CCodeBuilder_emit_line(self->builder, "#ifndef _GNU_SOURCE");
-    CCodeBuilder_emit_line(self->builder, "#define _GNU_SOURCE");
-    CCodeBuilder_emit_line(self->builder, "#endif");
-    CCodeBuilder_emit_line(self->builder, "#include <stdint.h>");
-    CCodeBuilder_emit_line(self->builder, "#include <stdbool.h>");
-    CCodeBuilder_emit_line(self->builder, "#include <stdio.h>");
-    CCodeBuilder_emit_line(self->builder, "#include <stdlib.h>");
-    CCodeBuilder_emit_line(self->builder, "#include <string.h>");
-    CCodeBuilder_emit_line(self->builder, "#include <inttypes.h>");
-    CCodeBuilder_emit_line(self->builder, "#ifndef NO_GET_EXE_DIR");
-    CCodeBuilder_emit_line(self->builder, "#if defined(_WIN32)");
-    CCodeBuilder_emit_line(self->builder, "#include <windows.h>");
-    CCodeBuilder_emit_line(self->builder, "#else");
-    CCodeBuilder_emit_line(self->builder, "#include <dlfcn.h>");
-    CCodeBuilder_emit_line(self->builder, "#include <limits.h>");
-    CCodeBuilder_emit_line(self->builder, "#endif");
-    CCodeBuilder_emit_blank(self->builder);
-    CCodeBuilder_emit_line(self->builder, "int64_t get_exe_dir(char* out_buf, int64_t max_len) {");
-    CCodeBuilder_emit_line(self->builder, "#if defined(_WIN32)");
-    CCodeBuilder_emit_line(self->builder, "    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);");
-    CCodeBuilder_emit_line(self->builder, "    if (len == 0 || len >= max_len) return -1;");
-    CCodeBuilder_emit_line(self->builder, "    for (int i = len - 1; i >= 0; i--) {");
-    CCodeBuilder_emit_line(self->builder, "        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {");
-    CCodeBuilder_emit_line(self->builder, "            out_buf[i] = '\\0';");
-    CCodeBuilder_emit_line(self->builder, "            break;");
-    CCodeBuilder_emit_line(self->builder, "        }");
-    CCodeBuilder_emit_line(self->builder, "    }");
-    CCodeBuilder_emit_line(self->builder, "    return 0;");
-    CCodeBuilder_emit_line(self->builder, "#else");
-    CCodeBuilder_emit_line(self->builder, "    Dl_info info;");
-    CCodeBuilder_emit_line(self->builder, "    char dummy = 0;");
-    CCodeBuilder_emit_line(self->builder, "    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {");
-    CCodeBuilder_emit_line(self->builder, "        char real_path[PATH_MAX];");
-    CCodeBuilder_emit_line(self->builder, "        if (realpath(info.dli_fname, real_path) != NULL) {");
-    CCodeBuilder_emit_line(self->builder, "            char* last_slash = strrchr(real_path, '/');");
-    CCodeBuilder_emit_line(self->builder, "            if (last_slash != NULL) {");
-    CCodeBuilder_emit_line(self->builder, "                *last_slash = '\\0';");
-    CCodeBuilder_emit_line(self->builder, "                int i = 0;");
-    CCodeBuilder_emit_line(self->builder, "                while (i < max_len - 1 && real_path[i] != '\\0') {");
-    CCodeBuilder_emit_line(self->builder, "                    out_buf[i] = real_path[i];");
-    CCodeBuilder_emit_line(self->builder, "                    i++;");
-    CCodeBuilder_emit_line(self->builder, "                }");
-    CCodeBuilder_emit_line(self->builder, "                out_buf[i] = '\\0';");
-    CCodeBuilder_emit_line(self->builder, "                return 0;");
-    CCodeBuilder_emit_line(self->builder, "            }");
-    CCodeBuilder_emit_line(self->builder, "        }");
-    CCodeBuilder_emit_line(self->builder, "    }");
-    CCodeBuilder_emit_line(self->builder, "    return -1;");
-    CCodeBuilder_emit_line(self->builder, "#endif");
-    CCodeBuilder_emit_line(self->builder, "}");
-    CCodeBuilder_emit_line(self->builder, "#endif");
-    CCodeBuilder_emit_blank(self->builder);
-    CCodeBuilder_emit_line(self->builder, "static char* __kai_str_sub(const char* s, int64_t start, int64_t end) {");
-    CCodeBuilder_emit_line(self->builder, "    int64_t len = strlen(s);");
-    CCodeBuilder_emit_line(self->builder, "    if (end > len) end = len;");
-    CCodeBuilder_emit_line(self->builder, "    if (start < 0) start = 0;");
-    CCodeBuilder_emit_line(self->builder, "    if (start >= end) {");
-    CCodeBuilder_emit_line(self->builder, "        char* empty = malloc(1);");
-    CCodeBuilder_emit_line(self->builder, "        if (empty) empty[0] = '\\0';");
-    CCodeBuilder_emit_line(self->builder, "        return empty;");
-    CCodeBuilder_emit_line(self->builder, "    }");
-    CCodeBuilder_emit_line(self->builder, "    int64_t sub_len = end - start;");
-    CCodeBuilder_emit_line(self->builder, "    char* buf = malloc(sub_len + 1);");
-    CCodeBuilder_emit_line(self->builder, "    if (buf) {");
-    CCodeBuilder_emit_line(self->builder, "        memcpy(buf, s + start, sub_len);");
-    CCodeBuilder_emit_line(self->builder, "        buf[sub_len] = '\\0';");
-    CCodeBuilder_emit_line(self->builder, "    }");
-    CCodeBuilder_emit_line(self->builder, "    return buf;");
-    CCodeBuilder_emit_line(self->builder, "}");
-    CCodeBuilder_emit_blank(self->builder);
-    CCodeBuilder_emit_line(self->builder, "static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t elem_size) {");
-    CCodeBuilder_emit_line(self->builder, "    int64_t count = end - start;");
-    CCodeBuilder_emit_line(self->builder, "    if (count <= 0) return NULL;");
-    CCodeBuilder_emit_line(self->builder, "    size_t total = (size_t)count * (size_t)elem_size;");
-    CCodeBuilder_emit_line(self->builder, "    void* buf = malloc(total);");
-    CCodeBuilder_emit_line(self->builder, "    if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);");
-    CCodeBuilder_emit_line(self->builder, "    return buf;");
-    CCodeBuilder_emit_line(self->builder, "}");
-    CCodeBuilder_emit_blank(self->builder);
-    CCodeBuilder_emit_line(self->builder, "static char* __kai_std_str_concat_alloc(const char* left, const char* right) {");
-    CCodeBuilder_emit_line(self->builder, "    size_t left_len = strlen(left);");
-    CCodeBuilder_emit_line(self->builder, "    size_t right_len = strlen(right);");
-    CCodeBuilder_emit_line(self->builder, "    size_t total = left_len + right_len + 1;");
-    CCodeBuilder_emit_line(self->builder, "    char* buf = (char*)malloc(total);");
-    CCodeBuilder_emit_line(self->builder, "    if (buf) {");
-    CCodeBuilder_emit_line(self->builder, "        memcpy(buf, left, left_len);");
-    CCodeBuilder_emit_line(self->builder, "        memcpy(buf + left_len, right, right_len);");
-    CCodeBuilder_emit_line(self->builder, "        buf[total - 1] = '\\0';");
-    CCodeBuilder_emit_line(self->builder, "    }");
-    CCodeBuilder_emit_line(self->builder, "    return buf;");
-    CCodeBuilder_emit_line(self->builder, "}");
-    CCodeBuilder_emit_blank(self->builder);
-    int64_t ci = 0LL;
-    bool has_cimports = false;
-    while (ci < ArrayList_Str_length(cimport_headers)) {
-    const char* hdr = ArrayList_Str_get(cimport_headers, ci);
-    bool is_baseline = false;
-    if (strcmp(hdr, "stdint.h") == 0) {
-    is_baseline = true;
-} else if (strcmp(hdr, "stdbool.h") == 0) {
-    is_baseline = true;
-} else if (strcmp(hdr, "stdio.h") == 0) {
-    is_baseline = true;
-} else if (strcmp(hdr, "stdlib.h") == 0) {
-    is_baseline = true;
-} else if (strcmp(hdr, "string.h") == 0) {
-    is_baseline = true;
-} else if (strcmp(hdr, "sys/mman.h") == 0) {
-    is_baseline = true;
-} else if (strcmp(hdr, "ctype.h") == 0) {
-    is_baseline = true;
-}
-    if (!is_baseline) {
-    if (!has_cimports) {
-    CCodeBuilder_emit_line(self->builder, "/* C FFI Imports */");
-    has_cimports = true;
-}
-    bool has_slash = false;
-    bool dot_start = false;
-    if (strlen(hdr) > 0LL) {
-    int64_t hi = 0LL;
-    while (hi < strlen(hdr)) {
-    if ((hdr)[hi] == ((char)(47LL))) {
-    has_slash = true;
-}
-    hi = (hi + 1LL);
-}
-    if ((hdr)[0LL] == ((char)(46LL))) {
-    dot_start = true;
-}
-}
-    if ((!has_slash) && (!dot_start)) {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include <", hdr), ">"));
-} else {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include \"", hdr), "\""));
-}
-}
-    ci = (ci + 1LL);
-}
-    CCodeBuilder_emit_line(self->builder, "#ifndef MAP_FAILED");
-    CCodeBuilder_emit_line(self->builder, "#define MAP_FAILED ((void*)-1)");
-    CCodeBuilder_emit_line(self->builder, "#endif");
-    CCodeBuilder_emit_line(self->builder, "#ifndef MAP_PRIVATE");
-    CCodeBuilder_emit_line(self->builder, "#define MAP_PRIVATE 2");
-    CCodeBuilder_emit_line(self->builder, "#endif");
-    CCodeBuilder_emit_line(self->builder, "#ifndef MAP_ANONYMOUS");
-    CCodeBuilder_emit_line(self->builder, "#ifdef __APPLE__");
-    CCodeBuilder_emit_line(self->builder, "#define MAP_ANONYMOUS 0x1000");
-    CCodeBuilder_emit_line(self->builder, "#else");
-    CCodeBuilder_emit_line(self->builder, "#define MAP_ANONYMOUS 0x20");
-    CCodeBuilder_emit_line(self->builder, "#endif");
-    CCodeBuilder_emit_line(self->builder, "#endif");
-    CCodeBuilder_emit_line(self->builder, "extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);");
-    CCodeBuilder_emit_line(self->builder, "extern int munmap(void* addr, unsigned long long length);");
-    CCodeBuilder_emit_blank(self->builder);
-    CCodeBuilder_emit_line(self->builder, "static __thread void* _kai_current_allocator = NULL;");
-    CCodeBuilder_emit_blank(self->builder);
-    CCodeBuilder_emit_line(self->builder, "static inline void _kai_set_current_allocator(void* allocator) {");
-    CCodeBuilder_emit_line(self->builder, "    _kai_current_allocator = allocator;");
-    CCodeBuilder_emit_line(self->builder, "}");
-    CCodeBuilder_emit_blank(self->builder);
-    CCodeBuilder_emit_line(self->builder, "void __kai_print_int(int64_t v) {");
-    CCodeBuilder_emit_line(self->builder, "    printf(\"%lld\\n\", (long long)(v));");
-    CCodeBuilder_emit_line(self->builder, "}");
-    CCodeBuilder_emit_blank(self->builder);
-    CCodeBuilder_emit_line(self->builder, "void __kai_print_float(double v) {");
-    CCodeBuilder_emit_line(self->builder, "    printf(\"%f\\n\", (double)(v));");
-    CCodeBuilder_emit_line(self->builder, "}");
-    CCodeBuilder_emit_blank(self->builder);
-    CCodeBuilder_emit_line(self->builder, "static inline uint8_t* _kai_mmap(uint8_t* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {");
-    CCodeBuilder_emit_line(self->builder, "    return (uint8_t*)mmap(addr, length, prot, MAP_PRIVATE | MAP_ANONYMOUS, fd, offset);");
-    CCodeBuilder_emit_line(self->builder, "}");
-    CCodeBuilder_emit_blank(self->builder);
-    CCodeBuilder_emit_line(self->builder, "static inline int64_t _kai_munmap(uint8_t* addr, int64_t length) {");
-    CCodeBuilder_emit_line(self->builder, "    return munmap(addr, length);");
-    CCodeBuilder_emit_line(self->builder, "}");
-    CCodeBuilder_emit_blank(self->builder);
-    CCodeBuilder_emit_line(self->builder, "extern void __kai_panic(const char* msg);");
-    CCodeBuilder_emit_line(self->builder, "#ifndef __KAI_NO_PANIC");
-    CCodeBuilder_emit_line(self->builder, "void __kai_panic(const char* msg) {");
-    CCodeBuilder_emit_line(self->builder, "    fprintf(stderr, \"KAI PANIC: %s\\n\", msg);");
-    CCodeBuilder_emit_line(self->builder, "    fflush(stderr);");
-    CCodeBuilder_emit_line(self->builder, "    abort();");
-    CCodeBuilder_emit_line(self->builder, "}");
-    CCodeBuilder_emit_line(self->builder, "#endif");
-    CCodeBuilder_emit_blank(self->builder);
-}
 StrBuf StrBuf_init(KaiAllocator* a) {
     StrBuf self = (StrBuf){0};
     self.alloc = a;
@@ -11759,67 +11541,6 @@ const char* StrBuf_to_str(StrBuf* self) {
     i = (i + 1LL);
 }
     return result;
-}
-ArrayList_CgbMapEntry ArrayList_CgbMapEntry_init(KaiAllocator* allocator) {
-    ArrayList_CgbMapEntry self = (ArrayList_CgbMapEntry){0};
-    self.len = 0LL;
-    self.cap = 4LL;
-    self.allocator = allocator;
-    {
-    self.data = (CgbMapEntry*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(CgbMapEntry))), 1LL));
-}
-    return self;
-}
-void ArrayList_CgbMapEntry_push(ArrayList_CgbMapEntry* self, CgbMapEntry item) {
-    if (self->len == self->cap) {
-    int64_t new_cap = (self->cap * 2LL);
-    {
-    CgbMapEntry* new_data = (CgbMapEntry*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(CgbMapEntry))), 1LL));
-    int64_t i = 0LL;
-    while (i < self->len) {
-    (new_data)[i] = (self->data)[i];
-    i = (i + 1LL);
-}
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-    self->data = new_data;
-    self->cap = new_cap;
-}
-}
-    (self->data)[self->len] = item;
-    self->len = (self->len + 1LL);
-}
-CgbMapEntry ArrayList_CgbMapEntry_get(ArrayList_CgbMapEntry* self, int64_t index) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    return (self->data)[index];
-}
-void ArrayList_CgbMapEntry_set(ArrayList_CgbMapEntry* self, int64_t index, CgbMapEntry item) {
-    if ((index < 0LL) || (index >= self->len)) {
-    {
-    exit(1LL);
-}
-}
-    (self->data)[index] = item;
-}
-CgbMapEntry ArrayList_CgbMapEntry_pop(ArrayList_CgbMapEntry* self) {
-    if (self->len == 0LL) {
-    {
-    exit(1LL);
-}
-}
-    self->len = (self->len - 1LL);
-    return (self->data)[self->len];
-}
-int64_t ArrayList_CgbMapEntry_length(ArrayList_CgbMapEntry* self) {
-    return self->len;
-}
-void ArrayList_CgbMapEntry_deinit(ArrayList_CgbMapEntry* self) {
-    {
-    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
-}
 }
 int64_t cgb_map_find(ArrayList_CgbMapEntry* arr, const char* key) {
     int64_t i = (ArrayList_CgbMapEntry_length(arr) - 1LL);
@@ -11913,12 +11634,13 @@ const char* CodegenBuilder_add_init_return(CodegenBuilder* self, const char* bod
 }
     return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("{\n", self_decl), content), "    return self;\n}");
 }
-CodegenBuilder CodegenBuilder_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool) {
+CodegenBuilder CodegenBuilder_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, ImportResolver* import_resolver) {
     CodegenBuilder self = (CodegenBuilder){0};
     self.allocator = allocator;
     self.stmt_pool = stmt_pool;
     self.expr_pool = expr_pool;
     self.pattern_pool = pattern_pool;
+    self.import_resolver = import_resolver;
     self.builder = CCodeBuilder_init(allocator);
     self.struct_decls = StrBuf_init(allocator);
     self.func_decls = StrBuf_init(allocator);
@@ -11928,8 +11650,6 @@ CodegenBuilder CodegenBuilder_init(KaiAllocator* allocator, ArrayList_StmtNode* 
     self.cur_method_is_init = false;
     self.func_types = ArrayList_CgbMapEntry_init(allocator);
     self.var_types = ArrayList_CgbMapEntry_init(allocator);
-    self.loaded_modules = ArrayList_Str_init(allocator);
-    self.cimport_headers = ArrayList_Str_init(allocator);
     self.block_stack = ArrayList_Int_init(allocator);
     self.generic_struct_decls = ArrayList_CgbMapEntry_init(allocator);
     self.generic_enum_decls = ArrayList_CgbMapEntry_init(allocator);
@@ -13504,9 +13224,9 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     fn_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fn_name, "_"), clean);
     tai = (tai + 1LL);
 }
-    fn_name = __kai_std_str_concat_alloc(fn_name, "_init");
+    fn_name = __kai_std_str_concat_alloc(fn_name, "_new");
 } else {
-    fn_name = __kai_std_str_concat_alloc(name, "_init");
+    fn_name = __kai_std_str_concat_alloc(name, "_new");
 }
 }
     ArrayList_Int call_args = ArrayList_Int_init(self->allocator);
@@ -14647,119 +14367,10 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     return;
 }
     if (stmt.kind == StmtKind_sk_import) {
-    ArrayList_Str path = stmt.import_path;
-    const char* module_key = "";
-    int64_t pi = 0LL;
-    while (pi < ArrayList_Str_length(&(path))) {
-    if (pi > 0LL) {
-    module_key = __kai_std_str_concat_alloc(module_key, ".");
-}
-    module_key = __kai_std_str_concat_alloc(module_key, ArrayList_Str_get(&(path), pi));
-    pi = (pi + 1LL);
-}
-    if (strcmp(module_key, "") == 0) {
-    return;
-}
-    if (cgb_strlist_find(&(self->loaded_modules), module_key) >= 0LL) {
-    return;
-}
-    ArrayList_Str_push(&(self->loaded_modules), module_key);
-    bool has_source = false;
-    const char* source = "";
-    if ((ArrayList_Str_length(&(path)) > 0LL) && (strcmp(ArrayList_Str_get(&(path), 0LL), "std") == 0)) {
-    const char* path_str = "";
-    int64_t i = 0LL;
-    while (i < ArrayList_Str_length(&(path))) {
-    if (i > 0LL) {
-    path_str = __kai_std_str_concat_alloc(path_str, "/");
-}
-    path_str = __kai_std_str_concat_alloc(path_str, ArrayList_Str_get(&(path), i));
-    i = (i + 1LL);
-}
-    const char* rel_path = __kai_std_str_concat_alloc(path_str, ".kai");
-    Result_Str_IoError s1 = read_to_string(self->allocator, rel_path);
-    if ((s1.tag == 0LL) && (strlen(s1.value) > 0LL)) {
-    source = s1.value;
-    has_source = true;
-} else {
-    {
-    char* buf = (char*)(malloc(1024LL));
-    if (get_exe_dir(buf, 1024LL) == 0LL) {
-    const char* exe_dir = (const char*)(buf);
-    const char* full_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/"), rel_path);
-    Result_Str_IoError s2 = read_to_string(self->allocator, full_path);
-    if ((s2.tag == 0LL) && (strlen(s2.value) > 0LL)) {
-    source = s2.value;
-    has_source = true;
-} else {
-    const char* parent_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../"), rel_path);
-    Result_Str_IoError s3 = read_to_string(self->allocator, parent_path);
-    if ((s3.tag == 0LL) && (strlen(s3.value) > 0LL)) {
-    source = s3.value;
-    has_source = true;
-} else {
-    const char* lib_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../lib/kai/"), rel_path);
-    Result_Str_IoError s4 = read_to_string(self->allocator, lib_path);
-    if ((s4.tag == 0LL) && (strlen(s4.value) > 0LL)) {
-    source = s4.value;
-    has_source = true;
-}
-}
-}
-}
-}
-}
-} else if (ArrayList_Str_length(&(path)) > 0LL) {
-    const char* file_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("src/", module_key), ".kai");
-    Result_Str_IoError s = read_to_string(self->allocator, file_path);
-    if ((s.tag == 0LL) && (strlen(s.value) > 0LL)) {
-    source = s.value;
-    has_source = true;
-}
-}
-    if (has_source) {
-    const char* current_file_path = "";
-    if ((ArrayList_Str_length(&(path)) > 0LL) && (strcmp(ArrayList_Str_get(&(path), 0LL), "std") == 0)) {
-    const char* path_str = "";
-    int64_t i = 0LL;
-    while (i < ArrayList_Str_length(&(path))) {
-    if (i > 0LL) {
-    path_str = __kai_std_str_concat_alloc(path_str, "/");
-}
-    path_str = __kai_std_str_concat_alloc(path_str, ArrayList_Str_get(&(path), i));
-    i = (i + 1LL);
-}
-    current_file_path = __kai_std_str_concat_alloc(path_str, ".kai");
-} else {
-    current_file_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("src/", module_key), ".kai");
-}
-    Lexer lexer = Lexer_init(self->allocator, source, current_file_path);
-    Lexer_lex(&(lexer));
-    if (!lexer.has_error) {
-    Parser parser = Parser_init_with_pools(self->allocator, current_file_path, lexer.tokens, self->expr_pool, self->stmt_pool, self->pattern_pool, source);
-    int64_t program_idx = Parser_parse_program(&(parser));
-    if (program_idx >= 0LL) {
-    StmtNode prog = ArrayList_StmtNode_get(self->stmt_pool, program_idx);
-    if (prog.kind == StmtKind_sk_block) {
-    int64_t pi = 0LL;
-    while (pi < ArrayList_Int_length(&(prog.block_stmts))) {
-    StmtNode sub = ArrayList_StmtNode_get(self->stmt_pool, ArrayList_Int_get(&(prog.block_stmts), pi));
-    if ((sub.kind == StmtKind_sk_import) || (sub.kind == StmtKind_sk_cimport)) {
-    CodegenBuilder_gen_stmt(self, ArrayList_Int_get(&(prog.block_stmts), pi));
-}
-    pi = (pi + 1LL);
-}
-}
-}
-}
-}
     return;
 }
     if (stmt.kind == StmtKind_sk_cimport) {
-    const char* hdr = stmt.cimport_header;
-    if (cgb_strlist_find(&(self->cimport_headers), hdr) < 0LL) {
-    ArrayList_Str_push(&(self->cimport_headers), hdr);
-}
+    ImportResolver_record_cimport(self->import_resolver, stmt.cimport_header);
     return;
 }
     if (stmt.kind == StmtKind_sk_trait_decl) {
@@ -14969,6 +14580,7 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
 }
     if (has_self_param) {
 } else if (is_runtime_helper) {
+} else if (ArrayList_Str_length(&(stmt.func_type_params)) > 0LL) {
 } else {
     self->var_types = ArrayList_CgbMapEntry_init(self->allocator);
     self->block_stack = ArrayList_Int_init(self->allocator);
@@ -15297,28 +14909,12 @@ void CodegenBuilder_emit_struct_body_with_deps(CodegenBuilder* self, int64_t stm
 }
 }
 const char* CodegenBuilder_generate(CodegenBuilder* self, int64_t top_stmt_idx) {
-    if (top_stmt_idx >= 0LL) {
-    StmtNode top_stmt = ArrayList_StmtNode_get(self->stmt_pool, top_stmt_idx);
-    if (top_stmt.kind == StmtKind_sk_block) {
-    int64_t ii = 0LL;
-    while (ii < ArrayList_Int_length(&(top_stmt.block_stmts))) {
-    StmtNode sub_stmt = ArrayList_StmtNode_get(self->stmt_pool, ArrayList_Int_get(&(top_stmt.block_stmts), ii));
-    if (sub_stmt.kind == StmtKind_sk_import) {
-    CodegenBuilder_gen_stmt(self, ArrayList_Int_get(&(top_stmt.block_stmts), ii));
-}
-    if (sub_stmt.kind == StmtKind_sk_cimport) {
-    CodegenBuilder_gen_stmt(self, ArrayList_Int_get(&(top_stmt.block_stmts), ii));
-}
-    ii = (ii + 1LL);
-}
-}
-}
     CodegenBuilder_build_func_types(self);
     StrBuf result = StrBuf_init(self->allocator);
     CCodeBuilder preamble_builder = (CCodeBuilder){ .alloc = self->allocator, .lines = ArrayList_Str_init(self->allocator), .indent_level = 0LL };
     preamble_builder = CCodeBuilder_init(self->allocator);
     CPrinter preamble_printer = (CPrinter){ .builder = &(preamble_builder), .expr_pool = &(self->c_exprs), .stmt_pool = &(self->c_stmts) };
-    CPrinter_emit_runtime_preamble(&(preamble_printer), &(self->cimport_headers));
+    CPrinter_emit_runtime_preamble(&(preamble_printer), &(self->import_resolver->cimport_headers));
     StrBuf_append(&(result), CCodeBuilder_to_str(&(preamble_builder)));
     StrBuf_append(&(result), "\n");
     StrBuf_append(&(result), StrBuf_to_str(&(self->type_defs)));
@@ -15340,270 +14936,820 @@ const char* CodegenBuilder_generate(CodegenBuilder* self, int64_t top_stmt_idx) 
 }
     return StrBuf_to_str(&(result));
 }
-ErrorInfo get_error_info(const char* code) {
-    if (strcmp(code, "E0001") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Type mismatch in declaration", .description = "The declared type of a variable does not match the type of the initializer expression.", .fix = "Change the declared type to match the initializer, or change the initializer expression to produce the declared type." };
+CCodeBuilder CCodeBuilder_init(KaiAllocator* allocator) {
+    CCodeBuilder self = (CCodeBuilder){0};
+    self.alloc = allocator;
+    self.lines = ArrayList_Str_init(allocator);
+    self.indent_level = 0LL;
+    return self;
+}
+void CCodeBuilder_clear(CCodeBuilder* self) {
+    self->lines = ArrayList_Str_init(self->alloc);
+    self->indent_level = 0LL;
+}
+void CCodeBuilder_emit_line(CCodeBuilder* self, const char* code) {
+    const char* indent_str = "";
+    int64_t i = 0LL;
+    while (i < self->indent_level) {
+    indent_str = __kai_std_str_concat_alloc(indent_str, "    ");
+    i = (i + 1LL);
+}
+    ArrayList_Str_push(&(self->lines), __kai_std_str_concat_alloc(indent_str, code));
+}
+void CCodeBuilder_emit_blank(CCodeBuilder* self) {
+    ArrayList_Str_push(&(self->lines), "");
+}
+void CCodeBuilder_emit_raw(CCodeBuilder* self, const char* code) {
+    ArrayList_Str_push(&(self->lines), code);
+}
+void CCodeBuilder_emit_include(CCodeBuilder* self, const char* header, bool is_system) {
+    if (is_system) {
+    ArrayList_Str_push(&(self->lines), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include <", header), ">"));
+} else {
+    ArrayList_Str_push(&(self->lines), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include \"", header), "\""));
+}
+}
+void CCodeBuilder_emit_directive(CCodeBuilder* self, const char* code) {
+    ArrayList_Str_push(&(self->lines), code);
+}
+void CCodeBuilder_indent(CCodeBuilder* self) {
+    self->indent_level = (self->indent_level + 1LL);
+}
+void CCodeBuilder_dedent(CCodeBuilder* self) {
+    if (self->indent_level > 0LL) {
+    self->indent_level = (self->indent_level - 1LL);
+}
+}
+void CCodeBuilder_begin_block(CCodeBuilder* self) {
+    CCodeBuilder_emit_line(self, "{");
+    CCodeBuilder_indent(self);
+}
+void CCodeBuilder_end_block(CCodeBuilder* self) {
+    CCodeBuilder_dedent(self);
+    CCodeBuilder_emit_line(self, "}");
+}
+const char* CCodeBuilder_to_str(CCodeBuilder* self) {
+    const char* result = "";
+    int64_t i = 0LL;
+    while (i < ArrayList_Str_length(&(self->lines))) {
+    if (i > 0LL) {
+    result = __kai_std_str_concat_alloc(result, "\n");
+}
+    result = __kai_std_str_concat_alloc(result, ArrayList_Str_get(&(self->lines), i));
+    i = (i + 1LL);
+}
+    result = __kai_std_str_concat_alloc(result, "\n");
+    return result;
+}
+int64_t CCodeBuilder_line_count(CCodeBuilder* self) {
+    return ArrayList_Str_length(&(self->lines));
+}
+const char* cb_escape_string(const char* s) {
+    const char* res = "";
+    int64_t i = 0LL;
+    while (i < strlen(s)) {
+    char c = (s)[i];
+    if (c == ((char)(10LL))) {
+    res = __kai_std_str_concat_alloc(res, "\\n");
+} else if (c == ((char)(13LL))) {
+    res = __kai_std_str_concat_alloc(res, "\\r");
+} else if (c == ((char)(9LL))) {
+    res = __kai_std_str_concat_alloc(res, "\\t");
+} else if (c == ((char)(92LL))) {
+    res = __kai_std_str_concat_alloc(res, "\\\\");
+} else if (c == ((char)(34LL))) {
+    res = __kai_std_str_concat_alloc(res, "\\\"");
+} else {
+    res = __kai_std_str_concat_alloc(res, cgb_char_to_str(c));
+}
+    i = (i + 1LL);
+}
+    return res;
+}
+const char* cb_escape_asm(const char* s) {
+    const char* res = "";
+    int64_t i = 0LL;
+    while (i < strlen(s)) {
+    char c = (s)[i];
+    if (c == ((char)(10LL))) {
+    res = __kai_std_str_concat_alloc(res, "\\n\\t");
+} else if (c == ((char)(34LL))) {
+    res = __kai_std_str_concat_alloc(res, "\\\"");
+} else {
+    res = __kai_std_str_concat_alloc(res, cgb_char_to_str(c));
 }
-    if (strcmp(code, "E0002") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Type mismatch in assignment", .description = "The type of the value being assigned does not match the type of the target variable.", .fix = "Assign a value of the correct type, or change the variable's type." };
+    i = (i + 1LL);
 }
-    if (strcmp(code, "E0003") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Argument type mismatch", .description = "A function or method call argument type does not match the parameter type.", .fix = "Pass an argument of the expected type, or cast it using the 'as' operator if appropriate." };
+    return res;
 }
-    if (strcmp(code, "E0004") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Field type mismatch in struct initializer", .description = "A struct field initializer value type does not match the field's declared type.", .fix = "Provide a value of the correct type for the field, or change the field's type in the struct definition." };
+const char* cgb_char_to_str(char c) {
+    {
+    char* buf = (char*)(malloc(2LL));
+    if (buf != (char*)(unsigned long long)(0LL)) {
+    (buf)[0LL] = c;
+    (buf)[1LL] = ((char)(0LL));
 }
-    if (strcmp(code, "E0005") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Argument count mismatch in function call", .description = "The number of arguments provided in a function call does not match the function's parameter count.", .fix = "Add or remove arguments to match the function signature." };
+    return (const char*)(buf);
 }
-    if (strcmp(code, "E0006") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Argument count mismatch in method call", .description = "The number of arguments provided in a method call does not match the method's parameter count.", .fix = "Add or remove arguments to match the method signature." };
 }
-    if (strcmp(code, "E0007") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Return type mismatch", .description = "The type of the returned value does not match the function's declared return type.", .fix = "Return a value of the correct type, or change the function's return type declaration." };
+const char* cgb_int_to_str(int64_t n) {
+    if (n == 0LL) {
+    return "0";
 }
-    if (strcmp(code, "E0008") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Cannot assign to immutable variable", .description = "An immutable variable (declared with 'let') cannot be reassigned.", .fix = "Declare the variable with 'var' instead of 'let', or use a different variable." };
+    int64_t num = n;
+    int64_t digits = 0LL;
+    int64_t tmp = num;
+    if (tmp < 0LL) {
+    tmp = (-tmp);
 }
-    if (strcmp(code, "E0009") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Use of moved value", .description = "A value has been moved and cannot be used again. In Kai, non-copy types are moved on assignment or function call.", .fix = "Clone the value before moving it, or restructure the code to avoid using the value after the move." };
-}
-    if (strcmp(code, "E0010") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Cannot return reference to local variable", .description = "Returning a reference to a local variable would create a dangling pointer, since the local is destroyed when the function returns.", .fix = "Return the value by value instead of by reference, or ensure the referenced data outlives the function." };
-}
-    if (strcmp(code, "E0011") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Field access on optional type", .description = "Cannot directly access a field on an optional type. The optional must be unwrapped first.", .fix = "Use 'catch' with a fallback to unwrap the optional, then access the field." };
-}
-    if (strcmp(code, "E0012") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Method call on optional type", .description = "Cannot call a method directly on an optional type. The optional must be unwrapped first.", .fix = "Use 'catch' with a fallback to unwrap the optional, then call the method." };
-}
-    if (strcmp(code, "E0013") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Field does not exist in struct", .description = "The specified field name does not exist in the struct definition.", .fix = "Check the spelling of the field name, or add the field to the struct definition." };
-}
-    if (strcmp(code, "E0014") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Cannot use 'try' on non-error-union type", .description = "The 'try' operator can only be used on error union types (T!E), not on regular types.", .fix = "Ensure the expression has an error union type, or handle errors differently." };
-}
-    if (strcmp(code, "E0015") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Cannot use 'try' in non-error-returning function", .description = "The 'try' operator can only be used inside functions that return an error union type.", .fix = "Change the function's return type to an error union, or use 'catch' instead of 'try'." };
-}
-    if (strcmp(code, "E0016") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Error set mismatch in 'try'", .description = "The error set of the 'try' expression is not compatible with the function's error return type.", .fix = "Ensure the error types are compatible, or convert between error sets." };
-}
-    if (strcmp(code, "E0017") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Cannot use 'catch' on non-optional, non-error-union type", .description = "The 'catch' operator requires an optional or error union type.", .fix = "Ensure the expression is an optional or error union type before using 'catch'." };
-}
-    if (strcmp(code, "E0018") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Catch fallback type mismatch", .description = "The type of the 'catch' fallback expression does not match the expected unwrapped type.", .fix = "Change the fallback expression to produce the correct type." };
-}
-    if (strcmp(code, "E0019") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Undefined identifier", .description = "An identifier was used but not declared in the current scope or any parent scope.", .fix = "Declare the identifier before use, check the spelling, or import it from the appropriate module." };
-}
-    if (strcmp(code, "E0020") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Undefined function", .description = "A function was called but not declared or imported in the current scope.", .fix = "Declare the function with 'fn', declare it as 'extern fn', or import it from the appropriate module. Check the spelling." };
-}
-    if (strcmp(code, "E0021") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Undefined struct", .description = "A struct type was used but not declared in the current compilation unit.", .fix = "Define the struct with 'struct', import it, or check the spelling of the struct name." };
-}
-    if (strcmp(code, "E0022") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Undefined method", .description = "A method was called on a type that does not have that method in any 'impl' block.", .fix = "Add an 'impl' block with the method, check the spelling of the method name, or check the receiver type." };
-}
-    if (strcmp(code, "E0031") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Use of freed value", .description = "A value was used after it had been freed. Memory-safe languages prevent accessing freed memory.", .fix = "Restructure the code to avoid using the value after it has been freed. Consider using a longer-lived allocation or deferring the free operation." };
-}
-    if (strcmp(code, "E0032") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Double free", .description = "A value was freed more than once. Freeing the same memory twice can lead to heap corruption and security vulnerabilities.", .fix = "Ensure each allocation is freed exactly once. Remove the duplicate free call, or use a flag to track whether the value has already been freed." };
-}
-    if (strcmp(code, "E0033") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Unused import", .description = "An imported symbol was never used in the current compilation unit.", .fix = "Remove the unused import, or use the imported symbol in the code." };
-}
-    if (strcmp(code, "E0100") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Lexer error", .description = "The lexer encountered an unexpected character or syntax that could not be tokenized.", .fix = "Check for unexpected characters, unclosed strings, or invalid syntax near the reported position." };
-}
-    if (strcmp(code, "E0101") == 0) {
-    return (ErrorInfo){ .code = code, .title = "Parser error", .description = "The parser encountered a token that does not match the expected grammar rule.", .fix = "Check the syntax near the reported position. Common causes: missing semicolons, unmatched brackets, or incorrect keyword usage." };
-}
-    return (ErrorInfo){ .code = code, .title = "Unknown error code", .description = "No additional information is available for this error code.", .fix = "Refer to the Kai language documentation for more information." };
-}
-bool __kai_std_ascii_is_digit(char byte) {
-    return ((byte >= ((char)(48LL))) && (byte <= ((char)(57LL))));
-}
-bool __kai_std_ascii_is_lower(char byte) {
-    return ((byte >= ((char)(97LL))) && (byte <= ((char)(122LL))));
-}
-bool __kai_std_ascii_is_upper(char byte) {
-    return ((byte >= ((char)(65LL))) && (byte <= ((char)(90LL))));
-}
-bool __kai_std_ascii_is_alpha(char byte) {
-    return (__kai_std_ascii_is_lower(byte) || __kai_std_ascii_is_upper(byte));
-}
-bool __kai_std_ascii_is_alnum(char byte) {
-    return (__kai_std_ascii_is_alpha(byte) || __kai_std_ascii_is_digit(byte));
-}
-bool __kai_std_ascii_is_whitespace(char byte) {
-    return ((((byte == ((char)(32LL))) || (byte == ((char)(9LL)))) || (byte == ((char)(10LL)))) || (byte == ((char)(13LL))));
-}
-bool __kai_std_ascii_is_hex_digit(char byte) {
-    return ((__kai_std_ascii_is_digit(byte) || ((byte >= ((char)(65LL))) && (byte <= ((char)(70LL))))) || ((byte >= ((char)(97LL))) && (byte <= ((char)(102LL)))));
-}
-char __kai_std_ascii_to_lower(char byte) {
-    if (__kai_std_ascii_is_upper(byte)) {
-    return (byte + ((char)(32LL)));
-}
-    return byte;
-}
-char __kai_std_ascii_to_upper(char byte) {
-    if (__kai_std_ascii_is_lower(byte)) {
-    return (byte - ((char)(32LL)));
-}
-    return byte;
-}
-Optional_Char __kai_std_ascii_digit_value(char byte) {
-    if (__kai_std_ascii_is_digit(byte)) {
-    return (Optional_Char){ .has_value = true, .value = (byte - ((char)(48LL))) };
-}
-    return (Optional_Char){0};
-}
-Optional_Char __kai_std_ascii_hex_value(char byte) {
-    if (__kai_std_ascii_is_digit(byte)) {
-    return (Optional_Char){ .has_value = true, .value = (byte - ((char)(48LL))) };
-}
-    if ((byte >= ((char)(65LL))) && (byte <= ((char)(70LL)))) {
-    return (Optional_Char){ .has_value = true, .value = (byte - ((char)(55LL))) };
-}
-    if ((byte >= ((char)(97LL))) && (byte <= ((char)(102LL)))) {
-    return (Optional_Char){ .has_value = true, .value = (byte - ((char)(87LL))) };
-}
-    return (Optional_Char){0};
-}
-int64_t diag_clamp_offset(const char* bytes, int64_t offset) {
-    if (offset > strlen((const char*)(bytes))) {
-    return strlen((const char*)(bytes));
-}
-    return offset;
-}
-int64_t diag_line_start(const char* bytes, int64_t offset) {
-    int64_t cursor = diag_clamp_offset(bytes, offset);
-    int64_t start = cursor;
-    while ((start > 0LL) && ((bytes)[(start - 1LL)] != ((char)(10LL)))) {
-    start = (start - 1LL);
-}
-    return start;
-}
-int64_t diag_line_end(const char* bytes, int64_t offset) {
-    int64_t end = diag_clamp_offset(bytes, offset);
-    while ((end < strlen((const char*)(bytes))) && ((bytes)[end] != ((char)(10LL)))) {
-    end = (end + 1LL);
-}
-    if ((end > 0LL) && ((bytes)[(end - 1LL)] == ((char)(13LL)))) {
-    return (end - 1LL);
-}
-    return end;
-}
-int64_t diag_line(const char* bytes, int64_t offset) {
-    int64_t cursor = diag_clamp_offset(bytes, offset);
-    int64_t line = 1LL;
-    int64_t index = 0LL;
-    while (index < cursor) {
-    if ((bytes)[index] == ((char)(10LL))) {
-    line = (line + 1LL);
-}
-    index = (index + 1LL);
-}
-    return line;
-}
-int64_t diag_column(const char* bytes, int64_t offset) {
-    int64_t cursor = diag_clamp_offset(bytes, offset);
-    int64_t start = diag_line_start(bytes, cursor);
-    return ((cursor - start) + 1LL);
-}
-const char* diag_line_text(const char* bytes, int64_t offset) {
-    int64_t start = diag_line_start(bytes, offset);
-    int64_t end = diag_line_end(bytes, offset);
-    return substring(bytes, start, end);
-}
-int64_t diag_range_len(const char* bytes, int64_t start, int64_t end) {
-    int64_t first = diag_clamp_offset(bytes, start);
-    int64_t last = diag_clamp_offset(bytes, end);
-    if (last < first) {
-    return 0LL;
-}
-    return (last - first);
-}
-const char* diag_range_text(const char* bytes, int64_t start, int64_t end) {
-    int64_t first = diag_clamp_offset(bytes, start);
-    int64_t last = diag_clamp_offset(bytes, end);
-    if (last < first) {
-    return substring(bytes, first, first);
-}
-    return substring(bytes, first, last);
-}
-Optional_Int diag_write_span(char* buffer, int64_t offset, const char* bytes) {
-    if (offset > 1000000LL) {
-    return (Optional_Int){0};
-}
-    if (strlen((const char*)(bytes)) > (1000000LL - offset)) {
-    return (Optional_Int){0};
-}
-    int64_t index = 0LL;
-    while (index < strlen((const char*)(bytes))) {
-    (buffer)[(offset + index)] = (bytes)[index];
-    index = (index + 1LL);
-}
-    return (Optional_Int){ .has_value = true, .value = (offset + strlen((const char*)(bytes))) };
-}
-Optional_Int diag_write_usize(char* buffer, int64_t offset, int64_t value) {
-    if (offset > 1000000LL) {
-    return (Optional_Int){0};
-}
-    int64_t digits = 1LL;
-    int64_t scan = value;
-    while (scan >= 10LL) {
+    while (tmp > 0LL) {
     digits = (digits + 1LL);
-    scan = (scan / 10LL);
+    tmp = (tmp / 10LL);
 }
-    if ((offset + digits) > 1000000LL) {
-    return (Optional_Int){0};
+    bool negative = false;
+    if (num < 0LL) {
+    negative = true;
+    num = (-num);
 }
-    int64_t cursor = (offset + digits);
-    int64_t current = value;
-    while (cursor > offset) {
-    cursor = (cursor - 1LL);
-    char digit = (char)((current % 10LL));
-    (buffer)[cursor] = (((char)(48LL)) + digit);
-    current = (current / 10LL);
+    int64_t total_len = digits;
+    if (negative) {
+    total_len = (total_len + 1LL);
 }
-    return (Optional_Int){ .has_value = true, .value = (offset + digits) };
+    {
+    char* buf = (char*)(malloc((int64_t)((total_len + 1LL))));
+    if (buf != (char*)(unsigned long long)(0LL)) {
+    int64_t pos = total_len;
+    (buf)[pos] = ((char)(0LL));
+    while ((pos > 0LL) && (digits > 0LL)) {
+    pos = (pos - 1LL);
+    digits = (digits - 1LL);
+    int64_t dv = (num % 10LL);
+    (buf)[pos] = ((char)((48LL + dv)));
+    num = (num / 10LL);
 }
-const char* diag_format_location(char* buffer, const char* path, int64_t line, int64_t column) {
-    int64_t offset = 0LL;
-    Optional_Int wrote_path = diag_write_span(buffer, offset, path);
-    if (!wrote_path.has_value) {
-    return NULL;
+    if (negative) {
+    pos = (pos - 1LL);
+    (buf)[pos] = ((char)(45LL));
 }
-    offset = ({ Optional_Int _kai_opt = (wrote_path); int64_t _kai_cv; if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } else { _kai_cv = (0LL); } _kai_cv; });
-    Optional_Int first_colon = diag_write_span(buffer, offset, ":");
-    if (!first_colon.has_value) {
-    return NULL;
 }
-    offset = ({ Optional_Int _kai_opt = (first_colon); int64_t _kai_cv; if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } else { _kai_cv = (0LL); } _kai_cv; });
-    Optional_Int wrote_line = diag_write_usize(buffer, offset, line);
-    if (!wrote_line.has_value) {
-    return NULL;
+    return (const char*)(buf);
 }
-    offset = ({ Optional_Int _kai_opt = (wrote_line); int64_t _kai_cv; if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } else { _kai_cv = (0LL); } _kai_cv; });
-    Optional_Int second_colon = diag_write_span(buffer, offset, ":");
-    if (!second_colon.has_value) {
-    return NULL;
 }
-    offset = ({ Optional_Int _kai_opt = (second_colon); int64_t _kai_cv; if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } else { _kai_cv = (0LL); } _kai_cv; });
-    Optional_Int wrote_column = diag_write_usize(buffer, offset, column);
-    if (wrote_column.has_value) {
-    return substring(buffer, 0LL, ({ Optional_Int _kai_opt = (wrote_column); int64_t _kai_cv; if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } else { _kai_cv = (0LL); } _kai_cv; }));
+CType ctype_new(const char* base, int64_t pointer, bool is_const, bool is_unsigned) {
+    CType t = (CType){ .base = base, .pointer = pointer, .is_const = is_const, .is_unsigned = is_unsigned, .array_sizes = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) } };
+    return t;
 }
-    return NULL;
+CType ctype_void(void) {
+    return ctype_new("void", 0LL, false, false);
 }
-const char* diag_format_offset_location(char* buffer, const char* path, const char* bytes, int64_t offset) {
-    return diag_format_location(buffer, path, diag_line(bytes, offset), diag_column(bytes, offset));
+CType ctype_int(void) {
+    return ctype_new("int64_t", 0LL, false, false);
+}
+CType ctype_bool(void) {
+    return ctype_new("bool", 0LL, false, false);
+}
+CType ctype_char(void) {
+    return ctype_new("char", 0LL, false, false);
+}
+CType ctype_float(void) {
+    return ctype_new("double", 0LL, false, false);
+}
+CType ctype_str(void) {
+    return ctype_new("char", 1LL, true, false);
+}
+CType ctype_ptr(CType inner) {
+    CType t = inner;
+    t.pointer = (t.pointer + 1LL);
+    return t;
+}
+CType ctype_const(CType inner) {
+    CType t = inner;
+    t.is_const = true;
+    return t;
+}
+const char* ctype_to_str(CType t) {
+    const char* result = "";
+    if (t.is_const) {
+    result = "const ";
+}
+    if (t.is_unsigned) {
+    result = __kai_std_str_concat_alloc(result, "unsigned ");
+}
+    result = __kai_std_str_concat_alloc(result, t.base);
+    int64_t i = 0LL;
+    while (i < t.pointer) {
+    result = __kai_std_str_concat_alloc(result, "*");
+    i = (i + 1LL);
+}
+    int64_t j = 0LL;
+    while (j < ArrayList_Str_length(&(t.array_sizes))) {
+    result = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(result, "["), ArrayList_Str_get(&(t.array_sizes), j)), "]");
+    j = (j + 1LL);
+}
+    return result;
+}
+CType ctype_from_kai(const char* kai_type) {
+    if (strcmp(kai_type, "Int") == 0) {
+    return ctype_int();
+}
+    if (strcmp(kai_type, "i8") == 0) {
+    return ctype_new("int8_t", 0LL, false, false);
+}
+    if (strcmp(kai_type, "i32") == 0) {
+    return ctype_new("int32_t", 0LL, false, false);
+}
+    if (strcmp(kai_type, "i16") == 0) {
+    return ctype_new("int16_t", 0LL, false, false);
+}
+    if (strcmp(kai_type, "i64") == 0) {
+    return ctype_new("int64_t", 0LL, false, false);
+}
+    if (strcmp(kai_type, "isize") == 0) {
+    return ctype_new("intptr_t", 0LL, false, false);
+}
+    if (strcmp(kai_type, "u8") == 0) {
+    return ctype_new("uint8_t", 0LL, false, true);
+}
+    if (strcmp(kai_type, "u16") == 0) {
+    return ctype_new("uint16_t", 0LL, false, true);
+}
+    if (strcmp(kai_type, "u32") == 0) {
+    return ctype_new("uint32_t", 0LL, false, true);
+}
+    if (strcmp(kai_type, "u64") == 0) {
+    return ctype_new("uint64_t", 0LL, false, true);
+}
+    if (strcmp(kai_type, "usize") == 0) {
+    return ctype_new("size_t", 0LL, false, true);
+}
+    if (strcmp(kai_type, "Bool") == 0) {
+    return ctype_bool();
+}
+    if (strcmp(kai_type, "Char") == 0) {
+    return ctype_char();
+}
+    if (strcmp(kai_type, "Float") == 0) {
+    return ctype_float();
+}
+    if (strcmp(kai_type, "Void") == 0) {
+    return ctype_void();
+}
+    if (strcmp(kai_type, "Str") == 0) {
+    return ctype_str();
+}
+    return ctype_new(kai_type, 0LL, false, false);
+}
+CType ctype_copy(CType t) {
+    ArrayList_Str sizes = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CType){ .base = t.base, .pointer = t.pointer, .is_const = t.is_const, .is_unsigned = t.is_unsigned, .array_sizes = sizes };
+}
+CUnit cunit_new(ArrayList_Str includes, ArrayList_CDeclNode decls) {
+    return (CUnit){ .includes = includes, .decls = decls };
+}
+CExprNode cexpr_new_int(const char* val) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_int_lit, .int_val = val, .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_ident(const char* name) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_ident, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = name, .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_binary(int64_t left, const char* op, int64_t right) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_binary, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = left, .binop_right = right, .binop_op = op, .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_call(const char* callee, ArrayList_Int args) {
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_call, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = callee, .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CStmtNode cstmt_new_expr(int64_t expr_idx) {
+    ArrayList_Int block_stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CStmtNode){ .kind = CStmtKind_cs_expr, .block_stmts = block_stmts, .expr_stmt = expr_idx, .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_init = (-1LL), .for_cond = (-1LL), .for_inc = (-1LL), .for_body = (-1LL), .do_body = (-1LL), .do_cond = (-1LL), .return_val = (-1LL), .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .switch_expr = (-1LL), .case_val = "", .label_name = "", .asm_code = "", .asm_volatile = false };
+}
+CStmtNode cstmt_new_block(ArrayList_Int stmts) {
+    return (CStmtNode){ .kind = CStmtKind_cs_block, .block_stmts = stmts, .expr_stmt = (-1LL), .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_init = (-1LL), .for_cond = (-1LL), .for_inc = (-1LL), .for_body = (-1LL), .do_body = (-1LL), .do_cond = (-1LL), .return_val = (-1LL), .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .switch_expr = (-1LL), .case_val = "", .label_name = "", .asm_code = "", .asm_volatile = false };
+}
+CStmtNode cstmt_new_if(int64_t cond, int64_t then_branch, int64_t else_branch) {
+    ArrayList_Int block_stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CStmtNode){ .kind = CStmtKind_cs_if, .block_stmts = block_stmts, .expr_stmt = (-1LL), .if_cond = cond, .if_then = then_branch, .if_else = else_branch, .while_cond = (-1LL), .while_body = (-1LL), .for_init = (-1LL), .for_cond = (-1LL), .for_inc = (-1LL), .for_body = (-1LL), .do_body = (-1LL), .do_cond = (-1LL), .return_val = (-1LL), .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .switch_expr = (-1LL), .case_val = "", .label_name = "", .asm_code = "", .asm_volatile = false };
+}
+CExprNode cexpr_new_float(const char* val) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_float_lit, .int_val = "", .float_val = val, .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_str(const char* val) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_str_lit, .int_val = "", .float_val = "", .str_val = val, .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_bool(bool val) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_bool_lit, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = val, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_char(const char* val) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_char_lit, .int_val = "", .float_val = "", .str_val = "", .char_val = val, .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_unary(const char* op, int64_t operand, bool is_prefix) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_unary, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = operand, .unop_op = op, .is_prefix = is_prefix, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_compound(CType t, ArrayList_Str compound_fs) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_compound, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = t, .compound_fields = compound_fs, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_field(int64_t base, const char* name) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_field, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = base, .field_name = name, .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_arrow(int64_t base, const char* name) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_arrow, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = base, .field_name = name, .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_index(int64_t base, int64_t idx_val) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_index, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = base, .idx_index = idx_val, .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_cast(CType t, int64_t cast_e) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_cast, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = t, .cast_expr = cast_e, .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_sizeof_type(CType t) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_sizeof_type, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = t, .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CDeclNode cdecl_new_func(const char* name, const char* ret_type, ArrayList_Str params, bool is_extern, bool is_vararg) {
+    ArrayList_Int empty_stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str empty_strs = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CDeclNode){ .is_function = true, .func_ret = ctype_new(ret_type, 0LL, false, false), .func_name = name, .func_params = params, .func_vararg = is_vararg, .func_body = empty_stmts, .is_extern = is_extern, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .is_struct = false, .struct_name = "", .struct_fields = empty_strs, .is_enum = false, .enum_name = "", .enum_variants = empty_strs, .is_tagged_enum = false, .tagged_name = "", .tagged_variants = empty_strs, .is_tagged_union_struct = false, .is_typedef = false, .typedef_alias = "", .typedef_def = ctype_void() };
+}
+CPrinter CPrinter_init(CCodeBuilder* builder, ArrayList_CExprNode* expr_pool, ArrayList_CStmtNode* stmt_pool) {
+    CPrinter self = (CPrinter){0};
+    self.builder = builder;
+    self.expr_pool = expr_pool;
+    self.stmt_pool = stmt_pool;
+    return self;
+}
+const char* CPrinter_print_expr(CPrinter* self, int64_t idx) {
+    if (idx < 0LL) {
+    return "";
+}
+    CExprNode node = ArrayList_CExprNode_get(self->expr_pool, idx);
+    if (node.kind == CExprKind_ck_int_lit) {
+    return __kai_std_str_concat_alloc(node.int_val, "LL");
+}
+    if (node.kind == CExprKind_ck_float_lit) {
+    return node.float_val;
+}
+    if (node.kind == CExprKind_ck_str_lit) {
+    return node.str_val;
+}
+    if (node.kind == CExprKind_ck_char_lit) {
+    return node.char_val;
+}
+    if (node.kind == CExprKind_ck_bool_lit) {
+    if (node.bool_val) {
+    return "true";
+}
+    return "false";
+}
+    if (node.kind == CExprKind_ck_ident) {
+    return node.ident_name;
+}
+    if (node.kind == CExprKind_ck_binary) {
+    const char* left = CPrinter_print_expr(self, node.binop_left);
+    const char* right = CPrinter_print_expr(self, node.binop_right);
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", left), " "), node.binop_op), " "), right), ")");
+}
+    if (node.kind == CExprKind_ck_unary) {
+    const char* operand = CPrinter_print_expr(self, node.unop_operand);
+    if (node.is_prefix) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", node.unop_op), operand), ")");
+}
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", operand), node.unop_op), ")");
+}
+    if (node.kind == CExprKind_ck_call) {
+    const char* args_str = "";
+    int64_t i = 0LL;
+    while (i < ArrayList_Int_length(&(node.call_args))) {
+    if (i > 0LL) {
+    args_str = __kai_std_str_concat_alloc(args_str, ", ");
+}
+    args_str = __kai_std_str_concat_alloc(args_str, CPrinter_print_expr(self, ArrayList_Int_get(&(node.call_args), i)));
+    i = (i + 1LL);
+}
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(node.callee_name, "("), args_str), ")");
+}
+    if (node.kind == CExprKind_ck_field) {
+    const char* base = CPrinter_print_expr(self, node.field_expr);
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(base, "."), node.field_name);
+}
+    if (node.kind == CExprKind_ck_arrow) {
+    const char* base = CPrinter_print_expr(self, node.field_expr);
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(base, "->"), node.field_name);
+}
+    if (node.kind == CExprKind_ck_index) {
+    const char* base = CPrinter_print_expr(self, node.idx_expr);
+    const char* idx = CPrinter_print_expr(self, node.idx_index);
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(base, "["), idx), "]");
+}
+    if (node.kind == CExprKind_ck_cast) {
+    const char* base = CPrinter_print_expr(self, node.cast_expr);
+    const char* target = ctype_to_str(node.cast_type);
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", target), ")("), base), "))");
+}
+    if (node.kind == CExprKind_ck_ternary) {
+    const char* cond = CPrinter_print_expr(self, node.tern_cond);
+    const char* then_expr = CPrinter_print_expr(self, node.tern_then);
+    const char* else_expr = CPrinter_print_expr(self, node.tern_else);
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", cond), " ? "), then_expr), " : "), else_expr), ")");
+}
+    if (node.kind == CExprKind_ck_sizeof_type) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("sizeof(", ctype_to_str(node.sizeof_type)), ")");
+}
+    if (node.kind == CExprKind_ck_sizeof_expr) {
+    const char* base = CPrinter_print_expr(self, node.sizeof_expr);
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("sizeof(", base), ")");
+}
+    if (node.kind == CExprKind_ck_assign) {
+    const char* target = CPrinter_print_expr(self, node.assign_target);
+    const char* val = CPrinter_print_expr(self, node.assign_value);
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", target), " "), node.assign_op), " "), val), ")");
+}
+    if (node.kind == CExprKind_ck_compound) {
+    const char* type_str = ctype_to_str(node.compound_type);
+    const char* fields_str = "";
+    int64_t ci = 0LL;
+    while (ci < ArrayList_Str_length(&(node.compound_fields))) {
+    if (ci > 0LL) {
+    fields_str = __kai_std_str_concat_alloc(fields_str, ", ");
+}
+    fields_str = __kai_std_str_concat_alloc(fields_str, ArrayList_Str_get(&(node.compound_fields), ci));
+    ci = (ci + 1LL);
+}
+    if (strlen(fields_str) > 0LL) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", type_str), "){ "), fields_str), " }");
+}
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", type_str), "){0}");
+}
+    if (node.kind == CExprKind_ck_stmt_expr) {
+    CCodeBuilder temp_builder = CCodeBuilder_init(self->builder->alloc);
+    CPrinter temp_printer = (CPrinter){ .builder = &(temp_builder), .expr_pool = self->expr_pool, .stmt_pool = self->stmt_pool };
+    CCodeBuilder_emit_line(&(temp_builder), "({");
+    CCodeBuilder_indent(&(temp_builder));
+    int64_t si = 0LL;
+    while (si < ArrayList_Int_length(&(node.stmts))) {
+    CPrinter_print_stmt(&(temp_printer), ArrayList_Int_get(&(node.stmts), si));
+    si = (si + 1LL);
+}
+    if (node.stmt_result >= 0LL) {
+    CCodeBuilder_emit_line(&(temp_builder), __kai_std_str_concat_alloc(CPrinter_print_expr(self, node.stmt_result), ";"));
+}
+    CCodeBuilder_dedent(&(temp_builder));
+    CCodeBuilder_emit_line(&(temp_builder), "})");
+    return CCodeBuilder_to_str(&(temp_builder));
+}
+    return "";
+}
+void CPrinter_print_stmt(CPrinter* self, int64_t idx) {
+    if (idx < 0LL) {
+    return;
+}
+    CStmtNode node = ArrayList_CStmtNode_get(self->stmt_pool, idx);
+    if (node.kind == CStmtKind_cs_block) {
+    CCodeBuilder_begin_block(self->builder);
+    int64_t i = 0LL;
+    while (i < ArrayList_Int_length(&(node.block_stmts))) {
+    CPrinter_print_stmt(self, ArrayList_Int_get(&(node.block_stmts), i));
+    i = (i + 1LL);
+}
+    CCodeBuilder_end_block(self->builder);
+}
+    if (node.kind == CStmtKind_cs_expr) {
+    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(CPrinter_print_expr(self, node.expr_stmt), ";"));
+}
+    if (node.kind == CStmtKind_cs_if) {
+    const char* cond = CPrinter_print_expr(self, node.if_cond);
+    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", cond), ")"));
+    CPrinter_print_stmt(self, node.if_then);
+    if (node.if_else >= 0LL) {
+    CCodeBuilder_emit_line(self->builder, "else");
+    CPrinter_print_stmt(self, node.if_else);
+}
+}
+    if (node.kind == CStmtKind_cs_while) {
+    const char* cond = CPrinter_print_expr(self, node.while_cond);
+    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("while (", cond), ")"));
+    CPrinter_print_stmt(self, node.while_body);
+}
+    if (node.kind == CStmtKind_cs_return) {
+    if (node.return_val >= 0LL) {
+    const char* val = CPrinter_print_expr(self, node.return_val);
+    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return ", val), ";"));
+} else {
+    CCodeBuilder_emit_line(self->builder, "return;");
+}
+}
+    if (node.kind == CStmtKind_cs_break) {
+    CCodeBuilder_emit_line(self->builder, "break;");
+}
+    if (node.kind == CStmtKind_cs_continue) {
+    CCodeBuilder_emit_line(self->builder, "continue;");
+}
+    if (node.kind == CStmtKind_cs_var_decl) {
+    const char* type_str = ctype_to_str(node.var_type);
+    if (node.var_init >= 0LL) {
+    const char* init_val = CPrinter_print_expr(self, node.var_init);
+    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(type_str, " "), node.var_name), " = "), init_val), ";"));
+} else {
+    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(type_str, " "), node.var_name), ";"));
+}
+}
+}
+void CPrinter_print_decl(CPrinter* self, CDeclNode decl) {
+    if (decl.is_typedef) {
+    const char* def_str = ctype_to_str(decl.typedef_def);
+    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef ", def_str), " "), decl.typedef_alias), ";"));
+    return;
+}
+    if (decl.is_struct) {
+    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", decl.struct_name), " {"));
+    CCodeBuilder_indent(self->builder);
+    int64_t i = 0LL;
+    while (i < ArrayList_Str_length(&(decl.struct_fields))) {
+    CCodeBuilder_emit_line(self->builder, ArrayList_Str_get(&(decl.struct_fields), i));
+    i = (i + 1LL);
+}
+    CCodeBuilder_dedent(self->builder);
+    CCodeBuilder_emit_line(self->builder, "};");
+    return;
+}
+    if (decl.is_enum) {
+    CCodeBuilder_emit_line(self->builder, "typedef enum {");
+    CCodeBuilder_indent(self->builder);
+    int64_t i = 0LL;
+    while (i < ArrayList_Str_length(&(decl.enum_variants))) {
+    CCodeBuilder_emit_line(self->builder, ArrayList_Str_get(&(decl.enum_variants), i));
+    i = (i + 1LL);
+}
+    CCodeBuilder_dedent(self->builder);
+    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("} ", decl.enum_name), ";"));
+    return;
+}
+    if (decl.is_tagged_union_struct) {
+    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", decl.struct_name), " {"));
+    CCodeBuilder_indent(self->builder);
+    CCodeBuilder_emit_line(self->builder, "uint8_t tag;");
+    CCodeBuilder_emit_line(self->builder, "union {");
+    CCodeBuilder_indent(self->builder);
+    int64_t vi = 0LL;
+    while (vi < ArrayList_Str_length(&(decl.tagged_variants))) {
+    CCodeBuilder_emit_line(self->builder, ArrayList_Str_get(&(decl.tagged_variants), vi));
+    vi = (vi + 1LL);
+}
+    CCodeBuilder_dedent(self->builder);
+    CCodeBuilder_emit_line(self->builder, "};");
+    CCodeBuilder_dedent(self->builder);
+    CCodeBuilder_emit_line(self->builder, "};");
+    return;
+}
+    if (decl.is_function) {
+    const char* params_str = "";
+    int64_t i = 0LL;
+    while (i < ArrayList_Str_length(&(decl.func_params))) {
+    if (i > 0LL) {
+    params_str = __kai_std_str_concat_alloc(params_str, ", ");
+}
+    params_str = __kai_std_str_concat_alloc(params_str, ArrayList_Str_get(&(decl.func_params), i));
+    i = (i + 1LL);
+}
+    if (decl.func_vararg) {
+    if (strlen(params_str) > 0LL) {
+    params_str = __kai_std_str_concat_alloc(params_str, ", ...");
+} else {
+    params_str = "...";
+}
+}
+    const char* ret_str = ctype_to_str(decl.func_ret);
+    const char* header = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_str, " "), decl.func_name), "("), params_str), ")");
+    if (decl.is_extern) {
+    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("extern ", header), ";"));
+    return;
+}
+    if (ArrayList_Int_length(&(decl.func_body)) == 0LL) {
+    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(header, ";"));
+} else {
+    CCodeBuilder_emit_line(self->builder, header);
+    CCodeBuilder_begin_block(self->builder);
+    int64_t j = 0LL;
+    while (j < ArrayList_Int_length(&(decl.func_body))) {
+    CPrinter_print_stmt(self, ArrayList_Int_get(&(decl.func_body), j));
+    j = (j + 1LL);
+}
+    CCodeBuilder_end_block(self->builder);
+}
+}
+}
+void CPrinter_emit_runtime_preamble(CPrinter* self, ArrayList_Str* cimport_headers) {
+    CCodeBuilder_emit_line(self->builder, "/* BUILDER CODEGEN ACTIVE */");
+    CCodeBuilder_emit_line(self->builder, "#ifndef _GNU_SOURCE");
+    CCodeBuilder_emit_line(self->builder, "#define _GNU_SOURCE");
+    CCodeBuilder_emit_line(self->builder, "#endif");
+    CCodeBuilder_emit_line(self->builder, "#include <stdint.h>");
+    CCodeBuilder_emit_line(self->builder, "#include <stdbool.h>");
+    CCodeBuilder_emit_line(self->builder, "#include <stdio.h>");
+    CCodeBuilder_emit_line(self->builder, "#include <stdlib.h>");
+    CCodeBuilder_emit_line(self->builder, "#include <string.h>");
+    CCodeBuilder_emit_line(self->builder, "#include <inttypes.h>");
+    CCodeBuilder_emit_line(self->builder, "#ifndef NO_GET_EXE_DIR");
+    CCodeBuilder_emit_line(self->builder, "#if defined(_WIN32)");
+    CCodeBuilder_emit_line(self->builder, "#include <windows.h>");
+    CCodeBuilder_emit_line(self->builder, "#else");
+    CCodeBuilder_emit_line(self->builder, "#include <dlfcn.h>");
+    CCodeBuilder_emit_line(self->builder, "#include <limits.h>");
+    CCodeBuilder_emit_line(self->builder, "#endif");
+    CCodeBuilder_emit_blank(self->builder);
+    CCodeBuilder_emit_line(self->builder, "int64_t get_exe_dir(char* out_buf, int64_t max_len) {");
+    CCodeBuilder_emit_line(self->builder, "#if defined(_WIN32)");
+    CCodeBuilder_emit_line(self->builder, "    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);");
+    CCodeBuilder_emit_line(self->builder, "    if (len == 0 || len >= max_len) return -1;");
+    CCodeBuilder_emit_line(self->builder, "    for (int i = len - 1; i >= 0; i--) {");
+    CCodeBuilder_emit_line(self->builder, "        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {");
+    CCodeBuilder_emit_line(self->builder, "            out_buf[i] = '\\0';");
+    CCodeBuilder_emit_line(self->builder, "            break;");
+    CCodeBuilder_emit_line(self->builder, "        }");
+    CCodeBuilder_emit_line(self->builder, "    }");
+    CCodeBuilder_emit_line(self->builder, "    return 0;");
+    CCodeBuilder_emit_line(self->builder, "#else");
+    CCodeBuilder_emit_line(self->builder, "    Dl_info info;");
+    CCodeBuilder_emit_line(self->builder, "    char dummy = 0;");
+    CCodeBuilder_emit_line(self->builder, "    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {");
+    CCodeBuilder_emit_line(self->builder, "        char real_path[PATH_MAX];");
+    CCodeBuilder_emit_line(self->builder, "        if (realpath(info.dli_fname, real_path) != NULL) {");
+    CCodeBuilder_emit_line(self->builder, "            char* last_slash = strrchr(real_path, '/');");
+    CCodeBuilder_emit_line(self->builder, "            if (last_slash != NULL) {");
+    CCodeBuilder_emit_line(self->builder, "                *last_slash = '\\0';");
+    CCodeBuilder_emit_line(self->builder, "                int i = 0;");
+    CCodeBuilder_emit_line(self->builder, "                while (i < max_len - 1 && real_path[i] != '\\0') {");
+    CCodeBuilder_emit_line(self->builder, "                    out_buf[i] = real_path[i];");
+    CCodeBuilder_emit_line(self->builder, "                    i++;");
+    CCodeBuilder_emit_line(self->builder, "                }");
+    CCodeBuilder_emit_line(self->builder, "                out_buf[i] = '\\0';");
+    CCodeBuilder_emit_line(self->builder, "                return 0;");
+    CCodeBuilder_emit_line(self->builder, "            }");
+    CCodeBuilder_emit_line(self->builder, "        }");
+    CCodeBuilder_emit_line(self->builder, "    }");
+    CCodeBuilder_emit_line(self->builder, "    return -1;");
+    CCodeBuilder_emit_line(self->builder, "#endif");
+    CCodeBuilder_emit_line(self->builder, "}");
+    CCodeBuilder_emit_line(self->builder, "#endif");
+    CCodeBuilder_emit_blank(self->builder);
+    CCodeBuilder_emit_line(self->builder, "static char* __kai_str_sub(const char* s, int64_t start, int64_t end) {");
+    CCodeBuilder_emit_line(self->builder, "    int64_t len = strlen(s);");
+    CCodeBuilder_emit_line(self->builder, "    if (end > len) end = len;");
+    CCodeBuilder_emit_line(self->builder, "    if (start < 0) start = 0;");
+    CCodeBuilder_emit_line(self->builder, "    if (start >= end) {");
+    CCodeBuilder_emit_line(self->builder, "        char* empty = malloc(1);");
+    CCodeBuilder_emit_line(self->builder, "        if (empty) empty[0] = '\\0';");
+    CCodeBuilder_emit_line(self->builder, "        return empty;");
+    CCodeBuilder_emit_line(self->builder, "    }");
+    CCodeBuilder_emit_line(self->builder, "    int64_t sub_len = end - start;");
+    CCodeBuilder_emit_line(self->builder, "    char* buf = malloc(sub_len + 1);");
+    CCodeBuilder_emit_line(self->builder, "    if (buf) {");
+    CCodeBuilder_emit_line(self->builder, "        memcpy(buf, s + start, sub_len);");
+    CCodeBuilder_emit_line(self->builder, "        buf[sub_len] = '\\0';");
+    CCodeBuilder_emit_line(self->builder, "    }");
+    CCodeBuilder_emit_line(self->builder, "    return buf;");
+    CCodeBuilder_emit_line(self->builder, "}");
+    CCodeBuilder_emit_blank(self->builder);
+    CCodeBuilder_emit_line(self->builder, "static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t elem_size) {");
+    CCodeBuilder_emit_line(self->builder, "    int64_t count = end - start;");
+    CCodeBuilder_emit_line(self->builder, "    if (count <= 0) return NULL;");
+    CCodeBuilder_emit_line(self->builder, "    size_t total = (size_t)count * (size_t)elem_size;");
+    CCodeBuilder_emit_line(self->builder, "    void* buf = malloc(total);");
+    CCodeBuilder_emit_line(self->builder, "    if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);");
+    CCodeBuilder_emit_line(self->builder, "    return buf;");
+    CCodeBuilder_emit_line(self->builder, "}");
+    CCodeBuilder_emit_blank(self->builder);
+    CCodeBuilder_emit_line(self->builder, "static char* __kai_std_str_concat_alloc(const char* left, const char* right) {");
+    CCodeBuilder_emit_line(self->builder, "    size_t left_len = strlen(left);");
+    CCodeBuilder_emit_line(self->builder, "    size_t right_len = strlen(right);");
+    CCodeBuilder_emit_line(self->builder, "    size_t total = left_len + right_len + 1;");
+    CCodeBuilder_emit_line(self->builder, "    char* buf = (char*)malloc(total);");
+    CCodeBuilder_emit_line(self->builder, "    if (buf) {");
+    CCodeBuilder_emit_line(self->builder, "        memcpy(buf, left, left_len);");
+    CCodeBuilder_emit_line(self->builder, "        memcpy(buf + left_len, right, right_len);");
+    CCodeBuilder_emit_line(self->builder, "        buf[total - 1] = '\\0';");
+    CCodeBuilder_emit_line(self->builder, "    }");
+    CCodeBuilder_emit_line(self->builder, "    return buf;");
+    CCodeBuilder_emit_line(self->builder, "}");
+    CCodeBuilder_emit_blank(self->builder);
+    int64_t ci = 0LL;
+    bool has_cimports = false;
+    while (ci < ArrayList_Str_length(cimport_headers)) {
+    const char* hdr = ArrayList_Str_get(cimport_headers, ci);
+    bool is_baseline = false;
+    if (strcmp(hdr, "stdint.h") == 0) {
+    is_baseline = true;
+} else if (strcmp(hdr, "stdbool.h") == 0) {
+    is_baseline = true;
+} else if (strcmp(hdr, "stdio.h") == 0) {
+    is_baseline = true;
+} else if (strcmp(hdr, "stdlib.h") == 0) {
+    is_baseline = true;
+} else if (strcmp(hdr, "string.h") == 0) {
+    is_baseline = true;
+} else if (strcmp(hdr, "sys/mman.h") == 0) {
+    is_baseline = true;
+} else if (strcmp(hdr, "ctype.h") == 0) {
+    is_baseline = true;
+}
+    if (!is_baseline) {
+    if (!has_cimports) {
+    CCodeBuilder_emit_line(self->builder, "/* C FFI Imports */");
+    has_cimports = true;
+}
+    bool has_slash = false;
+    bool dot_start = false;
+    if (strlen(hdr) > 0LL) {
+    int64_t hi = 0LL;
+    while (hi < strlen(hdr)) {
+    if ((hdr)[hi] == ((char)(47LL))) {
+    has_slash = true;
+}
+    hi = (hi + 1LL);
+}
+    if ((hdr)[0LL] == ((char)(46LL))) {
+    dot_start = true;
+}
+}
+    if ((!has_slash) && (!dot_start)) {
+    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include <", hdr), ">"));
+} else {
+    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include \"", hdr), "\""));
+}
+}
+    ci = (ci + 1LL);
+}
+    CCodeBuilder_emit_line(self->builder, "#ifndef MAP_FAILED");
+    CCodeBuilder_emit_line(self->builder, "#define MAP_FAILED ((void*)-1)");
+    CCodeBuilder_emit_line(self->builder, "#endif");
+    CCodeBuilder_emit_line(self->builder, "#ifndef MAP_PRIVATE");
+    CCodeBuilder_emit_line(self->builder, "#define MAP_PRIVATE 2");
+    CCodeBuilder_emit_line(self->builder, "#endif");
+    CCodeBuilder_emit_line(self->builder, "#ifndef MAP_ANONYMOUS");
+    CCodeBuilder_emit_line(self->builder, "#ifdef __APPLE__");
+    CCodeBuilder_emit_line(self->builder, "#define MAP_ANONYMOUS 0x1000");
+    CCodeBuilder_emit_line(self->builder, "#else");
+    CCodeBuilder_emit_line(self->builder, "#define MAP_ANONYMOUS 0x20");
+    CCodeBuilder_emit_line(self->builder, "#endif");
+    CCodeBuilder_emit_line(self->builder, "#endif");
+    CCodeBuilder_emit_line(self->builder, "extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);");
+    CCodeBuilder_emit_line(self->builder, "extern int munmap(void* addr, unsigned long long length);");
+    CCodeBuilder_emit_blank(self->builder);
+    CCodeBuilder_emit_line(self->builder, "static __thread void* _kai_current_allocator = NULL;");
+    CCodeBuilder_emit_blank(self->builder);
+    CCodeBuilder_emit_line(self->builder, "static inline void _kai_set_current_allocator(void* allocator) {");
+    CCodeBuilder_emit_line(self->builder, "    _kai_current_allocator = allocator;");
+    CCodeBuilder_emit_line(self->builder, "}");
+    CCodeBuilder_emit_blank(self->builder);
+    CCodeBuilder_emit_line(self->builder, "void __kai_print_int(int64_t v) {");
+    CCodeBuilder_emit_line(self->builder, "    printf(\"%lld\\n\", (long long)(v));");
+    CCodeBuilder_emit_line(self->builder, "}");
+    CCodeBuilder_emit_blank(self->builder);
+    CCodeBuilder_emit_line(self->builder, "void __kai_print_float(double v) {");
+    CCodeBuilder_emit_line(self->builder, "    printf(\"%f\\n\", (double)(v));");
+    CCodeBuilder_emit_line(self->builder, "}");
+    CCodeBuilder_emit_blank(self->builder);
+    CCodeBuilder_emit_line(self->builder, "static inline uint8_t* _kai_mmap(uint8_t* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {");
+    CCodeBuilder_emit_line(self->builder, "    return (uint8_t*)mmap(addr, length, prot, MAP_PRIVATE | MAP_ANONYMOUS, fd, offset);");
+    CCodeBuilder_emit_line(self->builder, "}");
+    CCodeBuilder_emit_blank(self->builder);
+    CCodeBuilder_emit_line(self->builder, "static inline int64_t _kai_munmap(uint8_t* addr, int64_t length) {");
+    CCodeBuilder_emit_line(self->builder, "    return munmap(addr, length);");
+    CCodeBuilder_emit_line(self->builder, "}");
+    CCodeBuilder_emit_blank(self->builder);
+    CCodeBuilder_emit_line(self->builder, "extern void __kai_panic(const char* msg);");
+    CCodeBuilder_emit_line(self->builder, "#ifndef __KAI_NO_PANIC");
+    CCodeBuilder_emit_line(self->builder, "void __kai_panic(const char* msg) {");
+    CCodeBuilder_emit_line(self->builder, "    fprintf(stderr, \"KAI PANIC: %s\\n\", msg);");
+    CCodeBuilder_emit_line(self->builder, "    fflush(stderr);");
+    CCodeBuilder_emit_line(self->builder, "    abort();");
+    CCodeBuilder_emit_line(self->builder, "}");
+    CCodeBuilder_emit_line(self->builder, "#endif");
+    CCodeBuilder_emit_blank(self->builder);
 }
 const char* diag_fix_safety(const char* code) {
     if (strcmp(code, "E0008") == 0LL) {
@@ -15856,7 +16002,8 @@ int64_t run_fix(const char* fix_mode, const char* fix_file, bool json) {
     Parser fix_parser = Parser_init(&(fix_alloc), fix_file, fix_lexer.tokens, source);
     int64_t prog_idx = Parser_parse_program(&(fix_parser));
     if (prog_idx >= 0LL) {
-    TypeChecker chk = TypeChecker_init(&(fix_alloc), fix_parser.stmt_pool, fix_parser.expr_pool, fix_parser.pattern_pool, fix_file, source);
+    ImportResolver resolver = ImportResolver_init(&(fix_alloc));
+    TypeChecker chk = TypeChecker_init(&(fix_alloc), fix_parser.stmt_pool, fix_parser.expr_pool, fix_parser.pattern_pool, fix_file, source, &(resolver));
     bool ttmp = TypeChecker_check_program(&(chk), prog_idx);
     if (ttmp) {
 } else {
@@ -16295,6 +16442,271 @@ int64_t run_fix(const char* fix_mode, const char* fix_file, bool json) {
 }
     printf("Error: fix requires a mode (--plan, --patch, or --apply)\n");
     return 1LL;
+}
+ErrorInfo get_error_info(const char* code) {
+    if (strcmp(code, "E0001") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Type mismatch in declaration", .description = "The declared type of a variable does not match the type of the initializer expression.", .fix = "Change the declared type to match the initializer, or change the initializer expression to produce the declared type." };
+}
+    if (strcmp(code, "E0002") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Type mismatch in assignment", .description = "The type of the value being assigned does not match the type of the target variable.", .fix = "Assign a value of the correct type, or change the variable's type." };
+}
+    if (strcmp(code, "E0003") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Argument type mismatch", .description = "A function or method call argument type does not match the parameter type.", .fix = "Pass an argument of the expected type, or cast it using the 'as' operator if appropriate." };
+}
+    if (strcmp(code, "E0004") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Field type mismatch in struct initializer", .description = "A struct field initializer value type does not match the field's declared type.", .fix = "Provide a value of the correct type for the field, or change the field's type in the struct definition." };
+}
+    if (strcmp(code, "E0005") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Argument count mismatch in function call", .description = "The number of arguments provided in a function call does not match the function's parameter count.", .fix = "Add or remove arguments to match the function signature." };
+}
+    if (strcmp(code, "E0006") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Argument count mismatch in method call", .description = "The number of arguments provided in a method call does not match the method's parameter count.", .fix = "Add or remove arguments to match the method signature." };
+}
+    if (strcmp(code, "E0007") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Return type mismatch", .description = "The type of the returned value does not match the function's declared return type.", .fix = "Return a value of the correct type, or change the function's return type declaration." };
+}
+    if (strcmp(code, "E0008") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Cannot assign to immutable variable", .description = "An immutable variable (declared with 'let') cannot be reassigned.", .fix = "Declare the variable with 'var' instead of 'let', or use a different variable." };
+}
+    if (strcmp(code, "E0009") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Use of moved value", .description = "A value has been moved and cannot be used again. In Kai, non-copy types are moved on assignment or function call.", .fix = "Clone the value before moving it, or restructure the code to avoid using the value after the move." };
+}
+    if (strcmp(code, "E0010") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Cannot return reference to local variable", .description = "Returning a reference to a local variable would create a dangling pointer, since the local is destroyed when the function returns.", .fix = "Return the value by value instead of by reference, or ensure the referenced data outlives the function." };
+}
+    if (strcmp(code, "E0011") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Field access on optional type", .description = "Cannot directly access a field on an optional type. The optional must be unwrapped first.", .fix = "Use 'catch' with a fallback to unwrap the optional, then access the field." };
+}
+    if (strcmp(code, "E0012") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Method call on optional type", .description = "Cannot call a method directly on an optional type. The optional must be unwrapped first.", .fix = "Use 'catch' with a fallback to unwrap the optional, then call the method." };
+}
+    if (strcmp(code, "E0013") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Field does not exist in struct", .description = "The specified field name does not exist in the struct definition.", .fix = "Check the spelling of the field name, or add the field to the struct definition." };
+}
+    if (strcmp(code, "E0014") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Cannot use 'try' on non-error-union type", .description = "The 'try' operator can only be used on error union types (T!E), not on regular types.", .fix = "Ensure the expression has an error union type, or handle errors differently." };
+}
+    if (strcmp(code, "E0015") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Cannot use 'try' in non-error-returning function", .description = "The 'try' operator can only be used inside functions that return an error union type.", .fix = "Change the function's return type to an error union, or use 'catch' instead of 'try'." };
+}
+    if (strcmp(code, "E0016") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Error set mismatch in 'try'", .description = "The error set of the 'try' expression is not compatible with the function's error return type.", .fix = "Ensure the error types are compatible, or convert between error sets." };
+}
+    if (strcmp(code, "E0017") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Cannot use 'catch' on non-optional, non-error-union type", .description = "The 'catch' operator requires an optional or error union type.", .fix = "Ensure the expression is an optional or error union type before using 'catch'." };
+}
+    if (strcmp(code, "E0018") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Catch fallback type mismatch", .description = "The type of the 'catch' fallback expression does not match the expected unwrapped type.", .fix = "Change the fallback expression to produce the correct type." };
+}
+    if (strcmp(code, "E0019") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Undefined identifier", .description = "An identifier was used but not declared in the current scope or any parent scope.", .fix = "Declare the identifier before use, check the spelling, or import it from the appropriate module." };
+}
+    if (strcmp(code, "E0020") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Undefined function", .description = "A function was called but not declared or imported in the current scope.", .fix = "Declare the function with 'fn', declare it as 'extern fn', or import it from the appropriate module. Check the spelling." };
+}
+    if (strcmp(code, "E0021") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Undefined struct", .description = "A struct type was used but not declared in the current compilation unit.", .fix = "Define the struct with 'struct', import it, or check the spelling of the struct name." };
+}
+    if (strcmp(code, "E0022") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Undefined method", .description = "A method was called on a type that does not have that method in any 'impl' block.", .fix = "Add an 'impl' block with the method, check the spelling of the method name, or check the receiver type." };
+}
+    if (strcmp(code, "E0031") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Use of freed value", .description = "A value was used after it had been freed. Memory-safe languages prevent accessing freed memory.", .fix = "Restructure the code to avoid using the value after it has been freed. Consider using a longer-lived allocation or deferring the free operation." };
+}
+    if (strcmp(code, "E0032") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Double free", .description = "A value was freed more than once. Freeing the same memory twice can lead to heap corruption and security vulnerabilities.", .fix = "Ensure each allocation is freed exactly once. Remove the duplicate free call, or use a flag to track whether the value has already been freed." };
+}
+    if (strcmp(code, "E0033") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Unused import", .description = "An imported symbol was never used in the current compilation unit.", .fix = "Remove the unused import, or use the imported symbol in the code." };
+}
+    if (strcmp(code, "E0100") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Lexer error", .description = "The lexer encountered an unexpected character or syntax that could not be tokenized.", .fix = "Check for unexpected characters, unclosed strings, or invalid syntax near the reported position." };
+}
+    if (strcmp(code, "E0101") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Parser error", .description = "The parser encountered a token that does not match the expected grammar rule.", .fix = "Check the syntax near the reported position. Common causes: missing semicolons, unmatched brackets, or incorrect keyword usage." };
+}
+    return (ErrorInfo){ .code = code, .title = "Unknown error code", .description = "No additional information is available for this error code.", .fix = "Refer to the Kai language documentation for more information." };
+}
+bool __kai_std_ascii_is_digit(char byte) {
+    return ((byte >= ((char)(48LL))) && (byte <= ((char)(57LL))));
+}
+bool __kai_std_ascii_is_lower(char byte) {
+    return ((byte >= ((char)(97LL))) && (byte <= ((char)(122LL))));
+}
+bool __kai_std_ascii_is_upper(char byte) {
+    return ((byte >= ((char)(65LL))) && (byte <= ((char)(90LL))));
+}
+bool __kai_std_ascii_is_alpha(char byte) {
+    return (__kai_std_ascii_is_lower(byte) || __kai_std_ascii_is_upper(byte));
+}
+bool __kai_std_ascii_is_alnum(char byte) {
+    return (__kai_std_ascii_is_alpha(byte) || __kai_std_ascii_is_digit(byte));
+}
+bool __kai_std_ascii_is_whitespace(char byte) {
+    return ((((byte == ((char)(32LL))) || (byte == ((char)(9LL)))) || (byte == ((char)(10LL)))) || (byte == ((char)(13LL))));
+}
+bool __kai_std_ascii_is_hex_digit(char byte) {
+    return ((__kai_std_ascii_is_digit(byte) || ((byte >= ((char)(65LL))) && (byte <= ((char)(70LL))))) || ((byte >= ((char)(97LL))) && (byte <= ((char)(102LL)))));
+}
+char __kai_std_ascii_to_lower(char byte) {
+    if (__kai_std_ascii_is_upper(byte)) {
+    return (byte + ((char)(32LL)));
+}
+    return byte;
+}
+char __kai_std_ascii_to_upper(char byte) {
+    if (__kai_std_ascii_is_lower(byte)) {
+    return (byte - ((char)(32LL)));
+}
+    return byte;
+}
+Optional_Char __kai_std_ascii_digit_value(char byte) {
+    if (__kai_std_ascii_is_digit(byte)) {
+    return (Optional_Char){ .has_value = true, .value = (byte - ((char)(48LL))) };
+}
+    return (Optional_Char){0};
+}
+Optional_Char __kai_std_ascii_hex_value(char byte) {
+    if (__kai_std_ascii_is_digit(byte)) {
+    return (Optional_Char){ .has_value = true, .value = (byte - ((char)(48LL))) };
+}
+    if ((byte >= ((char)(65LL))) && (byte <= ((char)(70LL)))) {
+    return (Optional_Char){ .has_value = true, .value = (byte - ((char)(55LL))) };
+}
+    if ((byte >= ((char)(97LL))) && (byte <= ((char)(102LL)))) {
+    return (Optional_Char){ .has_value = true, .value = (byte - ((char)(87LL))) };
+}
+    return (Optional_Char){0};
+}
+int64_t diag_clamp_offset(const char* bytes, int64_t offset) {
+    if (offset > strlen((const char*)(bytes))) {
+    return strlen((const char*)(bytes));
+}
+    return offset;
+}
+int64_t diag_line_start(const char* bytes, int64_t offset) {
+    int64_t cursor = diag_clamp_offset(bytes, offset);
+    int64_t start = cursor;
+    while ((start > 0LL) && ((bytes)[(start - 1LL)] != ((char)(10LL)))) {
+    start = (start - 1LL);
+}
+    return start;
+}
+int64_t diag_line_end(const char* bytes, int64_t offset) {
+    int64_t end = diag_clamp_offset(bytes, offset);
+    while ((end < strlen((const char*)(bytes))) && ((bytes)[end] != ((char)(10LL)))) {
+    end = (end + 1LL);
+}
+    if ((end > 0LL) && ((bytes)[(end - 1LL)] == ((char)(13LL)))) {
+    return (end - 1LL);
+}
+    return end;
+}
+int64_t diag_line(const char* bytes, int64_t offset) {
+    int64_t cursor = diag_clamp_offset(bytes, offset);
+    int64_t line = 1LL;
+    int64_t index = 0LL;
+    while (index < cursor) {
+    if ((bytes)[index] == ((char)(10LL))) {
+    line = (line + 1LL);
+}
+    index = (index + 1LL);
+}
+    return line;
+}
+int64_t diag_column(const char* bytes, int64_t offset) {
+    int64_t cursor = diag_clamp_offset(bytes, offset);
+    int64_t start = diag_line_start(bytes, cursor);
+    return ((cursor - start) + 1LL);
+}
+const char* diag_line_text(const char* bytes, int64_t offset) {
+    int64_t start = diag_line_start(bytes, offset);
+    int64_t end = diag_line_end(bytes, offset);
+    return substring(bytes, start, end);
+}
+int64_t diag_range_len(const char* bytes, int64_t start, int64_t end) {
+    int64_t first = diag_clamp_offset(bytes, start);
+    int64_t last = diag_clamp_offset(bytes, end);
+    if (last < first) {
+    return 0LL;
+}
+    return (last - first);
+}
+const char* diag_range_text(const char* bytes, int64_t start, int64_t end) {
+    int64_t first = diag_clamp_offset(bytes, start);
+    int64_t last = diag_clamp_offset(bytes, end);
+    if (last < first) {
+    return substring(bytes, first, first);
+}
+    return substring(bytes, first, last);
+}
+Optional_Int diag_write_span(char* buffer, int64_t offset, const char* bytes) {
+    if (offset > 1000000LL) {
+    return (Optional_Int){0};
+}
+    if (strlen((const char*)(bytes)) > (1000000LL - offset)) {
+    return (Optional_Int){0};
+}
+    int64_t index = 0LL;
+    while (index < strlen((const char*)(bytes))) {
+    (buffer)[(offset + index)] = (bytes)[index];
+    index = (index + 1LL);
+}
+    return (Optional_Int){ .has_value = true, .value = (offset + strlen((const char*)(bytes))) };
+}
+Optional_Int diag_write_usize(char* buffer, int64_t offset, int64_t value) {
+    if (offset > 1000000LL) {
+    return (Optional_Int){0};
+}
+    int64_t digits = 1LL;
+    int64_t scan = value;
+    while (scan >= 10LL) {
+    digits = (digits + 1LL);
+    scan = (scan / 10LL);
+}
+    if ((offset + digits) > 1000000LL) {
+    return (Optional_Int){0};
+}
+    int64_t cursor = (offset + digits);
+    int64_t current = value;
+    while (cursor > offset) {
+    cursor = (cursor - 1LL);
+    char digit = (char)((current % 10LL));
+    (buffer)[cursor] = (((char)(48LL)) + digit);
+    current = (current / 10LL);
+}
+    return (Optional_Int){ .has_value = true, .value = (offset + digits) };
+}
+const char* diag_format_location(char* buffer, const char* path, int64_t line, int64_t column) {
+    int64_t offset = 0LL;
+    Optional_Int wrote_path = diag_write_span(buffer, offset, path);
+    if (!wrote_path.has_value) {
+    return NULL;
+}
+    offset = ({ Optional_Int _kai_opt = (wrote_path); int64_t _kai_cv; if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } else { _kai_cv = (0LL); } _kai_cv; });
+    Optional_Int first_colon = diag_write_span(buffer, offset, ":");
+    if (!first_colon.has_value) {
+    return NULL;
+}
+    offset = ({ Optional_Int _kai_opt = (first_colon); int64_t _kai_cv; if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } else { _kai_cv = (0LL); } _kai_cv; });
+    Optional_Int wrote_line = diag_write_usize(buffer, offset, line);
+    if (!wrote_line.has_value) {
+    return NULL;
+}
+    offset = ({ Optional_Int _kai_opt = (wrote_line); int64_t _kai_cv; if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } else { _kai_cv = (0LL); } _kai_cv; });
+    Optional_Int second_colon = diag_write_span(buffer, offset, ":");
+    if (!second_colon.has_value) {
+    return NULL;
+}
+    offset = ({ Optional_Int _kai_opt = (second_colon); int64_t _kai_cv; if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } else { _kai_cv = (0LL); } _kai_cv; });
+    Optional_Int wrote_column = diag_write_usize(buffer, offset, column);
+    if (wrote_column.has_value) {
+    return substring(buffer, 0LL, ({ Optional_Int _kai_opt = (wrote_column); int64_t _kai_cv; if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } else { _kai_cv = (0LL); } _kai_cv; }));
+}
+    return NULL;
+}
+const char* diag_format_offset_location(char* buffer, const char* path, const char* bytes, int64_t offset) {
+    return diag_format_location(buffer, path, diag_line(bytes, offset), diag_column(bytes, offset));
 }
 int64_t run_patch(int64_t argc, char** argv) {
     if (argc < 4LL) {
@@ -17080,225 +17492,4 @@ int64_t run_explain(int64_t argc, char** argv) {
     printf("  %s\n", info.description);
     printf("  Suggested fix: %s\n", info.fix);
     return 0LL;
-}
-int main(int argc, char** argv) {
-    if (argc < 2LL) {
-    printf("Usage: kai <command> [options]\n");
-    printf("Commands:\n");
-    printf("  init [path]     Create a new Kai project\n");
-    printf("  check <file>    Type-check only (no code generation)\n");
-    printf("  run <file>      Compile and run a .kai file\n");
-    printf("  <file>          Compile and run (shorthand)\n");
-    printf("  patch <file>    Apply an operation-based edit\n");
-    printf("  explain <code>  Explain an error code\n");
-    printf("  skills          List available agent skills\n");
-    printf("  fix <file>      Auto-fix diagnostics (--plan|--patch|--apply)\n");
-    printf("  graph <file>    Export or query the AST graph\n");
-    printf("Flags:\n");
-    printf("  --json          Output diagnostics in JSON format\n");
-    printf("  -o <file>       Specify output binary name\n");
-    printf("  -c              Emit C code only (no linking)\n");
-    printf("  -CC             Use builder-based codegen (experimental)\n");
-    printf("  -O0|-O1|-O2|-O3|-Os  Optimization level (default: -O2)\n");
-    return 1LL;
-}
-    const char* first_arg = "";
-    {
-    first_arg = (const char*)((argv)[1LL]);
-}
-    {
-    if (strcmp(first_arg, "explain") == 0LL) {
-    return run_explain(argc, argv);
-}
-    if (strcmp(first_arg, "skills") == 0LL) {
-    return run_skills(argc, argv);
-}
-    if (strcmp(first_arg, "init") == 0LL) {
-    return run_init(argc, argv);
-}
-    if (strcmp(first_arg, "patch") == 0LL) {
-    return run_patch(argc, argv);
-}
-    if (strcmp(first_arg, "fix") == 0LL) {
-    const char* fix_mode = "plan";
-    const char* fix_file = "";
-    bool json = false;
-    int64_t i2 = 2LL;
-    while (i2 < argc) {
-    const char* a = (const char*)((argv)[i2]);
-    if (strcmp(a, "--plan") == 0LL) {
-    fix_mode = "plan";
-} else if (strcmp(a, "--patch") == 0LL) {
-    fix_mode = "patch";
-} else if (strcmp(a, "--apply") == 0LL) {
-    fix_mode = "apply";
-} else if (strcmp(a, "--json") == 0LL) {
-    json = true;
-} else if (strcmp(fix_file, "") == 0) {
-    fix_file = a;
-}
-    i2 = (i2 + 1LL);
-}
-    if (strlen(fix_file) == 0LL) {
-    printf("Usage: kai fix (--plan|--patch|--apply) [--json] <file>\n");
-    return 1LL;
-}
-    return run_fix(fix_mode, fix_file, json);
-}
-    if (strcmp(first_arg, "graph") == 0LL) {
-    return run_graph(argc, argv);
-}
-}
-    const char* input_file = "";
-    bool is_run = false;
-    {
-    if (strcmp(first_arg, "run") == 0LL) {
-    is_run = true;
-}
-}
-    if (is_run) {
-    if (argc < 3LL) {
-    printf("Error: No input file specified\n");
-    printf("Usage: kai run <file>\n");
-    return 1LL;
-}
-    {
-    input_file = (const char*)((argv)[2LL]);
-}
-} else {
-    input_file = first_arg;
-}
-    const char* output_bin = "";
-    bool emit_c_only = false;
-    bool use_builder = false;
-    const char* opt_level = "-O2";
-    bool json_mode = false;
-    bool check_only = false;
-    int64_t i = 1LL;
-    if (is_run) {
-    i = 2LL;
-}
-    while (i < argc) {
-    const char* arg = (const char*)((argv)[i]);
-    bool matched = true;
-    {
-    if (strcmp(arg, "run") == 0LL) {
-} else if (strcmp(arg, "-c") == 0LL) {
-    emit_c_only = true;
-} else if (strcmp(arg, "-CC") == 0LL) {
-    use_builder = true;
-} else if (strcmp(arg, "-o") == 0LL) {
-    if ((i + 1LL) < argc) {
-    i = (i + 1LL);
-    output_bin = (const char*)((argv)[i]);
-} else {
-    printf("Error: -o requires an argument\n");
-    return 1LL;
-}
-} else if (strcmp(arg, "-O0") == 0LL) {
-    opt_level = "-O0";
-} else if (strcmp(arg, "-O1") == 0LL) {
-    opt_level = "-O1";
-} else if (strcmp(arg, "-O2") == 0LL) {
-    opt_level = "-O2";
-} else if (strcmp(arg, "-O3") == 0LL) {
-    opt_level = "-O3";
-} else if (strcmp(arg, "-Os") == 0LL) {
-    opt_level = "-Os";
-} else if (strcmp(arg, "--json") == 0LL) {
-    json_mode = true;
-} else if (strcmp(arg, "check") == 0LL) {
-    check_only = true;
-} else {
-    matched = false;
-}
-}
-    if (matched == false) {
-    if ((strlen(arg) > 0LL) && ((arg)[0LL] != ((char)(45LL)))) {
-    input_file = arg;
-}
-}
-    i = (i + 1LL);
-}
-    if (strlen(input_file) == 0LL) {
-    printf("Error: No input file specified\n");
-    return 1LL;
-}
-    KaiAllocator allocator = KaiAllocator_new();
-    _kai_set_current_allocator((void*)(&(allocator)));
-    const char* exe_include_flag = "";
-    const char* exe_dir = "";
-    {
-    char* buf = (char*)(KaiAllocator_alloc(&(allocator), 1024LL, 1LL));
-    if (get_exe_dir(buf, 1024LL) == 0LL) {
-    exe_dir = (const char*)(buf);
-    exe_include_flag = __kai_std_str_concat_alloc("-I", exe_dir);
-}
-}
-    const char* base = get_base_name(input_file);
-    const char* bin_name = base;
-    if (strlen(output_bin) > 0LL) {
-    bin_name = output_bin;
-}
-    const char* c_file = __kai_std_str_concat_alloc(base, ".c");
-    if (use_builder) {
-    c_file = __kai_std_str_concat_alloc("CC", c_file);
-}
-    Result_Str_IoError source_res = read_to_string(&(allocator), input_file);
-    if (source_res.tag != 0LL) {
-    if (json_mode) {
-    printf("{\"messages\":[{\"code\":\"E0099\",\"message\":\"Failed to read input file: '%s'\"}]}\n", input_file);
-}
-    return 4LL;
-}
-    const char* source = (const char*)(source_res.value);
-    Lexer lexer = Lexer_init(&(allocator), source, input_file);
-    Lexer_lex(&(lexer));
-    if (lexer.has_error) {
-    if (json_mode) {
-    printf("{\"messages\":[{\"code\":\"E0100\",\"message\":\"Lexer error\",\"file\":\"%s\"}],\"error\":true}\n", input_file);
-}
-    return 2LL;
-}
-    Parser parser = Parser_init(&(allocator), input_file, lexer.tokens, source);
-    int64_t program_idx = Parser_parse_program(&(parser));
-    if (program_idx < 0LL) {
-    if (json_mode) {
-    printf("{\"messages\":[{\"code\":\"E0101\",\"message\":\"Parse error\",\"file\":\"%s\"}],\"error\":true}\n", input_file);
-}
-    return 3LL;
-}
-    TypeChecker checker = TypeChecker_init(&(allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool, input_file, source);
-    bool success = TypeChecker_check_program(&(checker), program_idx);
-    if (!success) {
-    if (json_mode) {
-    printf("{\"result\":\"typecheck_failed\",\"file\":\"%s\"}\n", input_file);
-}
-    return 4LL;
-}
-    if (check_only) {
-    if (json_mode) {
-    printf("{\"result\":\"ok\",\"file\":\"%s\"}\n", input_file);
-}
-    return 0LL;
-}
-    const char* output = "";
-    if (use_builder) {
-    CodegenBuilder builder_gen = CodegenBuilder_init(&(allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool);
-    output = CodegenBuilder_generate(&(builder_gen), program_idx);
-} else {
-    Codegen gen = Codegen_init(&(allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool);
-    output = Codegen_generate(&(gen), program_idx);
-}
-    Result_Bool_IoError write_res = write_string(c_file, output);
-    if (write_res.tag != 0LL) {
-    return 5LL;
-}
-    if (emit_c_only) {
-    return 0LL;
-}
-    const char* cmd = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("clang ", exe_include_flag), " "), opt_level), " "), c_file), " -o "), bin_name);
-    {
-    return system((char*)(cmd));
-}
 }

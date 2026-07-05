@@ -8,12 +8,9 @@ import TypeChecker from type_checker
 import Codegen from codegen
 import CodegenBuilder from codegen_builder
 import length from std.core.string
-import substring from std.core.string
-import ArrayList from std.core.array
 // LLVMCodegen temporarily disabled — needs rework
 // import LLVMCodegen from codegen_llvm
-import std.io.print
-import get_error_info from error_registry
+import ImportResolver from imports
 
 import get_base_name from utils
 import run_fix from fix
@@ -179,38 +176,9 @@ fn main(argc: Int, argv: **Char) -> Int {
         return 3
     }
 
-    // Pre-resolve imports before type checking (populates stmt_pool with imported declarations)
-    if program_idx >= 0 {
-        if use_builder {
-            var builder_gen = CodegenBuilder(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
-            let top_stmt = parser.stmt_pool.get(program_idx)
-            if top_stmt.kind == StmtKind.sk_block {
-                var ii = 0
-                while ii < top_stmt.block_stmts.length() {
-                    let sub_stmt = parser.stmt_pool.get(top_stmt.block_stmts.get(ii))
-                    if sub_stmt.kind == StmtKind.sk_import || sub_stmt.kind == StmtKind.sk_cimport {
-                        builder_gen.gen_stmt(top_stmt.block_stmts.get(ii))
-                    }
-                    ii = ii + 1
-                }
-            }
-        } else {
-            var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
-            let top_stmt = parser.stmt_pool.get(program_idx)
-            if top_stmt.kind == StmtKind.sk_block {
-                var ii = 0
-                while ii < top_stmt.block_stmts.length() {
-                    let sub_stmt = parser.stmt_pool.get(top_stmt.block_stmts.get(ii))
-                    if sub_stmt.kind == StmtKind.sk_import || sub_stmt.kind == StmtKind.sk_cimport {
-                        gen.gen_stmt(top_stmt.block_stmts.get(ii))
-                    }
-                    ii = ii + 1
-                }
-            }
-        }
-    }
+    var resolver = ImportResolver(&allocator)
 
-    var checker = TypeChecker(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, input_file, source)
+    var checker = TypeChecker(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, input_file, source, &resolver)
     let success = checker.check_program(program_idx)
     if !success {
         if json_mode { printf("{\"result\":\"typecheck_failed\",\"file\":\"%s\"}\n", input_file) }
@@ -224,10 +192,10 @@ fn main(argc: Int, argv: **Char) -> Int {
 
     var output: Str = ""
     if use_builder {
-        var builder_gen = CodegenBuilder(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
+        var builder_gen = CodegenBuilder(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, &resolver)
         output = builder_gen.generate(program_idx)
     } else {
-        var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
+        var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, &resolver)
         output = gen.generate(program_idx)
     }
     let write_res = write_string(c_file, output)

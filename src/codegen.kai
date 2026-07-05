@@ -21,11 +21,8 @@ import MatchCase from ast_nodes
 import AsmOutput from ast_nodes
 import AsmInput from ast_nodes
 import TokenValue from token_defs
-import Lexer from lexer
-import Parser from parser
-import read_to_string from std.io.file
 import str_array_join from parser
-import std.io.print
+import ImportResolver from imports
 
 //== External C Runtime Functions
 
@@ -71,6 +68,7 @@ struct Codegen {
     stmt_pool: *ArrayList<StmtNode>
     expr_pool: *ArrayList<ExprNode>
     pattern_pool: *ArrayList<PatternNode>
+    import_resolver: *ImportResolver
 
     //== Legacy string-based accumulators
     output: StringBuilder
@@ -83,8 +81,6 @@ struct Codegen {
 
     func_types: ArrayList<StrMapEntry>
     var_types: ArrayList<StrMapEntry>
-    loaded_modules: ArrayList<Str>
-    cimport_headers: ArrayList<Str>
     block_stack: ArrayList<Int>
 
     generic_struct_decls: ArrayList<StrMapEntry>
@@ -164,11 +160,12 @@ fn add_init_return(self, body_str: Str, struct_name: Str) -> Str {
     return "{\n" + self_decl + stripped_body + self_ret
 }
 
-fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>) {
+fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, import_resolver: *ImportResolver) {
     self.allocator = allocator
     self.stmt_pool = stmt_pool
     self.expr_pool = expr_pool
     self.pattern_pool = pattern_pool
+    self.import_resolver = import_resolver
     self.output = StringBuilder(allocator)
     self.struct_decls = StringBuilder(allocator)
     self.func_decls = StringBuilder(allocator)
@@ -177,8 +174,6 @@ fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool:
     self.cur_method_is_init = false
     self.func_types = ArrayList<StrMapEntry>(allocator)
     self.var_types = ArrayList<StrMapEntry>(allocator)
-    self.loaded_modules = ArrayList<Str>(allocator)
-    self.cimport_headers = ArrayList<Str>(allocator)
     self.block_stack = ArrayList<Int>(allocator)
     self.generic_struct_decls = ArrayList<StrMapEntry>(allocator)
     self.generic_enum_decls = ArrayList<StrMapEntry>(allocator)
@@ -2273,6 +2268,14 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
             p_reg2 = p_reg2 + 1
         }
         
+        if stmt.func_body < 0 {
+            let proto = ret_type + " " + name + "(" + params_str + ");\n"
+            let _ = self.func_decls.append(proto)
+            self.cur_func_name = old_fn
+            self.cur_return_type = old_ret
+            self.cur_method_is_init = old_init
+            return ""
+        }
         var body_str = self.gen_stmt(stmt.func_body)
         
         while self.var_types.length() > old_var_len2 {
@@ -2302,24 +2305,6 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
     if stmt.kind == StmtKind.sk_struct_decl {
         if stmt.struct_type_params.length() > 0 {
             type_map_put(&self.generic_struct_decls, stmt.struct_name, int_to_str(stmt_idx))
-            return ""
-        }
-        let name = self.map_type(stmt.struct_name)
-        var struct_str = "typedef struct " + name + " " + name + ";\n"
-        struct_str = struct_str + "struct " + name + " {\n"
-        var i = 0
-        while i < stmt.struct_fields.length() {
-            let f = stmt.struct_fields.get(i)
-            struct_str = struct_str + "    " + self.map_type(f.ftype) + " " + f.name + ";\n"
-            i = i + 1
-        }
-        struct_str = struct_str + "};\n"
-        let _ = self.struct_decls.append(struct_str)
-        var ti = 0
-        while ti < stmt.struct_trait_impls.length() {
-            let impl_idx = stmt.struct_trait_impls.get(ti)
-            let _ = self.gen_stmt(impl_idx)
-            ti = ti + 1
         }
         return ""
     }
@@ -2833,112 +2818,11 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
     }
     
     if stmt.kind == StmtKind.sk_cimport {
-        let hdr = stmt.cimport_header
-        if strlist_find(&self.cimport_headers, hdr) < 0 {
-            self.cimport_headers.push(hdr)
-        }
+        self.import_resolver.record_cimport(stmt.cimport_header)
         return ""
     }
-    
-    if stmt.kind == StmtKind.sk_import {
-        let path = stmt.import_path
-        var module_key = ""
-        var pi = 0
-        while pi < path.length() {
-            if pi > 0 {
-                module_key = module_key + "."
-            }
-            module_key = module_key + path.get(pi)
-            pi = pi + 1
-        }
-        if module_key == "" {
-            return ""
-        }
-        if strlist_find(&self.loaded_modules, module_key) >= 0 {
-            return ""
-        }
-        self.loaded_modules.push(module_key)
 
-        var has_source = false
-        var source = ""
-        if path.length() > 0 && path.get(0) == "std" {
-            var path_str = ""
-            var i = 0
-            while i < path.length() {
-                if i > 0 {
-                    path_str = path_str + "/"
-                }
-                path_str = path_str + path.get(i)
-                i = i + 1
-            }
-            let rel_path = path_str + ".kai"
-            
-            // Try 1: Current working directory
-            let s1 = read_to_string(self.allocator, rel_path) catch |err| ""
-            if length(s1) > 0 {
-                source = s1
-                has_source = true
-            } else {
-                // Try 2: Relative to compiler executable path
-                unsafe {
-                    let buf = self.allocator.alloc(1024, 1) as *Char
-                    if get_exe_dir(buf, 1024) == 0 {
-                        let exe_dir = buf as Str
-                        let full_path = exe_dir + "/" + rel_path
-                        let parent_path = exe_dir + "/../" + rel_path
-                        let lib_path = exe_dir + "/../lib/kai/" + rel_path
-                        self.allocator.free(buf as *u8)
-                        
-                        let s2 = read_to_string(self.allocator, full_path) catch |err| ""
-                        if length(s2) > 0 {
-                            source = s2
-                            has_source = true
-                        } else {
-                            // Try 3: Relative to parent of executable path (e.g. bin/../std)
-                            let s3 = read_to_string(self.allocator, parent_path) catch |err| ""
-                            if length(s3) > 0 {
-                                source = s3
-                                has_source = true
-                            } else {
-                                // Try 4: Relative to ../lib/kai
-                                let s4 = read_to_string(self.allocator, lib_path) catch |err| ""
-                                if length(s4) > 0 {
-                                    source = s4
-                                    has_source = true
-                                }
-                            }
-                        }
-                    } else {
-                        self.allocator.free(buf as *u8)
-                    }
-                }
-            }
-        } else if path.length() > 0 {
-            let file_path = "src/" + module_key + ".kai"
-            let s = read_to_string(self.allocator, file_path) catch |err| ""
-            if length(s) > 0 {
-                source = s
-                has_source = true
-            }
-        }
-
-        if has_source {
-            var lexer = Lexer(self.allocator, source, "")
-            lexer.lex()
-            if lexer.has_error {
-                return ""
-            }
-            var parser = Parser.init_with_pools(self.allocator, "", lexer.tokens, self.expr_pool, self.stmt_pool, self.pattern_pool, source)
-            let program_idx = parser.parse_program()
-            if program_idx >= 0 {
-                self.build_func_types()
-                let _ = self.gen_stmt(program_idx)
-            }
-        } else if module_key != "" {
-            printf("warning: module '%s' not found at any search path\n", module_key)
-        }
-        return ""
-    }
+    if stmt.kind == StmtKind.sk_import { return "" }
     
     if stmt.kind == StmtKind.sk_break {
         let drop_calls = self._collect_loop_drops()
@@ -3226,9 +3110,130 @@ fn _collect_loop_drops(self) -> ArrayList<Str> {
     return drop_calls
 }
 
+fn emit_struct_body_with_deps(self, stmt_idx: Int, emitted: *ArrayList<Str>) -> Void {
+    let stmt = self.stmt_pool.get(stmt_idx)
+    if stmt.kind != StmtKind.sk_struct_decl { return }
+    if stmt.struct_type_params.length() > 0 { return }
+    let name = self.map_type(stmt.struct_name)
+    if strlist_find(emitted, name) >= 0 { return }
+    emitted.push(name)
+
+    // Ensure value-type dependencies are emitted first
+    var fi = 0
+    while fi < stmt.struct_fields.length() {
+        let f = stmt.struct_fields.get(fi)
+        let ftype = f.ftype
+        // Check if this is a value-type struct dependency
+        unsafe {
+            if length(ftype) > 0 && ftype[0] != Char(42) && ftype[0] != Char(38) {
+                var si = 0
+                while si < self.stmt_pool.length() {
+                    let s2 = self.stmt_pool.get(si)
+                    if s2.kind == StmtKind.sk_struct_decl && s2.struct_type_params.length() == 0 {
+                        if s2.struct_name == ftype {
+                            self.emit_struct_body_with_deps(si, emitted)
+                        }
+                    }
+                    si = si + 1
+                }
+            }
+        }
+        fi = fi + 1
+    }
+
+    // Now emit struct definition
+    var struct_str = "struct " + name + " {\n"
+    var i = 0
+    while i < stmt.struct_fields.length() {
+        let f = stmt.struct_fields.get(i)
+        struct_str = struct_str + "    " + self.map_type(f.ftype) + " " + f.name + ";\n"
+        i = i + 1
+    }
+    struct_str = struct_str + "};\n"
+    let _ = self.struct_decls.append(struct_str)
+
+    // Process trait impls
+    var ti = 0
+    while ti < stmt.struct_trait_impls.length() {
+        let impl_idx = stmt.struct_trait_impls.get(ti)
+        let _ = self.gen_stmt(impl_idx)
+        ti = ti + 1
+    }
+}
+
 fn generate(self, top_stmt_idx: Int) -> Str {
+    // Phase 1: Register all generic types first
+    var g_i = 0
+    while g_i < self.stmt_pool.length() {
+        let stmt = self.stmt_pool.get(g_i)
+        if stmt.kind == StmtKind.sk_struct_decl {
+            if stmt.struct_type_params.length() > 0 {
+                type_map_put(&self.generic_struct_decls, stmt.struct_name, int_to_str(g_i))
+            }
+        }
+        if stmt.kind == StmtKind.sk_enum_decl {
+            if stmt.enum_type_params.length() > 0 {
+                type_map_put(&self.generic_enum_decls, stmt.enum_name, int_to_str(g_i))
+            }
+        }
+        g_i = g_i + 1
+    }
+
+    // Pass 1a: Forward declare all non-generic structs
+    var fd_i = 0
+    while fd_i < self.stmt_pool.length() {
+        let stmt = self.stmt_pool.get(fd_i)
+        if stmt.kind == StmtKind.sk_struct_decl && stmt.struct_type_params.length() == 0 {
+            let name = self.map_type(stmt.struct_name)
+            let _ = self.struct_decls.append("typedef struct " + name + " " + name + ";\n")
+        }
+        fd_i = fd_i + 1
+    }
+
     self.build_func_types()
-    let body = self.gen_stmt(top_stmt_idx)
+
+    // Pass 1: Emit all non-generic structs, enums, errors
+    var emitted_structs = ArrayList<Str>(self.allocator)
+    var s_i = 0
+    while s_i < self.stmt_pool.length() {
+        let stmt = self.stmt_pool.get(s_i)
+        if stmt.kind == StmtKind.sk_struct_decl {
+            self.emit_struct_body_with_deps(s_i, &emitted_structs)
+        }
+        if stmt.kind == StmtKind.sk_enum_decl {
+            let _ = self.gen_stmt(s_i)
+        }
+        if stmt.kind == StmtKind.sk_error_decl {
+            let _ = self.gen_stmt(s_i)
+        }
+        s_i = s_i + 1
+    }
+
+    // Pass 2: Emit all non-generic functions, externs, impls
+    var f_i = 0
+    while f_i < self.stmt_pool.length() {
+        let stmt = self.stmt_pool.get(f_i)
+        if stmt.kind == StmtKind.sk_func_decl {
+            var has_self = false
+            var pi = 0
+            while pi < stmt.func_params.length() {
+                unsafe {
+                    if strcmp(stmt.func_params.get(pi).name, "self") == 0 { has_self = true }
+                }
+                pi = pi + 1
+            }
+            if !has_self && stmt.func_type_params.length() == 0 {
+                let _ = self.gen_stmt(f_i)
+            }
+        }
+        if stmt.kind == StmtKind.sk_extern {
+            let _ = self.gen_stmt(f_i)
+        }
+        if stmt.kind == StmtKind.sk_impl_block {
+            let _ = self.gen_stmt(f_i)
+        }
+        f_i = f_i + 1
+    }
 
     //== Assemble final C output
     var result = StringBuilder(self.allocator)
@@ -3319,8 +3324,8 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     //== Phase 4: User C FFI imports (non-baseline headers)
     var ci = 0
     var has_cimports = false
-    while ci < self.cimport_headers.length() {
-        let hdr = self.cimport_headers.get(ci)
+    while ci < self.import_resolver.cimport_headers.length() {
+        let hdr = self.import_resolver.cimport_headers.get(ci)
         var is_baseline = false
         if hdr == "stdint.h" { is_baseline = true }
         else if hdr == "stdbool.h" { is_baseline = true }
