@@ -1454,6 +1454,11 @@ CExprNode cexpr_new_bool(bool val);
 CExprNode cexpr_new_char(const char* val);
 CExprNode cexpr_new_unary(const char* op, int64_t operand, bool is_prefix);
 CExprNode cexpr_new_compound(CType t, ArrayList_Str compound_fs);
+CExprNode cexpr_new_field(int64_t base, const char* name);
+CExprNode cexpr_new_arrow(int64_t base, const char* name);
+CExprNode cexpr_new_index(int64_t base, int64_t idx_val);
+CExprNode cexpr_new_cast(CType t, int64_t cast_e);
+CExprNode cexpr_new_sizeof_type(CType t);
 CDeclNode cdecl_new_func(const char* name, const char* ret_type, ArrayList_Str params, bool is_extern, bool is_vararg);
 ArrayList_CExprNode ArrayList_CExprNode_init(KaiAllocator* allocator);
 void ArrayList_CExprNode_push(ArrayList_CExprNode* self, CExprNode item);
@@ -10676,6 +10681,31 @@ CExprNode cexpr_new_compound(CType t, ArrayList_Str compound_fs) {
     ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
     return (CExprNode){ .kind = CExprKind_ck_compound, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = t, .compound_fields = compound_fs, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
 }
+CExprNode cexpr_new_field(int64_t base, const char* name) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_field, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = base, .field_name = name, .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_arrow(int64_t base, const char* name) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_arrow, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = base, .field_name = name, .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_index(int64_t base, int64_t idx_val) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_index, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = base, .idx_index = idx_val, .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_cast(CType t, int64_t cast_e) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_cast, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = t, .cast_expr = cast_e, .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = ctype_void(), .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
+CExprNode cexpr_new_sizeof_type(CType t) {
+    ArrayList_Int args = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    ArrayList_Str fields = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
+    return (CExprNode){ .kind = CExprKind_ck_sizeof_type, .int_val = "", .float_val = "", .str_val = "", .char_val = "", .bool_val = false, .ident_name = "", .binop_left = (-1LL), .binop_right = (-1LL), .binop_op = "", .unop_operand = (-1LL), .unop_op = "", .is_prefix = false, .call_func = (-1LL), .call_args = args, .callee_name = "", .field_expr = (-1LL), .field_name = "", .idx_expr = (-1LL), .idx_index = (-1LL), .cast_type = ctype_void(), .cast_expr = (-1LL), .compound_type = ctype_void(), .compound_fields = fields, .tern_cond = (-1LL), .tern_then = (-1LL), .tern_else = (-1LL), .sizeof_type = t, .sizeof_expr = (-1LL), .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .comma_left = (-1LL), .comma_right = (-1LL), .stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) }, .stmt_result = (-1LL) };
+}
 CDeclNode cdecl_new_func(const char* name, const char* ret_type, ArrayList_Str params, bool is_extern, bool is_vararg) {
     ArrayList_Int empty_stmts = (ArrayList_Int){ .data = (int64_t*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
     ArrayList_Str empty_strs = (ArrayList_Str){ .data = (const char**)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
@@ -12908,7 +12938,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     ArrayList_Int_push(&(cmp_args), left_idx);
     ArrayList_Int_push(&(cmp_args), right_idx);
     int64_t cmp_idx = CodegenBuilder_push_expr(self, cexpr_new_call("strcmp", cmp_args));
-    int64_t zero_idx = CodegenBuilder_push_expr(self, cexpr_new_ident("0"));
+    int64_t zero_idx = CodegenBuilder_push_expr(self, cexpr_new_int("0"));
     return CodegenBuilder_push_expr(self, cexpr_new_binary(cmp_idx, "==", zero_idx));
 }
     if (strcmp(op, "!=") == 0) {
@@ -12916,7 +12946,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     ArrayList_Int_push(&(cmp_args), left_idx);
     ArrayList_Int_push(&(cmp_args), right_idx);
     int64_t cmp_idx = CodegenBuilder_push_expr(self, cexpr_new_call("strcmp", cmp_args));
-    int64_t zero_idx = CodegenBuilder_push_expr(self, cexpr_new_ident("0"));
+    int64_t zero_idx = CodegenBuilder_push_expr(self, cexpr_new_int("0"));
     return CodegenBuilder_push_expr(self, cexpr_new_binary(cmp_idx, "!=", zero_idx));
 }
 }
@@ -12935,40 +12965,58 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     if ((strcmp(name, "cast") == 0) || (strcmp(name, "as") == 0)) {
     const char* target_type = ArrayList_Str_get(&(expr.func_type_args), 0LL);
     if (strlen(target_type) > 0LL) {
-    const char* val = CodegenBuilder_gen_expr_str(self, ArrayList_Int_get(&(expr.func_args), 0LL));
+    int64_t arg_idx = CodegenBuilder_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0LL));
     const char* ctype = CodegenBuilder_map_type(self, target_type);
     const char* src_type = CodegenBuilder_get_expr_type(self, ArrayList_Int_get(&(expr.func_args), 0LL));
-    const char* cast_result = "";
+    CType ct = ctype_new(ctype, 0LL, false, false);
     if (CodegenBuilder_is_pointer_type(self, target_type) && (strcmp(src_type, "Int") == 0)) {
-    cast_result = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", ctype), ")(unsigned long long)("), val), "))");
-} else if ((strcmp(target_type, "Int") == 0) && CodegenBuilder_is_pointer_type(self, src_type)) {
-    cast_result = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", ctype), ")(unsigned long long)("), val), "))");
-} else {
-    cast_result = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", ctype), ")("), val), "))");
+    CType ull = ctype_new("unsigned long long", 0LL, false, false);
+    int64_t inner_cast = CodegenBuilder_push_expr(self, cexpr_new_cast(ull, arg_idx));
+    return CodegenBuilder_push_expr(self, cexpr_new_cast(ct, inner_cast));
 }
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(cast_result));
+    if ((strcmp(target_type, "Int") == 0) && CodegenBuilder_is_pointer_type(self, src_type)) {
+    CType ull = ctype_new("unsigned long long", 0LL, false, false);
+    int64_t inner_cast = CodegenBuilder_push_expr(self, cexpr_new_cast(ull, arg_idx));
+    return CodegenBuilder_push_expr(self, cexpr_new_cast(ct, inner_cast));
+}
+    return CodegenBuilder_push_expr(self, cexpr_new_cast(ct, arg_idx));
 }
     return CodegenBuilder_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0LL));
 }
     if ((strcmp(name, "sizeof") == 0) || (strcmp(name, "size_of") == 0)) {
     const char* target_type = ArrayList_Str_get(&(expr.func_type_args), 0LL);
     if (strlen(target_type) > 0LL) {
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("sizeof(", CodegenBuilder_map_type(self, target_type)), ")")));
+    const char* mapped = CodegenBuilder_map_type(self, target_type);
+    return CodegenBuilder_push_expr(self, cexpr_new_sizeof_type(ctype_new(mapped, 0LL, false, false)));
 }
     return CodegenBuilder_push_expr(self, cexpr_new_int("0"));
 }
     if ((((strcmp(name, "Int") == 0) || (strcmp(name, "Float") == 0)) || (strcmp(name, "Bool") == 0)) || (strcmp(name, "Char") == 0)) {
     if (ArrayList_Int_length(&(expr.func_args)) >= 1LL) {
-    const char* arg = CodegenBuilder_gen_expr_str(self, ArrayList_Int_get(&(expr.func_args), 0LL));
-    const char* ctype = "int64_t";
+    int64_t arg_idx = CodegenBuilder_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0LL));
+    const char* ctype_str = "int64_t";
     if (strcmp(name, "Float") == 0) {
-    ctype = "double";
+    ctype_str = "double";
 } else if (strcmp(name, "Bool") == 0) {
-    ctype = "bool";
+    ctype_str = "bool";
 } else if (strcmp(name, "Char") == 0) {
-    ctype = "char";
+    ctype_str = "char";
 }
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", ctype), ")("), arg), "))")));
+    const char* src_type = CodegenBuilder_get_expr_type(self, ArrayList_Int_get(&(expr.func_args), 0LL));
+    if ((strcmp(name, "Int") == 0) && (strcmp(src_type, "Int") == 0)) {
+    return arg_idx;
+}
+    if ((strcmp(name, "Bool") == 0) && (strcmp(src_type, "Bool") == 0)) {
+    return arg_idx;
+}
+    if ((strcmp(name, "Float") == 0) && (strcmp(src_type, "Float") == 0)) {
+    return arg_idx;
+}
+    if ((strcmp(name, "Char") == 0) && (strcmp(src_type, "Char") == 0)) {
+    return arg_idx;
+}
+    CType ct = ctype_new(ctype_str, 0LL, false, false);
+    return CodegenBuilder_push_expr(self, cexpr_new_cast(ct, arg_idx));
 }
     return CodegenBuilder_push_expr(self, cexpr_new_int("0"));
 }
@@ -13026,17 +13074,15 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     if (expr.kind == ExprKind_ek_index) {
     int64_t base_idx = CodegenBuilder_gen_expr(self, expr.idx_expr);
     int64_t idx_val_idx = CodegenBuilder_gen_expr(self, expr.idx_index);
-    const char* base_s = CodegenBuilder_expr_to_str(self, base_idx);
-    const char* idx_s = CodegenBuilder_expr_to_str(self, idx_val_idx);
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", base_s), ")["), idx_s), "]")));
+    return CodegenBuilder_push_expr(self, cexpr_new_index(base_idx, idx_val_idx));
 }
     if (expr.kind == ExprKind_ek_borrow) {
-    const char* inner_s = CodegenBuilder_gen_expr_str(self, expr.borrow_expr);
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("&(", inner_s), ")")));
+    int64_t operand_idx = CodegenBuilder_gen_expr(self, expr.borrow_expr);
+    return CodegenBuilder_push_expr(self, cexpr_new_unary("&", operand_idx, true));
 }
     if (expr.kind == ExprKind_ek_deref) {
-    const char* inner_s = CodegenBuilder_gen_expr_str(self, expr.deref_expr);
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("*(", inner_s), ")")));
+    int64_t operand_idx = CodegenBuilder_gen_expr(self, expr.deref_expr);
+    return CodegenBuilder_push_expr(self, cexpr_new_unary("*", operand_idx, true));
 }
     if (expr.kind == ExprKind_ek_field_access) {
     ExprNode base_node = ArrayList_ExprNode_get(self->expr_pool, expr.field_expr);
@@ -13081,22 +13127,18 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     ei = (ei + 1LL);
 }
 }
-    const char* base = CodegenBuilder_gen_expr_str(self, expr.field_expr);
+    int64_t base_idx = CodegenBuilder_gen_expr(self, expr.field_expr);
     const char* base_type = CodegenBuilder_get_expr_type(self, expr.field_expr);
-    const char* accessor = ".";
-    bool done_access = false;
-    while (!done_access) {
+    bool is_arrow = false;
     if ((strlen(base_type) > 0LL) && ((base_type)[0LL] == ((char)(42LL)))) {
-    accessor = "->";
-    done_access = true;
+    is_arrow = true;
 } else if ((strlen(base_type) > 4LL) && (strcmp(__kai_str_sub(base_type, 0LL, 4LL), "*mut ") == 0)) {
-    accessor = "->";
-    done_access = true;
-} else {
-    done_access = true;
+    is_arrow = true;
 }
+    if (is_arrow) {
+    return CodegenBuilder_push_expr(self, cexpr_new_arrow(base_idx, expr.field_name));
 }
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", base), ")"), accessor), expr.field_name)));
+    return CodegenBuilder_push_expr(self, cexpr_new_field(base_idx, expr.field_name));
 }
     if (expr.kind == ExprKind_ek_method_call) {
     ExprNode receiver_node = ArrayList_ExprNode_get(self->expr_pool, expr.meth_expr);

@@ -45,6 +45,11 @@ import cexpr_new_char from codegen_c_ast
 import cexpr_new_ident from codegen_c_ast
 import cexpr_new_binary from codegen_c_ast
 import cexpr_new_unary from codegen_c_ast
+import cexpr_new_field from codegen_c_ast
+import cexpr_new_arrow from codegen_c_ast
+import cexpr_new_index from codegen_c_ast
+import cexpr_new_cast from codegen_c_ast
+import cexpr_new_sizeof_type from codegen_c_ast
 import cexpr_new_compound from codegen_c_ast
 import cexpr_new_call from codegen_c_ast
 import cstmt_new_expr from codegen_c_ast
@@ -1408,7 +1413,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
                 cmp_args.push(left_idx)
                 cmp_args.push(right_idx)
                 let cmp_idx = self.push_expr(cexpr_new_call("strcmp", cmp_args))
-                let zero_idx = self.push_expr(cexpr_new_ident("0"))
+                let zero_idx = self.push_expr(cexpr_new_int("0"))
                 return self.push_expr(cexpr_new_binary(cmp_idx, "==", zero_idx))
             }
             if op == "!=" {
@@ -1416,7 +1421,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
                 cmp_args.push(left_idx)
                 cmp_args.push(right_idx)
                 let cmp_idx = self.push_expr(cexpr_new_call("strcmp", cmp_args))
-                let zero_idx = self.push_expr(cexpr_new_ident("0"))
+                let zero_idx = self.push_expr(cexpr_new_int("0"))
                 return self.push_expr(cexpr_new_binary(cmp_idx, "!=", zero_idx))
             }
         }
@@ -1439,36 +1444,54 @@ fn gen_expr(self, expr_idx: Int) -> Int {
         if name == "cast" || name == "as" {
             let target_type = expr.func_type_args.get(0)
             if strlen(target_type) > 0 {
-                let val = self.gen_expr_str(expr.func_args.get(0))
+                let arg_idx = self.gen_expr(expr.func_args.get(0))
                 let ctype = self.map_type(target_type)
                 let src_type = self.get_expr_type(expr.func_args.get(0))
-                var cast_result = ""
+                let ct = ctype_new(ctype, 0, false, false)
                 if self.is_pointer_type(target_type) && src_type == "Int" {
-                    cast_result = "((" + ctype + ")(unsigned long long)(" + val + "))"
-                } else if target_type == "Int" && self.is_pointer_type(src_type) {
-                    cast_result = "((" + ctype + ")(unsigned long long)(" + val + "))"
-                } else {
-                    cast_result = "((" + ctype + ")(" + val + "))"
+                    let ull = ctype_new("unsigned long long", 0, false, false)
+                    let inner_cast = self.push_expr(cexpr_new_cast(ull, arg_idx))
+                    return self.push_expr(cexpr_new_cast(ct, inner_cast))
                 }
-                return self.push_expr(cexpr_new_ident(cast_result))
+                if target_type == "Int" && self.is_pointer_type(src_type) {
+                    let ull = ctype_new("unsigned long long", 0, false, false)
+                    let inner_cast = self.push_expr(cexpr_new_cast(ull, arg_idx))
+                    return self.push_expr(cexpr_new_cast(ct, inner_cast))
+                }
+                return self.push_expr(cexpr_new_cast(ct, arg_idx))
             }
             return self.gen_expr(expr.func_args.get(0))
         }
         if name == "sizeof" || name == "size_of" {
             let target_type = expr.func_type_args.get(0)
             if strlen(target_type) > 0 {
-                return self.push_expr(cexpr_new_ident("sizeof(" + self.map_type(target_type) + ")"))
+                let mapped = self.map_type(target_type)
+                return self.push_expr(cexpr_new_sizeof_type(ctype_new(mapped, 0, false, false)))
             }
             return self.push_expr(cexpr_new_int("0"))
         }
         if name == "Int" || name == "Float" || name == "Bool" || name == "Char" {
             if expr.func_args.length() >= 1 {
-                let arg = self.gen_expr_str(expr.func_args.get(0))
-                var ctype = "int64_t"
-                if name == "Float" { ctype = "double" }
-                else if name == "Bool" { ctype = "bool" }
-                else if name == "Char" { ctype = "char" }
-                return self.push_expr(cexpr_new_ident("((" + ctype + ")(" + arg + "))"))
+                let arg_idx = self.gen_expr(expr.func_args.get(0))
+                var ctype_str = "int64_t"
+                if name == "Float" { ctype_str = "double" }
+                else if name == "Bool" { ctype_str = "bool" }
+                else if name == "Char" { ctype_str = "char" }
+                let src_type = self.get_expr_type(expr.func_args.get(0))
+                if name == "Int" && src_type == "Int" {
+                    return arg_idx
+                }
+                if name == "Bool" && src_type == "Bool" {
+                    return arg_idx
+                }
+                if name == "Float" && src_type == "Float" {
+                    return arg_idx
+                }
+                if name == "Char" && src_type == "Char" {
+                    return arg_idx
+                }
+                let ct = ctype_new(ctype_str, 0, false, false)
+                return self.push_expr(cexpr_new_cast(ct, arg_idx))
             }
             return self.push_expr(cexpr_new_int("0"))
         }
@@ -1527,21 +1550,19 @@ fn gen_expr(self, expr_idx: Int) -> Int {
     if expr.kind == ExprKind.ek_index {
         let base_idx = self.gen_expr(expr.idx_expr)
         let idx_val_idx = self.gen_expr(expr.idx_index)
-        let base_s = self.expr_to_str(base_idx)
-        let idx_s = self.expr_to_str(idx_val_idx)
-        return self.push_expr(cexpr_new_ident("(" + base_s + ")[" + idx_s + "]"))
+        return self.push_expr(cexpr_new_index(base_idx, idx_val_idx))
     }
 
     //== Borrow
     if expr.kind == ExprKind.ek_borrow {
-        let inner_s = self.gen_expr_str(expr.borrow_expr)
-        return self.push_expr(cexpr_new_ident("&(" + inner_s + ")"))
+        let operand_idx = self.gen_expr(expr.borrow_expr)
+        return self.push_expr(cexpr_new_unary("&", operand_idx, true))
     }
 
     //== Deref
     if expr.kind == ExprKind.ek_deref {
-        let inner_s = self.gen_expr_str(expr.deref_expr)
-        return self.push_expr(cexpr_new_ident("*(" + inner_s + ")"))
+        let operand_idx = self.gen_expr(expr.deref_expr)
+        return self.push_expr(cexpr_new_unary("*", operand_idx, true))
     }
 
     //== Field access
@@ -1586,16 +1607,15 @@ fn gen_expr(self, expr_idx: Int) -> Int {
                 ei = ei + 1
             }
         }
-        let base = self.gen_expr_str(expr.field_expr)
+        let base_idx = self.gen_expr(expr.field_expr)
         let base_type = self.get_expr_type(expr.field_expr)
-        var accessor = "."
-        var done_access = false
-        while !done_access {
-            if strlen(base_type) > 0 && base_type[0] == Char(42) { accessor = "->"; done_access = true }
-            else if strlen(base_type) > 4 && base_type[0..4] == "*mut " { accessor = "->"; done_access = true }
-            else { done_access = true }
+        var is_arrow = false
+        if strlen(base_type) > 0 && base_type[0] == Char(42) { is_arrow = true }
+        else if strlen(base_type) > 4 && base_type[0..4] == "*mut " { is_arrow = true }
+        if is_arrow {
+            return self.push_expr(cexpr_new_arrow(base_idx, expr.field_name))
         }
-        return self.push_expr(cexpr_new_ident("(" + base + ")" + accessor + expr.field_name))
+        return self.push_expr(cexpr_new_field(base_idx, expr.field_name))
     }
 
     //== Method call (complex, use pre-rendered ident)
