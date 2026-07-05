@@ -1567,14 +1567,24 @@ pub fn kai_fs_closedir(arg_handle: ?*anyopaque) callconv(.c) void {
     _ = closedir(kd.*.dir);
     free(@as(?*anyopaque, @ptrCast(kd)));
 }
+pub extern fn mmap(addr: ?*anyopaque, length: c_ulonglong, prot: c_int, flags: c_int, fd: c_int, offset: c_longlong) ?*anyopaque;
+pub extern fn munmap(addr: ?*anyopaque, length: c_ulonglong) c_int;
 pub threadlocal var _kai_current_allocator: ?*anyopaque = @as(?*anyopaque, @ptrFromInt(@as(c_int, 0)));
 pub fn _kai_set_current_allocator(arg_allocator: ?*anyopaque) callconv(.c) void {
     var allocator = arg_allocator;
     _ = &allocator;
     _kai_current_allocator = allocator;
 }
-pub extern fn mmap(addr: ?*anyopaque, length: c_ulonglong, prot: c_int, flags: c_int, fd: c_int, offset: c_longlong) ?*anyopaque;
-pub extern fn munmap(addr: ?*anyopaque, length: c_ulonglong) c_int;
+pub export fn __kai_print_int(arg_v: i64) void {
+    var v = arg_v;
+    _ = &v;
+    _ = printf("%lld\n", @as(c_longlong, @bitCast(v)));
+}
+pub export fn __kai_print_float(arg_v: f64) void {
+    var v = arg_v;
+    _ = &v;
+    _ = printf("%f\n", v);
+}
 pub fn _kai_mmap(arg_addr: [*c]u8, arg_length_1: i64, arg_prot: i64, arg_flags: i64, arg_fd: i64, arg_offset: i64) callconv(.c) [*c]u8 {
     var addr = arg_addr;
     _ = &addr;
@@ -1588,7 +1598,7 @@ pub fn _kai_mmap(arg_addr: [*c]u8, arg_length_1: i64, arg_prot: i64, arg_flags: 
     _ = &fd;
     var offset = arg_offset;
     _ = &offset;
-    return @as([*c]u8, @ptrCast(@alignCast(mmap(@as(?*anyopaque, @ptrCast(addr)), @as(c_ulonglong, @bitCast(length_1)), @as(c_int, @bitCast(@as(c_int, @truncate(prot)))), @as(c_int, @bitCast(@as(c_int, @truncate(flags)))), @as(c_int, @bitCast(@as(c_int, @truncate(fd)))), offset))));
+    return @as([*c]u8, @ptrCast(@alignCast(mmap(@as(?*anyopaque, @ptrCast(addr)), @as(c_ulonglong, @bitCast(length_1)), @as(c_int, @bitCast(@as(c_int, @truncate(prot)))), @as(c_int, 2) | @as(c_int, 4096), @as(c_int, @bitCast(@as(c_int, @truncate(fd)))), offset))));
 }
 pub fn _kai_munmap(arg_addr: [*c]u8, arg_length_1: i64) callconv(.c) i64 {
     var addr = arg_addr;
@@ -1596,6 +1606,13 @@ pub fn _kai_munmap(arg_addr: [*c]u8, arg_length_1: i64) callconv(.c) i64 {
     var length_1 = arg_length_1;
     _ = &length_1;
     return @as(i64, @bitCast(@as(c_longlong, munmap(@as(?*anyopaque, @ptrCast(addr)), @as(c_ulonglong, @bitCast(length_1))))));
+}
+pub export fn __kai_panic(arg_msg: [*c]const u8) void {
+    var msg = arg_msg;
+    _ = &msg;
+    _ = fprintf(__stderrp, "KAI PANIC: %s\n", msg);
+    _ = fflush(__stderrp);
+    abort();
 }
 pub const struct_CAlloc = extern struct {
     dummy: i64 = @import("std").mem.zeroes(i64),
@@ -1674,59 +1691,60 @@ pub const TokenType_FROM: c_int = 29;
 pub const TokenType_AS: c_int = 30;
 pub const TokenType_SIZEOF: c_int = 31;
 pub const TokenType_DEFER: c_int = 32;
-pub const TokenType_NONE: c_int = 33;
-pub const TokenType_FN: c_int = 34;
-pub const TokenType_TRY: c_int = 35;
-pub const TokenType_CATCH: c_int = 36;
-pub const TokenType_OWN: c_int = 37;
-pub const TokenType_ERROR: c_int = 38;
-pub const TokenType_ASM: c_int = 39;
-pub const TokenType_VOLATILE: c_int = 40;
-pub const TokenType_PLUS: c_int = 41;
-pub const TokenType_MINUS: c_int = 42;
-pub const TokenType_MUL: c_int = 43;
-pub const TokenType_DIV: c_int = 44;
-pub const TokenType_MOD: c_int = 45;
-pub const TokenType_ASSIGN: c_int = 46;
-pub const TokenType_PLUS_ASSIGN: c_int = 47;
-pub const TokenType_MINUS_ASSIGN: c_int = 48;
-pub const TokenType_AND: c_int = 49;
-pub const TokenType_OR: c_int = 50;
-pub const TokenType_NOT: c_int = 51;
-pub const TokenType_PIPE: c_int = 52;
-pub const TokenType_BITXOR: c_int = 53;
-pub const TokenType_BITNOT: c_int = 54;
-pub const TokenType_LSHIFT: c_int = 55;
-pub const TokenType_RSHIFT: c_int = 56;
-pub const TokenType_EQ: c_int = 57;
-pub const TokenType_NE: c_int = 58;
-pub const TokenType_LT: c_int = 59;
-pub const TokenType_LE: c_int = 60;
-pub const TokenType_GT: c_int = 61;
-pub const TokenType_GE: c_int = 62;
-pub const TokenType_COLON: c_int = 63;
-pub const TokenType_ARROW: c_int = 64;
-pub const TokenType_FAT_ARROW: c_int = 65;
-pub const TokenType_COMMA: c_int = 66;
-pub const TokenType_LPAREN: c_int = 67;
-pub const TokenType_RPAREN: c_int = 68;
-pub const TokenType_LBRACKET: c_int = 69;
-pub const TokenType_RBRACKET: c_int = 70;
-pub const TokenType_LBRACE: c_int = 71;
-pub const TokenType_RBRACE: c_int = 72;
-pub const TokenType_DOTDOT: c_int = 73;
-pub const TokenType_DOTDOTEQ: c_int = 74;
-pub const TokenType_DOT: c_int = 75;
-pub const TokenType_AMP: c_int = 76;
-pub const TokenType_HASH: c_int = 77;
-pub const TokenType_QUESTION: c_int = 78;
-pub const TokenType_SEMICOLON: c_int = 79;
-pub const TokenType_BREAK: c_int = 80;
-pub const TokenType_CONTINUE: c_int = 81;
-pub const TokenType_NEWLINE: c_int = 82;
-pub const TokenType_INDENT: c_int = 83;
-pub const TokenType_DEDENT: c_int = 84;
-pub const TokenType_EOF: c_int = 85;
+pub const TokenType_ERRDEFER: c_int = 33;
+pub const TokenType_NONE: c_int = 34;
+pub const TokenType_FN: c_int = 35;
+pub const TokenType_TRY: c_int = 36;
+pub const TokenType_CATCH: c_int = 37;
+pub const TokenType_OWN: c_int = 38;
+pub const TokenType_ERROR: c_int = 39;
+pub const TokenType_ASM: c_int = 40;
+pub const TokenType_VOLATILE: c_int = 41;
+pub const TokenType_PLUS: c_int = 42;
+pub const TokenType_MINUS: c_int = 43;
+pub const TokenType_MUL: c_int = 44;
+pub const TokenType_DIV: c_int = 45;
+pub const TokenType_MOD: c_int = 46;
+pub const TokenType_ASSIGN: c_int = 47;
+pub const TokenType_PLUS_ASSIGN: c_int = 48;
+pub const TokenType_MINUS_ASSIGN: c_int = 49;
+pub const TokenType_AND: c_int = 50;
+pub const TokenType_OR: c_int = 51;
+pub const TokenType_NOT: c_int = 52;
+pub const TokenType_PIPE: c_int = 53;
+pub const TokenType_BITXOR: c_int = 54;
+pub const TokenType_BITNOT: c_int = 55;
+pub const TokenType_LSHIFT: c_int = 56;
+pub const TokenType_RSHIFT: c_int = 57;
+pub const TokenType_EQ: c_int = 58;
+pub const TokenType_NE: c_int = 59;
+pub const TokenType_LT: c_int = 60;
+pub const TokenType_LE: c_int = 61;
+pub const TokenType_GT: c_int = 62;
+pub const TokenType_GE: c_int = 63;
+pub const TokenType_COLON: c_int = 64;
+pub const TokenType_ARROW: c_int = 65;
+pub const TokenType_FAT_ARROW: c_int = 66;
+pub const TokenType_COMMA: c_int = 67;
+pub const TokenType_LPAREN: c_int = 68;
+pub const TokenType_RPAREN: c_int = 69;
+pub const TokenType_LBRACKET: c_int = 70;
+pub const TokenType_RBRACKET: c_int = 71;
+pub const TokenType_LBRACE: c_int = 72;
+pub const TokenType_RBRACE: c_int = 73;
+pub const TokenType_DOTDOT: c_int = 74;
+pub const TokenType_DOTDOTEQ: c_int = 75;
+pub const TokenType_DOT: c_int = 76;
+pub const TokenType_AMP: c_int = 77;
+pub const TokenType_HASH: c_int = 78;
+pub const TokenType_QUESTION: c_int = 79;
+pub const TokenType_SEMICOLON: c_int = 80;
+pub const TokenType_BREAK: c_int = 81;
+pub const TokenType_CONTINUE: c_int = 82;
+pub const TokenType_NEWLINE: c_int = 83;
+pub const TokenType_INDENT: c_int = 84;
+pub const TokenType_DEDENT: c_int = 85;
+pub const TokenType_EOF: c_int = 86;
 pub const TokenType = c_uint;
 pub const TokenValue_tv_none_TAG: c_int = 0;
 pub const TokenValue_tv_int_TAG: c_int = 1;
@@ -1786,6 +1804,7 @@ pub const ArrayList_Int = struct_ArrayList_Int;
 pub const struct_Lexer = extern struct {
     allocator: [*c]KaiAllocator = @import("std").mem.zeroes([*c]KaiAllocator),
     source: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
+    source_file: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     source_len: i64 = @import("std").mem.zeroes(i64),
     cursor: i64 = @import("std").mem.zeroes(i64),
     line: i64 = @import("std").mem.zeroes(i64),
@@ -1923,6 +1942,8 @@ pub const struct_ArrayList_AsmInput = extern struct {
 pub const ArrayList_AsmInput = struct_ArrayList_AsmInput;
 pub const struct_ExprNode = extern struct {
     kind: ExprKind = @import("std").mem.zeroes(ExprKind),
+    line: i64 = @import("std").mem.zeroes(i64),
+    col: i64 = @import("std").mem.zeroes(i64),
     inferred_type: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     lit_value: TokenValue = @import("std").mem.zeroes(TokenValue),
     lit_vkind: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
@@ -1987,14 +2008,15 @@ pub const StmtKind_sk_return: c_int = 13;
 pub const StmtKind_sk_print: c_int = 14;
 pub const StmtKind_sk_expr: c_int = 15;
 pub const StmtKind_sk_defer: c_int = 16;
-pub const StmtKind_sk_unsafe: c_int = 17;
-pub const StmtKind_sk_extern: c_int = 18;
-pub const StmtKind_sk_import: c_int = 19;
-pub const StmtKind_sk_cimport: c_int = 20;
-pub const StmtKind_sk_match: c_int = 21;
-pub const StmtKind_sk_error_decl: c_int = 22;
-pub const StmtKind_sk_break: c_int = 23;
-pub const StmtKind_sk_continue: c_int = 24;
+pub const StmtKind_sk_errdefer: c_int = 17;
+pub const StmtKind_sk_unsafe: c_int = 18;
+pub const StmtKind_sk_extern: c_int = 19;
+pub const StmtKind_sk_import: c_int = 20;
+pub const StmtKind_sk_cimport: c_int = 21;
+pub const StmtKind_sk_match: c_int = 22;
+pub const StmtKind_sk_error_decl: c_int = 23;
+pub const StmtKind_sk_break: c_int = 24;
+pub const StmtKind_sk_continue: c_int = 25;
 pub const StmtKind = c_uint;
 pub const struct_ArrayList_StructField = extern struct {
     data: [*c]StructField = @import("std").mem.zeroes([*c]StructField),
@@ -2026,6 +2048,8 @@ pub const struct_ArrayList_MatchCase = extern struct {
 pub const ArrayList_MatchCase = struct_ArrayList_MatchCase;
 pub const struct_StmtNode = extern struct {
     kind: StmtKind = @import("std").mem.zeroes(StmtKind),
+    line: i64 = @import("std").mem.zeroes(i64),
+    col: i64 = @import("std").mem.zeroes(i64),
     block_stmts: ArrayList_Int = @import("std").mem.zeroes(ArrayList_Int),
     vardecl_name: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     vardecl_type: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
@@ -2075,6 +2099,7 @@ pub const struct_StmtNode = extern struct {
     print_value: i64 = @import("std").mem.zeroes(i64),
     expr_stmt: i64 = @import("std").mem.zeroes(i64),
     defer_body: i64 = @import("std").mem.zeroes(i64),
+    errdefer_body: i64 = @import("std").mem.zeroes(i64),
     unsafe_body: i64 = @import("std").mem.zeroes(i64),
     extern_name: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     extern_params: ArrayList_Param = @import("std").mem.zeroes(ArrayList_Param),
@@ -2114,6 +2139,7 @@ pub const struct_ArrayList_PatternNode = extern struct {
 pub const ArrayList_PatternNode = struct_ArrayList_PatternNode;
 pub const struct_Parser = extern struct {
     allocator: [*c]KaiAllocator = @import("std").mem.zeroes([*c]KaiAllocator),
+    source_file: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     tokens: [*c]ArrayList_Token = @import("std").mem.zeroes([*c]ArrayList_Token),
     cursor: i64 = @import("std").mem.zeroes(i64),
     pending_gt: bool = @import("std").mem.zeroes(bool),
@@ -2183,6 +2209,7 @@ pub const struct_TypeChecker = extern struct {
     current_func_ret_type: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     source_file: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     has_any_import: bool = @import("std").mem.zeroes(bool),
+    loop_depth: i64 = @import("std").mem.zeroes(i64),
 };
 pub const TypeChecker = struct_TypeChecker;
 pub const struct_StrMapEntry = extern struct {
@@ -2226,6 +2253,61 @@ pub const struct_Codegen = extern struct {
     func_param_types: ArrayList_StrMapEntry = @import("std").mem.zeroes(ArrayList_StrMapEntry),
 };
 pub const Codegen = struct_Codegen;
+pub const struct_CCodeBuilder = extern struct {
+    alloc: [*c]KaiAllocator = @import("std").mem.zeroes([*c]KaiAllocator),
+    lines: ArrayList_Str = @import("std").mem.zeroes(ArrayList_Str),
+    indent_level: i64 = @import("std").mem.zeroes(i64),
+};
+pub const CCodeBuilder = struct_CCodeBuilder;
+pub const struct_StrBuf = extern struct {
+    alloc: [*c]KaiAllocator = @import("std").mem.zeroes([*c]KaiAllocator),
+    parts: ArrayList_Str = @import("std").mem.zeroes(ArrayList_Str),
+};
+pub const StrBuf = struct_StrBuf;
+pub const struct_CgbMapEntry = extern struct {
+    key: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
+    value: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
+};
+pub const CgbMapEntry = struct_CgbMapEntry;
+pub const struct_ArrayList_CgbMapEntry = extern struct {
+    data: [*c]CgbMapEntry = @import("std").mem.zeroes([*c]CgbMapEntry),
+    len: i64 = @import("std").mem.zeroes(i64),
+    cap: i64 = @import("std").mem.zeroes(i64),
+    allocator: [*c]KaiAllocator = @import("std").mem.zeroes([*c]KaiAllocator),
+};
+pub const ArrayList_CgbMapEntry = struct_ArrayList_CgbMapEntry;
+pub const struct_CodegenBuilder = extern struct {
+    allocator: [*c]KaiAllocator = @import("std").mem.zeroes([*c]KaiAllocator),
+    stmt_pool: [*c]ArrayList_StmtNode = @import("std").mem.zeroes([*c]ArrayList_StmtNode),
+    expr_pool: [*c]ArrayList_ExprNode = @import("std").mem.zeroes([*c]ArrayList_ExprNode),
+    pattern_pool: [*c]ArrayList_PatternNode = @import("std").mem.zeroes([*c]ArrayList_PatternNode),
+    builder: CCodeBuilder = @import("std").mem.zeroes(CCodeBuilder),
+    struct_decls: StrBuf = @import("std").mem.zeroes(StrBuf),
+    func_decls: StrBuf = @import("std").mem.zeroes(StrBuf),
+    output_body: StrBuf = @import("std").mem.zeroes(StrBuf),
+    cur_func_name: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
+    cur_return_type: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
+    cur_method_is_init: bool = @import("std").mem.zeroes(bool),
+    func_types: ArrayList_CgbMapEntry = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+    var_types: ArrayList_CgbMapEntry = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+    loaded_modules: ArrayList_Str = @import("std").mem.zeroes(ArrayList_Str),
+    cimport_headers: ArrayList_Str = @import("std").mem.zeroes(ArrayList_Str),
+    block_stack: ArrayList_Int = @import("std").mem.zeroes(ArrayList_Int),
+    generic_struct_decls: ArrayList_CgbMapEntry = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+    generic_enum_decls: ArrayList_CgbMapEntry = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+    generic_func_decls: ArrayList_CgbMapEntry = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+    generic_impl_blocks: ArrayList_CgbMapEntry = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+    monomorphized_types: ArrayList_Str = @import("std").mem.zeroes(ArrayList_Str),
+    current_type_map: ArrayList_CgbMapEntry = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+    enum_decls: ArrayList_CgbMapEntry = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+    result_definitions: ArrayList_Str = @import("std").mem.zeroes(ArrayList_Str),
+    defer_stack: ArrayList_Int = @import("std").mem.zeroes(ArrayList_Int),
+    defer_depths: ArrayList_Int = @import("std").mem.zeroes(ArrayList_Int),
+    func_param_types: ArrayList_CgbMapEntry = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+    type_defs: StrBuf = @import("std").mem.zeroes(StrBuf),
+    monomorphized_bodies: StrBuf = @import("std").mem.zeroes(StrBuf),
+};
+pub const CodegenBuilder = struct_CodegenBuilder;
 pub const struct_ErrorInfo = extern struct {
     code: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     title: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
@@ -2268,7 +2350,7 @@ pub export fn CAlloc_alloc(arg_self: [*c]CAlloc, arg_size: i64, arg_alignment: i
     var alignment = arg_alignment;
     _ = &alignment;
     {
-        return @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, @truncate(size))))))));
+        return @as([*c]u8, @ptrCast(@alignCast(malloc(@as(usize, @bitCast(@as(c_long, @truncate(size))))))));
     }
 }
 pub export fn CAlloc_realloc(arg_self: [*c]CAlloc, arg_ptr: [*c]u8, arg_old_size: i64, arg_new_size: i64, arg_alignment: i64) [*c]u8 {
@@ -2283,7 +2365,7 @@ pub export fn CAlloc_realloc(arg_self: [*c]CAlloc, arg_ptr: [*c]u8, arg_old_size
     var alignment = arg_alignment;
     _ = &alignment;
     {
-        return @as([*c]u8, @ptrCast(@alignCast(realloc(@as(?*anyopaque, @ptrCast(ptr)), @as(c_ulong, @bitCast(@as(c_long, @truncate(new_size))))))));
+        return @as([*c]u8, @ptrCast(@alignCast(realloc(@as(?*anyopaque, @ptrCast(ptr)), @as(usize, @bitCast(@as(c_long, @truncate(new_size))))))));
     }
 }
 pub export fn CAlloc_free(arg_self: [*c]CAlloc, arg_ptr: [*c]u8) void {
@@ -2651,6 +2733,15 @@ pub export fn KaiAllocator_deinit(arg_self: [*c]KaiAllocator) void {
         _ = _kai_munmap(self.*.heads, page_align_up(@as(c_longlong, 96)));
     }
 }
+pub export fn KaiAllocator_new() KaiAllocator {
+    var a: KaiAllocator = KaiAllocator{
+        .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .used = @as(c_longlong, 0),
+    };
+    _ = &a;
+    a = KaiAllocator_init();
+    return a;
+}
 pub export fn read_to_string(arg_allocator: [*c]KaiAllocator, arg_path: [*c]const u8) Result_Str_IoError {
     var allocator = arg_allocator;
     _ = &allocator;
@@ -2669,7 +2760,7 @@ pub export fn read_to_string(arg_allocator: [*c]KaiAllocator, arg_path: [*c]cons
         var size: i64 = @as(i64, @bitCast(@as(c_longlong, ftell(@as([*c]FILE, @ptrCast(@alignCast(file)))))));
         _ = &size;
         rewind(@as([*c]FILE, @ptrCast(@alignCast(file))));
-        var buf: [*c]u8 = KaiAllocator_alloc(allocator, size + @as(c_longlong, 1), @as(c_longlong, 1));
+        var buf: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, size + @as(c_longlong, 1), @as(c_longlong, 1)))));
         _ = &buf;
         var bytes_read: i64 = @as(i64, @bitCast(@as(c_ulonglong, fread(@as(?*anyopaque, @ptrCast(buf)), @as(c_ulong, @bitCast(@as(c_long, @truncate(@as(c_longlong, 1))))), @as(c_ulong, @bitCast(@as(c_long, @truncate(size)))), @as([*c]FILE, @ptrCast(@alignCast(file)))))));
         _ = &bytes_read;
@@ -2776,7 +2867,7 @@ pub export fn StringBuilder_init(arg_allocator: [*c]KaiAllocator) StringBuilder 
     self.cap = 16;
     self.allocator = allocator;
     {
-        self.data = KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(u8)))))), @as(c_longlong, 1));
+        self.data = @as([*c]u8, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(u8)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -2789,7 +2880,7 @@ pub export fn StringBuilder_append_char(arg_self: [*c]StringBuilder, arg_c: u8) 
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]u8 = KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(u8)))))), @as(c_longlong, 1));
+            var new_data: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(u8)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -2803,7 +2894,7 @@ pub export fn StringBuilder_append_char(arg_self: [*c]StringBuilder, arg_c: u8) 
                 }).*;
                 i = i + @as(c_longlong, 1);
             }
-            KaiAllocator_free(self.*.allocator, self.*.data);
+            KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
             self.*.data = new_data;
             self.*.cap = new_cap;
         }
@@ -2852,7 +2943,7 @@ pub export fn StringBuilder_deinit(arg_self: [*c]StringBuilder) void {
     var self = arg_self;
     _ = &self;
     {
-        KaiAllocator_free(self.*.allocator, self.*.data);
+        KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
     }
 }
 pub export fn int_to_str(arg_n: i64) [*c]const u8 {
@@ -2929,7 +3020,7 @@ pub export fn substring(arg_s: [*c]const u8, arg_start: i64, arg_end: i64) [*c]c
             real_start = 0;
         }
         if (real_start >= real_end) {
-            var empty: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, @truncate(@as(c_longlong, 1)))))))));
+            var empty: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(usize, @bitCast(@as(c_long, @truncate(@as(c_longlong, 1)))))))));
             _ = &empty;
             if (empty != @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
                 empty[@as(usize, @intCast(@as(c_longlong, 0)))] = @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 0)))));
@@ -2938,7 +3029,7 @@ pub export fn substring(arg_s: [*c]const u8, arg_start: i64, arg_end: i64) [*c]c
         }
         var sub_len: i64 = real_end - real_start;
         _ = &sub_len;
-        var buf: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, @truncate(sub_len + @as(c_longlong, 1)))))))));
+        var buf: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(usize, @bitCast(@as(c_long, @truncate(sub_len + @as(c_longlong, 1)))))))));
         _ = &buf;
         if (buf != @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
             var i: i64 = 0;
@@ -3022,6 +3113,8 @@ pub export fn keyword_type(arg_ident: [*c]const u8) TokenType {
         return @as(c_uint, @bitCast(TokenType_SIZEOF));
     } else if (strcmp(ident, "defer") == @as(c_int, 0)) {
         return @as(c_uint, @bitCast(TokenType_DEFER));
+    } else if (strcmp(ident, "errdefer") == @as(c_int, 0)) {
+        return @as(c_uint, @bitCast(TokenType_ERRDEFER));
     } else if (strcmp(ident, "none") == @as(c_int, 0)) {
         return @as(c_uint, @bitCast(TokenType_NONE));
     } else if (strcmp(ident, "try") == @as(c_int, 0)) {
@@ -3093,7 +3186,7 @@ pub export fn ArrayList_Token_init(arg_allocator: [*c]KaiAllocator) ArrayList_To
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]Token, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Token)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]Token, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(Token)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -3106,7 +3199,7 @@ pub export fn ArrayList_Token_push(arg_self: [*c]ArrayList_Token, arg_item: Toke
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]Token = @as([*c]Token, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Token)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]Token = @as([*c]Token, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(Token)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -3203,7 +3296,7 @@ pub export fn ArrayList_Int_init(arg_allocator: [*c]KaiAllocator) ArrayList_Int 
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]i64, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(i64)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]i64, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(i64)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -3216,7 +3309,7 @@ pub export fn ArrayList_Int_push(arg_self: [*c]ArrayList_Int, arg_item: i64) voi
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]i64 = @as([*c]i64, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(i64)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]i64 = @as([*c]i64, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(i64)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -3299,14 +3392,17 @@ pub export fn ArrayList_Int_deinit(arg_self: [*c]ArrayList_Int) void {
         KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
     }
 }
-pub export fn Lexer_init(arg_allocator: [*c]KaiAllocator, arg_source: [*c]const u8) Lexer {
+pub export fn Lexer_init(arg_allocator: [*c]KaiAllocator, arg_source: [*c]const u8, arg_source_file: [*c]const u8) Lexer {
     var allocator = arg_allocator;
     _ = &allocator;
     var source = arg_source;
     _ = &source;
+    var source_file = arg_source_file;
+    _ = &source_file;
     var self: Lexer = Lexer{
         .allocator = null,
         .source = null,
+        .source_file = null,
         .source_len = @import("std").mem.zeroes(i64),
         .cursor = @import("std").mem.zeroes(i64),
         .line = @import("std").mem.zeroes(i64),
@@ -3326,6 +3422,7 @@ pub export fn Lexer_init(arg_allocator: [*c]KaiAllocator, arg_source: [*c]const 
     self.paren_depth = 0;
     self.brace_depth = 0;
     self.has_error = @as(c_int, 0) != 0;
+    self.source_file = source_file;
     {
         self.tokens = @as([*c]ArrayList_Token, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ArrayList_Token)))), @as(c_longlong, 1)))));
         self.indent_stack = @as([*c]ArrayList_Int, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ArrayList_Int)))), @as(c_longlong, 1)))));
@@ -3392,7 +3489,7 @@ pub export fn Lexer_lex_error(arg_self: [*c]Lexer, arg_msg: [*c]const u8) void {
     _ = &self;
     var msg = arg_msg;
     _ = &msg;
-    _ = printf("error[E0100]: %s at line %lld, column %lld\n", msg, self.*.line, self.*.column);
+    _ = printf("%s:%ld:%ld: error[E0100]: %s\n", self.*.source_file, self.*.line, self.*.column, msg);
     self.*.has_error = @as(c_int, 1) != 0;
 }
 pub export fn Lexer_skip_line_comment(arg_self: [*c]Lexer) void {
@@ -4180,7 +4277,7 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 });
             } else {
                 _ = Lexer_advance(self);
-                _ = printf("error[E0100]: unexpected character '%c' at line %lld, column %lld\n", @as(c_int, @bitCast(@as(c_uint, c))), self.*.line, self.*.column);
+                _ = printf("%s:%ld:%ld: error[E0100]: unexpected character '%c'\n", self.*.source_file, self.*.line, self.*.column, @as(c_int, @bitCast(@as(c_uint, c))));
                 self.*.has_error = @as(c_int, 1) != 0;
             }
         }
@@ -4207,12 +4304,12 @@ pub export fn print_separator() void {
 pub export fn printi(arg_i: i64) void {
     var i = arg_i;
     _ = &i;
-    _ = printf("%lld\n", i);
+    __kai_print_int(i);
 }
 pub export fn printff(arg_f: f64) void {
     var f = arg_f;
     _ = &f;
-    _ = printf("%f\n", f);
+    __kai_print_float(f);
 }
 pub export fn prints(arg_s: [*c]const u8) void {
     var s = arg_s;
@@ -4238,7 +4335,7 @@ pub export fn ArrayList_Param_init(arg_allocator: [*c]KaiAllocator) ArrayList_Pa
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]Param, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Param)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]Param, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(Param)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -4251,7 +4348,7 @@ pub export fn ArrayList_Param_push(arg_self: [*c]ArrayList_Param, arg_item: Para
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]Param = @as([*c]Param, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Param)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]Param = @as([*c]Param, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(Param)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -4348,7 +4445,7 @@ pub export fn ArrayList_Str_init(arg_allocator: [*c]KaiAllocator) ArrayList_Str 
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c][*c]const u8, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf([*c]const u8)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c][*c]const u8, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf([*c]const u8)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -4361,7 +4458,7 @@ pub export fn ArrayList_Str_push(arg_self: [*c]ArrayList_Str, arg_item: [*c]cons
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c][*c]const u8 = @as([*c][*c]const u8, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf([*c]const u8)))))), @as(c_longlong, 1)))));
+            var new_data: [*c][*c]const u8 = @as([*c][*c]const u8, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf([*c]const u8)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -4458,7 +4555,7 @@ pub export fn ArrayList_StrInterpPart_init(arg_allocator: [*c]KaiAllocator) Arra
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]StrInterpPart, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StrInterpPart)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]StrInterpPart, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(StrInterpPart)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -4471,7 +4568,7 @@ pub export fn ArrayList_StrInterpPart_push(arg_self: [*c]ArrayList_StrInterpPart
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]StrInterpPart = @as([*c]StrInterpPart, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StrInterpPart)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]StrInterpPart = @as([*c]StrInterpPart, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(StrInterpPart)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -4568,7 +4665,7 @@ pub export fn ArrayList_FieldInit_init(arg_allocator: [*c]KaiAllocator) ArrayLis
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]FieldInit, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(FieldInit)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]FieldInit, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(FieldInit)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -4581,7 +4678,7 @@ pub export fn ArrayList_FieldInit_push(arg_self: [*c]ArrayList_FieldInit, arg_it
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]FieldInit = @as([*c]FieldInit, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(FieldInit)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]FieldInit = @as([*c]FieldInit, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(FieldInit)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -4678,7 +4775,7 @@ pub export fn ArrayList_AsmOutput_init(arg_allocator: [*c]KaiAllocator) ArrayLis
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]AsmOutput, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(AsmOutput)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]AsmOutput, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(AsmOutput)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -4691,7 +4788,7 @@ pub export fn ArrayList_AsmOutput_push(arg_self: [*c]ArrayList_AsmOutput, arg_it
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]AsmOutput = @as([*c]AsmOutput, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(AsmOutput)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]AsmOutput = @as([*c]AsmOutput, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(AsmOutput)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -4788,7 +4885,7 @@ pub export fn ArrayList_AsmInput_init(arg_allocator: [*c]KaiAllocator) ArrayList
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]AsmInput, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(AsmInput)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]AsmInput, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(AsmInput)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -4801,7 +4898,7 @@ pub export fn ArrayList_AsmInput_push(arg_self: [*c]ArrayList_AsmInput, arg_item
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]AsmInput = @as([*c]AsmInput, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(AsmInput)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]AsmInput = @as([*c]AsmInput, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(AsmInput)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -4898,7 +4995,7 @@ pub export fn ArrayList_StructField_init(arg_allocator: [*c]KaiAllocator) ArrayL
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]StructField, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StructField)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]StructField, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(StructField)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -4911,7 +5008,7 @@ pub export fn ArrayList_StructField_push(arg_self: [*c]ArrayList_StructField, ar
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]StructField = @as([*c]StructField, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StructField)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]StructField = @as([*c]StructField, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(StructField)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -5008,7 +5105,7 @@ pub export fn ArrayList_Variant_init(arg_allocator: [*c]KaiAllocator) ArrayList_
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]Variant, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Variant)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]Variant, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(Variant)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -5021,7 +5118,7 @@ pub export fn ArrayList_Variant_push(arg_self: [*c]ArrayList_Variant, arg_item: 
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]Variant = @as([*c]Variant, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Variant)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]Variant = @as([*c]Variant, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(Variant)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -5118,7 +5215,7 @@ pub export fn ArrayList_DropVarEntry_init(arg_allocator: [*c]KaiAllocator) Array
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]DropVarEntry, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(DropVarEntry)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]DropVarEntry, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(DropVarEntry)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -5131,7 +5228,7 @@ pub export fn ArrayList_DropVarEntry_push(arg_self: [*c]ArrayList_DropVarEntry, 
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]DropVarEntry = @as([*c]DropVarEntry, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(DropVarEntry)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]DropVarEntry = @as([*c]DropVarEntry, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(DropVarEntry)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -5228,7 +5325,7 @@ pub export fn ArrayList_MatchCase_init(arg_allocator: [*c]KaiAllocator) ArrayLis
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]MatchCase, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(MatchCase)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]MatchCase, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(MatchCase)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -5241,7 +5338,7 @@ pub export fn ArrayList_MatchCase_push(arg_self: [*c]ArrayList_MatchCase, arg_it
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]MatchCase = @as([*c]MatchCase, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(MatchCase)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]MatchCase = @as([*c]MatchCase, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(MatchCase)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -5412,11 +5509,17 @@ pub export fn empty_asminput_array() ArrayList_AsmInput {
         .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
     };
 }
-pub export fn new_expr_node(arg_kind: ExprKind) ExprNode {
+pub export fn new_expr_node(arg_kind: ExprKind, arg_line: i64, arg_col: i64) ExprNode {
     var kind = arg_kind;
     _ = &kind;
+    var line = arg_line;
+    _ = &line;
+    var col = arg_col;
+    _ = &col;
     var node: ExprNode = ExprNode{
         .kind = kind,
+        .line = line,
+        .col = col,
         .inferred_type = "",
         .lit_value = TokenValue{
             .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_none_TAG)))),
@@ -5469,11 +5572,17 @@ pub export fn new_expr_node(arg_kind: ExprKind) ExprNode {
     _ = &node;
     return node;
 }
-pub export fn new_stmt_node(arg_kind: StmtKind) StmtNode {
+pub export fn new_stmt_node(arg_kind: StmtKind, arg_line: i64, arg_col: i64) StmtNode {
     var kind = arg_kind;
     _ = &kind;
+    var line = arg_line;
+    _ = &line;
+    var col = arg_col;
+    _ = &col;
     var node: StmtNode = StmtNode{
         .kind = kind,
+        .line = line,
+        .col = col,
         .block_stmts = empty_int_array(),
         .vardecl_name = "",
         .vardecl_type = "",
@@ -5523,6 +5632,7 @@ pub export fn new_stmt_node(arg_kind: StmtKind) StmtNode {
         .print_value = -@as(c_longlong, 1),
         .expr_stmt = -@as(c_longlong, 1),
         .defer_body = -@as(c_longlong, 1),
+        .errdefer_body = -@as(c_longlong, 1),
         .unsafe_body = -@as(c_longlong, 1),
         .extern_name = "",
         .extern_params = empty_param_array(),
@@ -5693,7 +5803,7 @@ pub export fn ArrayList_ExprNode_init(arg_allocator: [*c]KaiAllocator) ArrayList
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]ExprNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(ExprNode)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]ExprNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ExprNode)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -5706,7 +5816,7 @@ pub export fn ArrayList_ExprNode_push(arg_self: [*c]ArrayList_ExprNode, arg_item
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]ExprNode = @as([*c]ExprNode, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(ExprNode)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]ExprNode = @as([*c]ExprNode, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ExprNode)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -5803,7 +5913,7 @@ pub export fn ArrayList_StmtNode_init(arg_allocator: [*c]KaiAllocator) ArrayList
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]StmtNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StmtNode)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]StmtNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(StmtNode)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -5816,7 +5926,7 @@ pub export fn ArrayList_StmtNode_push(arg_self: [*c]ArrayList_StmtNode, arg_item
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]StmtNode = @as([*c]StmtNode, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StmtNode)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]StmtNode = @as([*c]StmtNode, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(StmtNode)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -5913,7 +6023,7 @@ pub export fn ArrayList_PatternNode_init(arg_allocator: [*c]KaiAllocator) ArrayL
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]PatternNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(PatternNode)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]PatternNode, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(PatternNode)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -5926,7 +6036,7 @@ pub export fn ArrayList_PatternNode_push(arg_self: [*c]ArrayList_PatternNode, ar
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]PatternNode = @as([*c]PatternNode, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(PatternNode)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]PatternNode = @as([*c]PatternNode, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(PatternNode)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -6009,9 +6119,11 @@ pub export fn ArrayList_PatternNode_deinit(arg_self: [*c]ArrayList_PatternNode) 
         KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
     }
 }
-pub export fn Parser_init_with_pools(arg_allocator: [*c]KaiAllocator, arg_tokens: [*c]ArrayList_Token, arg_expr_pool: [*c]ArrayList_ExprNode, arg_stmt_pool: [*c]ArrayList_StmtNode, arg_pattern_pool: [*c]ArrayList_PatternNode) Parser {
+pub export fn Parser_init_with_pools(arg_allocator: [*c]KaiAllocator, arg_source_file: [*c]const u8, arg_tokens: [*c]ArrayList_Token, arg_expr_pool: [*c]ArrayList_ExprNode, arg_stmt_pool: [*c]ArrayList_StmtNode, arg_pattern_pool: [*c]ArrayList_PatternNode) Parser {
     var allocator = arg_allocator;
     _ = &allocator;
+    var source_file = arg_source_file;
+    _ = &source_file;
     var tokens = arg_tokens;
     _ = &tokens;
     var expr_pool = arg_expr_pool;
@@ -6022,6 +6134,7 @@ pub export fn Parser_init_with_pools(arg_allocator: [*c]KaiAllocator, arg_tokens
     _ = &pattern_pool;
     var self: Parser = Parser{
         .allocator = null,
+        .source_file = null,
         .tokens = null,
         .cursor = @import("std").mem.zeroes(i64),
         .pending_gt = false,
@@ -6033,6 +6146,7 @@ pub export fn Parser_init_with_pools(arg_allocator: [*c]KaiAllocator, arg_tokens
     };
     _ = &self;
     self.allocator = allocator;
+    self.source_file = source_file;
     self.tokens = tokens;
     self.cursor = 0;
     self.pending_gt = @as(c_int, 0) != 0;
@@ -6043,13 +6157,16 @@ pub export fn Parser_init_with_pools(arg_allocator: [*c]KaiAllocator, arg_tokens
     self.pattern_pool = pattern_pool;
     return self;
 }
-pub export fn Parser_init(arg_allocator: [*c]KaiAllocator, arg_tokens: [*c]ArrayList_Token) Parser {
+pub export fn Parser_init(arg_allocator: [*c]KaiAllocator, arg_source_file: [*c]const u8, arg_tokens: [*c]ArrayList_Token) Parser {
     var allocator = arg_allocator;
     _ = &allocator;
+    var source_file = arg_source_file;
+    _ = &source_file;
     var tokens = arg_tokens;
     _ = &tokens;
     var self: Parser = Parser{
         .allocator = null,
+        .source_file = null,
         .tokens = null,
         .cursor = @import("std").mem.zeroes(i64),
         .pending_gt = false,
@@ -6061,6 +6178,7 @@ pub export fn Parser_init(arg_allocator: [*c]KaiAllocator, arg_tokens: [*c]Array
     };
     _ = &self;
     self.allocator = allocator;
+    self.source_file = source_file;
     self.tokens = tokens;
     self.cursor = 0;
     self.pending_gt = @as(c_int, 0) != 0;
@@ -6189,7 +6307,7 @@ pub export fn Parser_expect(arg_self: [*c]Parser, arg_ttype: TokenType) Token {
         return Parser_advance(self);
     }
     {
-        _ = printf("error[E0101]: expected token type %lld but found %lld at line %lld, column %lld\n", @as(i64, @bitCast(@as(c_ulonglong, ttype))), @as(i64, @bitCast(@as(c_ulonglong, tok.tok_type))), tok.line, tok.column);
+        _ = printf("%s:%ld:%ld: error[E0101]: expected token type %ld but found %ld\n", self.*.source_file, tok.line, tok.column, @as(i64, @bitCast(@as(c_ulonglong, ttype))), @as(i64, @bitCast(@as(c_ulonglong, tok.tok_type))));
         exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
     }
     return tok;
@@ -6261,7 +6379,7 @@ pub export fn Parser_ex_literal(arg_self: [*c]Parser, arg_val: TokenValue, arg_v
     _ = &val;
     var vkind = arg_vkind;
     _ = &vkind;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_literal)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_literal)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.lit_value = val;
     node.lit_vkind = vkind;
@@ -6273,7 +6391,7 @@ pub export fn Parser_ex_ident(arg_self: [*c]Parser, arg_name: [*c]const u8) i64 
     _ = &self;
     var name = arg_name;
     _ = &name;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_identifier)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_identifier)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.ident_name = name;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
@@ -6286,7 +6404,7 @@ pub export fn Parser_ex_ident_with(arg_self: [*c]Parser, arg_name: [*c]const u8,
     _ = &name;
     var targs = arg_targs;
     _ = &targs;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_identifier)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_identifier)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.ident_name = name;
     node.ident_type_args = targs;
@@ -6302,7 +6420,7 @@ pub export fn Parser_ex_binop(arg_self: [*c]Parser, arg_op: [*c]const u8, arg_le
     _ = &left;
     var right = arg_right;
     _ = &right;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_binary_op)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_binary_op)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.binop_op = op;
     node.binop_left = left;
@@ -6317,7 +6435,7 @@ pub export fn Parser_ex_unop(arg_self: [*c]Parser, arg_op: [*c]const u8, arg_ope
     _ = &op;
     var operand = arg_operand;
     _ = &operand;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_unary_op)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_unary_op)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.unop_op = op;
     node.unop_operand = operand;
@@ -6331,7 +6449,7 @@ pub export fn Parser_ex_call(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_a
     _ = &name;
     var args = arg_args;
     _ = &args;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_func_call)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_func_call)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.func_name = name;
     node.func_args = args;
@@ -6347,7 +6465,7 @@ pub export fn Parser_ex_call_with(arg_self: [*c]Parser, arg_name: [*c]const u8, 
     _ = &args;
     var targs = arg_targs;
     _ = &targs;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_func_call)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_func_call)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.func_name = name;
     node.func_args = args;
@@ -6362,7 +6480,7 @@ pub export fn Parser_ex_struct_init(arg_self: [*c]Parser, arg_name: [*c]const u8
     _ = &name;
     var fields = arg_fields;
     _ = &fields;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_struct_init)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_struct_init)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.struct_name = name;
     node.struct_fields = fields;
@@ -6376,7 +6494,7 @@ pub export fn Parser_ex_field(arg_self: [*c]Parser, arg_expr: i64, arg_field: [*
     _ = &expr;
     var field = arg_field;
     _ = &field;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_field_access)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_field_access)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.field_expr = expr;
     node.field_name = field;
@@ -6392,7 +6510,7 @@ pub export fn Parser_ex_method(arg_self: [*c]Parser, arg_expr: i64, arg_method: 
     _ = &method;
     var args = arg_args;
     _ = &args;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_method_call)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_method_call)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.meth_expr = expr;
     node.meth_name = method;
@@ -6407,7 +6525,7 @@ pub export fn Parser_ex_index(arg_self: [*c]Parser, arg_expr: i64, arg_idx: i64)
     _ = &expr;
     var idx = arg_idx;
     _ = &idx;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_index)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_index)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.idx_expr = expr;
     node.idx_index = idx;
@@ -6419,7 +6537,7 @@ pub export fn Parser_ex_check(arg_self: [*c]Parser, arg_expr: i64) i64 {
     _ = &self;
     var expr = arg_expr;
     _ = &expr;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_check)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_check)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.check_expr = expr;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
@@ -6436,7 +6554,7 @@ pub export fn Parser_ex_slice(arg_self: [*c]Parser, arg_expr: i64, arg_lower: i6
     _ = &upper;
     var is_inclusive = arg_is_inclusive;
     _ = &is_inclusive;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_slice)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_slice)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.slice_expr = expr;
     node.slice_lower = lower;
@@ -6454,7 +6572,7 @@ pub export fn Parser_ex_range(arg_self: [*c]Parser, arg_start: i64, arg_end: i64
     _ = &end;
     var is_inclusive = arg_is_inclusive;
     _ = &is_inclusive;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_range)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_range)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.range_start = start;
     node.range_end = end;
@@ -6467,7 +6585,7 @@ pub export fn Parser_ex_array(arg_self: [*c]Parser, arg_elements: ArrayList_Int)
     _ = &self;
     var elements = arg_elements;
     _ = &elements;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_array)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_array)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.arr_elements = elements;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
@@ -6478,7 +6596,7 @@ pub export fn Parser_ex_tuple(arg_self: [*c]Parser, arg_elements: ArrayList_Int)
     _ = &self;
     var elements = arg_elements;
     _ = &elements;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_tuple)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_tuple)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.tup_elements = elements;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
@@ -6491,7 +6609,7 @@ pub export fn Parser_ex_borrow(arg_self: [*c]Parser, arg_expr: i64, arg_is_mut: 
     _ = &expr;
     var is_mut = arg_is_mut;
     _ = &is_mut;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_borrow)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_borrow)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.borrow_expr = expr;
     node.borrow_mut = is_mut;
@@ -6503,7 +6621,7 @@ pub export fn Parser_ex_deref(arg_self: [*c]Parser, arg_expr: i64) i64 {
     _ = &self;
     var expr = arg_expr;
     _ = &expr;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_deref)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_deref)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.deref_expr = expr;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
@@ -6514,7 +6632,7 @@ pub export fn Parser_ex_try(arg_self: [*c]Parser, arg_expr: i64) i64 {
     _ = &self;
     var expr = arg_expr;
     _ = &expr;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_try)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_try)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.try_expr = expr;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
@@ -6529,7 +6647,7 @@ pub export fn Parser_ex_catch(arg_self: [*c]Parser, arg_expr: i64, arg_var_name:
     _ = &var_name;
     var fallback = arg_fallback;
     _ = &fallback;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_catch)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_catch)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.catch_expr = expr;
     node.catch_var = var_name;
@@ -6550,7 +6668,7 @@ pub export fn Parser_ex_asm(arg_self: [*c]Parser, arg_code: [*c]const u8, arg_is
     _ = &inputs;
     var clobbers = arg_clobbers;
     _ = &clobbers;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_asm)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_asm)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.asm_code = code;
     node.asm_is_volatile = is_volatile;
@@ -6565,7 +6683,7 @@ pub export fn Parser_st_block(arg_self: [*c]Parser, arg_stmts: ArrayList_Int) i6
     _ = &self;
     var stmts = arg_stmts;
     _ = &stmts;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_block)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_block)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.block_stmts = stmts;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
@@ -6578,7 +6696,7 @@ pub export fn Parser_st_error(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_
     _ = &name;
     var variants = arg_variants;
     _ = &variants;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_error_decl)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_error_decl)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.error_name = name;
     node.error_variants = variants;
@@ -6596,7 +6714,7 @@ pub export fn Parser_st_var_decl(arg_self: [*c]Parser, arg_name: [*c]const u8, a
     _ = &value;
     var is_mut = arg_is_mut;
     _ = &is_mut;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_var_decl)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_var_decl)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.vardecl_name = name;
     node.vardecl_type = type_ann;
@@ -6614,7 +6732,7 @@ pub export fn Parser_st_assign(arg_self: [*c]Parser, arg_target: i64, arg_value:
     _ = &value;
     var op = arg_op;
     _ = &op;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_assignment)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_assignment)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.assign_target = target;
     node.assign_value = value;
@@ -6637,7 +6755,7 @@ pub export fn Parser_st_func(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_p
     _ = &cap;
     var tp = arg_tp;
     _ = &tp;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_func_decl)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_func_decl)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.func_name = name;
     node.func_params = params;
@@ -6661,7 +6779,7 @@ pub export fn Parser_st_struct(arg_self: [*c]Parser, arg_name: [*c]const u8, arg
     _ = &methods;
     var impls = arg_impls;
     _ = &impls;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_struct_decl)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_struct_decl)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.struct_name = name;
     node.struct_fields = fields;
@@ -6680,7 +6798,7 @@ pub export fn Parser_st_impl(arg_self: [*c]Parser, arg_struct_name: [*c]const u8
     _ = &trait_name;
     var methods = arg_methods;
     _ = &methods;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_impl_block)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_impl_block)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.impl_struct_name = struct_name;
     node.impl_trait_name = trait_name;
@@ -6695,7 +6813,7 @@ pub export fn Parser_st_trait(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_
     _ = &name;
     var methods = arg_methods;
     _ = &methods;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_trait_decl)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_trait_decl)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.trait_name = name;
     node.trait_methods = methods;
@@ -6711,7 +6829,7 @@ pub export fn Parser_st_enum(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_v
     _ = &variants;
     var tp = arg_tp;
     _ = &tp;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_enum_decl)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_enum_decl)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.enum_name = name;
     node.enum_variants = variants;
@@ -6726,7 +6844,7 @@ pub export fn Parser_st_match(arg_self: [*c]Parser, arg_expr: i64, arg_cases: Ar
     _ = &expr;
     var cases = arg_cases;
     _ = &cases;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_match)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_match)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.match_expr = expr;
     node.match_cases = cases;
@@ -6738,7 +6856,7 @@ pub export fn Parser_st_unsafe(arg_self: [*c]Parser, arg_body: i64) i64 {
     _ = &self;
     var body = arg_body;
     _ = &body;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_unsafe)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_unsafe)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.unsafe_body = body;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
@@ -6753,7 +6871,7 @@ pub export fn Parser_st_extern(arg_self: [*c]Parser, arg_name: [*c]const u8, arg
     _ = &params;
     var ret = arg_ret;
     _ = &ret;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_extern)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_extern)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.extern_name = name;
     node.extern_params = params;
@@ -6770,7 +6888,7 @@ pub export fn Parser_st_if(arg_self: [*c]Parser, arg_cond: i64, arg_then_b: i64,
     _ = &then_b;
     var else_b = arg_else_b;
     _ = &else_b;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_if)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_if)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.if_cond = cond;
     node.if_then = then_b;
@@ -6789,7 +6907,7 @@ pub export fn Parser_st_if_let(arg_self: [*c]Parser, arg_vname: [*c]const u8, ar
     _ = &then_b;
     var else_b = arg_else_b;
     _ = &else_b;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_if_let)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_if_let)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.iflet_var = vname;
     node.iflet_expr = expr;
@@ -6805,7 +6923,7 @@ pub export fn Parser_st_while(arg_self: [*c]Parser, arg_cond: i64, arg_body: i64
     _ = &cond;
     var body = arg_body;
     _ = &body;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_while)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_while)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.while_cond = cond;
     node.while_body = body;
@@ -6825,7 +6943,7 @@ pub export fn Parser_st_for(arg_self: [*c]Parser, arg_var_name: [*c]const u8, ar
     _ = &inc;
     var body = arg_body;
     _ = &body;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_for)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_for)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.for_var = var_name;
     node.for_start = start;
@@ -6840,7 +6958,7 @@ pub export fn Parser_st_return(arg_self: [*c]Parser, arg_value: i64) i64 {
     _ = &self;
     var value = arg_value;
     _ = &value;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_return)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_return)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.return_value = value;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
@@ -6851,7 +6969,7 @@ pub export fn Parser_st_expr(arg_self: [*c]Parser, arg_expr: i64) i64 {
     _ = &self;
     var expr = arg_expr;
     _ = &expr;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_expr)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_expr)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.expr_stmt = expr;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
@@ -6862,16 +6980,27 @@ pub export fn Parser_st_defer(arg_self: [*c]Parser, arg_body: i64) i64 {
     _ = &self;
     var body = arg_body;
     _ = &body;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_defer)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_defer)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.defer_body = body;
+    ArrayList_StmtNode_push(self.*.stmt_pool, node);
+    return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
+}
+pub export fn Parser_st_errdefer(arg_self: [*c]Parser, arg_body: i64) i64 {
+    var self = arg_self;
+    _ = &self;
+    var body = arg_body;
+    _ = &body;
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_errdefer)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
+    _ = &node;
+    node.errdefer_body = body;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
     return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
 }
 pub export fn Parser_st_break(arg_self: [*c]Parser) i64 {
     var self = arg_self;
     _ = &self;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_break)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_break)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
     return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
@@ -6879,7 +7008,7 @@ pub export fn Parser_st_break(arg_self: [*c]Parser) i64 {
 pub export fn Parser_st_continue(arg_self: [*c]Parser) i64 {
     var self = arg_self;
     _ = &self;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_continue)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_continue)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
     return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
@@ -6891,7 +7020,7 @@ pub export fn Parser_st_import(arg_self: [*c]Parser, arg_path: ArrayList_Str, ar
     _ = &path;
     var alias = arg_alias;
     _ = &alias;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_import)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_import)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.import_path = path;
     node.import_alias = alias;
@@ -6905,7 +7034,7 @@ pub export fn Parser_st_cimport(arg_self: [*c]Parser, arg_header: [*c]const u8, 
     _ = &header;
     var alias = arg_alias;
     _ = &alias;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_cimport)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_cimport)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.cimport_header = header;
     node.cimport_alias = alias;
@@ -6995,6 +7124,8 @@ pub export fn Parser_parse_statement(arg_self: [*c]Parser) i64 {
         return Parser_parse_return_stmt(self);
     } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_DEFER))) {
         return Parser_parse_defer_stmt(self);
+    } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_ERRDEFER))) {
+        return Parser_parse_errdefer_stmt(self);
     } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_BREAK))) {
         return Parser_parse_break_stmt(self);
     } else if (tok.tok_type == @as(c_uint, @bitCast(TokenType_CONTINUE))) {
@@ -7484,7 +7615,7 @@ pub export fn Parser_parse_pattern(arg_self: [*c]Parser) i64 {
         return Parser_add_pattern(self, node);
     } else {
         {
-            _ = printf("error[E0101]: unexpected token in pattern at line %lld, column %lld\n", tok.line, tok.column);
+            _ = printf("%s:%ld:%ld: error[E0101]: unexpected token in pattern\n", self.*.source_file, tok.line, tok.column);
             exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
         return -@as(c_longlong, 1);
@@ -7632,7 +7763,7 @@ pub export fn Parser_parse_for_stmt(arg_self: [*c]Parser) i64 {
         is_inclusive = expr_node.range_inclusive;
     } else {
         {
-            _ = printf("error[E0101]: invalid expression in for loop at line %lld, column %lld\n", Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
+            _ = printf("%s:%ld:%ld: error[E0101]: invalid expression in for loop\n", self.*.source_file, Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
             exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
@@ -7683,6 +7814,22 @@ pub export fn Parser_parse_defer_stmt(arg_self: [*c]Parser) i64 {
     }
     return Parser_st_defer(self, body);
 }
+pub export fn Parser_parse_errdefer_stmt(arg_self: [*c]Parser) i64 {
+    var self = arg_self;
+    _ = &self;
+    _ = Parser_advance(self);
+    var body: i64 = -@as(c_longlong, 1);
+    _ = &body;
+    if ((Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_NEWLINE))) or (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_LBRACE)))) {
+        if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_NEWLINE))) {
+            Parser_expect_end_of_statement(self);
+        }
+        body = Parser_parse_block(self);
+    } else {
+        body = Parser_parse_statement(self);
+    }
+    return Parser_st_errdefer(self, body);
+}
 pub export fn Parser_parse_expr_or_assignment_stmt(arg_self: [*c]Parser) i64 {
     var self = arg_self;
     _ = &self;
@@ -7719,7 +7866,7 @@ pub export fn Parser_parse_block(arg_self: [*c]Parser) i64 {
     }
     if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_EOF))) {
         {
-            _ = printf("error[E0101]: expected '}' but reached end of file\n");
+            _ = printf("%s:0:0: error[E0101]: expected '}' but reached end of file\n", self.*.source_file);
             exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
@@ -8197,7 +8344,7 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
                 _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_RPAREN)));
                 return Parser_ex_call_with(self, ident, args, type_args);
             }
-            var id_node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_identifier)));
+            var id_node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_identifier)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
             _ = &id_node;
             id_node.ident_name = ident;
             id_node.ident_type_args = id_type_args;
@@ -8314,7 +8461,7 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
         return first;
     } else {
         {
-            _ = printf("error[E0101]: unexpected token at line %lld, column %lld (token type: %lld)\n", tok.line, tok.column, @as(i64, @bitCast(@as(c_ulonglong, tok.tok_type))));
+            _ = printf("%s:%ld:%ld: error[E0101]: unexpected token (type: %ld)\n", self.*.source_file, tok.line, tok.column, @as(i64, @bitCast(@as(c_ulonglong, tok.tok_type))));
             exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
         return -@as(c_longlong, 1);
@@ -8335,7 +8482,7 @@ pub export fn ArrayList_Symbol_init(arg_allocator: [*c]KaiAllocator) ArrayList_S
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]Symbol, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Symbol)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]Symbol, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(Symbol)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -8348,7 +8495,7 @@ pub export fn ArrayList_Symbol_push(arg_self: [*c]ArrayList_Symbol, arg_item: Sy
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]Symbol = @as([*c]Symbol, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(Symbol)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]Symbol = @as([*c]Symbol, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(Symbol)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -8488,7 +8635,7 @@ pub export fn ArrayList_SymbolTable_init(arg_allocator: [*c]KaiAllocator) ArrayL
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]SymbolTable, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(SymbolTable)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]SymbolTable, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(SymbolTable)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -8501,7 +8648,7 @@ pub export fn ArrayList_SymbolTable_push(arg_self: [*c]ArrayList_SymbolTable, ar
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]SymbolTable = @as([*c]SymbolTable, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(SymbolTable)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]SymbolTable = @as([*c]SymbolTable, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(SymbolTable)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -8690,7 +8837,7 @@ pub export fn ArrayList_StructInfo_init(arg_allocator: [*c]KaiAllocator) ArrayLi
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]StructInfo, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StructInfo)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]StructInfo, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(StructInfo)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -8703,7 +8850,7 @@ pub export fn ArrayList_StructInfo_push(arg_self: [*c]ArrayList_StructInfo, arg_
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]StructInfo = @as([*c]StructInfo, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StructInfo)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]StructInfo = @as([*c]StructInfo, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(StructInfo)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -8809,6 +8956,7 @@ pub export fn TypeChecker_init(arg_allocator: [*c]KaiAllocator, arg_stmt_pool: [
         .current_func_ret_type = null,
         .source_file = null,
         .has_any_import = false,
+        .loop_depth = @import("std").mem.zeroes(i64),
     };
     _ = &self;
     self.allocator = allocator;
@@ -8822,7 +8970,22 @@ pub export fn TypeChecker_init(arg_allocator: [*c]KaiAllocator, arg_stmt_pool: [
     self.current_func_ret_type = "";
     self.source_file = source_file;
     self.has_any_import = @as(c_int, 0) != 0;
+    self.loop_depth = 0;
     return self;
+}
+pub export fn TypeChecker_err(arg_self: [*c]TypeChecker, arg_code: [*c]const u8, arg_msg: [*c]const u8, arg_line: i64, arg_col: i64) void {
+    var self = arg_self;
+    _ = &self;
+    var code = arg_code;
+    _ = &code;
+    var msg = arg_msg;
+    _ = &msg;
+    var line = arg_line;
+    _ = &line;
+    var col = arg_col;
+    _ = &col;
+    _ = printf("%s:%ld:%ld: error[%s]: %s\n", self.*.source_file, line, col, code, msg);
+    self.*.has_error = @as(c_int, 1) != 0;
 }
 pub export fn TypeChecker_enter_scope(arg_self: [*c]TypeChecker) void {
     var self = arg_self;
@@ -8997,12 +9160,163 @@ pub export fn TypeChecker_collect_block_drops(arg_self: [*c]TypeChecker, arg_stm
     block_stmt.block_drop_vars = drop_vars;
     ArrayList_StmtNode_set(self.*.stmt_pool, stmt_idx, block_stmt);
 }
-pub export fn TypeChecker_is_copy_type(arg_self: [*c]TypeChecker, arg_type_name: [*c]const u8) bool {
+pub export fn TypeChecker_is_integer_type(arg_self: [*c]TypeChecker, arg_type_name: [*c]const u8) bool {
     var self = arg_self;
     _ = &self;
     var type_name = arg_type_name;
     _ = &type_name;
     if (strcmp(type_name, "Int") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "i8") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "i16") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "i32") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "i64") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "u8") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "u16") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "u32") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "u64") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "usize") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "isize") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    return @as(c_int, 0) != 0;
+}
+pub export fn TypeChecker_is_numeric_type(arg_self: [*c]TypeChecker, arg_type_name: [*c]const u8) bool {
+    var self = arg_self;
+    _ = &self;
+    var type_name = arg_type_name;
+    _ = &type_name;
+    if (TypeChecker_is_integer_type(self, type_name)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "Float") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    return @as(c_int, 0) != 0;
+}
+pub export fn TypeChecker_fits_in_type(arg_self: [*c]TypeChecker, arg_val: i64, arg_type_name: [*c]const u8) bool {
+    var self = arg_self;
+    _ = &self;
+    var val = arg_val;
+    _ = &val;
+    var type_name = arg_type_name;
+    _ = &type_name;
+    if (strcmp(type_name, "i8") == @as(c_int, 0)) {
+        return (val >= -@as(c_longlong, 128)) and (val <= @as(c_longlong, 127));
+    }
+    if (strcmp(type_name, "i16") == @as(c_int, 0)) {
+        return (val >= -@as(c_longlong, 32768)) and (val <= @as(c_longlong, 32767));
+    }
+    if (strcmp(type_name, "i32") == @as(c_int, 0)) {
+        return (val >= -@as(c_longlong, 2147483648)) and (val <= @as(c_longlong, 2147483647));
+    }
+    if (strcmp(type_name, "u8") == @as(c_int, 0)) {
+        return (val >= @as(c_longlong, 0)) and (val <= @as(c_longlong, 255));
+    }
+    if (strcmp(type_name, "u16") == @as(c_int, 0)) {
+        return (val >= @as(c_longlong, 0)) and (val <= @as(c_longlong, 65535));
+    }
+    if (strcmp(type_name, "u32") == @as(c_int, 0)) {
+        return (val >= @as(c_longlong, 0)) and (val <= @as(c_longlong, 4294967295));
+    }
+    if (strcmp(type_name, "u64") == @as(c_int, 0)) {
+        return val >= @as(c_longlong, 0);
+    }
+    if (((strcmp(type_name, "Int") == @as(c_int, 0)) or (strcmp(type_name, "i64") == @as(c_int, 0))) or (strcmp(type_name, "isize") == @as(c_int, 0))) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "usize") == @as(c_int, 0)) {
+        return val >= @as(c_longlong, 0);
+    }
+    return @as(c_int, 1) != 0;
+}
+pub export fn TypeChecker_is_integer_literal(arg_self: [*c]TypeChecker, arg_expr_idx: i64) bool {
+    var self = arg_self;
+    _ = &self;
+    var expr_idx = arg_expr_idx;
+    _ = &expr_idx;
+    if (expr_idx < @as(c_longlong, 0)) {
+        return @as(c_int, 0) != 0;
+    }
+    var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr_idx);
+    _ = &expr;
+    return (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_literal))) and (strcmp(expr.lit_vkind, "INT") == @as(c_int, 0));
+}
+pub export fn TypeChecker_int_literal_value(arg_self: [*c]TypeChecker, arg_expr: ExprNode) i64 {
+    var self = arg_self;
+    _ = &self;
+    var expr = arg_expr;
+    _ = &expr;
+    if (@as(c_int, @bitCast(@as(c_uint, expr.lit_value.tag))) == TokenValue_tv_str_TAG) {
+        var v: [*c]const u8 = expr.lit_value.payload.tv_str.v;
+        _ = &v;
+        var len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(v))));
+        _ = &len;
+        var res: i64 = 0;
+        _ = &res;
+        var pos: i64 = 0;
+        _ = &pos;
+        while (pos < len) {
+            var digit: [*c]const u8 = substring(v, pos, pos + @as(c_longlong, 1));
+            _ = &digit;
+            if (strcmp(digit, "1") == @as(c_int, 0)) {
+                res = (res * @as(c_longlong, 10)) + @as(c_longlong, 1);
+            } else if (strcmp(digit, "2") == @as(c_int, 0)) {
+                res = (res * @as(c_longlong, 10)) + @as(c_longlong, 2);
+            } else if (strcmp(digit, "3") == @as(c_int, 0)) {
+                res = (res * @as(c_longlong, 10)) + @as(c_longlong, 3);
+            } else if (strcmp(digit, "4") == @as(c_int, 0)) {
+                res = (res * @as(c_longlong, 10)) + @as(c_longlong, 4);
+            } else if (strcmp(digit, "5") == @as(c_int, 0)) {
+                res = (res * @as(c_longlong, 10)) + @as(c_longlong, 5);
+            } else if (strcmp(digit, "6") == @as(c_int, 0)) {
+                res = (res * @as(c_longlong, 10)) + @as(c_longlong, 6);
+            } else if (strcmp(digit, "7") == @as(c_int, 0)) {
+                res = (res * @as(c_longlong, 10)) + @as(c_longlong, 7);
+            } else if (strcmp(digit, "8") == @as(c_int, 0)) {
+                res = (res * @as(c_longlong, 10)) + @as(c_longlong, 8);
+            } else if (strcmp(digit, "9") == @as(c_int, 0)) {
+                res = (res * @as(c_longlong, 10)) + @as(c_longlong, 9);
+            } else {
+                res = res * @as(c_longlong, 10);
+            }
+            pos = pos + @as(c_longlong, 1);
+        }
+        return res;
+    } else if (@as(c_int, @bitCast(@as(c_uint, expr.lit_value.tag))) == TokenValue_tv_int_TAG) {
+        var v: i64 = expr.lit_value.payload.tv_int.v;
+        _ = &v;
+        return v;
+    } else {
+        return 0;
+    }
+    return @import("std").mem.zeroes(i64);
+}
+pub export fn TypeChecker_is_copy_type(arg_self: [*c]TypeChecker, arg_type_name: [*c]const u8) bool {
+    var self = arg_self;
+    _ = &self;
+    var type_name = arg_type_name;
+    _ = &type_name;
+    if (TypeChecker_is_integer_type(self, type_name)) {
         return @as(c_int, 1) != 0;
     }
     if (strcmp(type_name, "Float") == @as(c_int, 0)) {
@@ -9089,6 +9403,9 @@ pub export fn TypeChecker_types_compatible(arg_self: [*c]TypeChecker, arg_target
     if (strcmp(t, s) == @as(c_int, 0)) {
         return @as(c_int, 1) != 0;
     }
+    if ((@as(c_int, @intFromBool(TypeChecker_is_integer_type(self, t))) != 0) and (@as(c_int, @intFromBool(TypeChecker_is_integer_type(self, s))) != 0)) {
+        return @as(c_int, 0) != 0;
+    }
     if (((strcmp(t, "Str") == @as(c_int, 0)) and (strcmp(s, "*Char") == @as(c_int, 0))) or ((strcmp(t, "*Char") == @as(c_int, 0)) and (strcmp(s, "Str") == @as(c_int, 0)))) {
         return @as(c_int, 1) != 0;
     }
@@ -9148,6 +9465,27 @@ pub export fn TypeChecker_types_compatible(arg_self: [*c]TypeChecker, arg_target
         if (strcmp(s, target_err) == @as(c_int, 0)) {
             return @as(c_int, 1) != 0;
         }
+    }
+    var t_is_slice: bool = (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(t)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(__kai_str_sub(t, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0));
+    _ = &t_is_slice;
+    var s_is_slice: bool = (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(__kai_str_sub(s, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0));
+    _ = &s_is_slice;
+    if ((@as(c_int, @intFromBool(t_is_slice)) != 0) or (@as(c_int, @intFromBool(s_is_slice)) != 0)) {
+        var t_inner: [*c]const u8 = t;
+        _ = &t_inner;
+        if (t_is_slice) {
+            t_inner = __kai_str_sub(t, @as(c_longlong, 2), @as(i64, @bitCast(@as(c_ulonglong, strlen(t)))));
+        } else if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(t)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, t[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42)))))))))) {
+            t_inner = __kai_str_sub(t, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(t)))));
+        }
+        var s_inner: [*c]const u8 = s;
+        _ = &s_inner;
+        if (s_is_slice) {
+            s_inner = __kai_str_sub(s, @as(c_longlong, 2), @as(i64, @bitCast(@as(c_ulonglong, strlen(s)))));
+        } else if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, s[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42)))))))))) {
+            s_inner = __kai_str_sub(s, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(s)))));
+        }
+        return TypeChecker_types_compatible(self, t_inner, s_inner);
     }
     var t_ptr: PtrRefResult = TypeChecker_parse_ptr_ref(self, t);
     _ = &t_ptr;
@@ -9403,7 +9741,7 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
             return ArrayList_Str_get(&expr.func_type_args, @as(c_longlong, 0));
         }
         if (strcmp(name, "size_of") == @as(c_int, 0)) {
-            return "Int";
+            return "usize";
         }
         if ((((strcmp(name, "Char") == @as(c_int, 0)) or (strcmp(name, "Int") == @as(c_int, 0))) or (strcmp(name, "Float") == @as(c_int, 0))) or (strcmp(name, "Bool") == @as(c_int, 0))) {
             return name;
@@ -9652,11 +9990,11 @@ pub export fn TypeChecker_check_identifier(arg_self: [*c]TypeChecker, arg_expr_i
     _ = &sym;
     if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(sym.name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
         if (sym.moved) {
-            _ = printf("error[E0009]: use of moved value: '%s'\n", name);
+            _ = printf("%s:%ld:%ld: error[E0009]: use of moved value: '%s'\n", self.*.source_file, expr.line, expr.col, name);
             self.*.has_error = @as(c_int, 1) != 0;
         }
     } else if (!TypeChecker_is_enum_or_error_type(self, name) and !self.*.has_any_import) {
-        _ = printf("error[E0019]: undefined identifier: '%s'\n", name);
+        _ = printf("%s:%ld:%ld: error[E0019]: undefined identifier: '%s'\n", self.*.source_file, expr.line, expr.col, name);
         self.*.has_error = @as(c_int, 1) != 0;
     }
 }
@@ -9670,7 +10008,7 @@ pub export fn TypeChecker_check_field_access(arg_self: [*c]TypeChecker, arg_expr
     var recv_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.field_expr);
     _ = &recv_type;
     if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(recv_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, recv_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
-        _ = printf("error[E0011]: cannot access field '%s' on optional type '%s'. unwrap it first\n", expr.field_name, recv_type);
+        _ = printf("%s:%ld:%ld: error[E0011]: cannot access field '%s' on optional type '%s'. unwrap it first\n", self.*.source_file, expr.line, expr.col, expr.field_name, recv_type);
         self.*.has_error = @as(c_int, 1) != 0;
     }
 }
@@ -9684,7 +10022,7 @@ pub export fn TypeChecker_check_method_call(arg_self: [*c]TypeChecker, arg_expr_
     var recv_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.meth_expr);
     _ = &recv_type;
     if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(recv_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, recv_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
-        _ = printf("error[E0012]: cannot call method '%s' on optional type '%s'. unwrap it first\n", expr.meth_name, recv_type);
+        _ = printf("%s:%ld:%ld: error[E0012]: cannot call method '%s' on optional type '%s'. unwrap it first\n", self.*.source_file, expr.line, expr.col, expr.meth_name, recv_type);
         self.*.has_error = @as(c_int, 1) != 0;
     }
 }
@@ -9711,7 +10049,7 @@ pub export fn TypeChecker_check_return_stmt(arg_self: [*c]TypeChecker, arg_stmt_
                 var sym: Symbol = SymbolTable_lookup_symbol(&table, name, &self.*.symbol_tables);
                 _ = &sym;
                 if ((strcmp(sym.kind, "var") == @as(c_int, 0)) or (strcmp(sym.kind, "param") == @as(c_int, 0))) {
-                    _ = printf("error[E0010]: cannot return reference to local variable '%s'\n", name);
+                    _ = printf("%s:%ld:%ld: error[E0010]: cannot return reference to local variable '%s'\n", self.*.source_file, stmt.line, stmt.col, name);
                     self.*.has_error = @as(c_int, 1) != 0;
                 }
             }
@@ -9724,7 +10062,7 @@ pub export fn TypeChecker_check_return_stmt(arg_self: [*c]TypeChecker, arg_stmt_
     _ = &expected_ret;
     if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expected_ret)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (strcmp(expected_ret, "<infer>") != @as(c_int, 0))) {
         if (!TypeChecker_types_compatible(self, expected_ret, val_type)) {
-            _ = printf("error[E0007]: return type mismatch: expected '%s', got '%s'\n", expected_ret, val_type);
+            _ = printf("%s:%ld:%ld: error[E0007]: return type mismatch: expected '%s', got '%s'\n", self.*.source_file, stmt.line, stmt.col, expected_ret, val_type);
             self.*.has_error = @as(c_int, 1) != 0;
         }
     }
@@ -9759,8 +10097,17 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
         _ = &var_type;
         if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(var_type)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             var_type = val_type;
+        } else if ((@as(c_int, @intFromBool(TypeChecker_is_integer_type(self, var_type))) != 0) and (@as(c_int, @intFromBool(TypeChecker_is_integer_literal(self, stmt.vardecl_value))) != 0)) {
+            var val_expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, stmt.vardecl_value);
+            _ = &val_expr;
+            var v: i64 = TypeChecker_int_literal_value(self, val_expr);
+            _ = &v;
+            if (!TypeChecker_fits_in_type(self, v, var_type)) {
+                _ = printf("%s:%ld:%ld: error[E0030]: integer literal %ld does not fit in type '%s'\n", self.*.source_file, stmt.line, stmt.col, v, var_type);
+                self.*.has_error = @as(c_int, 1) != 0;
+            }
         } else if (!TypeChecker_types_compatible(self, var_type, val_type)) {
-            _ = printf("error[E0001]: type mismatch in declaration of '%s': expected '%s', got '%s'\n", stmt.vardecl_name, var_type, val_type);
+            _ = printf("%s:%ld:%ld: error[E0001]: type mismatch in declaration of '%s': expected '%s', got '%s'\n", self.*.source_file, stmt.line, stmt.col, stmt.vardecl_name, var_type, val_type);
             self.*.has_error = @as(c_int, 1) != 0;
         }
         TypeChecker_define_symbol(self, stmt.vardecl_name, var_type, stmt.vardecl_mut, "var");
@@ -9782,14 +10129,23 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
                 var sym: Symbol = SymbolTable_lookup_symbol(&table, target_expr.ident_name, &self.*.symbol_tables);
                 _ = &sym;
                 if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(sym.name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and !sym.is_mutable) {
-                    _ = printf("error[E0008]: cannot assign to immutable variable '%s'\n", target_expr.ident_name);
+                    _ = printf("%s:%ld:%ld: error[E0008]: cannot assign to immutable variable '%s'\n", self.*.source_file, target_expr.line, target_expr.col, target_expr.ident_name);
                     self.*.has_error = @as(c_int, 1) != 0;
                 }
             }
         }
         var val_type: [*c]const u8 = TypeChecker_get_expr_type(self, stmt.assign_value);
         _ = &val_type;
-        if (!TypeChecker_types_compatible(self, target_type, val_type)) {
+        if ((@as(c_int, @intFromBool(TypeChecker_is_integer_type(self, target_type))) != 0) and (@as(c_int, @intFromBool(TypeChecker_is_integer_literal(self, stmt.assign_value))) != 0)) {
+            var val_expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, stmt.assign_value);
+            _ = &val_expr;
+            var v: i64 = TypeChecker_int_literal_value(self, val_expr);
+            _ = &v;
+            if (!TypeChecker_fits_in_type(self, v, target_type)) {
+                _ = printf("%s:%ld:%ld: error[E0030]: integer literal %ld does not fit in type '%s'\n", self.*.source_file, stmt.line, stmt.col, v, target_type);
+                self.*.has_error = @as(c_int, 1) != 0;
+            }
+        } else if (!TypeChecker_types_compatible(self, target_type, val_type)) {
             var target_name: [*c]const u8 = "<non-ident>";
             _ = &target_name;
             if (stmt.assign_target >= @as(c_longlong, 0)) {
@@ -9799,7 +10155,7 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
                     target_name = target_expr.ident_name;
                 }
             }
-            _ = printf("error[E0002]: type mismatch in assignment to '%s': expected '%s', got '%s'\n", target_name, target_type, val_type);
+            _ = printf("%s:%ld:%ld: error[E0002]: type mismatch in assignment to '%s': expected '%s', got '%s'\n", self.*.source_file, stmt.line, stmt.col, target_name, target_type, val_type);
             self.*.has_error = @as(c_int, 1) != 0;
         }
         TypeChecker_mark_expr_moved(self, stmt.assign_value);
@@ -9832,6 +10188,11 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_if))) {
         TypeChecker_check_expr(self, stmt.if_cond);
+        var cond_type: [*c]const u8 = TypeChecker_get_expr_type(self, stmt.if_cond);
+        _ = &cond_type;
+        if ((strcmp(cond_type, "Bool") != @as(c_int, 0)) and (strcmp(cond_type, "Void") != @as(c_int, 0))) {
+            TypeChecker_err(self, "E0024", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if condition must be Bool, got '", cond_type), "'"), stmt.line, stmt.col);
+        }
         TypeChecker_check_stmt(self, stmt.if_then);
         TypeChecker_check_stmt(self, stmt.if_else);
         return;
@@ -9854,12 +10215,20 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_while))) {
         TypeChecker_check_expr(self, stmt.while_cond);
+        var cond_type: [*c]const u8 = TypeChecker_get_expr_type(self, stmt.while_cond);
+        _ = &cond_type;
+        if ((strcmp(cond_type, "Bool") != @as(c_int, 0)) and (strcmp(cond_type, "Void") != @as(c_int, 0))) {
+            TypeChecker_err(self, "E0024", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("while condition must be Bool, got '", cond_type), "'"), stmt.line, stmt.col);
+        }
+        self.*.loop_depth = self.*.loop_depth + @as(c_longlong, 1);
         TypeChecker_check_stmt(self, stmt.while_body);
+        self.*.loop_depth = self.*.loop_depth - @as(c_longlong, 1);
         return;
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_for))) {
         TypeChecker_check_expr(self, stmt.for_start);
         TypeChecker_check_expr(self, stmt.for_end);
+        self.*.loop_depth = self.*.loop_depth + @as(c_longlong, 1);
         TypeChecker_enter_scope(self);
         var iter_type: [*c]const u8 = TypeChecker_get_expr_type(self, stmt.for_start);
         _ = &iter_type;
@@ -9869,6 +10238,7 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
         TypeChecker_define_symbol(self, stmt.for_var, iter_type, @as(c_int, 0) != 0, "var");
         TypeChecker_check_stmt(self, stmt.for_body);
         TypeChecker_exit_scope(self);
+        self.*.loop_depth = self.*.loop_depth - @as(c_longlong, 1);
         return;
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_return))) {
@@ -9957,6 +10327,30 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_error_decl))) {
         return;
     }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_break))) {
+        if (self.*.loop_depth <= @as(c_longlong, 0)) {
+            TypeChecker_err(self, "E0029", "'break' outside of loop", stmt.line, stmt.col);
+        }
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_continue))) {
+        if (self.*.loop_depth <= @as(c_longlong, 0)) {
+            TypeChecker_err(self, "E0029", "'continue' outside of loop", stmt.line, stmt.col);
+        }
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_defer))) {
+        TypeChecker_check_stmt(self, stmt.defer_body);
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_errdefer))) {
+        TypeChecker_check_stmt(self, stmt.errdefer_body);
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_print))) {
+        TypeChecker_check_expr(self, stmt.print_value);
+        return;
+    }
 }
 pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i64) void {
     var self = arg_self;
@@ -9975,10 +10369,66 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_binary_op))) {
         TypeChecker_check_expr(self, expr.binop_left);
         TypeChecker_check_expr(self, expr.binop_right);
+        var left_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.binop_left);
+        _ = &left_type;
+        var right_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.binop_right);
+        _ = &right_type;
+        var op: [*c]const u8 = expr.binop_op;
+        _ = &op;
+        if (strcmp(op, "+") == @as(c_int, 0)) {
+            if ((!TypeChecker_is_numeric_type(self, left_type) and (strcmp(left_type, "Str") != @as(c_int, 0))) and (strcmp(left_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '+' must be numeric or Str, got '", left_type), "'"), expr.line, expr.col);
+            }
+            if ((!TypeChecker_is_numeric_type(self, right_type) and (strcmp(right_type, "Str") != @as(c_int, 0))) and (strcmp(right_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '+' must be numeric or Str, got '", right_type), "'"), expr.line, expr.col);
+            }
+        } else if ((((strcmp(op, "-") == @as(c_int, 0)) or (strcmp(op, "*") == @as(c_int, 0))) or (strcmp(op, "/") == @as(c_int, 0))) or (strcmp(op, "%") == @as(c_int, 0))) {
+            if (!TypeChecker_is_numeric_type(self, left_type) and (strcmp(left_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '", op), "' must be numeric, got '"), left_type), "'"), expr.line, expr.col);
+            }
+            if (!TypeChecker_is_numeric_type(self, right_type) and (strcmp(right_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '", op), "' must be numeric, got '"), right_type), "'"), expr.line, expr.col);
+            }
+        } else if ((strcmp(op, "&&") == @as(c_int, 0)) or (strcmp(op, "||") == @as(c_int, 0))) {
+            if ((strcmp(left_type, "Bool") != @as(c_int, 0)) and (strcmp(left_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '", op), "' must be Bool, got '"), left_type), "'"), expr.line, expr.col);
+            }
+            if ((strcmp(right_type, "Bool") != @as(c_int, 0)) and (strcmp(right_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '", op), "' must be Bool, got '"), right_type), "'"), expr.line, expr.col);
+            }
+        } else if (((((strcmp(op, "|") == @as(c_int, 0)) or (strcmp(op, "^") == @as(c_int, 0))) or (strcmp(op, "&") == @as(c_int, 0))) or (strcmp(op, "<<") == @as(c_int, 0))) or (strcmp(op, ">>") == @as(c_int, 0))) {
+            if (!TypeChecker_is_integer_type(self, left_type) and (strcmp(left_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '", op), "' must be an integer type, got '"), left_type), "'"), expr.line, expr.col);
+            }
+            if (!TypeChecker_is_integer_type(self, right_type) and (strcmp(right_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '", op), "' must be an integer type, got '"), right_type), "'"), expr.line, expr.col);
+            }
+        } else if ((((((strcmp(op, "==") == @as(c_int, 0)) or (strcmp(op, "!=") == @as(c_int, 0))) or (strcmp(op, "<") == @as(c_int, 0))) or (strcmp(op, ">") == @as(c_int, 0))) or (strcmp(op, "<=") == @as(c_int, 0))) or (strcmp(op, ">=") == @as(c_int, 0))) {
+            if (((strcmp(left_type, "Void") != @as(c_int, 0)) and (strcmp(right_type, "Void") != @as(c_int, 0))) and !TypeChecker_types_compatible(self, left_type, right_type)) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("type mismatch in comparison: '", left_type), "' and '"), right_type), "' are not compatible"), expr.line, expr.col);
+            }
+        }
         return;
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_unary_op))) {
         TypeChecker_check_expr(self, expr.unop_operand);
+        var operand_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.unop_operand);
+        _ = &operand_type;
+        var binop: [*c]const u8 = expr.unop_op;
+        _ = &binop;
+        if (strcmp(binop, "!") == @as(c_int, 0)) {
+            if ((strcmp(operand_type, "Bool") != @as(c_int, 0)) and (strcmp(operand_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0026", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("operand of '!' must be Bool, got '", operand_type), "'"), expr.line, expr.col);
+            }
+        } else if (strcmp(binop, "-") == @as(c_int, 0)) {
+            if (!TypeChecker_is_numeric_type(self, operand_type) and (strcmp(operand_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0026", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("operand of negation must be numeric, got '", operand_type), "'"), expr.line, expr.col);
+            }
+        } else if (strcmp(binop, "~") == @as(c_int, 0)) {
+            if (!TypeChecker_is_integer_type(self, operand_type) and (strcmp(operand_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0026", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("operand of '~' must be an integer type, got '", operand_type), "'"), expr.line, expr.col);
+            }
+        }
         return;
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_func_call))) {
@@ -10012,7 +10462,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
                 type_params = empty_str_array();
             }
             if (ArrayList_Param_length(&params) != ArrayList_Int_length(&expr.func_args)) {
-                _ = printf("error[E0005]: argument count mismatch for function '%s': expected %lld, got %lld\n", name, ArrayList_Param_length(&params), ArrayList_Int_length(&expr.func_args));
+                _ = printf("%s:%ld:%ld: error[E0005]: argument count mismatch for function '%s': expected %ld, got %ld\n", self.*.source_file, expr.line, expr.col, name, ArrayList_Param_length(&params), ArrayList_Int_length(&expr.func_args));
                 self.*.has_error = @as(c_int, 1) != 0;
             } else {
                 if (ArrayList_Str_length(&type_params) > @as(c_longlong, 0)) {
@@ -10032,14 +10482,23 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
                     var is_generic_param: bool = ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(ptype)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))) and (@as(c_int, @bitCast(@as(c_uint, ptype[@as(usize, @intCast(@as(c_longlong, 0)))]))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 65)))))))))) and (@as(c_int, @bitCast(@as(c_uint, ptype[@as(usize, @intCast(@as(c_longlong, 0)))]))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 90)))))))));
                     _ = &is_generic_param;
                     if (!is_generic_param and !TypeChecker_types_compatible(self, ptype, arg_type)) {
-                        _ = printf("error[E0003]: argument type mismatch for function '%s', parameter '%s': expected '%s', got '%s'\n", name, param.name, ptype, arg_type);
-                        self.*.has_error = @as(c_int, 1) != 0;
+                        if ((@as(c_int, @intFromBool(TypeChecker_is_integer_type(self, ptype))) != 0) and (@as(c_int, @intFromBool(TypeChecker_is_integer_literal(self, arg))) != 0)) {
+                            var v: i64 = TypeChecker_int_literal_value(self, ArrayList_ExprNode_get(self.*.expr_pool, arg));
+                            _ = &v;
+                            if (!TypeChecker_fits_in_type(self, v, ptype)) {
+                                _ = printf("%s:%ld:%ld: error[E0030]: integer literal %ld does not fit in type '%s'\n", self.*.source_file, expr.line, expr.col, v, ptype);
+                                self.*.has_error = @as(c_int, 1) != 0;
+                            }
+                        } else {
+                            _ = printf("%s:%ld:%ld: error[E0003]: argument type mismatch for function '%s', parameter '%s': expected '%s', got '%s'\n", self.*.source_file, expr.line, expr.col, name, param.name, ptype, arg_type);
+                            self.*.has_error = @as(c_int, 1) != 0;
+                        }
                     }
                     arg_i = arg_i + @as(c_longlong, 1);
                 }
             }
         } else if (!self.*.has_any_import) {
-            _ = printf("error[E0020]: undefined function: '%s'\n", name);
+            _ = printf("%s:%ld:%ld: error[E0020]: undefined function: '%s'\n", self.*.source_file, expr.line, expr.col, name);
             self.*.has_error = @as(c_int, 1) != 0;
         }
         return;
@@ -10071,7 +10530,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             var decl: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, meth_idx);
             _ = &decl;
             if (ArrayList_Param_length(&decl.func_params) != (ArrayList_Int_length(&expr.meth_args) + @as(c_longlong, 1))) {
-                _ = printf("error[E0006]: argument count mismatch for method '%s': expected %lld, got %lld\n", meth_name, ArrayList_Param_length(&decl.func_params) - @as(c_longlong, 1), ArrayList_Int_length(&expr.meth_args));
+                _ = printf("%s:%ld:%ld: error[E0006]: argument count mismatch for method '%s': expected %lld, got %ld\n", self.*.source_file, expr.line, expr.col, meth_name, ArrayList_Param_length(&decl.func_params) - @as(c_longlong, 1), ArrayList_Int_length(&expr.meth_args));
                 self.*.has_error = @as(c_int, 1) != 0;
             } else {
                 var arg_i: i64 = 0;
@@ -10084,20 +10543,44 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
                     var arg_type: [*c]const u8 = TypeChecker_get_expr_type(self, arg);
                     _ = &arg_type;
                     if (!TypeChecker_types_compatible(self, param.ptype, arg_type)) {
-                        _ = printf("error[E0003]: argument type mismatch for method '%s', parameter '%s': expected '%s', got '%s'\n", meth_name, param.name, param.ptype, arg_type);
-                        self.*.has_error = @as(c_int, 1) != 0;
+                        if ((@as(c_int, @intFromBool(TypeChecker_is_integer_type(self, param.ptype))) != 0) and (@as(c_int, @intFromBool(TypeChecker_is_integer_literal(self, arg))) != 0)) {
+                            var v: i64 = TypeChecker_int_literal_value(self, ArrayList_ExprNode_get(self.*.expr_pool, arg));
+                            _ = &v;
+                            if (!TypeChecker_fits_in_type(self, v, param.ptype)) {
+                                _ = printf("%s:%ld:%ld: error[E0030]: integer literal %ld does not fit in type '%s'\n", self.*.source_file, expr.line, expr.col, v, param.ptype);
+                                self.*.has_error = @as(c_int, 1) != 0;
+                            }
+                        } else {
+                            _ = printf("%s:%ld:%ld: error[E0003]: argument type mismatch for method '%s', parameter '%s': expected '%s', got '%s'\n", self.*.source_file, expr.line, expr.col, meth_name, param.name, param.ptype, arg_type);
+                            self.*.has_error = @as(c_int, 1) != 0;
+                        }
                     }
                     arg_i = arg_i + @as(c_longlong, 1);
                 }
             }
         } else if (!self.*.has_any_import) {
-            _ = printf("error[E0022]: undefined method: '%s' for type '%s'\n", meth_name, recv_type);
+            _ = printf("%s:%ld:%ld: error[E0022]: undefined method: '%s' for type '%s'\n", self.*.source_file, expr.line, expr.col, meth_name, recv_type);
             self.*.has_error = @as(c_int, 1) != 0;
         }
         return;
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_index))) {
         TypeChecker_check_expr(self, expr.idx_expr);
+        TypeChecker_check_expr(self, expr.idx_index);
+        var index_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.idx_index);
+        _ = &index_type;
+        if ((strcmp(index_type, "Int") != @as(c_int, 0)) and (strcmp(index_type, "Void") != @as(c_int, 0))) {
+            TypeChecker_err(self, "E0027", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("index must be Int, got '", index_type), "'"), expr.line, expr.col);
+        }
+        var base_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.idx_expr);
+        _ = &base_type;
+        if ((strcmp(base_type, "Str") != @as(c_int, 0)) and (strcmp(base_type, "Void") != @as(c_int, 0))) {
+            if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) or ((@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
+                if (!((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(__kai_str_sub(base_type, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0)))) {
+                    TypeChecker_err(self, "E0028", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("type '", base_type), "' is not indexable"), expr.line, expr.col);
+                }
+            }
+        }
         return;
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_slice))) {
@@ -10139,7 +10622,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
         _ = &struct_idx;
         if (struct_idx < @as(c_longlong, 0)) {
             if (!self.*.has_any_import) {
-                _ = printf("error[E0021]: undefined struct: '%s'\n", struct_name);
+                _ = printf("%s:%ld:%ld: error[E0021]: undefined struct: '%s'\n", self.*.source_file, expr.line, expr.col, struct_name);
                 self.*.has_error = @as(c_int, 1) != 0;
             }
             return;
@@ -10163,14 +10646,14 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
                     var val_type: [*c]const u8 = TypeChecker_get_expr_type(self, f.value);
                     _ = &val_type;
                     if (!TypeChecker_types_compatible(self, df.ftype, val_type)) {
-                        _ = printf("error[E0004]: type mismatch in initializer for field '%s' of struct '%s': expected '%s', got '%s'\n", f.name, struct_name, df.ftype, val_type);
+                        _ = printf("%s:%ld:%ld: error[E0004]: type mismatch in initializer for field '%s' of struct '%s': expected '%s', got '%s'\n", self.*.source_file, expr.line, expr.col, f.name, struct_name, df.ftype, val_type);
                         self.*.has_error = @as(c_int, 1) != 0;
                     }
                 }
                 dfi = dfi + @as(c_longlong, 1);
             }
             if (!found) {
-                _ = printf("error[E0013]: field '%s' does not exist in struct '%s'\n", f.name, struct_name);
+                _ = printf("%s:%ld:%ld: error[E0013]: field '%s' does not exist in struct '%s'\n", self.*.source_file, expr.line, expr.col, f.name, struct_name);
                 self.*.has_error = @as(c_int, 1) != 0;
             }
             fi = fi + @as(c_longlong, 1);
@@ -10198,7 +10681,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             i = i + @as(c_longlong, 1);
         }
         if (excl_pos < @as(c_longlong, 0)) {
-            _ = printf("error[E0014]: cannot use 'try' on non-error-union type '%s'\n", inner_ty);
+            _ = printf("%s:%ld:%ld: error[E0014]: cannot use 'try' on non-error-union type '%s'\n", self.*.source_file, expr.line, expr.col, inner_ty);
             self.*.has_error = @as(c_int, 1) != 0;
         } else {
             var error_set: [*c]const u8 = substring(inner_ty, excl_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
@@ -10218,13 +10701,13 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
                 i = i + @as(c_longlong, 1);
             }
             if (func_excl < @as(c_longlong, 0)) {
-                _ = printf("error[E0015]: cannot use 'try' in a function that returns non-error-union type '%s'\n", expected_ret);
+                _ = printf("%s:%ld:%ld: error[E0015]: cannot use 'try' in a function that returns non-error-union type '%s'\n", self.*.source_file, expr.line, expr.col, expected_ret);
                 self.*.has_error = @as(c_int, 1) != 0;
             } else {
                 var func_err: [*c]const u8 = substring(expected_ret, func_excl + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(expected_ret)))));
                 _ = &func_err;
                 if (!TypeChecker_types_compatible(self, func_err, error_set)) {
-                    _ = printf("error[E0016]: error set '%s' of try expression is not compatible with function error set '%s'\n", error_set, func_err);
+                    _ = printf("%s:%ld:%ld: error[E0016]: error set '%s' of try expression is not compatible with function error set '%s'\n", self.*.source_file, expr.line, expr.col, error_set, func_err);
                     self.*.has_error = @as(c_int, 1) != 0;
                 }
             }
@@ -10256,7 +10739,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             var fallback_yields: [*c]const u8 = TypeChecker_get_block_yield_type(self, expr.catch_fallback);
             _ = &fallback_yields;
             if (!TypeChecker_types_compatible(self, val_type, fallback_yields)) {
-                _ = printf("error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", fallback_yields, val_type);
+                _ = printf("%s:%ld:%ld: error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", self.*.source_file, expr.line, expr.col, fallback_yields, val_type);
                 self.*.has_error = @as(c_int, 1) != 0;
             }
             return;
@@ -10275,7 +10758,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             i = i + @as(c_longlong, 1);
         }
         if (excl_pos < @as(c_longlong, 0)) {
-            _ = printf("error[E0017]: cannot use 'catch' on non-error-union type '%s'\n", inner_ty);
+            _ = printf("%s:%ld:%ld: error[E0017]: cannot use 'catch' on non-error-union type '%s'\n", self.*.source_file, expr.line, expr.col, inner_ty);
             self.*.has_error = @as(c_int, 1) != 0;
         } else {
             var val_type: [*c]const u8 = substring(inner_ty, @as(c_longlong, 0), excl_pos);
@@ -10291,7 +10774,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             var fallback_yields: [*c]const u8 = TypeChecker_get_block_yield_type(self, expr.catch_fallback);
             _ = &fallback_yields;
             if (!TypeChecker_types_compatible(self, val_type, fallback_yields)) {
-                _ = printf("error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", fallback_yields, val_type);
+                _ = printf("%s:%ld:%ld: error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", self.*.source_file, expr.line, expr.col, fallback_yields, val_type);
                 self.*.has_error = @as(c_int, 1) != 0;
             }
         }
@@ -10357,7 +10840,7 @@ pub export fn ArrayList_StrMapEntry_init(arg_allocator: [*c]KaiAllocator) ArrayL
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]StrMapEntry, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StrMapEntry)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]StrMapEntry, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(StrMapEntry)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -10370,7 +10853,7 @@ pub export fn ArrayList_StrMapEntry_push(arg_self: [*c]ArrayList_StrMapEntry, ar
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]StrMapEntry = @as([*c]StrMapEntry, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(StrMapEntry)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]StrMapEntry = @as([*c]StrMapEntry, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(StrMapEntry)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -10687,14 +11170,35 @@ pub export fn Codegen_map_type(arg_self: [*c]Codegen, arg_type_name: [*c]const u
         }
         return concrete_name;
     }
-    if (strcmp(resolved_type, "Int") == @as(c_int, 0)) {
+    if ((strcmp(resolved_type, "Int") == @as(c_int, 0)) or (strcmp(resolved_type, "i64") == @as(c_int, 0))) {
         return "int64_t";
     }
-    if (strcmp(resolved_type, "Int8") == @as(c_int, 0)) {
+    if (strcmp(resolved_type, "isize") == @as(c_int, 0)) {
+        return "intptr_t";
+    }
+    if (strcmp(resolved_type, "i8") == @as(c_int, 0)) {
         return "int8_t";
     }
-    if (strcmp(resolved_type, "Int32") == @as(c_int, 0)) {
+    if (strcmp(resolved_type, "i32") == @as(c_int, 0)) {
         return "int32_t";
+    }
+    if (strcmp(resolved_type, "i16") == @as(c_int, 0)) {
+        return "int16_t";
+    }
+    if (strcmp(resolved_type, "u8") == @as(c_int, 0)) {
+        return "uint8_t";
+    }
+    if (strcmp(resolved_type, "u16") == @as(c_int, 0)) {
+        return "uint16_t";
+    }
+    if (strcmp(resolved_type, "u32") == @as(c_int, 0)) {
+        return "uint32_t";
+    }
+    if (strcmp(resolved_type, "u64") == @as(c_int, 0)) {
+        return "uint64_t";
+    }
+    if (strcmp(resolved_type, "usize") == @as(c_int, 0)) {
+        return "size_t";
     }
     if (strcmp(resolved_type, "Bool") == @as(c_int, 0)) {
         return "bool";
@@ -13005,6 +13509,9 @@ pub export fn Codegen_is_standard_c_func(arg_self: [*c]Codegen, arg_name: [*c]co
             return @as(c_int, 1) != 0;
         }
     }
+    if (strcmp(name, "atoll") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
     if (strcmp(name, "malloc") == @as(c_int, 0)) {
         return @as(c_int, 1) != 0;
     }
@@ -13807,10 +14314,10 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         var arg_type: [*c]const u8 = Codegen_get_expr_type(self, arg);
         _ = &arg_type;
         if (strcmp(arg_type, "Int") == @as(c_int, 0)) {
-            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%lld\\n\", (long long)(", val), "));");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_print_int(", val), ");");
         }
         if (strcmp(arg_type, "Float") == @as(c_int, 0)) {
-            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%f\\n\", (double)(", val), "));");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_print_float(", val), ");");
         }
         if (strcmp(arg_type, "Char") == @as(c_int, 0)) {
             return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%c\\n\", (char)(", val), "));");
@@ -13922,7 +14429,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 has_source = @as(c_int, 1) != 0;
             } else {
                 {
-                    var buf: [*c]u8 = KaiAllocator_alloc(self.*.allocator, @as(c_longlong, 1024), @as(c_longlong, 1));
+                    var buf: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(c_longlong, 1024), @as(c_longlong, 1)))));
                     _ = &buf;
                     if (get_exe_dir(buf, @as(c_longlong, 1024)) == @as(c_longlong, 0)) {
                         var exe_dir: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast(buf)));
@@ -13933,7 +14440,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                         _ = &parent_path;
                         var lib_path: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../lib/kai/"), rel_path);
                         _ = &lib_path;
-                        KaiAllocator_free(self.*.allocator, buf);
+                        KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(buf))));
                         var s2: [*c]const u8 = blk: {
                             var _kai_cr: Result_Str_IoError = read_to_string(self.*.allocator, full_path);
                             _ = &_kai_cr;
@@ -13994,7 +14501,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                             }
                         }
                     } else {
-                        KaiAllocator_free(self.*.allocator, buf);
+                        KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(buf))));
                     }
                 }
             }
@@ -14022,13 +14529,13 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             }
         }
         if (has_source) {
-            var lexer: Lexer = Lexer_init(self.*.allocator, source);
+            var lexer: Lexer = Lexer_init(self.*.allocator, source, "");
             _ = &lexer;
             Lexer_lex(&lexer);
             if (lexer.has_error) {
                 return "";
             }
-            var parser: Parser = Parser_init_with_pools(self.*.allocator, lexer.tokens, self.*.expr_pool, self.*.stmt_pool, self.*.pattern_pool);
+            var parser: Parser = Parser_init_with_pools(self.*.allocator, "", lexer.tokens, self.*.expr_pool, self.*.stmt_pool, self.*.pattern_pool);
             _ = &parser;
             var program_idx: i64 = Parser_parse_program(&parser);
             _ = &program_idx;
@@ -14424,82 +14931,85 @@ pub export fn Codegen_generate(arg_self: [*c]Codegen, arg_top_stmt_idx: i64) [*c
     Codegen_build_func_types(self);
     var body: [*c]const u8 = Codegen_gen_stmt(self, top_stmt_idx);
     _ = &body;
-    var final_code: [*c]const u8 = "";
-    _ = &final_code;
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <stdint.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <stdbool.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <stdio.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <stdlib.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <string.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#ifndef NO_GET_EXE_DIR\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#if defined(_WIN32)\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <windows.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#else\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#ifndef _GNU_SOURCE\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#define _GNU_SOURCE\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <dlfcn.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <limits.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "int64_t get_exe_dir(char* out_buf, int64_t max_len) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#if defined(_WIN32)\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (len == 0 || len >= max_len) return -1;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    for (int i = len - 1; i >= 0; i--) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "            out_buf[i] = '\\0';\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "            break;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    return 0;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#else\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    Dl_info info;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    char dummy = 0;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        char real_path[PATH_MAX];\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        if (realpath(info.dli_fname, real_path) != NULL) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "            char* last_slash = strrchr(real_path, '/');\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "            if (last_slash != NULL) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                *last_slash = '\\0';\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                int i = 0;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                while (i < max_len - 1 && real_path[i] != '\\0') {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                    out_buf[i] = real_path[i];\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                    i++;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                out_buf[i] = '\\0';\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                return 0;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "            }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    return -1;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "}\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "static char* __kai_str_sub(const char* s, int64_t start, int64_t end) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    int64_t len = strlen(s);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (end > len) end = len;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (start < 0) start = 0;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (start >= end) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        char* empty = malloc(1);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        if (empty) empty[0] = '\\0';\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        return empty;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    int64_t sub_len = end - start;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    char* buf = malloc(sub_len + 1);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (buf) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        memcpy(buf, s + start, sub_len);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        buf[sub_len] = '\\0';\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    return buf;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "}\n\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t elem_size) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    int64_t count = end - start;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (count <= 0) return NULL;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    size_t total = (size_t)count * (size_t)elem_size;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    void* buf = malloc(total);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    return buf;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "}\n\n");
+    var result: StringBuilder = StringBuilder_init(self.*.allocator);
+    _ = &result;
+    StringBuilder_append(&result, "#include <stdint.h>\n");
+    StringBuilder_append(&result, "#include <stdbool.h>\n");
+    StringBuilder_append(&result, "#include <stdio.h>\n");
+    StringBuilder_append(&result, "#include <stdlib.h>\n");
+    StringBuilder_append(&result, "#include <string.h>\n");
+    StringBuilder_append(&result, "#ifndef NO_GET_EXE_DIR\n");
+    StringBuilder_append(&result, "#if defined(_WIN32)\n");
+    StringBuilder_append(&result, "#include <windows.h>\n");
+    StringBuilder_append(&result, "#else\n");
+    StringBuilder_append(&result, "#ifndef _GNU_SOURCE\n");
+    StringBuilder_append(&result, "#define _GNU_SOURCE\n");
+    StringBuilder_append(&result, "#endif\n");
+    StringBuilder_append(&result, "#include <dlfcn.h>\n");
+    StringBuilder_append(&result, "#include <limits.h>\n");
+    StringBuilder_append(&result, "#endif\n\n");
+    StringBuilder_append(&result, "int64_t get_exe_dir(char* out_buf, int64_t max_len) {\n");
+    StringBuilder_append(&result, "#if defined(_WIN32)\n");
+    StringBuilder_append(&result, "    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);\n");
+    StringBuilder_append(&result, "    if (len == 0 || len >= max_len) return -1;\n");
+    StringBuilder_append(&result, "    for (int i = len - 1; i >= 0; i--) {\n");
+    StringBuilder_append(&result, "        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {\n");
+    StringBuilder_append(&result, "            out_buf[i] = '\\0';\n");
+    StringBuilder_append(&result, "            break;\n");
+    StringBuilder_append(&result, "        }\n");
+    StringBuilder_append(&result, "    }\n");
+    StringBuilder_append(&result, "    return 0;\n");
+    StringBuilder_append(&result, "#else\n");
+    StringBuilder_append(&result, "    Dl_info info;\n");
+    StringBuilder_append(&result, "    char dummy = 0;\n");
+    StringBuilder_append(&result, "    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {\n");
+    StringBuilder_append(&result, "        char real_path[PATH_MAX];\n");
+    StringBuilder_append(&result, "        if (realpath(info.dli_fname, real_path) != NULL) {\n");
+    StringBuilder_append(&result, "            char* last_slash = strrchr(real_path, '/');\n");
+    StringBuilder_append(&result, "            if (last_slash != NULL) {\n");
+    StringBuilder_append(&result, "                *last_slash = '\\0';\n");
+    StringBuilder_append(&result, "                int i = 0;\n");
+    StringBuilder_append(&result, "                while (i < max_len - 1 && real_path[i] != '\\0') {\n");
+    StringBuilder_append(&result, "                    out_buf[i] = real_path[i];\n");
+    StringBuilder_append(&result, "                    i++;\n");
+    StringBuilder_append(&result, "                }\n");
+    StringBuilder_append(&result, "                out_buf[i] = '\\0';\n");
+    StringBuilder_append(&result, "                return 0;\n");
+    StringBuilder_append(&result, "            }\n");
+    StringBuilder_append(&result, "        }\n");
+    StringBuilder_append(&result, "    }\n");
+    StringBuilder_append(&result, "    return -1;\n");
+    StringBuilder_append(&result, "#endif\n");
+    StringBuilder_append(&result, "}\n");
+    StringBuilder_append(&result, "#endif\n");
+    StringBuilder_append(&result, "\n");
+    StringBuilder_append(&result, "static char* __kai_str_sub(const char* s, int64_t start, int64_t end) {\n");
+    StringBuilder_append(&result, "    int64_t len = strlen(s);\n");
+    StringBuilder_append(&result, "    if (end > len) end = len;\n");
+    StringBuilder_append(&result, "    if (start < 0) start = 0;\n");
+    StringBuilder_append(&result, "    if (start >= end) {\n");
+    StringBuilder_append(&result, "        char* empty = malloc(1);\n");
+    StringBuilder_append(&result, "        if (empty) empty[0] = '\\0';\n");
+    StringBuilder_append(&result, "        return empty;\n");
+    StringBuilder_append(&result, "    }\n");
+    StringBuilder_append(&result, "    int64_t sub_len = end - start;\n");
+    StringBuilder_append(&result, "    char* buf = malloc(sub_len + 1);\n");
+    StringBuilder_append(&result, "    if (buf) {\n");
+    StringBuilder_append(&result, "        memcpy(buf, s + start, sub_len);\n");
+    StringBuilder_append(&result, "        buf[sub_len] = '\\0';\n");
+    StringBuilder_append(&result, "    }\n");
+    StringBuilder_append(&result, "    return buf;\n");
+    StringBuilder_append(&result, "}\n");
+    StringBuilder_append(&result, "\n");
+    StringBuilder_append(&result, "static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t elem_size) {\n");
+    StringBuilder_append(&result, "    int64_t count = end - start;\n");
+    StringBuilder_append(&result, "    if (count <= 0) return NULL;\n");
+    StringBuilder_append(&result, "    size_t total = (size_t)count * (size_t)elem_size;\n");
+    StringBuilder_append(&result, "    void* buf = malloc(total);\n");
+    StringBuilder_append(&result, "    if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);\n");
+    StringBuilder_append(&result, "    return buf;\n");
+    StringBuilder_append(&result, "}\n");
+    StringBuilder_append(&result, "\n");
     var ci: i64 = 0;
     _ = &ci;
     var has_cimports: bool = @as(c_int, 0) != 0;
@@ -14526,7 +15036,7 @@ pub export fn Codegen_generate(arg_self: [*c]Codegen, arg_top_stmt_idx: i64) [*c
         }
         if (!is_baseline) {
             if (!has_cimports) {
-                final_code = __kai_std_str_concat_alloc(final_code, "/* C FFI Imports */\n");
+                StringBuilder_append(&result, "/* C FFI Imports */\n");
                 has_cimports = @as(c_int, 1) != 0;
             }
             var has_slash: bool = @as(c_int, 0) != 0;
@@ -14550,29 +15060,4673 @@ pub export fn Codegen_generate(arg_self: [*c]Codegen, arg_top_stmt_idx: i64) [*c
                 }
             }
             if (!has_slash and !dot_start) {
-                final_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(final_code, "#include <"), hdr), ">\n");
+                StringBuilder_append(&result, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include <", hdr), ">\n"));
             } else {
-                final_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(final_code, "#include \""), hdr), "\"\n");
+                StringBuilder_append(&result, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include \"", hdr), "\"\n"));
             }
         }
         ci = ci + @as(c_longlong, 1);
     }
-    final_code = __kai_std_str_concat_alloc(final_code, "static __thread void* _kai_current_allocator = NULL;\n\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "static inline void _kai_set_current_allocator(void* allocator) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    _kai_current_allocator = allocator;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "}\n\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "extern int munmap(void* addr, unsigned long long length);\n\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "static inline char* _kai_mmap(char* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    return (char*)mmap(addr, (unsigned long long)length, prot, flags, fd, offset);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "}\n\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "static inline int64_t _kai_munmap(char* addr, int64_t length) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    return munmap(addr, (unsigned long long)length);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "}\n\n");
-    final_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(final_code, StringBuilder_to_str(&self.*.struct_decls)), "\n");
-    final_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(final_code, StringBuilder_to_str(&self.*.func_decls)), "\n");
-    final_code = __kai_std_str_concat_alloc(final_code, StringBuilder_to_str(&self.*.output));
-    return final_code;
+    StringBuilder_append(&result, "#ifndef MAP_FAILED\n");
+    StringBuilder_append(&result, "#define MAP_FAILED ((void*)-1)\n");
+    StringBuilder_append(&result, "#endif\n");
+    StringBuilder_append(&result, "#ifndef MAP_PRIVATE\n");
+    StringBuilder_append(&result, "#define MAP_PRIVATE 2\n");
+    StringBuilder_append(&result, "#endif\n");
+    StringBuilder_append(&result, "#ifndef MAP_ANONYMOUS\n");
+    StringBuilder_append(&result, "#ifdef __APPLE__\n");
+    StringBuilder_append(&result, "#define MAP_ANONYMOUS 0x1000\n");
+    StringBuilder_append(&result, "#else\n");
+    StringBuilder_append(&result, "#define MAP_ANONYMOUS 0x20\n");
+    StringBuilder_append(&result, "#endif\n");
+    StringBuilder_append(&result, "#endif\n");
+    StringBuilder_append(&result, "extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);\n");
+    StringBuilder_append(&result, "extern int munmap(void* addr, unsigned long long length);\n");
+    StringBuilder_append(&result, "\n");
+    StringBuilder_append(&result, "static __thread void* _kai_current_allocator = NULL;\n");
+    StringBuilder_append(&result, "\n");
+    StringBuilder_append(&result, "static inline void _kai_set_current_allocator(void* allocator) {\n");
+    StringBuilder_append(&result, "    _kai_current_allocator = allocator;\n");
+    StringBuilder_append(&result, "}\n");
+    StringBuilder_append(&result, "\n");
+    StringBuilder_append(&result, "void __kai_print_int(int64_t v) {\n");
+    StringBuilder_append(&result, "    printf(\"%lld\\n\", (long long)(v));\n");
+    StringBuilder_append(&result, "}\n");
+    StringBuilder_append(&result, "\n");
+    StringBuilder_append(&result, "void __kai_print_float(double v) {\n");
+    StringBuilder_append(&result, "    printf(\"%f\\n\", (double)(v));\n");
+    StringBuilder_append(&result, "}\n");
+    StringBuilder_append(&result, "\n");
+    StringBuilder_append(&result, "static inline uint8_t* _kai_mmap(uint8_t* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {\n");
+    StringBuilder_append(&result, "    return (uint8_t*)mmap(addr, length, prot, MAP_PRIVATE | MAP_ANONYMOUS, fd, offset);\n");
+    StringBuilder_append(&result, "}\n");
+    StringBuilder_append(&result, "\n");
+    StringBuilder_append(&result, "static inline int64_t _kai_munmap(uint8_t* addr, int64_t length) {\n");
+    StringBuilder_append(&result, "    return munmap(addr, length);\n");
+    StringBuilder_append(&result, "}\n");
+    StringBuilder_append(&result, "\n");
+    StringBuilder_append(&result, "extern void __kai_panic(const char* msg);\n");
+    StringBuilder_append(&result, "#ifndef __KAI_NO_PANIC\n");
+    StringBuilder_append(&result, "void __kai_panic(const char* msg) {\n");
+    StringBuilder_append(&result, "    fprintf(stderr, \"KAI PANIC: %s\\n\", msg);\n");
+    StringBuilder_append(&result, "    fflush(stderr);\n");
+    StringBuilder_append(&result, "    abort();\n");
+    StringBuilder_append(&result, "}\n");
+    StringBuilder_append(&result, "#endif\n");
+    StringBuilder_append(&result, "\n");
+    StringBuilder_append(&result, StringBuilder_to_str(&self.*.struct_decls));
+    StringBuilder_append(&result, "\n");
+    StringBuilder_append(&result, StringBuilder_to_str(&self.*.func_decls));
+    StringBuilder_append(&result, "\n");
+    StringBuilder_append(&result, StringBuilder_to_str(&self.*.output));
+    return StringBuilder_to_str(&result);
+}
+pub export fn CCodeBuilder_init(arg_allocator: [*c]KaiAllocator) CCodeBuilder {
+    var allocator = arg_allocator;
+    _ = &allocator;
+    var self: CCodeBuilder = CCodeBuilder{
+        .alloc = null,
+        .lines = @import("std").mem.zeroes(ArrayList_Str),
+        .indent_level = @import("std").mem.zeroes(i64),
+    };
+    _ = &self;
+    self.alloc = allocator;
+    self.lines = ArrayList_Str_init(allocator);
+    self.indent_level = 0;
+    return self;
+}
+pub export fn CCodeBuilder_clear(arg_self: [*c]CCodeBuilder) void {
+    var self = arg_self;
+    _ = &self;
+    self.*.lines = ArrayList_Str_init(self.*.alloc);
+    self.*.indent_level = 0;
+}
+pub export fn CCodeBuilder_emit_line(arg_self: [*c]CCodeBuilder, arg_code: [*c]const u8) void {
+    var self = arg_self;
+    _ = &self;
+    var code = arg_code;
+    _ = &code;
+    var indent_str: [*c]const u8 = "";
+    _ = &indent_str;
+    var i: i64 = 0;
+    _ = &i;
+    while (i < self.*.indent_level) {
+        indent_str = __kai_std_str_concat_alloc(indent_str, "    ");
+        i = i + @as(c_longlong, 1);
+    }
+    ArrayList_Str_push(&self.*.lines, __kai_std_str_concat_alloc(indent_str, code));
+}
+pub export fn CCodeBuilder_emit_blank(arg_self: [*c]CCodeBuilder) void {
+    var self = arg_self;
+    _ = &self;
+    ArrayList_Str_push(&self.*.lines, "");
+}
+pub export fn CCodeBuilder_emit_raw(arg_self: [*c]CCodeBuilder, arg_code: [*c]const u8) void {
+    var self = arg_self;
+    _ = &self;
+    var code = arg_code;
+    _ = &code;
+    ArrayList_Str_push(&self.*.lines, code);
+}
+pub export fn CCodeBuilder_emit_include(arg_self: [*c]CCodeBuilder, arg_header: [*c]const u8, arg_is_system: bool) void {
+    var self = arg_self;
+    _ = &self;
+    var header = arg_header;
+    _ = &header;
+    var is_system = arg_is_system;
+    _ = &is_system;
+    if (is_system) {
+        ArrayList_Str_push(&self.*.lines, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include <", header), ">"));
+    } else {
+        ArrayList_Str_push(&self.*.lines, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include \"", header), "\""));
+    }
+}
+pub export fn CCodeBuilder_emit_directive(arg_self: [*c]CCodeBuilder, arg_code: [*c]const u8) void {
+    var self = arg_self;
+    _ = &self;
+    var code = arg_code;
+    _ = &code;
+    ArrayList_Str_push(&self.*.lines, code);
+}
+pub export fn CCodeBuilder_indent(arg_self: [*c]CCodeBuilder) void {
+    var self = arg_self;
+    _ = &self;
+    self.*.indent_level = self.*.indent_level + @as(c_longlong, 1);
+}
+pub export fn CCodeBuilder_dedent(arg_self: [*c]CCodeBuilder) void {
+    var self = arg_self;
+    _ = &self;
+    if (self.*.indent_level > @as(c_longlong, 0)) {
+        self.*.indent_level = self.*.indent_level - @as(c_longlong, 1);
+    }
+}
+pub export fn CCodeBuilder_begin_block(arg_self: [*c]CCodeBuilder) void {
+    var self = arg_self;
+    _ = &self;
+    CCodeBuilder_emit_line(self, "{");
+    CCodeBuilder_indent(self);
+}
+pub export fn CCodeBuilder_end_block(arg_self: [*c]CCodeBuilder) void {
+    var self = arg_self;
+    _ = &self;
+    CCodeBuilder_dedent(self);
+    CCodeBuilder_emit_line(self, "}");
+}
+pub export fn CCodeBuilder_to_str(arg_self: [*c]CCodeBuilder) [*c]const u8 {
+    var self = arg_self;
+    _ = &self;
+    var result: [*c]const u8 = "";
+    _ = &result;
+    var i: i64 = 0;
+    _ = &i;
+    while (i < ArrayList_Str_length(&self.*.lines)) {
+        if (i > @as(c_longlong, 0)) {
+            result = __kai_std_str_concat_alloc(result, "\n");
+        }
+        result = __kai_std_str_concat_alloc(result, ArrayList_Str_get(&self.*.lines, i));
+        i = i + @as(c_longlong, 1);
+    }
+    result = __kai_std_str_concat_alloc(result, "\n");
+    return result;
+}
+pub export fn CCodeBuilder_line_count(arg_self: [*c]CCodeBuilder) i64 {
+    var self = arg_self;
+    _ = &self;
+    return ArrayList_Str_length(&self.*.lines);
+}
+pub export fn cb_escape_string(arg_s: [*c]const u8) [*c]const u8 {
+    var s = arg_s;
+    _ = &s;
+    var res: [*c]const u8 = "";
+    _ = &res;
+    var i: i64 = 0;
+    _ = &i;
+    while (@as(c_ulonglong, @bitCast(i)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s))))) {
+        var c: u8 = (blk: {
+            const tmp = i;
+            if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*;
+        _ = &c;
+        if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
+            res = __kai_std_str_concat_alloc(res, "\\n");
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 13))))))))) {
+            res = __kai_std_str_concat_alloc(res, "\\r");
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9))))))))) {
+            res = __kai_std_str_concat_alloc(res, "\\t");
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 92))))))))) {
+            res = __kai_std_str_concat_alloc(res, "\\\\");
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 34))))))))) {
+            res = __kai_std_str_concat_alloc(res, "\\\"");
+        } else {
+            res = __kai_std_str_concat_alloc(res, cgb_char_to_str(c));
+        }
+        i = i + @as(c_longlong, 1);
+    }
+    return res;
+}
+pub export fn cb_escape_asm(arg_s: [*c]const u8) [*c]const u8 {
+    var s = arg_s;
+    _ = &s;
+    var res: [*c]const u8 = "";
+    _ = &res;
+    var i: i64 = 0;
+    _ = &i;
+    while (@as(c_ulonglong, @bitCast(i)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s))))) {
+        var c: u8 = (blk: {
+            const tmp = i;
+            if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*;
+        _ = &c;
+        if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
+            res = __kai_std_str_concat_alloc(res, "\\n\\t");
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 34))))))))) {
+            res = __kai_std_str_concat_alloc(res, "\\\"");
+        } else {
+            res = __kai_std_str_concat_alloc(res, cgb_char_to_str(c));
+        }
+        i = i + @as(c_longlong, 1);
+    }
+    return res;
+}
+pub export fn cgb_char_to_str(arg_c: u8) [*c]const u8 {
+    var c = arg_c;
+    _ = &c;
+    {
+        var buf: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, @truncate(@as(c_longlong, 2)))))))));
+        _ = &buf;
+        if (buf != @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
+            buf[@as(usize, @intCast(@as(c_longlong, 0)))] = c;
+            buf[@as(usize, @intCast(@as(c_longlong, 1)))] = @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 0)))));
+        }
+        return @as([*c]const u8, @ptrCast(@alignCast(buf)));
+    }
+}
+pub export fn cgb_int_to_str(arg_n: i64) [*c]const u8 {
+    var n = arg_n;
+    _ = &n;
+    if (n == @as(c_longlong, 0)) {
+        return "0";
+    }
+    var num: i64 = n;
+    _ = &num;
+    var digits: i64 = 0;
+    _ = &digits;
+    var tmp: i64 = num;
+    _ = &tmp;
+    if (tmp < @as(c_longlong, 0)) {
+        tmp = -tmp;
+    }
+    while (tmp > @as(c_longlong, 0)) {
+        digits = digits + @as(c_longlong, 1);
+        tmp = @divTrunc(tmp, @as(c_longlong, 10));
+    }
+    var negative: bool = @as(c_int, 0) != 0;
+    _ = &negative;
+    if (num < @as(c_longlong, 0)) {
+        negative = @as(c_int, 1) != 0;
+        num = -num;
+    }
+    var total_len: i64 = digits;
+    _ = &total_len;
+    if (negative) {
+        total_len = total_len + @as(c_longlong, 1);
+    }
+    {
+        var buf: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, @truncate(@as(i64, @bitCast(total_len + @as(c_longlong, 1)))))))))));
+        _ = &buf;
+        if (buf != @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
+            var pos: i64 = total_len;
+            _ = &pos;
+            (blk: {
+                const tmp_1 = pos;
+                if (tmp_1 >= 0) break :blk buf + @as(usize, @intCast(tmp_1)) else break :blk buf - ~@as(usize, @bitCast(@as(isize, @intCast(tmp_1)) +% -1));
+            }).* = @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 0)))));
+            while ((pos > @as(c_longlong, 0)) and (digits > @as(c_longlong, 0))) {
+                pos = pos - @as(c_longlong, 1);
+                digits = digits - @as(c_longlong, 1);
+                var dv: i64 = @import("std").zig.c_translation.signedRemainder(num, @as(c_longlong, 10));
+                _ = &dv;
+                (blk: {
+                    const tmp_1 = pos;
+                    if (tmp_1 >= 0) break :blk buf + @as(usize, @intCast(tmp_1)) else break :blk buf - ~@as(usize, @bitCast(@as(isize, @intCast(tmp_1)) +% -1));
+                }).* = @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 48) + dv))));
+                num = @divTrunc(num, @as(c_longlong, 10));
+            }
+            if (negative) {
+                pos = pos - @as(c_longlong, 1);
+                (blk: {
+                    const tmp_1 = pos;
+                    if (tmp_1 >= 0) break :blk buf + @as(usize, @intCast(tmp_1)) else break :blk buf - ~@as(usize, @bitCast(@as(isize, @intCast(tmp_1)) +% -1));
+                }).* = @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 45)))));
+            }
+        }
+        return @as([*c]const u8, @ptrCast(@alignCast(buf)));
+    }
+}
+pub export fn StrBuf_init(arg_a: [*c]KaiAllocator) StrBuf {
+    var a = arg_a;
+    _ = &a;
+    var self: StrBuf = StrBuf{
+        .alloc = null,
+        .parts = @import("std").mem.zeroes(ArrayList_Str),
+    };
+    _ = &self;
+    self.alloc = a;
+    self.parts = ArrayList_Str_init(a);
+    return self;
+}
+pub export fn StrBuf_append(arg_self: [*c]StrBuf, arg_s: [*c]const u8) void {
+    var self = arg_self;
+    _ = &self;
+    var s = arg_s;
+    _ = &s;
+    ArrayList_Str_push(&self.*.parts, s);
+}
+pub export fn StrBuf_to_str(arg_self: [*c]StrBuf) [*c]const u8 {
+    var self = arg_self;
+    _ = &self;
+    var result: [*c]const u8 = "";
+    _ = &result;
+    var i: i64 = 0;
+    _ = &i;
+    while (i < ArrayList_Str_length(&self.*.parts)) {
+        result = __kai_std_str_concat_alloc(result, ArrayList_Str_get(&self.*.parts, i));
+        i = i + @as(c_longlong, 1);
+    }
+    return result;
+}
+pub export fn ArrayList_CgbMapEntry_init(arg_allocator: [*c]KaiAllocator) ArrayList_CgbMapEntry {
+    var allocator = arg_allocator;
+    _ = &allocator;
+    var self: ArrayList_CgbMapEntry = ArrayList_CgbMapEntry{
+        .data = null,
+        .len = @import("std").mem.zeroes(i64),
+        .cap = @import("std").mem.zeroes(i64),
+        .allocator = null,
+    };
+    _ = &self;
+    self.len = 0;
+    self.cap = 4;
+    self.allocator = allocator;
+    {
+        self.data = @as([*c]CgbMapEntry, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(CgbMapEntry)))), @as(c_longlong, 1)))));
+    }
+    return self;
+}
+pub export fn ArrayList_CgbMapEntry_push(arg_self: [*c]ArrayList_CgbMapEntry, arg_item: CgbMapEntry) void {
+    var self = arg_self;
+    _ = &self;
+    var item = arg_item;
+    _ = &item;
+    if (self.*.len == self.*.cap) {
+        var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
+        _ = &new_cap;
+        {
+            var new_data: [*c]CgbMapEntry = @as([*c]CgbMapEntry, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(CgbMapEntry)))), @as(c_longlong, 1)))));
+            _ = &new_data;
+            var i: i64 = 0;
+            _ = &i;
+            while (i < self.*.len) {
+                (blk: {
+                    const tmp = i;
+                    if (tmp >= 0) break :blk new_data + @as(usize, @intCast(tmp)) else break :blk new_data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                }).* = (blk: {
+                    const tmp = i;
+                    if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                }).*;
+                i = i + @as(c_longlong, 1);
+            }
+            KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
+            self.*.data = new_data;
+            self.*.cap = new_cap;
+        }
+    }
+    (blk: {
+        const tmp = self.*.len;
+        if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+    }).* = item;
+    self.*.len = self.*.len + @as(c_longlong, 1);
+}
+pub export fn ArrayList_CgbMapEntry_get(arg_self: [*c]ArrayList_CgbMapEntry, arg_index_1: i64) CgbMapEntry {
+    var self = arg_self;
+    _ = &self;
+    var index_1 = arg_index_1;
+    _ = &index_1;
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
+        {
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
+        }
+    }
+    return (blk: {
+        const tmp = index_1;
+        if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+    }).*;
+}
+pub export fn ArrayList_CgbMapEntry_set(arg_self: [*c]ArrayList_CgbMapEntry, arg_index_1: i64, arg_item: CgbMapEntry) void {
+    var self = arg_self;
+    _ = &self;
+    var index_1 = arg_index_1;
+    _ = &index_1;
+    var item = arg_item;
+    _ = &item;
+    if ((index_1 < @as(c_longlong, 0)) or (index_1 >= self.*.len)) {
+        {
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
+        }
+    }
+    (blk: {
+        const tmp = index_1;
+        if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+    }).* = item;
+}
+pub export fn ArrayList_CgbMapEntry_pop(arg_self: [*c]ArrayList_CgbMapEntry) CgbMapEntry {
+    var self = arg_self;
+    _ = &self;
+    if (self.*.len == @as(c_longlong, 0)) {
+        {
+            exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
+        }
+    }
+    self.*.len = self.*.len - @as(c_longlong, 1);
+    return (blk: {
+        const tmp = self.*.len;
+        if (tmp >= 0) break :blk self.*.data + @as(usize, @intCast(tmp)) else break :blk self.*.data - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+    }).*;
+}
+pub export fn ArrayList_CgbMapEntry_length(arg_self: [*c]ArrayList_CgbMapEntry) i64 {
+    var self = arg_self;
+    _ = &self;
+    return self.*.len;
+}
+pub export fn ArrayList_CgbMapEntry_deinit(arg_self: [*c]ArrayList_CgbMapEntry) void {
+    var self = arg_self;
+    _ = &self;
+    {
+        KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
+    }
+}
+pub export fn cgb_map_find(arg_arr: [*c]ArrayList_CgbMapEntry, arg_key: [*c]const u8) i64 {
+    var arr = arg_arr;
+    _ = &arr;
+    var key = arg_key;
+    _ = &key;
+    var i: i64 = ArrayList_CgbMapEntry_length(arr) - @as(c_longlong, 1);
+    _ = &i;
+    while (i >= @as(c_longlong, 0)) {
+        if (strcmp(ArrayList_CgbMapEntry_get(arr, i).key, key) == @as(c_int, 0)) {
+            return i;
+        }
+        i = i - @as(c_longlong, 1);
+    }
+    return -@as(c_longlong, 1);
+}
+pub export fn cgb_map_get(arg_arr: [*c]ArrayList_CgbMapEntry, arg_key: [*c]const u8) [*c]const u8 {
+    var arr = arg_arr;
+    _ = &arr;
+    var key = arg_key;
+    _ = &key;
+    var idx: i64 = cgb_map_find(arr, key);
+    _ = &idx;
+    if (idx < @as(c_longlong, 0)) {
+        return "";
+    }
+    return ArrayList_CgbMapEntry_get(arr, idx).value;
+}
+pub export fn cgb_map_put(arg_arr: [*c]ArrayList_CgbMapEntry, arg_key: [*c]const u8, arg_value: [*c]const u8) void {
+    var arr = arg_arr;
+    _ = &arr;
+    var key = arg_key;
+    _ = &key;
+    var value = arg_value;
+    _ = &value;
+    ArrayList_CgbMapEntry_push(arr, CgbMapEntry{
+        .key = key,
+        .value = value,
+    });
+}
+pub export fn cgb_strlist_find(arg_arr: [*c]ArrayList_Str, arg_key: [*c]const u8) i64 {
+    var arr = arg_arr;
+    _ = &arr;
+    var key = arg_key;
+    _ = &key;
+    var i: i64 = 0;
+    _ = &i;
+    while (i < ArrayList_Str_length(arr)) {
+        if (strcmp(ArrayList_Str_get(arr, i), key) == @as(c_int, 0)) {
+            return i;
+        }
+        i = i + @as(c_longlong, 1);
+    }
+    return -@as(c_longlong, 1);
+}
+pub export fn CodegenBuilder_add_init_return(arg_self: [*c]CodegenBuilder, arg_body_str: [*c]const u8, arg_struct_name: [*c]const u8) [*c]const u8 {
+    var self = arg_self;
+    _ = &self;
+    var body_str = arg_body_str;
+    _ = &body_str;
+    var struct_name = arg_struct_name;
+    _ = &struct_name;
+    var self_decl: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", struct_name), " self = ("), struct_name), "){0};\n");
+    _ = &self_decl;
+    var content: [*c]const u8 = body_str;
+    _ = &content;
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(content)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 3)))) and (@as(c_int, @bitCast(@as(c_uint, content[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 123)))))))))) {
+        var end_pos: i64 = @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(content)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))));
+        _ = &end_pos;
+        var done_trim: bool = @as(c_int, 0) != 0;
+        _ = &done_trim;
+        while (!done_trim) {
+            if (end_pos <= @as(c_longlong, 0)) {
+                done_trim = @as(c_int, 1) != 0;
+            } else {
+                var ec: u8 = (blk: {
+                    const tmp = end_pos;
+                    if (tmp >= 0) break :blk content + @as(usize, @intCast(tmp)) else break :blk content - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                }).*;
+                _ = &ec;
+                if (((@as(c_int, @bitCast(@as(c_uint, ec))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) or (@as(c_int, @bitCast(@as(c_uint, ec))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 13)))))))))) or (@as(c_int, @bitCast(@as(c_uint, ec))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32)))))))))) {
+                    end_pos = end_pos - @as(c_longlong, 1);
+                } else {
+                    done_trim = @as(c_int, 1) != 0;
+                }
+            }
+        }
+        if ((end_pos > @as(c_longlong, 0)) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+            const tmp = end_pos;
+            if (tmp >= 0) break :blk content + @as(usize, @intCast(tmp)) else break :blk content - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 125)))))))))) {
+            end_pos = end_pos - @as(c_longlong, 1);
+        }
+        done_trim = @as(c_int, 0) != 0;
+        while (!done_trim) {
+            if (end_pos <= @as(c_longlong, 0)) {
+                done_trim = @as(c_int, 1) != 0;
+            } else {
+                var ec: u8 = (blk: {
+                    const tmp = end_pos;
+                    if (tmp >= 0) break :blk content + @as(usize, @intCast(tmp)) else break :blk content - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                }).*;
+                _ = &ec;
+                if (((@as(c_int, @bitCast(@as(c_uint, ec))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) or (@as(c_int, @bitCast(@as(c_uint, ec))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 13)))))))))) or (@as(c_int, @bitCast(@as(c_uint, ec))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32)))))))))) {
+                    end_pos = end_pos - @as(c_longlong, 1);
+                } else {
+                    done_trim = @as(c_int, 1) != 0;
+                }
+            }
+        }
+        var first_nl: i64 = 1;
+        _ = &first_nl;
+        var found_nl: bool = @as(c_int, 0) != 0;
+        _ = &found_nl;
+        while ((first_nl < end_pos) and !found_nl) {
+            if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                const tmp = first_nl;
+                if (tmp >= 0) break :blk content + @as(usize, @intCast(tmp)) else break :blk content - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
+                found_nl = @as(c_int, 1) != 0;
+            } else {
+                first_nl = first_nl + @as(c_longlong, 1);
+            }
+        }
+        if (found_nl) {
+            content = __kai_str_sub(content, first_nl + @as(c_longlong, 1), end_pos + @as(c_longlong, 1));
+        }
+    }
+    var ends_with_return: bool = @as(c_int, 0) != 0;
+    _ = &ends_with_return;
+    {
+        var ret_ptr: [*c]u8 = strstr(content, "return self;");
+        _ = &ret_ptr;
+        if (ret_ptr != @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
+            var offset: i64 = @as(i64, @intCast(@intFromPtr(ret_ptr))) - @as(i64, @intCast(@intFromPtr(content)));
+            _ = &offset;
+            if (@as(c_ulonglong, @bitCast(offset)) >= (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(content)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 25))))) {
+                ends_with_return = @as(c_int, 1) != 0;
+            }
+        }
+    }
+    if (ends_with_return) {
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("{\n", self_decl), content), "}");
+    }
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("{\n", self_decl), content), "    return self;\n}");
+}
+pub export fn CodegenBuilder_init(arg_allocator: [*c]KaiAllocator, arg_stmt_pool: [*c]ArrayList_StmtNode, arg_expr_pool: [*c]ArrayList_ExprNode, arg_pattern_pool: [*c]ArrayList_PatternNode) CodegenBuilder {
+    var allocator = arg_allocator;
+    _ = &allocator;
+    var stmt_pool = arg_stmt_pool;
+    _ = &stmt_pool;
+    var expr_pool = arg_expr_pool;
+    _ = &expr_pool;
+    var pattern_pool = arg_pattern_pool;
+    _ = &pattern_pool;
+    var self: CodegenBuilder = CodegenBuilder{
+        .allocator = null,
+        .stmt_pool = null,
+        .expr_pool = null,
+        .pattern_pool = null,
+        .builder = @import("std").mem.zeroes(CCodeBuilder),
+        .struct_decls = @import("std").mem.zeroes(StrBuf),
+        .func_decls = @import("std").mem.zeroes(StrBuf),
+        .output_body = @import("std").mem.zeroes(StrBuf),
+        .cur_func_name = null,
+        .cur_return_type = null,
+        .cur_method_is_init = false,
+        .func_types = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+        .var_types = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+        .loaded_modules = @import("std").mem.zeroes(ArrayList_Str),
+        .cimport_headers = @import("std").mem.zeroes(ArrayList_Str),
+        .block_stack = @import("std").mem.zeroes(ArrayList_Int),
+        .generic_struct_decls = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+        .generic_enum_decls = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+        .generic_func_decls = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+        .generic_impl_blocks = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+        .monomorphized_types = @import("std").mem.zeroes(ArrayList_Str),
+        .current_type_map = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+        .enum_decls = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+        .result_definitions = @import("std").mem.zeroes(ArrayList_Str),
+        .defer_stack = @import("std").mem.zeroes(ArrayList_Int),
+        .defer_depths = @import("std").mem.zeroes(ArrayList_Int),
+        .func_param_types = @import("std").mem.zeroes(ArrayList_CgbMapEntry),
+        .type_defs = @import("std").mem.zeroes(StrBuf),
+        .monomorphized_bodies = @import("std").mem.zeroes(StrBuf),
+    };
+    _ = &self;
+    self.allocator = allocator;
+    self.stmt_pool = stmt_pool;
+    self.expr_pool = expr_pool;
+    self.pattern_pool = pattern_pool;
+    self.builder = CCodeBuilder_init(allocator);
+    self.struct_decls = StrBuf_init(allocator);
+    self.func_decls = StrBuf_init(allocator);
+    self.output_body = StrBuf_init(allocator);
+    self.cur_func_name = "";
+    self.cur_return_type = "";
+    self.cur_method_is_init = @as(c_int, 0) != 0;
+    self.func_types = ArrayList_CgbMapEntry_init(allocator);
+    self.var_types = ArrayList_CgbMapEntry_init(allocator);
+    self.loaded_modules = ArrayList_Str_init(allocator);
+    self.cimport_headers = ArrayList_Str_init(allocator);
+    self.block_stack = ArrayList_Int_init(allocator);
+    self.generic_struct_decls = ArrayList_CgbMapEntry_init(allocator);
+    self.generic_enum_decls = ArrayList_CgbMapEntry_init(allocator);
+    self.generic_func_decls = ArrayList_CgbMapEntry_init(allocator);
+    self.generic_impl_blocks = ArrayList_CgbMapEntry_init(allocator);
+    self.monomorphized_types = ArrayList_Str_init(allocator);
+    self.current_type_map = ArrayList_CgbMapEntry_init(allocator);
+    self.enum_decls = ArrayList_CgbMapEntry_init(allocator);
+    self.result_definitions = ArrayList_Str_init(allocator);
+    self.monomorphized_bodies = StrBuf_init(allocator);
+    self.defer_stack = ArrayList_Int_init(allocator);
+    self.defer_depths = ArrayList_Int_init(allocator);
+    self.func_param_types = ArrayList_CgbMapEntry_init(allocator);
+    self.type_defs = StrBuf_init(allocator);
+    return self;
+}
+pub export fn CodegenBuilder_is_pointer_type(arg_self: [*c]CodegenBuilder, arg_t: [*c]const u8) bool {
+    var self = arg_self;
+    _ = &self;
+    var t = arg_t;
+    _ = &t;
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(t)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+        return @as(c_int, 0) != 0;
+    }
+    if ((@as(c_int, @bitCast(@as(c_uint, t[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, t[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(t, "Str") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(t)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(__kai_str_sub(t, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0))) {
+        return @as(c_int, 1) != 0;
+    }
+    return @as(c_int, 0) != 0;
+}
+pub export fn CodegenBuilder_is_numeric_type(arg_self: [*c]CodegenBuilder, arg_t: [*c]const u8) bool {
+    var self = arg_self;
+    _ = &self;
+    var t = arg_t;
+    _ = &t;
+    if (((((strcmp(t, "Int") == @as(c_int, 0)) or (strcmp(t, "i8") == @as(c_int, 0))) or (strcmp(t, "i16") == @as(c_int, 0))) or (strcmp(t, "i32") == @as(c_int, 0))) or (strcmp(t, "i64") == @as(c_int, 0))) {
+        return @as(c_int, 1) != 0;
+    }
+    if ((((strcmp(t, "u8") == @as(c_int, 0)) or (strcmp(t, "u16") == @as(c_int, 0))) or (strcmp(t, "u32") == @as(c_int, 0))) or (strcmp(t, "u64") == @as(c_int, 0))) {
+        return @as(c_int, 1) != 0;
+    }
+    if ((strcmp(t, "isize") == @as(c_int, 0)) or (strcmp(t, "usize") == @as(c_int, 0))) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(t, "Float") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    return @as(c_int, 0) != 0;
+}
+pub export fn CodegenBuilder_is_integer_type(arg_self: [*c]CodegenBuilder, arg_t: [*c]const u8) bool {
+    var self = arg_self;
+    _ = &self;
+    var t = arg_t;
+    _ = &t;
+    if (((((strcmp(t, "Int") == @as(c_int, 0)) or (strcmp(t, "i8") == @as(c_int, 0))) or (strcmp(t, "i16") == @as(c_int, 0))) or (strcmp(t, "i32") == @as(c_int, 0))) or (strcmp(t, "i64") == @as(c_int, 0))) {
+        return @as(c_int, 1) != 0;
+    }
+    if ((((strcmp(t, "u8") == @as(c_int, 0)) or (strcmp(t, "u16") == @as(c_int, 0))) or (strcmp(t, "u32") == @as(c_int, 0))) or (strcmp(t, "u64") == @as(c_int, 0))) {
+        return @as(c_int, 1) != 0;
+    }
+    if ((strcmp(t, "isize") == @as(c_int, 0)) or (strcmp(t, "usize") == @as(c_int, 0))) {
+        return @as(c_int, 1) != 0;
+    }
+    return @as(c_int, 0) != 0;
+}
+pub export fn CodegenBuilder_is_copy_type(arg_self: [*c]CodegenBuilder, arg_type_name: [*c]const u8) bool {
+    var self = arg_self;
+    _ = &self;
+    var type_name = arg_type_name;
+    _ = &type_name;
+    if (CodegenBuilder_is_integer_type(self, type_name)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "Float") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "Bool") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "Char") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "Str") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "Void") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "NoneType") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(type_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, type_name[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, type_name[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
+        return @as(c_int, 1) != 0;
+    }
+    return @as(c_int, 0) != 0;
+}
+pub export fn CodegenBuilder_get_expr_type(arg_self: [*c]CodegenBuilder, arg_expr_idx: i64) [*c]const u8 {
+    var self = arg_self;
+    _ = &self;
+    var expr_idx = arg_expr_idx;
+    _ = &expr_idx;
+    if (expr_idx < @as(c_longlong, 0)) {
+        return "Void";
+    }
+    var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr_idx);
+    _ = &expr;
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_literal))) {
+        var vkind: [*c]const u8 = expr.lit_vkind;
+        _ = &vkind;
+        if (strcmp(vkind, "INT") == @as(c_int, 0)) {
+            return "Int";
+        }
+        if (strcmp(vkind, "FLOAT") == @as(c_int, 0)) {
+            return "Float";
+        }
+        if (strcmp(vkind, "STRING") == @as(c_int, 0)) {
+            return "Str";
+        }
+        if (strcmp(vkind, "BOOL") == @as(c_int, 0)) {
+            return "Bool";
+        }
+        if (strcmp(vkind, "CHAR") == @as(c_int, 0)) {
+            return "Char";
+        }
+        return "Void";
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_identifier))) {
+        var name: [*c]const u8 = expr.ident_name;
+        _ = &name;
+        var mapping: i64 = cgb_map_find(&self.*.var_types, name);
+        _ = &mapping;
+        if (mapping >= @as(c_longlong, 0)) {
+            return ArrayList_CgbMapEntry_get(&self.*.var_types, mapping).value;
+        }
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+            var first_char: u8 = name[@as(usize, @intCast(@as(c_longlong, 0)))];
+            _ = &first_char;
+            if ((@as(c_int, @bitCast(@as(c_uint, first_char))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 65))))))))) and (@as(c_int, @bitCast(@as(c_uint, first_char))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 90)))))))))) {
+                if (ArrayList_Str_length(&expr.ident_type_args) > @as(c_longlong, 0)) {
+                    var full_name: [*c]const u8 = __kai_std_str_concat_alloc(name, "<");
+                    _ = &full_name;
+                    var tai: i64 = 0;
+                    _ = &tai;
+                    while (tai < ArrayList_Str_length(&expr.ident_type_args)) {
+                        if (tai > @as(c_longlong, 0)) {
+                            full_name = __kai_std_str_concat_alloc(full_name, ", ");
+                        }
+                        full_name = __kai_std_str_concat_alloc(full_name, ArrayList_Str_get(&expr.ident_type_args, tai));
+                        tai = tai + @as(c_longlong, 1);
+                    }
+                    full_name = __kai_std_str_concat_alloc(full_name, ">");
+                    return full_name;
+                }
+                return name;
+            }
+        }
+        return "Void";
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_binary_op))) {
+        if ((strcmp(expr.binop_op, "+") == @as(c_int, 0)) and (strcmp(CodegenBuilder_get_expr_type(self, expr.binop_left), "Str") == @as(c_int, 0))) {
+            return "Str";
+        }
+        if ((((((strcmp(expr.binop_op, "==") == @as(c_int, 0)) or (strcmp(expr.binop_op, "!=") == @as(c_int, 0))) or (strcmp(expr.binop_op, "<") == @as(c_int, 0))) or (strcmp(expr.binop_op, ">") == @as(c_int, 0))) or (strcmp(expr.binop_op, "<=") == @as(c_int, 0))) or (strcmp(expr.binop_op, ">=") == @as(c_int, 0))) {
+            return "Bool";
+        }
+        if ((strcmp(expr.binop_op, "&&") == @as(c_int, 0)) or (strcmp(expr.binop_op, "||") == @as(c_int, 0))) {
+            return "Bool";
+        }
+        return CodegenBuilder_get_expr_type(self, expr.binop_left);
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_unary_op))) {
+        return CodegenBuilder_get_expr_type(self, expr.unop_operand);
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_func_call))) {
+        var name: [*c]const u8 = expr.func_name;
+        _ = &name;
+        if ((strcmp(name, "cast") == @as(c_int, 0)) or (strcmp(name, "as") == @as(c_int, 0))) {
+            if (ArrayList_Str_length(&expr.func_type_args) > @as(c_longlong, 0)) {
+                return ArrayList_Str_get(&expr.func_type_args, @as(c_longlong, 0));
+            }
+            return "Void";
+        }
+        if ((((strcmp(name, "Int") == @as(c_int, 0)) or (strcmp(name, "Float") == @as(c_int, 0))) or (strcmp(name, "Bool") == @as(c_int, 0))) or (strcmp(name, "Char") == @as(c_int, 0))) {
+            return "Int";
+        }
+        if (strcmp(name, "size_of") == @as(c_int, 0)) {
+            return "Int";
+        }
+        if (strcmp(name, "length") == @as(c_int, 0)) {
+            return "Int";
+        }
+        var is_struct: bool = @as(c_int, 0) != 0;
+        _ = &is_struct;
+        var si: i64 = 0;
+        _ = &si;
+        while (si < ArrayList_StmtNode_length(self.*.stmt_pool)) {
+            var s: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, si);
+            _ = &s;
+            if ((s.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) and (strcmp(s.struct_name, name) == @as(c_int, 0))) {
+                is_struct = @as(c_int, 1) != 0;
+            }
+            si = si + @as(c_longlong, 1);
+        }
+        if (((strcmp(name, "ArrayList") == @as(c_int, 0)) or (strcmp(name, "HashMap") == @as(c_int, 0))) or (strcmp(name, "StringBuilder") == @as(c_int, 0))) {
+            is_struct = @as(c_int, 1) != 0;
+        }
+        if (is_struct) {
+            if (ArrayList_Str_length(&expr.func_type_args) > @as(c_longlong, 0)) {
+                var unmangled: [*c]const u8 = __kai_std_str_concat_alloc(name, "<");
+                _ = &unmangled;
+                var tai: i64 = 0;
+                _ = &tai;
+                while (tai < ArrayList_Str_length(&expr.func_type_args)) {
+                    if (tai > @as(c_longlong, 0)) {
+                        unmangled = __kai_std_str_concat_alloc(unmangled, ", ");
+                    }
+                    unmangled = __kai_std_str_concat_alloc(unmangled, ArrayList_Str_get(&expr.func_type_args, tai));
+                    tai = tai + @as(c_longlong, 1);
+                }
+                unmangled = __kai_std_str_concat_alloc(unmangled, ">");
+                return unmangled;
+            }
+            return name;
+        }
+        var fidx: i64 = cgb_map_find(&self.*.func_types, name);
+        _ = &fidx;
+        if (fidx >= @as(c_longlong, 0)) {
+            var func_type: [*c]const u8 = ArrayList_CgbMapEntry_get(&self.*.func_types, fidx).value;
+            _ = &func_type;
+            var colon_pos: i64 = 0;
+            _ = &colon_pos;
+            while (@as(c_ulonglong, @bitCast(colon_pos)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(func_type))))) {
+                if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                    const tmp = colon_pos;
+                    if (tmp >= 0) break :blk func_type + @as(usize, @intCast(tmp)) else break :blk func_type - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58))))))))) {
+                    return __kai_str_sub(func_type, colon_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(func_type)))));
+                }
+                colon_pos = colon_pos + @as(c_longlong, 1);
+            }
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(func_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                return func_type;
+            }
+        }
+        return "Void";
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_index))) {
+        var base_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.idx_expr);
+        _ = &base_type;
+        if (strcmp(base_type, "Str") == @as(c_int, 0)) {
+            return "Char";
+        }
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(__kai_str_sub(base_type, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0))) {
+            return __kai_str_sub(base_type, @as(c_longlong, 2), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        }
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42)))))))))) {
+            return __kai_str_sub(base_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        }
+        return "Void";
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_field_access))) {
+        var base_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.field_expr);
+        _ = &base_type;
+        var clean_base: [*c]const u8 = base_type;
+        _ = &clean_base;
+        var done_strip: bool = @as(c_int, 0) != 0;
+        _ = &done_strip;
+        while (!done_strip) {
+            if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clean_base)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, clean_base[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, clean_base[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
+                clean_base = __kai_str_sub(clean_base, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_base)))));
+            } else if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clean_base)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(__kai_str_sub(clean_base, @as(c_longlong, 0), @as(c_longlong, 5)), "*mut ") == @as(c_int, 0))) {
+                clean_base = __kai_str_sub(clean_base, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_base)))));
+            } else {
+                done_strip = @as(c_int, 1) != 0;
+            }
+        }
+        var fi: i64 = 0;
+        _ = &fi;
+        while (fi < ArrayList_StmtNode_length(self.*.stmt_pool)) {
+            var s: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, fi);
+            _ = &s;
+            if (s.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) {
+                var is_match: bool = @as(c_int, 0) != 0;
+                _ = &is_match;
+                if (strcmp(s.struct_name, clean_base) == @as(c_int, 0)) {
+                    is_match = @as(c_int, 1) != 0;
+                } else if (CodegenBuilder_str_contains(self, clean_base, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 95))))))) {
+                    if (ArrayList_Str_length(&s.struct_type_params) > @as(c_longlong, 0)) {
+                        var underscore_pos: i64 = CodegenBuilder_str_find(self, clean_base, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 95))))));
+                        _ = &underscore_pos;
+                        if (underscore_pos >= @as(c_longlong, 0)) {
+                            var base_name: [*c]const u8 = __kai_str_sub(clean_base, @as(c_longlong, 0), underscore_pos);
+                            _ = &base_name;
+                            if (strcmp(s.struct_name, base_name) == @as(c_int, 0)) {
+                                is_match = @as(c_int, 1) != 0;
+                            }
+                        }
+                    }
+                }
+                if (is_match) {
+                    var ff: i64 = 0;
+                    _ = &ff;
+                    while (ff < ArrayList_StructField_length(&s.struct_fields)) {
+                        if (strcmp(ArrayList_StructField_get(&s.struct_fields, ff).name, expr.field_name) == @as(c_int, 0)) {
+                            return ArrayList_StructField_get(&s.struct_fields, ff).ftype;
+                        }
+                        ff = ff + @as(c_longlong, 1);
+                    }
+                }
+            }
+            fi = fi + @as(c_longlong, 1);
+        }
+        return "Void";
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_struct_init))) {
+        return expr.struct_name;
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_method_call))) {
+        var rec_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.meth_expr);
+        _ = &rec_type;
+        var clean_type: [*c]const u8 = "";
+        _ = &clean_type;
+        var ci: i64 = 0;
+        _ = &ci;
+        while (@as(c_ulonglong, @bitCast(ci)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(rec_type))))) {
+            var c: u8 = (blk: {
+                const tmp = ci;
+                if (tmp >= 0) break :blk rec_type + @as(usize, @intCast(tmp)) else break :blk rec_type - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).*;
+            _ = &c;
+            if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
+                clean_type = __kai_std_str_concat_alloc(clean_type, cgb_char_to_str(c));
+            }
+            ci = ci + @as(c_longlong, 1);
+        }
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clean_type)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 4)))) and (strcmp(__kai_str_sub(clean_type, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0))) {
+            clean_type = __kai_str_sub(clean_type, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
+        }
+        clean_type = CodegenBuilder_map_type(self, clean_type);
+        var key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(clean_type, "_"), expr.meth_name);
+        _ = &key;
+        var fidx: i64 = cgb_map_find(&self.*.func_types, key);
+        _ = &fidx;
+        if (fidx >= @as(c_longlong, 0)) {
+            return ArrayList_CgbMapEntry_get(&self.*.func_types, fidx).value;
+        }
+        return "Void";
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_borrow))) {
+        return __kai_std_str_concat_alloc("&", CodegenBuilder_get_expr_type(self, expr.borrow_expr));
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_deref))) {
+        var base_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.deref_expr);
+        _ = &base_type;
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(__kai_str_sub(base_type, @as(c_longlong, 0), @as(c_longlong, 5)), "*mut ") == @as(c_int, 0))) {
+            return __kai_str_sub(base_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        }
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(__kai_str_sub(base_type, @as(c_longlong, 0), @as(c_longlong, 5)), "&mut ") == @as(c_int, 0))) {
+            return __kai_str_sub(base_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        }
+        if ((@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
+            return __kai_str_sub(base_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        }
+        return "Void";
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_range))) {
+        return "Range";
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_slice))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+            return expr.inferred_type;
+        }
+        var base_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.slice_expr);
+        _ = &base_type;
+        if ((strcmp(base_type, "Str") == @as(c_int, 0)) or (strcmp(base_type, "*Char") == @as(c_int, 0))) {
+            return "Str";
+        }
+        return base_type;
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_array))) {
+        return expr.inferred_type;
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_tuple))) {
+        return expr.inferred_type;
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_asm))) {
+        return expr.inferred_type;
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_try))) {
+        var inner_ty: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.try_expr);
+        _ = &inner_ty;
+        if (CodegenBuilder_str_contains(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))))) {
+            var excl_pos: i64 = CodegenBuilder_str_find(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
+            _ = &excl_pos;
+            if (excl_pos >= @as(c_longlong, 0)) {
+                return __kai_str_sub(inner_ty, @as(c_longlong, 0), excl_pos);
+            }
+        }
+        return inner_ty;
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_catch))) {
+        var inner_ty: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.catch_expr);
+        _ = &inner_ty;
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner_ty)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, inner_ty[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
+            return __kai_str_sub(inner_ty, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
+        }
+        if (CodegenBuilder_str_contains(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))))) {
+            var excl_pos: i64 = CodegenBuilder_str_find(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
+            _ = &excl_pos;
+            if (excl_pos >= @as(c_longlong, 0)) {
+                return __kai_str_sub(inner_ty, @as(c_longlong, 0), excl_pos);
+            }
+        }
+        return inner_ty;
+    }
+    return "Void";
+}
+pub export fn CodegenBuilder_escape_string(arg_self: [*c]CodegenBuilder, arg_s: [*c]const u8) [*c]const u8 {
+    var self = arg_self;
+    _ = &self;
+    var s = arg_s;
+    _ = &s;
+    var res: [*c]const u8 = "";
+    _ = &res;
+    var i: i64 = 0;
+    _ = &i;
+    while (@as(c_ulonglong, @bitCast(i)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s))))) {
+        var c: u8 = (blk: {
+            const tmp = i;
+            if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*;
+        _ = &c;
+        if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
+            res = __kai_std_str_concat_alloc(res, "\\n");
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 13))))))))) {
+            res = __kai_std_str_concat_alloc(res, "\\r");
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9))))))))) {
+            res = __kai_std_str_concat_alloc(res, "\\t");
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 92))))))))) {
+            res = __kai_std_str_concat_alloc(res, "\\\\");
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 34))))))))) {
+            res = __kai_std_str_concat_alloc(res, "\\\"");
+        } else {
+            res = __kai_std_str_concat_alloc(res, cgb_char_to_str(c));
+        }
+        i = i + @as(c_longlong, 1);
+    }
+    return res;
+}
+pub export fn CodegenBuilder_str_to_int(arg_self: [*c]CodegenBuilder, arg_s: [*c]const u8) i64 {
+    var self = arg_self;
+    _ = &self;
+    var s = arg_s;
+    _ = &s;
+    var res: i64 = 0;
+    _ = &res;
+    var i: i64 = 0;
+    _ = &i;
+    while (@as(c_ulonglong, @bitCast(i)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s))))) {
+        var c: u8 = (blk: {
+            const tmp = i;
+            if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*;
+        _ = &c;
+        if ((@as(c_int, @bitCast(@as(c_uint, c))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 48))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 57)))))))))) {
+            res = (res * @as(c_longlong, 10)) + (@as(i64, @bitCast(@as(c_ulonglong, c))) - @as(c_longlong, 48));
+        }
+        i = i + @as(c_longlong, 1);
+    }
+    return res;
+}
+pub export fn CodegenBuilder_cgb_clean_type_for_mangling(arg_self: [*c]CodegenBuilder, arg_s: [*c]const u8) [*c]const u8 {
+    var self = arg_self;
+    _ = &self;
+    var s = arg_s;
+    _ = &s;
+    var result: [*c]const u8 = "";
+    _ = &result;
+    var i: i64 = 0;
+    _ = &i;
+    while (@as(c_ulonglong, @bitCast(i)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s))))) {
+        var c: u8 = (blk: {
+            const tmp = i;
+            if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*;
+        _ = &c;
+        if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) {
+            result = __kai_std_str_concat_alloc(result, "ptr");
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))) {
+            result = __kai_std_str_concat_alloc(result, "ref");
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) {
+            result = __kai_std_str_concat_alloc(result, "_");
+        } else if (((((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 62)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 44)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
+            result = __kai_std_str_concat_alloc(result, "_");
+        } else {
+            result = __kai_std_str_concat_alloc(result, cgb_char_to_str(c));
+        }
+        i = i + @as(c_longlong, 1);
+    }
+    return result;
+}
+pub export fn CodegenBuilder_monomorphize_struct(arg_self: [*c]CodegenBuilder, arg_struct_name: [*c]const u8, arg_concrete_name: [*c]const u8, arg_type_args: [*c]ArrayList_Str) void {
+    var self = arg_self;
+    _ = &self;
+    var struct_name = arg_struct_name;
+    _ = &struct_name;
+    var concrete_name = arg_concrete_name;
+    _ = &concrete_name;
+    var type_args = arg_type_args;
+    _ = &type_args;
+    var stmt_idx_str: [*c]const u8 = cgb_map_get(&self.*.generic_struct_decls, struct_name);
+    _ = &stmt_idx_str;
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt_idx_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+        return;
+    }
+    var stmt_idx: i64 = CodegenBuilder_str_to_int_safe(self, stmt_idx_str);
+    _ = &stmt_idx;
+    if (stmt_idx < @as(c_longlong, 0)) {
+        return;
+    }
+    var stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt_idx);
+    _ = &stmt;
+    StrBuf_append(&self.*.struct_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", concrete_name), " "), concrete_name), ";\n"));
+    StrBuf_append(&self.*.struct_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", concrete_name), " {\n"));
+    var fi: i64 = 0;
+    _ = &fi;
+    while (fi < ArrayList_StructField_length(&stmt.struct_fields)) {
+        var f: StructField = ArrayList_StructField_get(&stmt.struct_fields, fi);
+        _ = &f;
+        var resolved_ftype: [*c]const u8 = CodegenBuilder_substitute_type_params(self, f.ftype, &stmt.struct_type_params, type_args);
+        _ = &resolved_ftype;
+        StrBuf_append(&self.*.struct_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", CodegenBuilder_map_type(self, resolved_ftype)), " "), f.name), ";\n"));
+        fi = fi + @as(c_longlong, 1);
+    }
+    StrBuf_append(&self.*.struct_decls, "};\n");
+    CodegenBuilder_monomorphize_methods_for_struct(self, struct_name, concrete_name, &stmt.struct_type_params, type_args);
+}
+pub export fn CodegenBuilder_monomorphize_methods_for_struct(arg_self: [*c]CodegenBuilder, arg_base_struct_name: [*c]const u8, arg_concrete_name: [*c]const u8, arg_param_names: [*c]ArrayList_Str, arg_type_args: [*c]ArrayList_Str) void {
+    var self = arg_self;
+    _ = &self;
+    var base_struct_name = arg_base_struct_name;
+    _ = &base_struct_name;
+    var concrete_name = arg_concrete_name;
+    _ = &concrete_name;
+    var param_names = arg_param_names;
+    _ = &param_names;
+    var type_args = arg_type_args;
+    _ = &type_args;
+    var si: i64 = 0;
+    _ = &si;
+    while (si < ArrayList_StmtNode_length(self.*.stmt_pool)) {
+        var s: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, si);
+        _ = &s;
+        if ((s.kind == @as(c_uint, @bitCast(StmtKind_sk_impl_block))) and (strcmp(s.impl_struct_name, base_struct_name) == @as(c_int, 0))) {
+            var j: i64 = 0;
+            _ = &j;
+            while (j < ArrayList_Int_length(&s.impl_methods)) {
+                var m_idx: i64 = ArrayList_Int_get(&s.impl_methods, j);
+                _ = &m_idx;
+                var m_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, m_idx);
+                _ = &m_node;
+                var method_name: [*c]const u8 = m_node.func_name;
+                _ = &method_name;
+                var is_init: bool = (((strcmp(method_name, "init") == @as(c_int, 0)) or (strcmp(m_node.func_return_type, base_struct_name) == @as(c_int, 0))) or (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("*", base_struct_name)) == @as(c_int, 0))) or (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("&", base_struct_name)) == @as(c_int, 0));
+                _ = &is_init;
+                var mangled_fn: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(concrete_name, "_"), method_name);
+                _ = &mangled_fn;
+                var ret: [*c]const u8 = m_node.func_return_type;
+                _ = &ret;
+                if (ArrayList_Str_length(param_names) > @as(c_longlong, 0)) {
+                    ret = CodegenBuilder_substitute_type_params(self, ret, param_names, type_args);
+                }
+                if (is_init) {
+                    ret = concrete_name;
+                }
+                var ret_type: [*c]const u8 = CodegenBuilder_map_type(self, ret);
+                _ = &ret_type;
+                var params_str: [*c]const u8 = "";
+                _ = &params_str;
+                if (!is_init) {
+                    params_str = __kai_std_str_concat_alloc(concrete_name, "* self");
+                }
+                var pi: i64 = 0;
+                _ = &pi;
+                while (pi < ArrayList_Param_length(&m_node.func_params)) {
+                    var p: Param = ArrayList_Param_get(&m_node.func_params, pi);
+                    _ = &p;
+                    var is_self: bool = @as(c_int, 0) != 0;
+                    _ = &is_self;
+                    {
+                        if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(p.name, "self")))) == @as(c_longlong, 0)) {
+                            is_self = @as(c_int, 1) != 0;
+                        }
+                    }
+                    if (!is_self) {
+                        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                            params_str = __kai_std_str_concat_alloc(params_str, ", ");
+                        }
+                        var ptype: [*c]const u8 = p.ptype;
+                        _ = &ptype;
+                        if (ArrayList_Str_length(param_names) > @as(c_longlong, 0)) {
+                            ptype = CodegenBuilder_substitute_type_params(self, ptype, param_names, type_args);
+                        }
+                        params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, CodegenBuilder_map_type(self, ptype)), " "), p.name);
+                    }
+                    pi = pi + @as(c_longlong, 1);
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    params_str = "void";
+                }
+                cgb_map_put(&self.*.func_types, mangled_fn, ret);
+                StrBuf_append(&self.*.func_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), mangled_fn), "("), params_str), ");\n"));
+                var body_idx: i64 = m_node.func_body;
+                _ = &body_idx;
+                if (body_idx >= @as(c_longlong, 0)) {
+                    var body_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, body_idx);
+                    _ = &body_stmt;
+                    if (body_stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) {
+                        var old_type_map: ArrayList_CgbMapEntry = self.*.current_type_map;
+                        _ = &old_type_map;
+                        self.*.current_type_map = ArrayList_CgbMapEntry_init(self.*.allocator);
+                        var tpi: i64 = 0;
+                        _ = &tpi;
+                        while (tpi < ArrayList_Str_length(param_names)) {
+                            cgb_map_put(&self.*.current_type_map, ArrayList_Str_get(param_names, tpi), ArrayList_Str_get(type_args, tpi));
+                            tpi = tpi + @as(c_longlong, 1);
+                        }
+                        var saved_var_types: ArrayList_CgbMapEntry = self.*.var_types;
+                        _ = &saved_var_types;
+                        self.*.var_types = ArrayList_CgbMapEntry_init(self.*.allocator);
+                        var saved_block_stack: ArrayList_Int = self.*.block_stack;
+                        _ = &saved_block_stack;
+                        self.*.block_stack = ArrayList_Int_init(self.*.allocator);
+                        if (is_init) {
+                            cgb_map_put(&self.*.var_types, "self", concrete_name);
+                        } else {
+                            cgb_map_put(&self.*.var_types, "self", __kai_std_str_concat_alloc("*", concrete_name));
+                        }
+                        var pi2: i64 = 0;
+                        _ = &pi2;
+                        while (pi2 < ArrayList_Param_length(&m_node.func_params)) {
+                            var p2: Param = ArrayList_Param_get(&m_node.func_params, pi2);
+                            _ = &p2;
+                            var is_self2: bool = @as(c_int, 0) != 0;
+                            _ = &is_self2;
+                            {
+                                if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(p2.name, "self")))) == @as(c_longlong, 0)) {
+                                    is_self2 = @as(c_int, 1) != 0;
+                                }
+                            }
+                            if (!is_self2) {
+                                var ptype: [*c]const u8 = p2.ptype;
+                                _ = &ptype;
+                                if (ArrayList_Str_length(param_names) > @as(c_longlong, 0)) {
+                                    ptype = CodegenBuilder_substitute_type_params(self, ptype, param_names, type_args);
+                                }
+                                cgb_map_put(&self.*.var_types, p2.name, ptype);
+                            }
+                            pi2 = pi2 + @as(c_longlong, 1);
+                        }
+                        var saved_func_name: [*c]const u8 = self.*.cur_func_name;
+                        _ = &saved_func_name;
+                        var saved_return_type: [*c]const u8 = self.*.cur_return_type;
+                        _ = &saved_return_type;
+                        var saved_method_is_init: bool = self.*.cur_method_is_init;
+                        _ = &saved_method_is_init;
+                        self.*.cur_func_name = mangled_fn;
+                        self.*.cur_return_type = ret;
+                        self.*.cur_method_is_init = is_init;
+                        var saved_builder: CCodeBuilder = self.*.builder;
+                        _ = &saved_builder;
+                        self.*.builder = CCodeBuilder_init(self.*.allocator);
+                        CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), mangled_fn), "("), params_str), ")"));
+                        CodegenBuilder_gen_stmt(self, body_idx);
+                        var body_str: [*c]const u8 = CCodeBuilder_to_str(&self.*.builder);
+                        _ = &body_str;
+                        if (is_init) {
+                            var brace_pos: i64 = 0;
+                            _ = &brace_pos;
+                            while (@as(c_ulonglong, @bitCast(brace_pos)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(body_str))))) {
+                                if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                                    const tmp = brace_pos;
+                                    if (tmp >= 0) break :blk body_str + @as(usize, @intCast(tmp)) else break :blk body_str - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 123))))))))) {
+                                    break;
+                                }
+                                brace_pos = brace_pos + @as(c_longlong, 1);
+                            }
+                            var header: [*c]const u8 = __kai_str_sub(body_str, @as(c_longlong, 0), brace_pos);
+                            _ = &header;
+                            var raw_body: [*c]const u8 = __kai_str_sub(body_str, brace_pos, @as(i64, @bitCast(@as(c_ulonglong, strlen(body_str)))));
+                            _ = &raw_body;
+                            body_str = __kai_std_str_concat_alloc(header, CodegenBuilder_add_init_return(self, raw_body, concrete_name));
+                        }
+                        StrBuf_append(&self.*.monomorphized_bodies, body_str);
+                        self.*.builder = saved_builder;
+                        self.*.cur_func_name = saved_func_name;
+                        self.*.cur_return_type = saved_return_type;
+                        self.*.cur_method_is_init = saved_method_is_init;
+                        self.*.current_type_map = old_type_map;
+                        self.*.var_types = saved_var_types;
+                        self.*.block_stack = saved_block_stack;
+                    }
+                }
+                j = j + @as(c_longlong, 1);
+            }
+        }
+        si = si + @as(c_longlong, 1);
+    }
+}
+pub export fn CodegenBuilder_monomorphize_enum(arg_self: [*c]CodegenBuilder, arg_enum_name: [*c]const u8, arg_concrete_name: [*c]const u8, arg_type_args: [*c]ArrayList_Str) void {
+    var self = arg_self;
+    _ = &self;
+    var enum_name = arg_enum_name;
+    _ = &enum_name;
+    var concrete_name = arg_concrete_name;
+    _ = &concrete_name;
+    var type_args = arg_type_args;
+    _ = &type_args;
+    var stmt_idx_str: [*c]const u8 = cgb_map_get(&self.*.generic_enum_decls, enum_name);
+    _ = &stmt_idx_str;
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt_idx_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+        return;
+    }
+    var stmt_idx: i64 = CodegenBuilder_str_to_int_safe(self, stmt_idx_str);
+    _ = &stmt_idx;
+    if (stmt_idx < @as(c_longlong, 0)) {
+        return;
+    }
+}
+pub export fn CodegenBuilder_str_to_int_safe(arg_self: [*c]CodegenBuilder, arg_s: [*c]const u8) i64 {
+    var self = arg_self;
+    _ = &self;
+    var s = arg_s;
+    _ = &s;
+    var result: i64 = 0;
+    _ = &result;
+    var i: i64 = 0;
+    _ = &i;
+    var neg: bool = @as(c_int, 0) != 0;
+    _ = &neg;
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, s[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 45)))))))))) {
+        neg = @as(c_int, 1) != 0;
+        i = 1;
+    }
+    while (@as(c_ulonglong, @bitCast(i)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s))))) {
+        var c: u8 = (blk: {
+            const tmp = i;
+            if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*;
+        _ = &c;
+        if ((@as(c_int, @bitCast(@as(c_uint, c))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 48))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 57)))))))))) {
+            result = (result * @as(c_longlong, 10)) + (@as(i64, @bitCast(@as(c_ulonglong, c))) - @as(c_longlong, 48));
+        } else {
+            return -@as(c_longlong, 1);
+        }
+        i = i + @as(c_longlong, 1);
+    }
+    if (neg) {
+        result = -result;
+    }
+    return result;
+}
+pub export fn CodegenBuilder_substitute_type_params(arg_self: [*c]CodegenBuilder, arg_type_name: [*c]const u8, arg_param_names: [*c]ArrayList_Str, arg_arg_types: [*c]ArrayList_Str) [*c]const u8 {
+    var self = arg_self;
+    _ = &self;
+    var type_name = arg_type_name;
+    _ = &type_name;
+    var param_names = arg_param_names;
+    _ = &param_names;
+    var arg_types = arg_arg_types;
+    _ = &arg_types;
+    if (ArrayList_Str_length(param_names) == @as(c_longlong, 0)) {
+        return type_name;
+    }
+    var result: [*c]const u8 = type_name;
+    _ = &result;
+    var i: i64 = 0;
+    _ = &i;
+    while (i < ArrayList_Str_length(param_names)) {
+        var pn: [*c]const u8 = ArrayList_Str_get(param_names, i);
+        _ = &pn;
+        var arg: [*c]const u8 = ArrayList_Str_get(arg_types, i);
+        _ = &arg;
+        {
+            if (strstr(result, pn) != @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
+                var ri: i64 = 0;
+                _ = &ri;
+                var new_res: [*c]const u8 = "";
+                _ = &new_res;
+                var pn_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(pn))));
+                _ = &pn_len;
+                while (@as(c_ulonglong, @bitCast(ri)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(result))))) {
+                    var matches: bool = @as(c_int, 1) != 0;
+                    _ = &matches;
+                    var mi: i64 = 0;
+                    _ = &mi;
+                    while (mi < pn_len) {
+                        if (@as(c_ulonglong, @bitCast(ri + mi)) >= @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(result))))) {
+                            matches = @as(c_int, 0) != 0;
+                            break;
+                        }
+                        if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                            const tmp = ri + mi;
+                            if (tmp >= 0) break :blk result + @as(usize, @intCast(tmp)) else break :blk result - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*))) != @as(c_int, @bitCast(@as(c_uint, (blk: {
+                            const tmp = mi;
+                            if (tmp >= 0) break :blk pn + @as(usize, @intCast(tmp)) else break :blk pn - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*)))) {
+                            matches = @as(c_int, 0) != 0;
+                            break;
+                        }
+                        mi = mi + @as(c_longlong, 1);
+                    }
+                    if (matches) {
+                        new_res = __kai_std_str_concat_alloc(new_res, arg);
+                        ri = ri + pn_len;
+                    } else {
+                        new_res = __kai_std_str_concat_alloc(new_res, cgb_char_to_str((blk: {
+                            const tmp = ri;
+                            if (tmp >= 0) break :blk result + @as(usize, @intCast(tmp)) else break :blk result - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*));
+                        ri = ri + @as(c_longlong, 1);
+                    }
+                }
+                result = new_res;
+            }
+        }
+        i = i + @as(c_longlong, 1);
+    }
+    return result;
+}
+pub export fn CodegenBuilder_map_type(arg_self: [*c]CodegenBuilder, arg_resolved_type: [*c]const u8) [*c]const u8 {
+    var self = arg_self;
+    _ = &self;
+    var resolved_type = arg_resolved_type;
+    _ = &resolved_type;
+    var orig: [*c]const u8 = resolved_type;
+    _ = &orig;
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(orig)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+        return "void";
+    }
+    if (ArrayList_CgbMapEntry_length(&self.*.current_type_map) > @as(c_longlong, 0)) {
+        var tmi: i64 = 0;
+        _ = &tmi;
+        while (tmi < ArrayList_CgbMapEntry_length(&self.*.current_type_map)) {
+            var entry: CgbMapEntry = ArrayList_CgbMapEntry_get(&self.*.current_type_map, tmi);
+            _ = &entry;
+            if (strcmp(entry.key, orig) == @as(c_int, 0)) {
+                return CodegenBuilder_map_type(self, entry.value);
+            }
+            tmi = tmi + @as(c_longlong, 1);
+        }
+    }
+    if ((strcmp(orig, "Int") == @as(c_int, 0)) or (strcmp(orig, "i64") == @as(c_int, 0))) {
+        return "int64_t";
+    }
+    if (strcmp(orig, "i8") == @as(c_int, 0)) {
+        return "int8_t";
+    }
+    if (strcmp(orig, "i16") == @as(c_int, 0)) {
+        return "int16_t";
+    }
+    if (strcmp(orig, "i32") == @as(c_int, 0)) {
+        return "int32_t";
+    }
+    if (strcmp(orig, "u8") == @as(c_int, 0)) {
+        return "uint8_t";
+    }
+    if (strcmp(orig, "u16") == @as(c_int, 0)) {
+        return "uint16_t";
+    }
+    if (strcmp(orig, "u32") == @as(c_int, 0)) {
+        return "uint32_t";
+    }
+    if (strcmp(orig, "u64") == @as(c_int, 0)) {
+        return "uint64_t";
+    }
+    if (strcmp(orig, "usize") == @as(c_int, 0)) {
+        return "size_t";
+    }
+    if (strcmp(orig, "isize") == @as(c_int, 0)) {
+        return "intptr_t";
+    }
+    if (strcmp(orig, "Void") == @as(c_int, 0)) {
+        return "void";
+    }
+    if (strcmp(orig, "Bool") == @as(c_int, 0)) {
+        return "bool";
+    }
+    if (strcmp(orig, "Char") == @as(c_int, 0)) {
+        return "char";
+    }
+    if (strcmp(orig, "Float") == @as(c_int, 0)) {
+        return "double";
+    }
+    if (strcmp(orig, "Str") == @as(c_int, 0)) {
+        return "const char*";
+    }
+    if (strcmp(orig, "NoneType") == @as(c_int, 0)) {
+        return "void";
+    }
+    if (strcmp(orig, "Allocator") == @as(c_int, 0)) {
+        return "KaiAllocator";
+    }
+    if (strcmp(orig, "TokenValue") == @as(c_int, 0)) {
+        return "TokenValue";
+    }
+    if (strcmp(orig, "TokenType") == @as(c_int, 0)) {
+        return "TokenType";
+    }
+    var ptr_count: i64 = 0;
+    _ = &ptr_count;
+    var inner: [*c]const u8 = orig;
+    _ = &inner;
+    var changed: bool = @as(c_int, 1) != 0;
+    _ = &changed;
+    while (changed) {
+        changed = @as(c_int, 0) != 0;
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, inner[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42)))))))))) {
+            ptr_count = ptr_count + @as(c_longlong, 1);
+            inner = __kai_str_sub(inner, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner)))));
+            changed = @as(c_int, 1) != 0;
+        } else if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, inner[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
+            ptr_count = ptr_count + @as(c_longlong, 1);
+            inner = __kai_str_sub(inner, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner)))));
+            changed = @as(c_int, 1) != 0;
+        } else if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(__kai_str_sub(inner, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0))) {
+            ptr_count = ptr_count + @as(c_longlong, 1);
+            inner = __kai_str_sub(inner, @as(c_longlong, 2), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner)))));
+            changed = @as(c_int, 1) != 0;
+        } else if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(__kai_str_sub(inner, @as(c_longlong, 0), @as(c_longlong, 5)), "*mut ") == @as(c_int, 0))) {
+            ptr_count = ptr_count + @as(c_longlong, 1);
+            inner = __kai_str_sub(inner, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner)))));
+            changed = @as(c_int, 1) != 0;
+        }
+    }
+    var base: [*c]const u8 = inner;
+    _ = &base;
+    if (ArrayList_CgbMapEntry_length(&self.*.current_type_map) > @as(c_longlong, 0)) {
+        var tmi2: i64 = 0;
+        _ = &tmi2;
+        while (tmi2 < ArrayList_CgbMapEntry_length(&self.*.current_type_map)) {
+            var entry: CgbMapEntry = ArrayList_CgbMapEntry_get(&self.*.current_type_map, tmi2);
+            _ = &entry;
+            if (strcmp(entry.key, base) == @as(c_int, 0)) {
+                if (ptr_count > @as(c_longlong, 0)) {
+                    var mapped: [*c]const u8 = CodegenBuilder_map_type(self, entry.value);
+                    _ = &mapped;
+                    var pi2: i64 = 0;
+                    _ = &pi2;
+                    while (pi2 < ptr_count) {
+                        mapped = __kai_std_str_concat_alloc(mapped, "*");
+                        pi2 = pi2 + @as(c_longlong, 1);
+                    }
+                    return mapped;
+                }
+                return CodegenBuilder_map_type(self, entry.value);
+            }
+            tmi2 = tmi2 + @as(c_longlong, 1);
+        }
+    }
+    if ((strcmp(base, "Int") == @as(c_int, 0)) or (strcmp(base, "i64") == @as(c_int, 0))) {
+        base = "int64_t";
+    } else if (strcmp(base, "i8") == @as(c_int, 0)) {
+        base = "int8_t";
+    } else if (strcmp(base, "i16") == @as(c_int, 0)) {
+        base = "int16_t";
+    } else if (strcmp(base, "i32") == @as(c_int, 0)) {
+        base = "int32_t";
+    } else if (strcmp(base, "u8") == @as(c_int, 0)) {
+        base = "uint8_t";
+    } else if (strcmp(base, "u16") == @as(c_int, 0)) {
+        base = "uint16_t";
+    } else if (strcmp(base, "u32") == @as(c_int, 0)) {
+        base = "uint32_t";
+    } else if (strcmp(base, "u64") == @as(c_int, 0)) {
+        base = "uint64_t";
+    } else if (strcmp(base, "usize") == @as(c_int, 0)) {
+        base = "size_t";
+    } else if (strcmp(base, "isize") == @as(c_int, 0)) {
+        base = "intptr_t";
+    } else if (strcmp(base, "Void") == @as(c_int, 0)) {
+        base = "void";
+    } else if (strcmp(base, "Bool") == @as(c_int, 0)) {
+        base = "bool";
+    } else if (strcmp(base, "Char") == @as(c_int, 0)) {
+        base = "char";
+    } else if (strcmp(base, "Float") == @as(c_int, 0)) {
+        base = "double";
+    } else if (strcmp(base, "Str") == @as(c_int, 0)) {
+        base = "const char*";
+    } else if (strcmp(base, "NoneType") == @as(c_int, 0)) {
+        base = "void";
+    } else if (strcmp(base, "Allocator") == @as(c_int, 0)) {
+        base = "KaiAllocator";
+    } else if (strcmp(base, "TokenValue") == @as(c_int, 0)) {
+        base = "TokenValue";
+    } else if (strcmp(base, "TokenType") == @as(c_int, 0)) {
+        base = "TokenType";
+    } else if (CodegenBuilder_str_contains(self, base, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))))) {
+        var excl_pos: i64 = CodegenBuilder_str_find(self, base, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
+        _ = &excl_pos;
+        var val_type: [*c]const u8 = __kai_str_sub(base, @as(c_longlong, 0), excl_pos);
+        _ = &val_type;
+        var err_type: [*c]const u8 = __kai_str_sub(base, excl_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base)))));
+        _ = &err_type;
+        var clean_val: [*c]const u8 = CodegenBuilder_cgb_clean_type_for_mangling(self, val_type);
+        _ = &clean_val;
+        var clean_err: [*c]const u8 = CodegenBuilder_cgb_clean_type_for_mangling(self, err_type);
+        _ = &clean_err;
+        var concrete_name: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("Result_", clean_val), "_"), clean_err);
+        _ = &concrete_name;
+        if (cgb_strlist_find(&self.*.monomorphized_types, concrete_name) < @as(c_longlong, 0)) {
+            ArrayList_Str_push(&self.*.monomorphized_types, concrete_name);
+            StrBuf_append(&self.*.struct_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", concrete_name), " "), concrete_name), ";\n"));
+            StrBuf_append(&self.*.struct_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", concrete_name), " {\n"));
+            StrBuf_append(&self.*.struct_decls, "    int64_t tag;\n");
+            if (strcmp(val_type, "Void") != @as(c_int, 0)) {
+                StrBuf_append(&self.*.struct_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", CodegenBuilder_map_type(self, val_type)), " value;\n"));
+            }
+            StrBuf_append(&self.*.struct_decls, "};\n");
+        }
+        base = concrete_name;
+    } else if (CodegenBuilder_str_contains(self, base, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63))))))) {
+        var q_pos: i64 = CodegenBuilder_str_find(self, base, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63))))));
+        _ = &q_pos;
+        if (q_pos == @as(c_longlong, 0)) {
+            var val_type: [*c]const u8 = __kai_str_sub(base, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base)))));
+            _ = &val_type;
+            if (CodegenBuilder_is_pointer_type(self, val_type)) {
+                base = CodegenBuilder_map_type(self, val_type);
+            } else {
+                var clean_val2: [*c]const u8 = CodegenBuilder_cgb_clean_type_for_mangling(self, val_type);
+                _ = &clean_val2;
+                var concrete_name: [*c]const u8 = __kai_std_str_concat_alloc("Optional_", clean_val2);
+                _ = &concrete_name;
+                if (cgb_strlist_find(&self.*.monomorphized_types, concrete_name) < @as(c_longlong, 0)) {
+                    ArrayList_Str_push(&self.*.monomorphized_types, concrete_name);
+                    StrBuf_append(&self.*.struct_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", concrete_name), " "), concrete_name), ";\n"));
+                    StrBuf_append(&self.*.struct_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", concrete_name), " {\n"));
+                    StrBuf_append(&self.*.struct_decls, "    bool has_value;\n");
+                    StrBuf_append(&self.*.struct_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", CodegenBuilder_map_type(self, val_type)), " value;\n"));
+                    StrBuf_append(&self.*.struct_decls, "};\n");
+                }
+                base = concrete_name;
+            }
+        }
+    } else if (CodegenBuilder_str_contains(self, base, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))))) {
+        var lt_pos: i64 = CodegenBuilder_str_find(self, base, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))));
+        _ = &lt_pos;
+        var base_name: [*c]const u8 = __kai_str_sub(base, @as(c_longlong, 0), lt_pos);
+        _ = &base_name;
+        var args_str2: [*c]const u8 = __kai_str_sub(base, lt_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))));
+        _ = &args_str2;
+        var concrete_name: [*c]const u8 = base_name;
+        _ = &concrete_name;
+        var args_list: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
+        _ = &args_list;
+        var start2: i64 = 0;
+        _ = &start2;
+        while (@as(c_ulonglong, @bitCast(start2)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(args_str2))))) {
+            while ((@as(c_ulonglong, @bitCast(start2)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(args_str2))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                const tmp = start2;
+                if (tmp >= 0) break :blk args_str2 + @as(usize, @intCast(tmp)) else break :blk args_str2 - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32)))))))))) {
+                start2 = start2 + @as(c_longlong, 1);
+            }
+            if (@as(c_ulonglong, @bitCast(start2)) >= @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(args_str2))))) {
+                break;
+            }
+            var end2: i64 = start2;
+            _ = &end2;
+            while ((@as(c_ulonglong, @bitCast(end2)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(args_str2))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                const tmp = end2;
+                if (tmp >= 0) break :blk args_str2 + @as(usize, @intCast(tmp)) else break :blk args_str2 - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).*))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 44)))))))))) {
+                end2 = end2 + @as(c_longlong, 1);
+            }
+            var arg: [*c]const u8 = __kai_str_sub(args_str2, start2, end2);
+            _ = &arg;
+            var clean_arg: [*c]const u8 = CodegenBuilder_cgb_clean_type_for_mangling(self, arg);
+            _ = &clean_arg;
+            ArrayList_Str_push(&args_list, arg);
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(concrete_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                concrete_name = __kai_std_str_concat_alloc(concrete_name, "_");
+            }
+            concrete_name = __kai_std_str_concat_alloc(concrete_name, clean_arg);
+            start2 = end2 + @as(c_longlong, 1);
+        }
+        var struct_idx_str: [*c]const u8 = cgb_map_get(&self.*.generic_struct_decls, base_name);
+        _ = &struct_idx_str;
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(struct_idx_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+            if (cgb_strlist_find(&self.*.monomorphized_types, concrete_name) < @as(c_longlong, 0)) {
+                ArrayList_Str_push(&self.*.monomorphized_types, concrete_name);
+                CodegenBuilder_monomorphize_struct(self, base_name, concrete_name, &args_list);
+            }
+            base = concrete_name;
+        } else {
+            var enum_idx_str: [*c]const u8 = cgb_map_get(&self.*.generic_enum_decls, base_name);
+            _ = &enum_idx_str;
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(enum_idx_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                if (cgb_strlist_find(&self.*.monomorphized_types, concrete_name) < @as(c_longlong, 0)) {
+                    ArrayList_Str_push(&self.*.monomorphized_types, concrete_name);
+                    CodegenBuilder_monomorphize_enum(self, base_name, concrete_name, &args_list);
+                }
+                base = concrete_name;
+            } else {
+                base = concrete_name;
+            }
+        }
+    }
+    var result: [*c]const u8 = base;
+    _ = &result;
+    var pi: i64 = 0;
+    _ = &pi;
+    while (pi < ptr_count) {
+        result = __kai_std_str_concat_alloc(result, "*");
+        pi = pi + @as(c_longlong, 1);
+    }
+    return result;
+}
+pub export fn CodegenBuilder_str_contains(arg_self: [*c]CodegenBuilder, arg_s: [*c]const u8, arg_target: u8) bool {
+    var self = arg_self;
+    _ = &self;
+    var s = arg_s;
+    _ = &s;
+    var target = arg_target;
+    _ = &target;
+    var i: i64 = 0;
+    _ = &i;
+    while (@as(c_ulonglong, @bitCast(i)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s))))) {
+        if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+            const tmp = i;
+            if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*))) == @as(c_int, @bitCast(@as(c_uint, target)))) {
+            return @as(c_int, 1) != 0;
+        }
+        i = i + @as(c_longlong, 1);
+    }
+    return @as(c_int, 0) != 0;
+}
+pub export fn CodegenBuilder_str_find(arg_self: [*c]CodegenBuilder, arg_s: [*c]const u8, arg_target: u8) i64 {
+    var self = arg_self;
+    _ = &self;
+    var s = arg_s;
+    _ = &s;
+    var target = arg_target;
+    _ = &target;
+    var i: i64 = 0;
+    _ = &i;
+    while (@as(c_ulonglong, @bitCast(i)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s))))) {
+        if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+            const tmp = i;
+            if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*))) == @as(c_int, @bitCast(@as(c_uint, target)))) {
+            return i;
+        }
+        i = i + @as(c_longlong, 1);
+    }
+    return -@as(c_longlong, 1);
+}
+pub export fn CodegenBuilder_is_fully_parenthesized(arg_self: [*c]CodegenBuilder, arg_s: [*c]const u8) bool {
+    var self = arg_self;
+    _ = &self;
+    var s = arg_s;
+    _ = &s;
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) < @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) {
+        return @as(c_int, 0) != 0;
+    }
+    if ((@as(c_int, @bitCast(@as(c_uint, s[@as(usize, @intCast(@as(c_longlong, 0)))]))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 40))))))))) or (@as(c_int, @bitCast(@as(c_uint, s[@as(usize, @intCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))))]))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 41)))))))))) {
+        return @as(c_int, 0) != 0;
+    }
+    var depth: i64 = 0;
+    _ = &depth;
+    var i: i64 = 0;
+    _ = &i;
+    while (@as(c_ulonglong, @bitCast(i)) < (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))) {
+        var c: u8 = (blk: {
+            const tmp = i;
+            if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*;
+        _ = &c;
+        if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 39))))))))) {
+            i = i + @as(c_longlong, 1);
+            while ((@as(c_ulonglong, @bitCast(i)) < (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                const tmp = i;
+                if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).*))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 39)))))))))) {
+                if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                    const tmp = i;
+                    if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 92))))))))) {
+                    i = i + @as(c_longlong, 1);
+                }
+                i = i + @as(c_longlong, 1);
+            }
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 34))))))))) {
+            i = i + @as(c_longlong, 1);
+            while ((@as(c_ulonglong, @bitCast(i)) < (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                const tmp = i;
+                if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).*))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 34)))))))))) {
+                if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                    const tmp = i;
+                    if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 92))))))))) {
+                    i = i + @as(c_longlong, 1);
+                }
+                i = i + @as(c_longlong, 1);
+            }
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 40))))))))) {
+            depth = depth + @as(c_longlong, 1);
+        } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 41))))))))) {
+            depth = depth - @as(c_longlong, 1);
+        }
+        if (depth == @as(c_longlong, 0)) {
+            return @as(c_int, 0) != 0;
+        }
+        i = i + @as(c_longlong, 1);
+    }
+    return @as(c_int, 1) != 0;
+}
+pub export fn CodegenBuilder_format_cond(arg_self: [*c]CodegenBuilder, arg_cond: [*c]const u8) [*c]const u8 {
+    var self = arg_self;
+    _ = &self;
+    var cond = arg_cond;
+    _ = &cond;
+    if (CodegenBuilder_is_fully_parenthesized(self, cond)) {
+        return cond;
+    }
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", cond), ")");
+}
+pub export fn CodegenBuilder_cgb_replace_format_specifiers(arg_self: [*c]CodegenBuilder, arg_s: [*c]const u8) [*c]const u8 {
+    var self = arg_self;
+    _ = &self;
+    var s = arg_s;
+    _ = &s;
+    var result: [*c]const u8 = "";
+    _ = &result;
+    var i: i64 = 0;
+    _ = &i;
+    while (@as(c_ulonglong, @bitCast(i)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s))))) {
+        if ((((@as(c_ulonglong, @bitCast(i)) < (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 2))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+            const tmp = i;
+            if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 37)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+            const tmp = i + @as(c_longlong, 1);
+            if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 108)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+            const tmp = i + @as(c_longlong, 2);
+            if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 100)))))))))) {
+            result = __kai_std_str_concat_alloc(result, "%\" PRId64 \"");
+            i = i + @as(c_longlong, 3);
+        } else {
+            result = __kai_std_str_concat_alloc(result, cgb_char_to_str((blk: {
+                const tmp = i;
+                if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).*));
+            i = i + @as(c_longlong, 1);
+        }
+    }
+    return result;
+}
+pub export fn CodegenBuilder_is_standard_c_func(arg_self: [*c]CodegenBuilder, arg_name: [*c]const u8) bool {
+    var self = arg_self;
+    _ = &self;
+    var name = arg_name;
+    _ = &name;
+    var l: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(name))));
+    _ = &l;
+    if (l >= @as(c_longlong, 4)) {
+        var sub4: [*c]const u8 = __kai_str_sub(name, @as(c_longlong, 0), @as(c_longlong, 4));
+        _ = &sub4;
+        var is_llvm: bool = @as(c_int, 0) != 0;
+        _ = &is_llvm;
+        {
+            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(sub4, "LLVM")))) == @as(c_longlong, 0)) {
+                is_llvm = @as(c_int, 1) != 0;
+            }
+        }
+        if (is_llvm) {
+            return @as(c_int, 1) != 0;
+        }
+    }
+    if (l >= @as(c_longlong, 8)) {
+        var sub8: [*c]const u8 = __kai_str_sub(name, @as(c_longlong, 0), @as(c_longlong, 8));
+        _ = &sub8;
+        var is_kai_llvm: bool = @as(c_int, 0) != 0;
+        _ = &is_kai_llvm;
+        {
+            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(sub8, "kai_LLVM")))) == @as(c_longlong, 0)) {
+                is_kai_llvm = @as(c_int, 1) != 0;
+            }
+        }
+        if (is_kai_llvm) {
+            return @as(c_int, 1) != 0;
+        }
+    }
+    if (strcmp(name, "atoll") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "malloc") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "free") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "realloc") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "calloc") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "isdigit") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "isalpha") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "isalnum") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "isspace") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "toupper") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "tolower") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "strlen") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "exit") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "system") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "fopen") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "fread") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "fwrite") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "fclose") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "fseek") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "ftell") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "rewind") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "strcmp") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "printf") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "fprintf") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "sprintf") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "snprintf") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(name, "sqrt") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    return @as(c_int, 0) != 0;
+}
+pub export fn CodegenBuilder_gen_expr_with_expected_type(arg_self: [*c]CodegenBuilder, arg_expr_idx: i64, arg_expected_type: [*c]const u8) [*c]const u8 {
+    var self = arg_self;
+    _ = &self;
+    var expr_idx = arg_expr_idx;
+    _ = &expr_idx;
+    var expected_type = arg_expected_type;
+    _ = &expected_type;
+    if (expr_idx < @as(c_longlong, 0)) {
+        return "";
+    }
+    var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr_idx);
+    _ = &expr;
+    var actual_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr_idx);
+    _ = &actual_type;
+    if ((expr.kind == @as(c_uint, @bitCast(ExprKind_ek_literal))) and (strcmp(expr.lit_vkind, "NONE") == @as(c_int, 0))) {
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expected_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, expected_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
+            var val_type: [*c]const u8 = __kai_str_sub(expected_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(expected_type)))));
+            _ = &val_type;
+            if (CodegenBuilder_is_pointer_type(self, val_type)) {
+                return "NULL";
+            }
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", CodegenBuilder_map_type(self, expected_type)), "){0}");
+        }
+        return "NULL";
+    }
+    var gen_val: [*c]const u8 = CodegenBuilder_gen_expr(self, expr_idx);
+    _ = &gen_val;
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(actual_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, actual_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42)))))))))) {
+        var pointer_target: [*c]const u8 = __kai_str_sub(actual_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(actual_type)))));
+        _ = &pointer_target;
+        if (strcmp(pointer_target, expected_type) == @as(c_int, 0)) {
+            return __kai_std_str_concat_alloc("*", gen_val);
+        }
+    }
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expected_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, expected_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
+        var val_type: [*c]const u8 = __kai_str_sub(expected_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(expected_type)))));
+        _ = &val_type;
+        if (!CodegenBuilder_is_pointer_type(self, val_type) and (strcmp(actual_type, val_type) == @as(c_int, 0))) {
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", CodegenBuilder_map_type(self, expected_type)), "){ .has_value = true, .value = "), gen_val), " }");
+        }
+    }
+    var excl_pos: i64 = -@as(c_longlong, 1);
+    _ = &excl_pos;
+    var ei: i64 = 0;
+    _ = &ei;
+    while (@as(c_ulonglong, @bitCast(ei)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expected_type))))) {
+        if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+            const tmp = ei;
+            if (tmp >= 0) break :blk expected_type + @as(usize, @intCast(tmp)) else break :blk expected_type - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))))))) {
+            excl_pos = ei;
+        }
+        ei = ei + @as(c_longlong, 1);
+    }
+    if (excl_pos >= @as(c_longlong, 0)) {
+        var val_payload: [*c]const u8 = __kai_str_sub(expected_type, @as(c_longlong, 0), excl_pos);
+        _ = &val_payload;
+        var mapped_type: [*c]const u8 = CodegenBuilder_map_type(self, expected_type);
+        _ = &mapped_type;
+        var actual_has_excl: bool = @as(c_int, 0) != 0;
+        _ = &actual_has_excl;
+        var aei: i64 = 0;
+        _ = &aei;
+        while (@as(c_ulonglong, @bitCast(aei)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(actual_type))))) {
+            if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                const tmp = aei;
+                if (tmp >= 0) break :blk actual_type + @as(usize, @intCast(tmp)) else break :blk actual_type - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))))))) {
+                actual_has_excl = @as(c_int, 1) != 0;
+            }
+            aei = aei + @as(c_longlong, 1);
+        }
+        if (actual_has_excl) {
+            return gen_val;
+        }
+        if ((strcmp(actual_type, "Void") == @as(c_int, 0)) and (strcmp(val_payload, "Void") != @as(c_int, 0))) {
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_type), "){ .tag = "), gen_val), " }");
+        }
+        if (strcmp(val_payload, "Void") == @as(c_int, 0)) {
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_type), "){ .tag = 0 }");
+        }
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_type), "){ .tag = 0, .value = "), gen_val), " }");
+    }
+    return gen_val;
+}
+pub export fn CodegenBuilder_gen_expr(arg_self: [*c]CodegenBuilder, arg_expr_idx: i64) [*c]const u8 {
+    var self = arg_self;
+    _ = &self;
+    var expr_idx = arg_expr_idx;
+    _ = &expr_idx;
+    if (expr_idx < @as(c_longlong, 0)) {
+        return "";
+    }
+    var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr_idx);
+    _ = &expr;
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_literal))) {
+        var vkind: [*c]const u8 = expr.lit_vkind;
+        _ = &vkind;
+        if (strcmp(vkind, "INT") == @as(c_int, 0)) {
+            if (@as(c_int, @bitCast(@as(c_uint, expr.lit_value.tag))) == TokenValue_tv_str_TAG) {
+                var v: [*c]const u8 = expr.lit_value.payload.tv_str.v;
+                _ = &v;
+                var s: [*c]const u8 = v;
+                _ = &s;
+                return __kai_std_str_concat_alloc(s, "LL");
+            } else if (@as(c_int, @bitCast(@as(c_uint, expr.lit_value.tag))) == TokenValue_tv_int_TAG) {
+                var v: i64 = expr.lit_value.payload.tv_int.v;
+                _ = &v;
+                return __kai_std_str_concat_alloc(cgb_int_to_str(v), "LL");
+            } else {
+                return "0LL";
+            }
+        }
+        if (strcmp(vkind, "FLOAT") == @as(c_int, 0)) {
+            if (@as(c_int, @bitCast(@as(c_uint, expr.lit_value.tag))) == TokenValue_tv_str_TAG) {
+                var v: [*c]const u8 = expr.lit_value.payload.tv_str.v;
+                _ = &v;
+                return v;
+            } else {
+                return "0.0";
+            }
+        }
+        if (strcmp(vkind, "STRING") == @as(c_int, 0)) {
+            if (@as(c_int, @bitCast(@as(c_uint, expr.lit_value.tag))) == TokenValue_tv_str_TAG) {
+                var v: [*c]const u8 = expr.lit_value.payload.tv_str.v;
+                _ = &v;
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("\"", CodegenBuilder_cgb_replace_format_specifiers(self, CodegenBuilder_escape_string(self, v))), "\"");
+            } else {
+                return "\"\"";
+            }
+        }
+        if (strcmp(vkind, "BOOL") == @as(c_int, 0)) {
+            if (@as(c_int, @bitCast(@as(c_uint, expr.lit_value.tag))) == TokenValue_tv_bool_TAG) {
+                var v: bool = expr.lit_value.payload.tv_bool.v;
+                _ = &v;
+                if (v) {
+                    return "true";
+                }
+                return "false";
+            } else {
+                return "false";
+            }
+        }
+        if (strcmp(vkind, "CHAR") == @as(c_int, 0)) {
+            if (@as(c_int, @bitCast(@as(c_uint, expr.lit_value.tag))) == TokenValue_tv_char_TAG) {
+                var v: u8 = expr.lit_value.payload.tv_char.v;
+                _ = &v;
+                var lit_str: [*c]const u8 = "";
+                _ = &lit_str;
+                if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
+                    lit_str = "'\\n'";
+                } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 13))))))))) {
+                    lit_str = "'\\r'";
+                } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9))))))))) {
+                    lit_str = "'\\t'";
+                } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 92))))))))) {
+                    lit_str = "'\\\\'";
+                } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 39))))))))) {
+                    lit_str = "'\\''";
+                } else {
+                    lit_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("'", cgb_char_to_str(v)), "'");
+                }
+                return lit_str;
+            } else {
+                return "'\\0'";
+            }
+        }
+        if (strcmp(vkind, "NONE") == @as(c_int, 0)) {
+            return "((void*)0)";
+        }
+        return "";
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_identifier))) {
+        return expr.ident_name;
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_binary_op))) {
+        var lhs_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.binop_left);
+        _ = &lhs_type;
+        var left: [*c]const u8 = CodegenBuilder_gen_expr(self, expr.binop_left);
+        _ = &left;
+        var op: [*c]const u8 = expr.binop_op;
+        _ = &op;
+        var right: [*c]const u8 = CodegenBuilder_gen_expr(self, expr.binop_right);
+        _ = &right;
+        var rhs_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.binop_right);
+        _ = &rhs_type;
+        if ((strcmp(op, "==") == @as(c_int, 0)) or (strcmp(op, "!=") == @as(c_int, 0))) {
+            if (((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(lhs_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, lhs_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) and ((strcmp(right, "NULL") == @as(c_int, 0)) or (strcmp(right, "((void*)0)") == @as(c_int, 0)))) {
+                var val_type: [*c]const u8 = __kai_str_sub(lhs_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(lhs_type)))));
+                _ = &val_type;
+                if (CodegenBuilder_is_pointer_type(self, val_type)) {
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", left), " "), op), " NULL)");
+                }
+                if (strcmp(op, "==") == @as(c_int, 0)) {
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(!", left), ".has_value)");
+                }
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", left), ".has_value)");
+            }
+            if (((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(rhs_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, rhs_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) and ((strcmp(left, "NULL") == @as(c_int, 0)) or (strcmp(left, "((void*)0)") == @as(c_int, 0)))) {
+                var val_type: [*c]const u8 = __kai_str_sub(rhs_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(rhs_type)))));
+                _ = &val_type;
+                if (CodegenBuilder_is_pointer_type(self, val_type)) {
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(NULL ", op), " "), right), ")");
+                }
+                if (strcmp(op, "==") == @as(c_int, 0)) {
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(!", right), ".has_value)");
+                }
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", right), ".has_value)");
+            }
+        }
+        if (strcmp(lhs_type, "Str") == @as(c_int, 0)) {
+            if (strcmp(op, "+") == @as(c_int, 0)) {
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_std_str_concat_alloc(", left), ", "), right), ")");
+            }
+            if (strcmp(op, "==") == @as(c_int, 0)) {
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(strcmp(", left), ", "), right), ") == 0)");
+            }
+            if (strcmp(op, "!=") == @as(c_int, 0)) {
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(strcmp(", left), ", "), right), ") != 0)");
+            }
+        }
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", left), " "), op), " "), right), ")");
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_unary_op))) {
+        var operand: [*c]const u8 = CodegenBuilder_gen_expr(self, expr.unop_operand);
+        _ = &operand;
+        var op: [*c]const u8 = expr.unop_op;
+        _ = &op;
+        if (((strcmp(op, "-") == @as(c_int, 0)) or (strcmp(op, "!") == @as(c_int, 0))) or (strcmp(op, "~") == @as(c_int, 0))) {
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", op), operand), ")");
+        }
+        return operand;
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_func_call))) {
+        var name: [*c]const u8 = expr.func_name;
+        _ = &name;
+        if ((strcmp(name, "cast") == @as(c_int, 0)) or (strcmp(name, "as") == @as(c_int, 0))) {
+            var target_type: [*c]const u8 = ArrayList_Str_get(&expr.func_type_args, @as(c_longlong, 0));
+            _ = &target_type;
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(target_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                var val: [*c]const u8 = CodegenBuilder_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)));
+                _ = &val;
+                var ctype: [*c]const u8 = CodegenBuilder_map_type(self, target_type);
+                _ = &ctype;
+                var src_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)));
+                _ = &src_type;
+                if ((@as(c_int, @intFromBool(CodegenBuilder_is_pointer_type(self, target_type))) != 0) and (strcmp(src_type, "Int") == @as(c_int, 0))) {
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", ctype), ")(unsigned long long)("), val), "))");
+                }
+                if ((strcmp(target_type, "Int") == @as(c_int, 0)) and (@as(c_int, @intFromBool(CodegenBuilder_is_pointer_type(self, src_type))) != 0)) {
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", ctype), ")(unsigned long long)("), val), "))");
+                }
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", ctype), ")("), val), "))");
+            }
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", CodegenBuilder_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)))), ")");
+        }
+        if ((strcmp(name, "sizeof") == @as(c_int, 0)) or (strcmp(name, "size_of") == @as(c_int, 0))) {
+            var target_type: [*c]const u8 = ArrayList_Str_get(&expr.func_type_args, @as(c_longlong, 0));
+            _ = &target_type;
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(target_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("sizeof(", CodegenBuilder_map_type(self, target_type)), ")");
+            }
+            return "0LL";
+        }
+        if ((((strcmp(name, "Int") == @as(c_int, 0)) or (strcmp(name, "Float") == @as(c_int, 0))) or (strcmp(name, "Bool") == @as(c_int, 0))) or (strcmp(name, "Char") == @as(c_int, 0))) {
+            if (ArrayList_Int_length(&expr.func_args) >= @as(c_longlong, 1)) {
+                var arg: [*c]const u8 = CodegenBuilder_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)));
+                _ = &arg;
+                if (strcmp(name, "Int") == @as(c_int, 0)) {
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((int64_t)(", arg), "))");
+                }
+                if (strcmp(name, "Float") == @as(c_int, 0)) {
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((double)(", arg), "))");
+                }
+                if (strcmp(name, "Bool") == @as(c_int, 0)) {
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((bool)(", arg), "))");
+                }
+                if (strcmp(name, "Char") == @as(c_int, 0)) {
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((char)(", arg), "))");
+                }
+            }
+            return "0LL";
+        }
+        if (strcmp(name, "length") == @as(c_int, 0)) {
+            if (ArrayList_Int_length(&expr.func_args) >= @as(c_longlong, 1)) {
+                var arg: [*c]const u8 = CodegenBuilder_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)));
+                _ = &arg;
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("strlen(", arg), ")");
+            }
+            return "0LL";
+        }
+        var fn_name: [*c]const u8 = name;
+        _ = &fn_name;
+        var is_struct: bool = @as(c_int, 0) != 0;
+        _ = &is_struct;
+        var si: i64 = 0;
+        _ = &si;
+        while (si < ArrayList_StmtNode_length(self.*.stmt_pool)) {
+            var s: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, si);
+            _ = &s;
+            if ((s.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) and (strcmp(s.struct_name, name) == @as(c_int, 0))) {
+                is_struct = @as(c_int, 1) != 0;
+            }
+            si = si + @as(c_longlong, 1);
+        }
+        if (((strcmp(name, "ArrayList") == @as(c_int, 0)) or (strcmp(name, "HashMap") == @as(c_int, 0))) or (strcmp(name, "StringBuilder") == @as(c_int, 0))) {
+            is_struct = @as(c_int, 1) != 0;
+        }
+        if (is_struct) {
+            if (ArrayList_Str_length(&expr.func_type_args) > @as(c_longlong, 0)) {
+                fn_name = name;
+                var tai: i64 = 0;
+                _ = &tai;
+                while (tai < ArrayList_Str_length(&expr.func_type_args)) {
+                    var clean: [*c]const u8 = CodegenBuilder_cgb_clean_type_for_mangling(self, ArrayList_Str_get(&expr.func_type_args, tai));
+                    _ = &clean;
+                    fn_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fn_name, "_"), clean);
+                    tai = tai + @as(c_longlong, 1);
+                }
+                fn_name = __kai_std_str_concat_alloc(fn_name, "_init");
+            } else {
+                fn_name = __kai_std_str_concat_alloc(name, "_init");
+            }
+        }
+        var args_str: [*c]const u8 = "";
+        _ = &args_str;
+        var ai: i64 = 0;
+        _ = &ai;
+        while (ai < ArrayList_Int_length(&expr.func_args)) {
+            if (ai > @as(c_longlong, 0)) {
+                args_str = __kai_std_str_concat_alloc(args_str, ", ");
+            }
+            var p_idx: i64 = ai;
+            _ = &p_idx;
+            if (is_struct) {
+                p_idx = ai + @as(c_longlong, 1);
+            }
+            var p_key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fn_name, "_param_"), cgb_int_to_str(p_idx));
+            _ = &p_key;
+            var expected_type: [*c]const u8 = cgb_map_get(&self.*.func_param_types, p_key);
+            _ = &expected_type;
+            args_str = __kai_std_str_concat_alloc(args_str, CodegenBuilder_gen_expr_with_expected_type(self, ArrayList_Int_get(&expr.func_args, ai), expected_type));
+            ai = ai + @as(c_longlong, 1);
+        }
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fn_name, "("), args_str), ")");
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_index))) {
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", CodegenBuilder_gen_expr(self, expr.idx_expr)), ")["), CodegenBuilder_gen_expr(self, expr.idx_index)), "]");
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_borrow))) {
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("&(", CodegenBuilder_gen_expr(self, expr.borrow_expr)), ")");
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_deref))) {
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("*(", CodegenBuilder_gen_expr(self, expr.deref_expr)), ")");
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_field_access))) {
+        var base_node: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr.field_expr);
+        _ = &base_node;
+        if (base_node.kind == @as(c_uint, @bitCast(ExprKind_ek_identifier))) {
+            var ident: [*c]const u8 = base_node.ident_name;
+            _ = &ident;
+            var ei: i64 = 0;
+            _ = &ei;
+            while (ei < ArrayList_StmtNode_length(self.*.stmt_pool)) {
+                var s: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, ei);
+                _ = &s;
+                if ((s.kind == @as(c_uint, @bitCast(StmtKind_sk_enum_decl))) and (strcmp(s.enum_name, ident) == @as(c_int, 0))) {
+                    var ename: [*c]const u8 = CodegenBuilder_map_type(self, ident);
+                    _ = &ename;
+                    var var_name: [*c]const u8 = expr.field_name;
+                    _ = &var_name;
+                    var has_payload: bool = @as(c_int, 0) != 0;
+                    _ = &has_payload;
+                    var vi: i64 = 0;
+                    _ = &vi;
+                    while (vi < ArrayList_Variant_length(&s.enum_variants)) {
+                        var v: Variant = ArrayList_Variant_get(&s.enum_variants, vi);
+                        _ = &v;
+                        if ((strcmp(v.vname, var_name) == @as(c_int, 0)) and (ArrayList_Param_length(&v.params) > @as(c_longlong, 0))) {
+                            has_payload = @as(c_int, 1) != 0;
+                        }
+                        vi = vi + @as(c_longlong, 1);
+                    }
+                    if (has_payload) {
+                        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", ename), "){ .tag = "), ename), "_"), var_name), "_TAG }");
+                    }
+                    var any_payload: bool = @as(c_int, 0) != 0;
+                    _ = &any_payload;
+                    vi = 0;
+                    while (vi < ArrayList_Variant_length(&s.enum_variants)) {
+                        var v: Variant = ArrayList_Variant_get(&s.enum_variants, vi);
+                        _ = &v;
+                        if (ArrayList_Param_length(&v.params) > @as(c_longlong, 0)) {
+                            any_payload = @as(c_int, 1) != 0;
+                        }
+                        vi = vi + @as(c_longlong, 1);
+                    }
+                    if (any_payload) {
+                        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", ename), "){ .tag = "), ename), "_"), var_name), "_TAG }");
+                    }
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ename, "_"), var_name);
+                }
+                if ((s.kind == @as(c_uint, @bitCast(StmtKind_sk_error_decl))) and (strcmp(s.error_name, ident) == @as(c_int, 0))) {
+                    var ename: [*c]const u8 = CodegenBuilder_map_type(self, ident);
+                    _ = &ename;
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ename, "_"), expr.field_name);
+                }
+                ei = ei + @as(c_longlong, 1);
+            }
+        }
+        var base: [*c]const u8 = CodegenBuilder_gen_expr(self, expr.field_expr);
+        _ = &base;
+        var base_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.field_expr);
+        _ = &base_type;
+        var accessor: [*c]const u8 = ".";
+        _ = &accessor;
+        var done_access: bool = @as(c_int, 0) != 0;
+        _ = &done_access;
+        while (!done_access) {
+            if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42)))))))))) {
+                accessor = "->";
+                done_access = @as(c_int, 1) != 0;
+            } else if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 4)))) and (strcmp(__kai_str_sub(base_type, @as(c_longlong, 0), @as(c_longlong, 4)), "*mut ") == @as(c_int, 0))) {
+                accessor = "->";
+                done_access = @as(c_int, 1) != 0;
+            } else {
+                done_access = @as(c_int, 1) != 0;
+            }
+        }
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", base), ")"), accessor), expr.field_name);
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_method_call))) {
+        var receiver_node: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr.meth_expr);
+        _ = &receiver_node;
+        var rec_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.meth_expr);
+        _ = &rec_type;
+        var clean_type: [*c]const u8 = "";
+        _ = &clean_type;
+        var ci: i64 = 0;
+        _ = &ci;
+        while (@as(c_ulonglong, @bitCast(ci)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(rec_type))))) {
+            var c: u8 = (blk: {
+                const tmp = ci;
+                if (tmp >= 0) break :blk rec_type + @as(usize, @intCast(tmp)) else break :blk rec_type - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).*;
+            _ = &c;
+            if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
+                clean_type = __kai_std_str_concat_alloc(clean_type, cgb_char_to_str(c));
+            }
+            ci = ci + @as(c_longlong, 1);
+        }
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clean_type)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 4)))) and (strcmp(__kai_str_sub(clean_type, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0))) {
+            clean_type = __kai_str_sub(clean_type, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
+        }
+        clean_type = CodegenBuilder_map_type(self, clean_type);
+        var is_constructor: bool = @as(c_int, 0) != 0;
+        _ = &is_constructor;
+        if (receiver_node.kind == @as(c_uint, @bitCast(ExprKind_ek_identifier))) {
+            var r_name: [*c]const u8 = receiver_node.ident_name;
+            _ = &r_name;
+            if ((@as(c_int, @bitCast(@as(c_uint, r_name[@as(usize, @intCast(@as(c_longlong, 0)))]))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 65))))))))) and (@as(c_int, @bitCast(@as(c_uint, r_name[@as(usize, @intCast(@as(c_longlong, 0)))]))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 90)))))))))) {
+                is_constructor = @as(c_int, 1) != 0;
+            }
+        }
+        var func_name: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(clean_type, "_"), expr.meth_name);
+        _ = &func_name;
+        var args_str: [*c]const u8 = "";
+        _ = &args_str;
+        if (!is_constructor and (strcmp(expr.meth_name, "init") != @as(c_int, 0))) {
+            var rec_val: [*c]const u8 = CodegenBuilder_gen_expr(self, expr.meth_expr);
+            _ = &rec_val;
+            var rec_inferred: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.meth_expr);
+            _ = &rec_inferred;
+            var is_self_ptr: bool = ((receiver_node.kind == @as(c_uint, @bitCast(ExprKind_ek_identifier))) and (strcmp(receiver_node.ident_name, "self") == @as(c_int, 0))) and !self.*.cur_method_is_init;
+            _ = &is_self_ptr;
+            if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(rec_inferred)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (((@as(c_int, @bitCast(@as(c_uint, rec_inferred[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, rec_inferred[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) or (@as(c_int, @intFromBool(is_self_ptr)) != 0))) {
+                args_str = rec_val;
+            } else {
+                args_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("&(", rec_val), ")");
+            }
+        }
+        var ai: i64 = 0;
+        _ = &ai;
+        while (ai < ArrayList_Int_length(&expr.meth_args)) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(args_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                args_str = __kai_std_str_concat_alloc(args_str, ", ");
+            }
+            var p_key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(func_name, "_param_"), cgb_int_to_str(ai + @as(c_longlong, 1)));
+            _ = &p_key;
+            var expected_type: [*c]const u8 = cgb_map_get(&self.*.func_param_types, p_key);
+            _ = &expected_type;
+            args_str = __kai_std_str_concat_alloc(args_str, CodegenBuilder_gen_expr_with_expected_type(self, ArrayList_Int_get(&expr.meth_args, ai), expected_type));
+            ai = ai + @as(c_longlong, 1);
+        }
+        if ((strcmp(expr.meth_name, "init") == @as(c_int, 0)) and !is_constructor) {
+            var rec_val: [*c]const u8 = CodegenBuilder_gen_expr(self, expr.meth_expr);
+            _ = &rec_val;
+            var rec_inferred: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.meth_expr);
+            _ = &rec_inferred;
+            if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(rec_inferred)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, rec_inferred[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, rec_inferred[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("*(", rec_val), ") = "), func_name), "("), args_str), ")");
+            }
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(rec_val, " = "), func_name), "("), args_str), ")");
+        }
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(func_name, "("), args_str), ")");
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_slice))) {
+        var base: [*c]const u8 = CodegenBuilder_gen_expr(self, expr.slice_expr);
+        _ = &base;
+        var base_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.slice_expr);
+        _ = &base_type;
+        var lower: [*c]const u8 = "0";
+        _ = &lower;
+        var upper: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("strlen(", base), ")");
+        _ = &upper;
+        if (expr.slice_lower >= @as(c_longlong, 0)) {
+            lower = CodegenBuilder_gen_expr(self, expr.slice_lower);
+        }
+        if (expr.slice_upper >= @as(c_longlong, 0)) {
+            upper = CodegenBuilder_gen_expr(self, expr.slice_upper);
+        }
+        if ((strcmp(base_type, "Str") == @as(c_int, 0)) or (strcmp(base_type, "*Char") == @as(c_int, 0))) {
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_str_sub(", base), ", "), lower), ", "), upper), ")");
+        }
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(__kai_str_sub(base_type, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0))) {
+            var inner_type: [*c]const u8 = __kai_str_sub(base_type, @as(c_longlong, 2), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+            _ = &inner_type;
+            var mapped_inner: [*c]const u8 = CodegenBuilder_map_type(self, inner_type);
+            _ = &mapped_inner;
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_arr_sub(", base), ", "), lower), ", "), upper), ", sizeof("), mapped_inner), "))");
+        }
+        return base;
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_struct_init))) {
+        if (CodegenBuilder_str_contains(self, expr.struct_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 46))))))) {
+            var dot_pos: i64 = CodegenBuilder_str_find(self, expr.struct_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 46))))));
+            _ = &dot_pos;
+            var enum_part: [*c]const u8 = __kai_str_sub(expr.struct_name, @as(c_longlong, 0), dot_pos);
+            _ = &enum_part;
+            var variant_name: [*c]const u8 = __kai_str_sub(expr.struct_name, dot_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(expr.struct_name)))));
+            _ = &variant_name;
+            var enum_name: [*c]const u8 = CodegenBuilder_map_type(self, enum_part);
+            _ = &enum_name;
+            var fields_str: [*c]const u8 = "";
+            _ = &fields_str;
+            var i: i64 = 0;
+            _ = &i;
+            while (i < ArrayList_FieldInit_length(&expr.struct_fields)) {
+                var f: FieldInit = ArrayList_FieldInit_get(&expr.struct_fields, i);
+                _ = &f;
+                if (i > @as(c_longlong, 0)) {
+                    fields_str = __kai_std_str_concat_alloc(fields_str, ", ");
+                }
+                fields_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fields_str, "."), f.name), " = "), CodegenBuilder_gen_expr(self, f.value));
+                i = i + @as(c_longlong, 1);
+            }
+            var payload_str: [*c]const u8 = "";
+            _ = &payload_str;
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fields_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                payload_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(", .", variant_name), " = { "), fields_str), " }");
+            }
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", enum_name), "){ .tag = "), enum_name), "_"), variant_name), "_TAG"), payload_str), " }");
+        }
+        var struct_name: [*c]const u8 = CodegenBuilder_map_type(self, expr.struct_name);
+        _ = &struct_name;
+        var fields_str: [*c]const u8 = "";
+        _ = &fields_str;
+        var i: i64 = 0;
+        _ = &i;
+        while (i < ArrayList_FieldInit_length(&expr.struct_fields)) {
+            var f: FieldInit = ArrayList_FieldInit_get(&expr.struct_fields, i);
+            _ = &f;
+            if (i > @as(c_longlong, 0)) {
+                fields_str = __kai_std_str_concat_alloc(fields_str, ", ");
+            }
+            var field_type: [*c]const u8 = "";
+            _ = &field_type;
+            var si: i64 = 0;
+            _ = &si;
+            while (si < ArrayList_StmtNode_length(self.*.stmt_pool)) {
+                var s: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, si);
+                _ = &s;
+                if ((s.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) and (strcmp(s.struct_name, expr.struct_name) == @as(c_int, 0))) {
+                    var fi: i64 = 0;
+                    _ = &fi;
+                    while (fi < ArrayList_StructField_length(&s.struct_fields)) {
+                        var sf: StructField = ArrayList_StructField_get(&s.struct_fields, fi);
+                        _ = &sf;
+                        if (strcmp(sf.name, f.name) == @as(c_int, 0)) {
+                            field_type = sf.ftype;
+                        }
+                        fi = fi + @as(c_longlong, 1);
+                    }
+                }
+                si = si + @as(c_longlong, 1);
+            }
+            fields_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fields_str, "."), f.name), " = "), CodegenBuilder_gen_expr_with_expected_type(self, f.value, field_type));
+            i = i + @as(c_longlong, 1);
+        }
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", struct_name), "){ "), fields_str), " }");
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_array))) {
+        var elems_str: [*c]const u8 = "";
+        _ = &elems_str;
+        var i: i64 = 0;
+        _ = &i;
+        while (i < ArrayList_Int_length(&expr.arr_elements)) {
+            if (i > @as(c_longlong, 0)) {
+                elems_str = __kai_std_str_concat_alloc(elems_str, ", ");
+            }
+            elems_str = __kai_std_str_concat_alloc(elems_str, CodegenBuilder_gen_expr(self, ArrayList_Int_get(&expr.arr_elements, i)));
+            i = i + @as(c_longlong, 1);
+        }
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(elems_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+            elems_str = "0";
+        }
+        var inner_ty: [*c]const u8 = "Int";
+        _ = &inner_ty;
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(__kai_str_sub(expr.inferred_type, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0))) {
+            inner_ty = __kai_str_sub(expr.inferred_type, @as(c_longlong, 2), @as(i64, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))));
+        }
+        var mapped_inner: [*c]const u8 = CodegenBuilder_map_type(self, inner_ty);
+        _ = &mapped_inner;
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_inner), "[]){ "), elems_str), " }");
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_tuple))) {
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+            var mapped_ty: [*c]const u8 = CodegenBuilder_map_type(self, expr.inferred_type);
+            _ = &mapped_ty;
+            var elems_str: [*c]const u8 = "";
+            _ = &elems_str;
+            var i: i64 = 0;
+            _ = &i;
+            while (i < ArrayList_Int_length(&expr.tup_elements)) {
+                if (i > @as(c_longlong, 0)) {
+                    elems_str = __kai_std_str_concat_alloc(elems_str, ", ");
+                }
+                elems_str = __kai_std_str_concat_alloc(elems_str, CodegenBuilder_gen_expr(self, ArrayList_Int_get(&expr.tup_elements, i)));
+                i = i + @as(c_longlong, 1);
+            }
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_ty), "){ "), elems_str), " }");
+        }
+        return "NULL";
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_range))) {
+        var start: [*c]const u8 = CodegenBuilder_gen_expr(self, expr.range_start);
+        _ = &start;
+        var end: [*c]const u8 = CodegenBuilder_gen_expr(self, expr.range_end);
+        _ = &end;
+        var incl: [*c]const u8 = "false";
+        _ = &incl;
+        if (expr.range_inclusive) {
+            incl = "true";
+        }
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(Range){ .start = ", start), ", .end = "), end), ", .is_inclusive = "), incl), " }");
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_str_interp))) {
+        if (ArrayList_StrInterpPart_length(&expr.interp_parts) == @as(c_longlong, 0)) {
+            return "\"\"";
+        }
+        var result: [*c]const u8 = "";
+        _ = &result;
+        var i: i64 = 0;
+        _ = &i;
+        while (i < ArrayList_StrInterpPart_length(&expr.interp_parts)) {
+            var part: StrInterpPart = ArrayList_StrInterpPart_get(&expr.interp_parts, i);
+            _ = &part;
+            var part_str: [*c]const u8 = "";
+            _ = &part_str;
+            if (part.kind == @as(c_longlong, 0)) {
+                part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("\"", CodegenBuilder_escape_string(self, part.str_val)), "\"");
+            } else {
+                var expr_val: [*c]const u8 = CodegenBuilder_gen_expr(self, part.expr_idx);
+                _ = &expr_val;
+                var expr_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, part.expr_idx);
+                _ = &expr_type;
+                if (strcmp(expr_type, "Int") == @as(c_int, 0)) {
+                    part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cgb_int_to_str(", expr_val), ")");
+                } else if (strcmp(expr_type, "Char") == @as(c_int, 0)) {
+                    part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cgb_char_to_str(", expr_val), ")");
+                } else if (strcmp(expr_type, "Bool") == @as(c_int, 0)) {
+                    part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", expr_val), ") ? \"true\" : \"false\")");
+                } else if (strcmp(expr_type, "Str") == @as(c_int, 0)) {
+                    part_str = expr_val;
+                } else {
+                    part_str = expr_val;
+                }
+            }
+            if (i == @as(c_longlong, 0)) {
+                result = part_str;
+            } else {
+                result = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_std_str_concat_alloc(", result), ", "), part_str), ")");
+            }
+            i = i + @as(c_longlong, 1);
+        }
+        return result;
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_try))) {
+        var inner_ty: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.try_expr);
+        _ = &inner_ty;
+        var excl_pos: i64 = CodegenBuilder_str_find(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
+        _ = &excl_pos;
+        var inner: [*c]const u8 = CodegenBuilder_gen_expr(self, expr.try_expr);
+        _ = &inner;
+        if (excl_pos < @as(c_longlong, 0)) {
+            return inner;
+        }
+        var val_type: [*c]const u8 = __kai_str_sub(inner_ty, @as(c_longlong, 0), excl_pos);
+        _ = &val_type;
+        var result_ctype: [*c]const u8 = CodegenBuilder_map_type(self, inner_ty);
+        _ = &result_ctype;
+        var ret_ctype: [*c]const u8 = CodegenBuilder_map_type(self, self.*.cur_return_type);
+        _ = &ret_ctype;
+        var try_code: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("({ ", result_ctype), " _kai_res = ("), inner), "); ");
+        _ = &try_code;
+        try_code = __kai_std_str_concat_alloc(try_code, "if (_kai_res.tag != 0) { ");
+        try_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(try_code, ret_ctype), " _kai_err_ret; _kai_err_ret.tag = _kai_res.tag; return _kai_err_ret; } ");
+        if (strcmp(val_type, "Void") == @as(c_int, 0)) {
+            try_code = __kai_std_str_concat_alloc(try_code, "0; })");
+        } else {
+            try_code = __kai_std_str_concat_alloc(try_code, "_kai_res.value; })");
+        }
+        return try_code;
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_catch))) {
+        var inner: [*c]const u8 = CodegenBuilder_gen_expr(self, expr.catch_expr);
+        _ = &inner;
+        var inner_ty: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr.catch_expr);
+        _ = &inner_ty;
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner_ty)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, inner_ty[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
+            var val_type: [*c]const u8 = __kai_str_sub(inner_ty, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
+            _ = &val_type;
+            var val_ctype: [*c]const u8 = CodegenBuilder_map_type(self, val_type);
+            _ = &val_ctype;
+            var cond_ctype: [*c]const u8 = CodegenBuilder_map_type(self, inner_ty);
+            _ = &cond_ctype;
+            var fallback_code: [*c]const u8 = "";
+            _ = &fallback_code;
+            var fallback_is_stmt2: bool = @as(c_int, 0) != 0;
+            _ = &fallback_is_stmt2;
+            if (expr.catch_fallback >= @as(c_longlong, 0)) {
+                var fb_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, expr.catch_fallback);
+                _ = &fb_node;
+                if (fb_node.kind == @as(c_uint, @bitCast(StmtKind_sk_expr))) {
+                    fallback_code = CodegenBuilder_gen_expr(self, fb_node.expr_stmt);
+                } else if (fb_node.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) {
+                    var is_single_expr: bool = @as(c_int, 0) != 0;
+                    _ = &is_single_expr;
+                    var expr_idx_1: i64 = -@as(c_longlong, 1);
+                    _ = &expr_idx_1;
+                    if (ArrayList_Int_length(&fb_node.block_stmts) == @as(c_longlong, 1)) {
+                        var single_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, ArrayList_Int_get(&fb_node.block_stmts, @as(c_longlong, 0)));
+                        _ = &single_stmt;
+                        if (single_stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_expr))) {
+                            is_single_expr = @as(c_int, 1) != 0;
+                            expr_idx_1 = single_stmt.expr_stmt;
+                        }
+                    }
+                    if (is_single_expr) {
+                        fallback_code = CodegenBuilder_gen_expr(self, expr_idx_1);
+                    } else {
+                        var saved_builder: CCodeBuilder = self.*.builder;
+                        _ = &saved_builder;
+                        self.*.builder = CCodeBuilder_init(self.*.allocator);
+                        CodegenBuilder_gen_stmt(self, expr.catch_fallback);
+                        fallback_code = CCodeBuilder_to_str(&self.*.builder);
+                        self.*.builder = saved_builder;
+                        fallback_is_stmt2 = @as(c_int, 1) != 0;
+                    }
+                } else {
+                    var saved_builder: CCodeBuilder = self.*.builder;
+                    _ = &saved_builder;
+                    self.*.builder = CCodeBuilder_init(self.*.allocator);
+                    CodegenBuilder_gen_stmt(self, expr.catch_fallback);
+                    fallback_code = CCodeBuilder_to_str(&self.*.builder);
+                    self.*.builder = saved_builder;
+                    fallback_is_stmt2 = @as(c_int, 1) != 0;
+                }
+            } else {
+                fallback_code = "0";
+            }
+            var catch_code: [*c]const u8 = "({ ";
+            _ = &catch_code;
+            if (CodegenBuilder_is_pointer_type(self, val_type)) {
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_opt = ("), inner), "); ");
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_cv; ");
+                catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } ");
+                if (fallback_is_stmt2) {
+                    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
+                } else {
+                    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
+                }
+            } else {
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, cond_ctype), " _kai_opt = ("), inner), "); ");
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_cv; ");
+                catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } ");
+                if (fallback_is_stmt2) {
+                    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
+                } else {
+                    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
+                }
+            }
+            return catch_code;
+        }
+        var excl_pos: i64 = CodegenBuilder_str_find(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
+        _ = &excl_pos;
+        if (excl_pos < @as(c_longlong, 0)) {
+            return inner;
+        }
+        var val_type: [*c]const u8 = __kai_str_sub(inner_ty, @as(c_longlong, 0), excl_pos);
+        _ = &val_type;
+        var result_ctype: [*c]const u8 = CodegenBuilder_map_type(self, inner_ty);
+        _ = &result_ctype;
+        var val_ctype: [*c]const u8 = CodegenBuilder_map_type(self, val_type);
+        _ = &val_ctype;
+        var fallback_code: [*c]const u8 = "";
+        _ = &fallback_code;
+        var fallback_is_stmt: bool = @as(c_int, 0) != 0;
+        _ = &fallback_is_stmt;
+        if (expr.catch_fallback >= @as(c_longlong, 0)) {
+            var fb_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, expr.catch_fallback);
+            _ = &fb_node;
+            if (fb_node.kind == @as(c_uint, @bitCast(StmtKind_sk_expr))) {
+                fallback_code = CodegenBuilder_gen_expr(self, fb_node.expr_stmt);
+            } else if (fb_node.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) {
+                var is_single_expr: bool = @as(c_int, 0) != 0;
+                _ = &is_single_expr;
+                var expr_idx_1: i64 = -@as(c_longlong, 1);
+                _ = &expr_idx_1;
+                if (ArrayList_Int_length(&fb_node.block_stmts) == @as(c_longlong, 1)) {
+                    var single_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, ArrayList_Int_get(&fb_node.block_stmts, @as(c_longlong, 0)));
+                    _ = &single_stmt;
+                    if (single_stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_expr))) {
+                        is_single_expr = @as(c_int, 1) != 0;
+                        expr_idx_1 = single_stmt.expr_stmt;
+                    }
+                }
+                if (is_single_expr) {
+                    fallback_code = CodegenBuilder_gen_expr(self, expr_idx_1);
+                } else {
+                    var saved_builder: CCodeBuilder = self.*.builder;
+                    _ = &saved_builder;
+                    self.*.builder = CCodeBuilder_init(self.*.allocator);
+                    CodegenBuilder_gen_stmt(self, expr.catch_fallback);
+                    fallback_code = CCodeBuilder_to_str(&self.*.builder);
+                    self.*.builder = saved_builder;
+                    fallback_is_stmt = @as(c_int, 1) != 0;
+                }
+            } else {
+                var saved_builder: CCodeBuilder = self.*.builder;
+                _ = &saved_builder;
+                self.*.builder = CCodeBuilder_init(self.*.allocator);
+                CodegenBuilder_gen_stmt(self, expr.catch_fallback);
+                fallback_code = CCodeBuilder_to_str(&self.*.builder);
+                self.*.builder = saved_builder;
+                fallback_is_stmt = @as(c_int, 1) != 0;
+            }
+        } else {
+            fallback_code = "0";
+        }
+        var catch_code: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("({ ", result_ctype), " _kai_cr = ("), inner), "); ");
+        _ = &catch_code;
+        if (strcmp(val_type, "Void") == @as(c_int, 0)) {
+            catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_cr.tag != 0) { ");
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.catch_var)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
+            }
+            catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, fallback_code), " } 0; })");
+        } else {
+            catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_cv; ");
+            catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_cr.tag != 0) { ");
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.catch_var)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
+            }
+            if (fallback_is_stmt) {
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, fallback_code), " __builtin_unreachable(); ");
+            } else {
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "_kai_cv = ("), fallback_code), "); ");
+            }
+            catch_code = __kai_std_str_concat_alloc(catch_code, "} else { _kai_cv = _kai_cr.value; } _kai_cv; })");
+        }
+        return catch_code;
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_check))) {
+        return CodegenBuilder_gen_expr(self, expr.check_expr);
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_asm))) {
+        var decls_str: [*c]const u8 = "";
+        _ = &decls_str;
+        var out_ops_str: [*c]const u8 = "";
+        _ = &out_ops_str;
+        var i: i64 = 0;
+        _ = &i;
+        while (i < ArrayList_AsmOutput_length(&expr.asm_outputs)) {
+            var out: AsmOutput = ArrayList_AsmOutput_get(&expr.asm_outputs, i);
+            _ = &out;
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(out.type_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                var mapped_type: [*c]const u8 = CodegenBuilder_map_type(self, out.type_name);
+                _ = &mapped_type;
+                var var_name: [*c]const u8 = __kai_std_str_concat_alloc("asm_ret_", cgb_int_to_str(i));
+                _ = &var_name;
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(decls_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    decls_str = __kai_std_str_concat_alloc(decls_str, " ");
+                }
+                decls_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(decls_str, mapped_type), " "), var_name), ";");
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(out_ops_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    out_ops_str = __kai_std_str_concat_alloc(out_ops_str, ", ");
+                }
+                out_ops_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(out_ops_str, "["), out.name), "] \""), out.constraint), "\" ("), var_name), ")");
+            } else if (out.expr_idx >= @as(c_longlong, 0)) {
+                var val_str: [*c]const u8 = CodegenBuilder_gen_expr(self, out.expr_idx);
+                _ = &val_str;
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(out_ops_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    out_ops_str = __kai_std_str_concat_alloc(out_ops_str, ", ");
+                }
+                out_ops_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(out_ops_str, "["), out.name), "] \""), out.constraint), "\" ("), val_str), ")");
+            }
+            i = i + @as(c_longlong, 1);
+        }
+        var in_ops_str: [*c]const u8 = "";
+        _ = &in_ops_str;
+        var j: i64 = 0;
+        _ = &j;
+        while (j < ArrayList_AsmInput_length(&expr.asm_inputs)) {
+            var inp: AsmInput = ArrayList_AsmInput_get(&expr.asm_inputs, j);
+            _ = &inp;
+            var val_str: [*c]const u8 = CodegenBuilder_gen_expr(self, inp.expr_idx);
+            _ = &val_str;
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(in_ops_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                in_ops_str = __kai_std_str_concat_alloc(in_ops_str, ", ");
+            }
+            in_ops_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(in_ops_str, "["), inp.name), "] \""), inp.constraint), "\" ("), val_str), ")");
+            j = j + @as(c_longlong, 1);
+        }
+        var clobs_str: [*c]const u8 = "";
+        _ = &clobs_str;
+        var k: i64 = 0;
+        _ = &k;
+        while (k < ArrayList_Str_length(&expr.asm_clobbers)) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clobs_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                clobs_str = __kai_std_str_concat_alloc(clobs_str, ", ");
+            }
+            clobs_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(clobs_str, "\""), ArrayList_Str_get(&expr.asm_clobbers, k)), "\"");
+            k = k + @as(c_longlong, 1);
+        }
+        var volatile_prefix: [*c]const u8 = "";
+        _ = &volatile_prefix;
+        if (expr.asm_is_volatile) {
+            volatile_prefix = "volatile";
+        }
+        var escaped_asm: [*c]const u8 = "";
+        _ = &escaped_asm;
+        var c_idx: i64 = 0;
+        _ = &c_idx;
+        while (@as(c_ulonglong, @bitCast(c_idx)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.asm_code))))) {
+            var c: u8 = (blk: {
+                const tmp = c_idx;
+                if (tmp >= 0) break :blk expr.asm_code + @as(usize, @intCast(tmp)) else break :blk expr.asm_code - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).*;
+            _ = &c;
+            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
+                escaped_asm = __kai_std_str_concat_alloc(escaped_asm, "\\n\\t");
+            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 34))))))))) {
+                escaped_asm = __kai_std_str_concat_alloc(escaped_asm, "\\\"");
+            } else {
+                escaped_asm = __kai_std_str_concat_alloc(escaped_asm, cgb_char_to_str(c));
+            }
+            c_idx = c_idx + @as(c_longlong, 1);
+        }
+        var asm_stmt: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__asm__ ", volatile_prefix), " (\""), escaped_asm), "\"");
+        _ = &asm_stmt;
+        if (((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(out_ops_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) or (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(in_ops_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) or (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clobs_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(out_ops_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                out_ops_str = " ";
+            }
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(in_ops_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                in_ops_str = " ";
+            }
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clobs_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                clobs_str = " ";
+            }
+            asm_stmt = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(asm_stmt, " : "), out_ops_str);
+            asm_stmt = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(asm_stmt, " : "), in_ops_str);
+            asm_stmt = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(asm_stmt, " : "), clobs_str);
+        }
+        asm_stmt = __kai_std_str_concat_alloc(asm_stmt, ");");
+        var res: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("({\n", decls_str), "\n");
+        _ = &res;
+        res = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res, "    "), asm_stmt), "\n");
+        if (ArrayList_AsmOutput_length(&expr.asm_outputs) == @as(c_longlong, 1)) {
+            var out0: AsmOutput = ArrayList_AsmOutput_get(&expr.asm_outputs, @as(c_longlong, 0));
+            _ = &out0;
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(out0.type_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                res = __kai_std_str_concat_alloc(res, "    asm_ret_0;\n");
+            }
+        } else if (ArrayList_AsmOutput_length(&expr.asm_outputs) > @as(c_longlong, 1)) {
+            var types_str: [*c]const u8 = "";
+            _ = &types_str;
+            var ti: i64 = 0;
+            _ = &ti;
+            var all_typed: bool = @as(c_int, 1) != 0;
+            _ = &all_typed;
+            while (ti < ArrayList_AsmOutput_length(&expr.asm_outputs)) {
+                var out: AsmOutput = ArrayList_AsmOutput_get(&expr.asm_outputs, ti);
+                _ = &out;
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(out.type_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    all_typed = @as(c_int, 0) != 0;
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(types_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    types_str = __kai_std_str_concat_alloc(types_str, ", ");
+                }
+                types_str = __kai_std_str_concat_alloc(types_str, out.type_name);
+                ti = ti + @as(c_longlong, 1);
+            }
+            if (all_typed) {
+                var tuple_type: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", types_str), ")");
+                _ = &tuple_type;
+                var mapped_tuple: [*c]const u8 = CodegenBuilder_map_type(self, tuple_type);
+                _ = &mapped_tuple;
+                var vals_str: [*c]const u8 = "";
+                _ = &vals_str;
+                var vi: i64 = 0;
+                _ = &vi;
+                while (vi < ArrayList_AsmOutput_length(&expr.asm_outputs)) {
+                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(vals_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                        vals_str = __kai_std_str_concat_alloc(vals_str, ", ");
+                    }
+                    vals_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(vals_str, "asm_ret_"), cgb_int_to_str(vi));
+                    vi = vi + @as(c_longlong, 1);
+                }
+                res = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res, "    ("), mapped_tuple), "){ "), vals_str), " };\n");
+            }
+        }
+        res = __kai_std_str_concat_alloc(res, "})");
+        return res;
+    }
+    return "";
+}
+pub export fn CodegenBuilder_gen_stmt(arg_self: [*c]CodegenBuilder, arg_stmt_idx: i64) void {
+    var self = arg_self;
+    _ = &self;
+    var stmt_idx = arg_stmt_idx;
+    _ = &stmt_idx;
+    if (stmt_idx < @as(c_longlong, 0)) {
+        return;
+    }
+    var stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt_idx);
+    _ = &stmt;
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) {
+        CCodeBuilder_emit_line(&self.*.builder, "{");
+        CCodeBuilder_indent(&self.*.builder);
+        var i: i64 = 0;
+        _ = &i;
+        while (i < ArrayList_Int_length(&stmt.block_stmts)) {
+            CodegenBuilder_gen_stmt(self, ArrayList_Int_get(&stmt.block_stmts, i));
+            i = i + @as(c_longlong, 1);
+        }
+        CCodeBuilder_dedent(&self.*.builder);
+        CCodeBuilder_emit_line(&self.*.builder, "}");
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_var_decl))) {
+        var var_type: [*c]const u8 = stmt.vardecl_type;
+        _ = &var_type;
+        var var_name: [*c]const u8 = stmt.vardecl_name;
+        _ = &var_name;
+        var var_value: i64 = stmt.vardecl_value;
+        _ = &var_value;
+        {
+            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(var_name, "_")))) == @as(c_longlong, 0)) {
+                if (var_value >= @as(c_longlong, 0)) {
+                    var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, var_value);
+                    _ = &expr;
+                    if ((expr.kind != @as(c_uint, @bitCast(ExprKind_ek_identifier))) and (expr.kind != @as(c_uint, @bitCast(ExprKind_ek_literal)))) {
+                        CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(CodegenBuilder_gen_expr(self, var_value), ";"));
+                    }
+                }
+                return;
+            }
+        }
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(var_type)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+            var val_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, var_value);
+            _ = &val_type;
+            var ctype: [*c]const u8 = CodegenBuilder_map_type(self, val_type);
+            _ = &ctype;
+            cgb_map_put(&self.*.var_types, var_name, val_type);
+            if (var_value >= @as(c_longlong, 0)) {
+                CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ctype, " "), var_name), " = "), CodegenBuilder_gen_expr(self, var_value)), ";"));
+            } else {
+                CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ctype, " "), var_name), ";"));
+            }
+        } else {
+            var ctype: [*c]const u8 = CodegenBuilder_map_type(self, var_type);
+            _ = &ctype;
+            cgb_map_put(&self.*.var_types, var_name, var_type);
+            if (var_value >= @as(c_longlong, 0)) {
+                CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ctype, " "), var_name), " = "), CodegenBuilder_gen_expr(self, var_value)), ";"));
+            } else {
+                CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ctype, " "), var_name), ";"));
+            }
+        }
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_assignment))) {
+        var target: [*c]const u8 = CodegenBuilder_gen_expr(self, stmt.assign_target);
+        _ = &target;
+        var lhs_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, stmt.assign_target);
+        _ = &lhs_type;
+        var rhs: [*c]const u8 = CodegenBuilder_gen_expr_with_expected_type(self, stmt.assign_value, lhs_type);
+        _ = &rhs;
+        var op: [*c]const u8 = "=";
+        _ = &op;
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.assign_op)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+            op = stmt.assign_op;
+        }
+        CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(target, " "), op), " "), rhs), ";"));
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_return))) {
+        var drop_calls: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
+        _ = &drop_calls;
+        var bi: i64 = ArrayList_Int_length(&self.*.block_stack) - @as(c_longlong, 1);
+        _ = &bi;
+        while (bi >= @as(c_longlong, 0)) {
+            var b_idx: i64 = ArrayList_Int_get(&self.*.block_stack, bi);
+            _ = &b_idx;
+            var b_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, b_idx);
+            _ = &b_node;
+            var start_idx: i64 = 0;
+            _ = &start_idx;
+            if (bi < ArrayList_Int_length(&self.*.defer_depths)) {
+                start_idx = ArrayList_Int_get(&self.*.defer_depths, bi);
+            }
+            var next_start_idx: i64 = ArrayList_Int_length(&self.*.defer_stack);
+            _ = &next_start_idx;
+            if ((bi < (ArrayList_Int_length(&self.*.block_stack) - @as(c_longlong, 1))) and ((bi + @as(c_longlong, 1)) < ArrayList_Int_length(&self.*.defer_depths))) {
+                next_start_idx = ArrayList_Int_get(&self.*.defer_depths, bi + @as(c_longlong, 1));
+            }
+            var def_i: i64 = next_start_idx - @as(c_longlong, 1);
+            _ = &def_i;
+            while (def_i >= start_idx) {
+                if (def_i < ArrayList_Int_length(&self.*.defer_stack)) {
+                    var def_idx: i64 = ArrayList_Int_get(&self.*.defer_stack, def_i);
+                    _ = &def_idx;
+                    var def_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, def_idx);
+                    _ = &def_node;
+                    CodegenBuilder_gen_stmt(self, def_node.defer_body);
+                }
+                def_i = def_i - @as(c_longlong, 1);
+            }
+            var di: i64 = 0;
+            _ = &di;
+            while (di < ArrayList_DropVarEntry_length(&b_node.block_drop_vars)) {
+                var entry: DropVarEntry = ArrayList_DropVarEntry_get(&b_node.block_drop_vars, di);
+                _ = &entry;
+                ArrayList_Str_push(&drop_calls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(entry.base_type, "_drop(&"), entry.name), ");"));
+                di = di + @as(c_longlong, 1);
+            }
+            bi = bi - @as(c_longlong, 1);
+        }
+        if (ArrayList_Str_length(&drop_calls) == @as(c_longlong, 0)) {
+            if (stmt.return_value >= @as(c_longlong, 0)) {
+                var val: [*c]const u8 = CodegenBuilder_gen_expr_with_expected_type(self, stmt.return_value, self.*.cur_return_type);
+                _ = &val;
+                if (self.*.cur_method_is_init) {
+                    var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, stmt.return_value);
+                    _ = &expr;
+                    if ((expr.kind != @as(c_uint, @bitCast(ExprKind_ek_identifier))) and (expr.kind != @as(c_uint, @bitCast(ExprKind_ek_literal)))) {
+                        CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(val, ";"));
+                    }
+                } else {
+                    CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return ", val), ";"));
+                }
+            } else {
+                CCodeBuilder_emit_line(&self.*.builder, "return;");
+            }
+        } else if (stmt.return_value >= @as(c_longlong, 0)) {
+            var val_str: [*c]const u8 = CodegenBuilder_gen_expr_with_expected_type(self, stmt.return_value, self.*.cur_return_type);
+            _ = &val_str;
+            var val_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, stmt.return_value);
+            _ = &val_type;
+            if ((strcmp(val_type, "Void") == @as(c_int, 0)) or (strcmp(val_type, "NoneType") == @as(c_int, 0))) {
+                CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(val_str, ";"));
+                var ci: i64 = 0;
+                _ = &ci;
+                while (ci < ArrayList_Str_length(&drop_calls)) {
+                    CCodeBuilder_emit_line(&self.*.builder, ArrayList_Str_get(&drop_calls, ci));
+                    ci = ci + @as(c_longlong, 1);
+                }
+                CCodeBuilder_emit_line(&self.*.builder, "return;");
+            } else {
+                CCodeBuilder_begin_block(&self.*.builder);
+                CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("int64_t __ret_val = ", val_str), ";"));
+                var ci: i64 = 0;
+                _ = &ci;
+                while (ci < ArrayList_Str_length(&drop_calls)) {
+                    CCodeBuilder_emit_line(&self.*.builder, ArrayList_Str_get(&drop_calls, ci));
+                    ci = ci + @as(c_longlong, 1);
+                }
+                CCodeBuilder_emit_line(&self.*.builder, "return __ret_val;");
+                CCodeBuilder_end_block(&self.*.builder);
+            }
+        } else {
+            CCodeBuilder_begin_block(&self.*.builder);
+            var ci: i64 = 0;
+            _ = &ci;
+            while (ci < ArrayList_Str_length(&drop_calls)) {
+                CCodeBuilder_emit_line(&self.*.builder, ArrayList_Str_get(&drop_calls, ci));
+                ci = ci + @as(c_longlong, 1);
+            }
+            CCodeBuilder_emit_line(&self.*.builder, "return;");
+            CCodeBuilder_end_block(&self.*.builder);
+        }
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_if))) {
+        var cond: [*c]const u8 = CodegenBuilder_gen_expr(self, stmt.if_cond);
+        _ = &cond;
+        CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc("if ", CodegenBuilder_format_cond(self, cond)));
+        CodegenBuilder_gen_stmt(self, stmt.if_then);
+        if (stmt.if_else >= @as(c_longlong, 0)) {
+            var else_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt.if_else);
+            _ = &else_node;
+            if ((else_node.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) and (ArrayList_Int_length(&else_node.block_stmts) == @as(c_longlong, 1))) {
+                var single_stmt_idx: i64 = ArrayList_Int_get(&else_node.block_stmts, @as(c_longlong, 0));
+                _ = &single_stmt_idx;
+                var single_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, single_stmt_idx);
+                _ = &single_stmt;
+                if (single_stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_if))) {
+                    CCodeBuilder_emit_line(&self.*.builder, "else");
+                    CodegenBuilder_gen_stmt(self, single_stmt_idx);
+                } else {
+                    CCodeBuilder_emit_line(&self.*.builder, "else");
+                    CodegenBuilder_gen_stmt(self, stmt.if_else);
+                }
+            } else {
+                CCodeBuilder_emit_line(&self.*.builder, "else");
+                CodegenBuilder_gen_stmt(self, stmt.if_else);
+            }
+        }
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_if_let))) {
+        var cond_val: [*c]const u8 = CodegenBuilder_gen_expr(self, stmt.iflet_expr);
+        _ = &cond_val;
+        var cond_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, stmt.iflet_expr);
+        _ = &cond_type;
+        var unwrapped_type: [*c]const u8 = __kai_str_sub(cond_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(cond_type)))));
+        _ = &unwrapped_type;
+        var unwrapped_ctype: [*c]const u8 = CodegenBuilder_map_type(self, unwrapped_type);
+        _ = &unwrapped_ctype;
+        var cond_ctype: [*c]const u8 = CodegenBuilder_map_type(self, cond_type);
+        _ = &cond_ctype;
+        var old_var_len: i64 = ArrayList_CgbMapEntry_length(&self.*.var_types);
+        _ = &old_var_len;
+        cgb_map_put(&self.*.var_types, stmt.iflet_var, unwrapped_type);
+        if (CodegenBuilder_is_pointer_type(self, unwrapped_type)) {
+            CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if ((", cond_val), ") != NULL)"));
+            CCodeBuilder_begin_block(&self.*.builder);
+            CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(unwrapped_ctype, " "), stmt.iflet_var), " = "), cond_val), ";"));
+            CodegenBuilder_gen_stmt(self, stmt.iflet_then);
+            CCodeBuilder_end_block(&self.*.builder);
+        } else {
+            CCodeBuilder_begin_block(&self.*.builder);
+            CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(cond_ctype, " _kai_opt = "), cond_val), ";"));
+            CCodeBuilder_emit_line(&self.*.builder, "if (_kai_opt.has_value)");
+            CCodeBuilder_begin_block(&self.*.builder);
+            CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(unwrapped_ctype, " "), stmt.iflet_var), " = _kai_opt.value;"));
+            CodegenBuilder_gen_stmt(self, stmt.iflet_then);
+            CCodeBuilder_end_block(&self.*.builder);
+            CCodeBuilder_end_block(&self.*.builder);
+        }
+        if (stmt.iflet_else >= @as(c_longlong, 0)) {
+            var else_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt.iflet_else);
+            _ = &else_node;
+            if (else_node.kind == @as(c_uint, @bitCast(StmtKind_sk_if_let))) {
+                CCodeBuilder_emit_line(&self.*.builder, "else");
+                CodegenBuilder_gen_stmt(self, stmt.iflet_else);
+            } else {
+                CCodeBuilder_emit_line(&self.*.builder, "else");
+                CodegenBuilder_gen_stmt(self, stmt.iflet_else);
+            }
+        }
+        while (ArrayList_CgbMapEntry_length(&self.*.var_types) > old_var_len) {
+            _ = ArrayList_CgbMapEntry_pop(&self.*.var_types);
+        }
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_while))) {
+        var cond: [*c]const u8 = CodegenBuilder_gen_expr(self, stmt.while_cond);
+        _ = &cond;
+        CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc("while ", CodegenBuilder_format_cond(self, cond)));
+        if (stmt.while_body >= @as(c_longlong, 0)) {
+            var body_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt.while_body);
+            _ = &body_stmt;
+            body_stmt.block_is_loop_body = @as(c_int, 1) != 0;
+            ArrayList_StmtNode_set(self.*.stmt_pool, stmt.while_body, body_stmt);
+        }
+        CodegenBuilder_gen_stmt(self, stmt.while_body);
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_for))) {
+        var iter_var: [*c]const u8 = stmt.for_var;
+        _ = &iter_var;
+        var start: [*c]const u8 = CodegenBuilder_gen_expr(self, stmt.for_start);
+        _ = &start;
+        var end: [*c]const u8 = CodegenBuilder_gen_expr(self, stmt.for_end);
+        _ = &end;
+        if (stmt.for_body >= @as(c_longlong, 0)) {
+            var body_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt.for_body);
+            _ = &body_stmt;
+            body_stmt.block_is_loop_body = @as(c_int, 1) != 0;
+            ArrayList_StmtNode_set(self.*.stmt_pool, stmt.for_body, body_stmt);
+        }
+        var cmp_asc: [*c]const u8 = "<";
+        _ = &cmp_asc;
+        var cmp_desc: [*c]const u8 = ">";
+        _ = &cmp_desc;
+        if (stmt.for_inclusive) {
+            cmp_asc = "<=";
+            cmp_desc = ">=";
+        }
+        CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("for (int64_t ", iter_var), " = "), start), "; ("), start), " <= "), end), ") ? ("), iter_var), " "), cmp_asc), " "), end), ") : ("), iter_var), " "), cmp_desc), " "), end), "); ("), start), " <= "), end), ") ? ++"), iter_var), " : --"), iter_var), ")"));
+        CodegenBuilder_gen_stmt(self, stmt.for_body);
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_break))) {
+        var drop_calls: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
+        _ = &drop_calls;
+        var bi: i64 = ArrayList_Int_length(&self.*.block_stack) - @as(c_longlong, 1);
+        _ = &bi;
+        var done: bool = @as(c_int, 0) != 0;
+        _ = &done;
+        while ((bi >= @as(c_longlong, 0)) and !done) {
+            var b_idx: i64 = ArrayList_Int_get(&self.*.block_stack, bi);
+            _ = &b_idx;
+            var b_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, b_idx);
+            _ = &b_node;
+            var start_idx: i64 = 0;
+            _ = &start_idx;
+            if (bi < ArrayList_Int_length(&self.*.defer_depths)) {
+                start_idx = ArrayList_Int_get(&self.*.defer_depths, bi);
+            }
+            var next_start_idx: i64 = ArrayList_Int_length(&self.*.defer_stack);
+            _ = &next_start_idx;
+            if ((bi < (ArrayList_Int_length(&self.*.block_stack) - @as(c_longlong, 1))) and ((bi + @as(c_longlong, 1)) < ArrayList_Int_length(&self.*.defer_depths))) {
+                next_start_idx = ArrayList_Int_get(&self.*.defer_depths, bi + @as(c_longlong, 1));
+            }
+            var def_i: i64 = next_start_idx - @as(c_longlong, 1);
+            _ = &def_i;
+            while (def_i >= start_idx) {
+                if (def_i < ArrayList_Int_length(&self.*.defer_stack)) {
+                    var def_idx: i64 = ArrayList_Int_get(&self.*.defer_stack, def_i);
+                    _ = &def_idx;
+                    var def_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, def_idx);
+                    _ = &def_node;
+                    CodegenBuilder_gen_stmt(self, def_node.defer_body);
+                }
+                def_i = def_i - @as(c_longlong, 1);
+            }
+            var di: i64 = 0;
+            _ = &di;
+            while (di < ArrayList_DropVarEntry_length(&b_node.block_drop_vars)) {
+                var entry: DropVarEntry = ArrayList_DropVarEntry_get(&b_node.block_drop_vars, di);
+                _ = &entry;
+                ArrayList_Str_push(&drop_calls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(entry.base_type, "_drop(&"), entry.name), ");"));
+                di = di + @as(c_longlong, 1);
+            }
+            if (b_node.block_is_loop_body) {
+                done = @as(c_int, 1) != 0;
+            }
+            bi = bi - @as(c_longlong, 1);
+        }
+        if (ArrayList_Str_length(&drop_calls) == @as(c_longlong, 0)) {
+            CCodeBuilder_emit_line(&self.*.builder, "break;");
+        } else {
+            CCodeBuilder_begin_block(&self.*.builder);
+            var ci: i64 = 0;
+            _ = &ci;
+            while (ci < ArrayList_Str_length(&drop_calls)) {
+                CCodeBuilder_emit_line(&self.*.builder, ArrayList_Str_get(&drop_calls, ci));
+                ci = ci + @as(c_longlong, 1);
+            }
+            CCodeBuilder_emit_line(&self.*.builder, "break;");
+            CCodeBuilder_end_block(&self.*.builder);
+        }
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_continue))) {
+        var drop_calls: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
+        _ = &drop_calls;
+        var bi: i64 = ArrayList_Int_length(&self.*.block_stack) - @as(c_longlong, 1);
+        _ = &bi;
+        var done: bool = @as(c_int, 0) != 0;
+        _ = &done;
+        while ((bi >= @as(c_longlong, 0)) and !done) {
+            var b_idx: i64 = ArrayList_Int_get(&self.*.block_stack, bi);
+            _ = &b_idx;
+            var b_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, b_idx);
+            _ = &b_node;
+            var start_idx: i64 = 0;
+            _ = &start_idx;
+            if (bi < ArrayList_Int_length(&self.*.defer_depths)) {
+                start_idx = ArrayList_Int_get(&self.*.defer_depths, bi);
+            }
+            var next_start_idx: i64 = ArrayList_Int_length(&self.*.defer_stack);
+            _ = &next_start_idx;
+            if ((bi < (ArrayList_Int_length(&self.*.block_stack) - @as(c_longlong, 1))) and ((bi + @as(c_longlong, 1)) < ArrayList_Int_length(&self.*.defer_depths))) {
+                next_start_idx = ArrayList_Int_get(&self.*.defer_depths, bi + @as(c_longlong, 1));
+            }
+            var def_i: i64 = next_start_idx - @as(c_longlong, 1);
+            _ = &def_i;
+            while (def_i >= start_idx) {
+                if (def_i < ArrayList_Int_length(&self.*.defer_stack)) {
+                    var def_idx: i64 = ArrayList_Int_get(&self.*.defer_stack, def_i);
+                    _ = &def_idx;
+                    var def_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, def_idx);
+                    _ = &def_node;
+                    CodegenBuilder_gen_stmt(self, def_node.defer_body);
+                }
+                def_i = def_i - @as(c_longlong, 1);
+            }
+            var di: i64 = 0;
+            _ = &di;
+            while (di < ArrayList_DropVarEntry_length(&b_node.block_drop_vars)) {
+                var entry: DropVarEntry = ArrayList_DropVarEntry_get(&b_node.block_drop_vars, di);
+                _ = &entry;
+                ArrayList_Str_push(&drop_calls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(entry.base_type, "_drop(&"), entry.name), ");"));
+                di = di + @as(c_longlong, 1);
+            }
+            if (b_node.block_is_loop_body) {
+                done = @as(c_int, 1) != 0;
+            }
+            bi = bi - @as(c_longlong, 1);
+        }
+        if (ArrayList_Str_length(&drop_calls) == @as(c_longlong, 0)) {
+            CCodeBuilder_emit_line(&self.*.builder, "continue;");
+        } else {
+            CCodeBuilder_begin_block(&self.*.builder);
+            var ci: i64 = 0;
+            _ = &ci;
+            while (ci < ArrayList_Str_length(&drop_calls)) {
+                CCodeBuilder_emit_line(&self.*.builder, ArrayList_Str_get(&drop_calls, ci));
+                ci = ci + @as(c_longlong, 1);
+            }
+            CCodeBuilder_emit_line(&self.*.builder, "continue;");
+            CCodeBuilder_end_block(&self.*.builder);
+        }
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_print))) {
+        var arg: i64 = stmt.print_value;
+        _ = &arg;
+        var val: [*c]const u8 = CodegenBuilder_gen_expr(self, arg);
+        _ = &val;
+        var arg_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, arg);
+        _ = &arg_type;
+        if (strcmp(arg_type, "Int") == @as(c_int, 0)) {
+            CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_print_int(", val), ");"));
+        } else if (strcmp(arg_type, "Float") == @as(c_int, 0)) {
+            CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_print_float(", val), ");"));
+        } else if (strcmp(arg_type, "Char") == @as(c_int, 0)) {
+            CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%c\\n\", (char)(", val), "));"));
+        } else if (strcmp(arg_type, "Bool") == @as(c_int, 0)) {
+            CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%s\\n\", (", val), ") ? \"true\" : \"false\");"));
+        } else {
+            CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%s\\n\", ", val), ");"));
+        }
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_unsafe))) {
+        CodegenBuilder_gen_stmt(self, stmt.unsafe_body);
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_defer))) {
+        ArrayList_Int_push(&self.*.defer_stack, stmt_idx);
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_match))) {
+        var expr_idx: i64 = stmt.match_expr;
+        _ = &expr_idx;
+        var expr_val: [*c]const u8 = CodegenBuilder_gen_expr(self, expr_idx);
+        _ = &expr_val;
+        var expr_node: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr_idx);
+        _ = &expr_node;
+        var expr_type: [*c]const u8 = CodegenBuilder_get_expr_type(self, expr_idx);
+        _ = &expr_type;
+        var mapped_expr_type: [*c]const u8 = CodegenBuilder_map_type(self, expr_type);
+        _ = &mapped_expr_type;
+        var is_self_ptr: bool = ((expr_node.kind == @as(c_uint, @bitCast(ExprKind_ek_identifier))) and (strcmp(expr_node.ident_name, "self") == @as(c_int, 0))) and !self.*.cur_method_is_init;
+        _ = &is_self_ptr;
+        var is_ptr: bool = @as(c_int, 0) != 0;
+        _ = &is_ptr;
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (((@as(c_int, @bitCast(@as(c_uint, expr_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, expr_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) or (@as(c_int, @intFromBool(is_self_ptr)) != 0))) {
+            is_ptr = @as(c_int, 1) != 0;
+        }
+        var op: [*c]const u8 = ".";
+        _ = &op;
+        if (is_ptr) {
+            op = "->";
+        }
+        var case_idx: i64 = 0;
+        _ = &case_idx;
+        while (case_idx < ArrayList_MatchCase_length(&stmt.match_cases)) {
+            var case_node: MatchCase = ArrayList_MatchCase_get(&stmt.match_cases, case_idx);
+            _ = &case_node;
+            var pat_node: PatternNode = ArrayList_PatternNode_get(self.*.pattern_pool, case_node.pattern);
+            _ = &pat_node;
+            var cond: [*c]const u8 = "";
+            _ = &cond;
+            var bindings_str: [*c]const u8 = "";
+            _ = &bindings_str;
+            if (pat_node.kind == @as(c_uint, @bitCast(PatternKind_pk_literal))) {
+                var lit_str: [*c]const u8 = "";
+                _ = &lit_str;
+                if (@as(c_int, @bitCast(@as(c_uint, pat_node.lit_value.tag))) == TokenValue_tv_int_TAG) {
+                    var v: i64 = pat_node.lit_value.payload.tv_int.v;
+                    _ = &v;
+                    lit_str = cgb_int_to_str(v);
+                } else if (@as(c_int, @bitCast(@as(c_uint, pat_node.lit_value.tag))) == TokenValue_tv_str_TAG) {
+                    var v: [*c]const u8 = pat_node.lit_value.payload.tv_str.v;
+                    _ = &v;
+                    lit_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("\"", CodegenBuilder_escape_string(self, v)), "\"");
+                } else if (@as(c_int, @bitCast(@as(c_uint, pat_node.lit_value.tag))) == TokenValue_tv_bool_TAG) {
+                    var v: bool = pat_node.lit_value.payload.tv_bool.v;
+                    _ = &v;
+                    if (v) {
+                        lit_str = "true";
+                    } else {
+                        lit_str = "false";
+                    }
+                } else if (@as(c_int, @bitCast(@as(c_uint, pat_node.lit_value.tag))) == TokenValue_tv_char_TAG) {
+                    var v: u8 = pat_node.lit_value.payload.tv_char.v;
+                    _ = &v;
+                    if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
+                        lit_str = "'\\n'";
+                    } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 13))))))))) {
+                        lit_str = "'\\r'";
+                    } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9))))))))) {
+                        lit_str = "'\\t'";
+                    } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 92))))))))) {
+                        lit_str = "'\\\\'";
+                    } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 39))))))))) {
+                        lit_str = "'\\''";
+                    } else {
+                        lit_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("'", cgb_char_to_str(v)), "'");
+                    }
+                } else {
+                    lit_str = "0";
+                }
+                cond = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(expr_val, " == "), lit_str);
+            } else if (pat_node.kind == @as(c_uint, @bitCast(PatternKind_pk_variant))) {
+                var var_name: [*c]const u8 = pat_node.variant_name;
+                _ = &var_name;
+                var base_type: [*c]const u8 = mapped_expr_type;
+                _ = &base_type;
+                if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
+                    base_type = __kai_str_sub(base_type, @as(c_longlong, 0), @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))));
+                }
+                if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42)))))))))) {
+                    base_type = __kai_str_sub(base_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+                }
+                var has_payload: bool = @as(c_int, 0) != 0;
+                _ = &has_payload;
+                var enum_idx_str: [*c]const u8 = cgb_map_get(&self.*.enum_decls, expr_type);
+                _ = &enum_idx_str;
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(enum_idx_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    var clean_base: [*c]const u8 = expr_type;
+                    _ = &clean_base;
+                    var done_clean: bool = @as(c_int, 0) != 0;
+                    _ = &done_clean;
+                    while (!done_clean) {
+                        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clean_base)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, clean_base[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, clean_base[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
+                            clean_base = __kai_str_sub(clean_base, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_base)))));
+                        } else {
+                            done_clean = @as(c_int, 1) != 0;
+                        }
+                    }
+                    enum_idx_str = cgb_map_get(&self.*.enum_decls, clean_base);
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(enum_idx_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    var enum_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, CodegenBuilder_str_to_int(self, enum_idx_str));
+                    _ = &enum_stmt;
+                    var vi: i64 = 0;
+                    _ = &vi;
+                    while (vi < ArrayList_Variant_length(&enum_stmt.enum_variants)) {
+                        var v: Variant = ArrayList_Variant_get(&enum_stmt.enum_variants, vi);
+                        _ = &v;
+                        if (ArrayList_Param_length(&v.params) > @as(c_longlong, 0)) {
+                            has_payload = @as(c_int, 1) != 0;
+                        }
+                        vi = vi + @as(c_longlong, 1);
+                    }
+                }
+                if (has_payload) {
+                    cond = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(expr_val, op), "tag == "), base_type), "_"), var_name), "_TAG");
+                } else {
+                    cond = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(expr_val, " == "), base_type), "_"), var_name);
+                }
+                if (ArrayList_Str_length(&pat_node.bindings) > @as(c_longlong, 0)) {
+                    var bind_name: [*c]const u8 = ArrayList_Str_get(&pat_node.bindings, @as(c_longlong, 0));
+                    _ = &bind_name;
+                    if (strcmp(bind_name, "_") != @as(c_int, 0)) {
+                        var bind_type: [*c]const u8 = "";
+                        _ = &bind_type;
+                        var field_name: [*c]const u8 = "";
+                        _ = &field_name;
+                        if (strcmp(var_name, "ok") == @as(c_int, 0)) {
+                            bind_type = "Int";
+                            field_name = "value";
+                        } else if (strcmp(var_name, "err") == @as(c_int, 0)) {
+                            bind_type = "Int";
+                            field_name = "value";
+                        } else if (strcmp(var_name, "tv_int") == @as(c_int, 0)) {
+                            bind_type = "Int";
+                            field_name = "v";
+                        } else if (strcmp(var_name, "tv_float") == @as(c_int, 0)) {
+                            bind_type = "Float";
+                            field_name = "v";
+                        } else if (strcmp(var_name, "tv_bool") == @as(c_int, 0)) {
+                            bind_type = "Bool";
+                            field_name = "v";
+                        } else if (strcmp(var_name, "tv_char") == @as(c_int, 0)) {
+                            bind_type = "Char";
+                            field_name = "v";
+                        } else if (strcmp(var_name, "tv_str") == @as(c_int, 0)) {
+                            bind_type = "Str";
+                            field_name = "v";
+                        }
+                        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(bind_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                            var mapped_bind_type: [*c]const u8 = CodegenBuilder_map_type(self, bind_type);
+                            _ = &mapped_bind_type;
+                            bindings_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(mapped_bind_type, " "), bind_name), " = "), expr_val), op), var_name), "."), field_name), ";");
+                        }
+                    }
+                }
+            } else if (pat_node.kind == @as(c_uint, @bitCast(PatternKind_pk_else))) {
+                cond = "true";
+            }
+            if (case_idx == @as(c_longlong, 0)) {
+                CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc("if ", CodegenBuilder_format_cond(self, cond)));
+            } else if (strcmp(cond, "true") == @as(c_int, 0)) {
+                CCodeBuilder_emit_line(&self.*.builder, "else");
+            } else {
+                CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc("else if ", CodegenBuilder_format_cond(self, cond)));
+            }
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(bindings_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                CCodeBuilder_begin_block(&self.*.builder);
+                CCodeBuilder_emit_line(&self.*.builder, bindings_str);
+                CodegenBuilder_gen_stmt(self, case_node.body);
+                CCodeBuilder_end_block(&self.*.builder);
+            } else {
+                CodegenBuilder_gen_stmt(self, case_node.body);
+            }
+            case_idx = case_idx + @as(c_longlong, 1);
+        }
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_expr))) {
+        var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, stmt.expr_stmt);
+        _ = &expr;
+        if ((expr.kind != @as(c_uint, @bitCast(ExprKind_ek_identifier))) and (expr.kind != @as(c_uint, @bitCast(ExprKind_ek_literal)))) {
+            var val: [*c]const u8 = CodegenBuilder_gen_expr(self, stmt.expr_stmt);
+            _ = &val;
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(val)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(val, ";"));
+            }
+        }
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_func_decl))) {
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_extern))) {
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) {
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_enum_decl))) {
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_impl_block))) {
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_import))) {
+        var path: ArrayList_Str = stmt.import_path;
+        _ = &path;
+        var module_key: [*c]const u8 = "";
+        _ = &module_key;
+        var pi: i64 = 0;
+        _ = &pi;
+        while (pi < ArrayList_Str_length(&path)) {
+            if (pi > @as(c_longlong, 0)) {
+                module_key = __kai_std_str_concat_alloc(module_key, ".");
+            }
+            module_key = __kai_std_str_concat_alloc(module_key, ArrayList_Str_get(&path, pi));
+            pi = pi + @as(c_longlong, 1);
+        }
+        if (strcmp(module_key, "") == @as(c_int, 0)) {
+            return;
+        }
+        if (cgb_strlist_find(&self.*.loaded_modules, module_key) >= @as(c_longlong, 0)) {
+            return;
+        }
+        ArrayList_Str_push(&self.*.loaded_modules, module_key);
+        var has_source: bool = @as(c_int, 0) != 0;
+        _ = &has_source;
+        var source: [*c]const u8 = "";
+        _ = &source;
+        if ((ArrayList_Str_length(&path) > @as(c_longlong, 0)) and (strcmp(ArrayList_Str_get(&path, @as(c_longlong, 0)), "std") == @as(c_int, 0))) {
+            var path_str: [*c]const u8 = "";
+            _ = &path_str;
+            var i: i64 = 0;
+            _ = &i;
+            while (i < ArrayList_Str_length(&path)) {
+                if (i > @as(c_longlong, 0)) {
+                    path_str = __kai_std_str_concat_alloc(path_str, "/");
+                }
+                path_str = __kai_std_str_concat_alloc(path_str, ArrayList_Str_get(&path, i));
+                i = i + @as(c_longlong, 1);
+            }
+            var rel_path: [*c]const u8 = __kai_std_str_concat_alloc(path_str, ".kai");
+            _ = &rel_path;
+            var s1: Result_Str_IoError = read_to_string(self.*.allocator, rel_path);
+            _ = &s1;
+            if ((s1.tag == @as(c_longlong, 0)) and (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s1.value)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) {
+                source = s1.value;
+                has_source = @as(c_int, 1) != 0;
+            } else {
+                {
+                    var buf: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, @truncate(@as(c_longlong, 1024)))))))));
+                    _ = &buf;
+                    if (get_exe_dir(buf, @as(c_longlong, 1024)) == @as(c_longlong, 0)) {
+                        var exe_dir: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast(buf)));
+                        _ = &exe_dir;
+                        var full_path: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/"), rel_path);
+                        _ = &full_path;
+                        var s2: Result_Str_IoError = read_to_string(self.*.allocator, full_path);
+                        _ = &s2;
+                        if ((s2.tag == @as(c_longlong, 0)) and (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s2.value)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) {
+                            source = s2.value;
+                            has_source = @as(c_int, 1) != 0;
+                        } else {
+                            var parent_path: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../"), rel_path);
+                            _ = &parent_path;
+                            var s3: Result_Str_IoError = read_to_string(self.*.allocator, parent_path);
+                            _ = &s3;
+                            if ((s3.tag == @as(c_longlong, 0)) and (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s3.value)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) {
+                                source = s3.value;
+                                has_source = @as(c_int, 1) != 0;
+                            } else {
+                                var lib_path: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../lib/kai/"), rel_path);
+                                _ = &lib_path;
+                                var s4: Result_Str_IoError = read_to_string(self.*.allocator, lib_path);
+                                _ = &s4;
+                                if ((s4.tag == @as(c_longlong, 0)) and (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s4.value)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) {
+                                    source = s4.value;
+                                    has_source = @as(c_int, 1) != 0;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (ArrayList_Str_length(&path) > @as(c_longlong, 0)) {
+            var file_path: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("src/", module_key), ".kai");
+            _ = &file_path;
+            var s: Result_Str_IoError = read_to_string(self.*.allocator, file_path);
+            _ = &s;
+            if ((s.tag == @as(c_longlong, 0)) and (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s.value)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) {
+                source = s.value;
+                has_source = @as(c_int, 1) != 0;
+            }
+        }
+        if (has_source) {
+            var lexer: Lexer = Lexer_init(self.*.allocator, source, "");
+            _ = &lexer;
+            Lexer_lex(&lexer);
+            if (!lexer.has_error) {
+                var parser: Parser = Parser_init_with_pools(self.*.allocator, "", lexer.tokens, self.*.expr_pool, self.*.stmt_pool, self.*.pattern_pool);
+                _ = &parser;
+                var program_idx: i64 = Parser_parse_program(&parser);
+                _ = &program_idx;
+                if (program_idx >= @as(c_longlong, 0)) {
+                    var prog: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, program_idx);
+                    _ = &prog;
+                    if (prog.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) {
+                        var pi_1: i64 = 0;
+                        _ = &pi_1;
+                        while (pi_1 < ArrayList_Int_length(&prog.block_stmts)) {
+                            var sub: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, ArrayList_Int_get(&prog.block_stmts, pi_1));
+                            _ = &sub;
+                            if ((sub.kind == @as(c_uint, @bitCast(StmtKind_sk_import))) or (sub.kind == @as(c_uint, @bitCast(StmtKind_sk_cimport)))) {
+                                CodegenBuilder_gen_stmt(self, ArrayList_Int_get(&prog.block_stmts, pi_1));
+                            }
+                            pi_1 = pi_1 + @as(c_longlong, 1);
+                        }
+                    }
+                }
+            }
+        }
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_cimport))) {
+        var hdr: [*c]const u8 = stmt.cimport_header;
+        _ = &hdr;
+        if (cgb_strlist_find(&self.*.cimport_headers, hdr) < @as(c_longlong, 0)) {
+            ArrayList_Str_push(&self.*.cimport_headers, hdr);
+        }
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_trait_decl))) {
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_error_decl))) {
+        return;
+    }
+}
+pub export fn CodegenBuilder_build_func_types(arg_self: [*c]CodegenBuilder) void {
+    var self = arg_self;
+    _ = &self;
+    var i: i64 = 0;
+    _ = &i;
+    while (i < ArrayList_StmtNode_length(self.*.stmt_pool)) {
+        var stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, i);
+        _ = &stmt;
+        if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) {
+            if (ArrayList_Str_length(&stmt.struct_type_params) > @as(c_longlong, 0)) {
+                cgb_map_put(&self.*.generic_struct_decls, stmt.struct_name, cgb_int_to_str(i));
+            }
+        }
+        if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_enum_decl))) {
+            if (ArrayList_Str_length(&stmt.enum_type_params) > @as(c_longlong, 0)) {
+                cgb_map_put(&self.*.generic_enum_decls, stmt.enum_name, cgb_int_to_str(i));
+            }
+        }
+        i = i + @as(c_longlong, 1);
+    }
+    var @"i1": i64 = 0;
+    _ = &@"i1";
+    while (@"i1" < ArrayList_StmtNode_length(self.*.stmt_pool)) {
+        var stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, @"i1");
+        _ = &stmt;
+        if ((stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) and (ArrayList_Str_length(&stmt.struct_type_params) == @as(c_longlong, 0))) {
+            var cname: [*c]const u8 = CodegenBuilder_map_type(self, stmt.struct_name);
+            _ = &cname;
+            StrBuf_append(&self.*.type_defs, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", cname), " "), cname), ";\n"));
+        }
+        if ((stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_enum_decl))) and (ArrayList_Str_length(&stmt.enum_type_params) == @as(c_longlong, 0))) {
+            cgb_map_put(&self.*.enum_decls, stmt.enum_name, cgb_int_to_str(@"i1"));
+            var cename: [*c]const u8 = CodegenBuilder_map_type(self, stmt.enum_name);
+            _ = &cename;
+            var has_payload: bool = @as(c_int, 0) != 0;
+            _ = &has_payload;
+            var vi: i64 = 0;
+            _ = &vi;
+            while (vi < ArrayList_Variant_length(&stmt.enum_variants)) {
+                var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, vi);
+                _ = &v;
+                if (ArrayList_Param_length(&v.params) > @as(c_longlong, 0)) {
+                    has_payload = @as(c_int, 1) != 0;
+                }
+                vi = vi + @as(c_longlong, 1);
+            }
+            if (!has_payload) {
+                StrBuf_append(&self.*.type_defs, "typedef enum {\n");
+                var vi2: i64 = 0;
+                _ = &vi2;
+                while (vi2 < ArrayList_Variant_length(&stmt.enum_variants)) {
+                    var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, vi2);
+                    _ = &v;
+                    StrBuf_append(&self.*.type_defs, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", cename), "_"), v.vname), ",\n"));
+                    vi2 = vi2 + @as(c_longlong, 1);
+                }
+                StrBuf_append(&self.*.type_defs, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("} ", cename), ";\n"));
+            } else {
+                var tags_name: [*c]const u8 = __kai_std_str_concat_alloc(cename, "_tags");
+                _ = &tags_name;
+                StrBuf_append(&self.*.type_defs, "typedef enum {\n");
+                var vi3: i64 = 0;
+                _ = &vi3;
+                while (vi3 < ArrayList_Variant_length(&stmt.enum_variants)) {
+                    var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, vi3);
+                    _ = &v;
+                    StrBuf_append(&self.*.type_defs, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", cename), "_"), v.vname), "_TAG,\n"));
+                    vi3 = vi3 + @as(c_longlong, 1);
+                }
+                StrBuf_append(&self.*.type_defs, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("} ", tags_name), ";\n"));
+                StrBuf_append(&self.*.type_defs, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", cename), " "), cename), ";\n"));
+            }
+        }
+        if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_error_decl))) {
+            var cename: [*c]const u8 = CodegenBuilder_map_type(self, stmt.error_name);
+            _ = &cename;
+            StrBuf_append(&self.*.type_defs, "typedef enum {\n");
+            var vi5: i64 = 0;
+            _ = &vi5;
+            while (vi5 < ArrayList_Str_length(&stmt.error_variants)) {
+                var vname: [*c]const u8 = ArrayList_Str_get(&stmt.error_variants, vi5);
+                _ = &vname;
+                StrBuf_append(&self.*.type_defs, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", cename), "_"), vname), " = "), cgb_int_to_str(vi5 + @as(c_longlong, 1))), ",\n"));
+                vi5 = vi5 + @as(c_longlong, 1);
+            }
+            StrBuf_append(&self.*.type_defs, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("} ", cename), ";\n"));
+        }
+        @"i1" = @"i1" + @as(c_longlong, 1);
+    }
+    var i2a: i64 = 0;
+    _ = &i2a;
+    while (i2a < ArrayList_StmtNode_length(self.*.stmt_pool)) {
+        var stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, i2a);
+        _ = &stmt;
+        if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_func_decl))) {
+            var has_self_param: bool = @as(c_int, 0) != 0;
+            _ = &has_self_param;
+            var pi: i64 = 0;
+            _ = &pi;
+            while (pi < ArrayList_Param_length(&stmt.func_params)) {
+                var p: Param = ArrayList_Param_get(&stmt.func_params, pi);
+                _ = &p;
+                {
+                    if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(p.name, "self")))) == @as(c_longlong, 0)) {
+                        has_self_param = @as(c_int, 1) != 0;
+                    }
+                }
+                pi = pi + @as(c_longlong, 1);
+            }
+            var is_runtime_helper: bool = @as(c_int, 0) != 0;
+            _ = &is_runtime_helper;
+            {
+                if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(stmt.func_name, "__kai_std_str_concat_alloc")))) == @as(c_longlong, 0)) {
+                    is_runtime_helper = @as(c_int, 1) != 0;
+                }
+            }
+            if (!has_self_param and !is_runtime_helper) {
+                var params_str: [*c]const u8 = "";
+                _ = &params_str;
+                var pi2: i64 = 0;
+                _ = &pi2;
+                while (pi2 < ArrayList_Param_length(&stmt.func_params)) {
+                    var p: Param = ArrayList_Param_get(&stmt.func_params, pi2);
+                    _ = &p;
+                    if (pi2 > @as(c_longlong, 0)) {
+                        params_str = __kai_std_str_concat_alloc(params_str, ", ");
+                    }
+                    var ctype: [*c]const u8 = CodegenBuilder_map_type(self, p.ptype);
+                    _ = &ctype;
+                    params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, ctype), " "), p.name);
+                    pi2 = pi2 + @as(c_longlong, 1);
+                }
+                var func_type_str: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, ":"), stmt.func_return_type);
+                _ = &func_type_str;
+                cgb_map_put(&self.*.func_types, stmt.func_name, func_type_str);
+                var p_i: i64 = 0;
+                _ = &p_i;
+                while (p_i < ArrayList_Param_length(&stmt.func_params)) {
+                    var p: Param = ArrayList_Param_get(&stmt.func_params, p_i);
+                    _ = &p;
+                    var p_key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(stmt.func_name, "_param_"), cgb_int_to_str(p_i));
+                    _ = &p_key;
+                    cgb_map_put(&self.*.func_param_types, p_key, p.ptype);
+                    p_i = p_i + @as(c_longlong, 1);
+                }
+            }
+        }
+        if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_extern))) {
+            cgb_map_put(&self.*.func_types, stmt.extern_name, stmt.extern_return);
+            var p_i: i64 = 0;
+            _ = &p_i;
+            while (p_i < ArrayList_Param_length(&stmt.extern_params)) {
+                var p: Param = ArrayList_Param_get(&stmt.extern_params, p_i);
+                _ = &p;
+                var p_key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(stmt.extern_name, "_param_"), cgb_int_to_str(p_i));
+                _ = &p_key;
+                cgb_map_put(&self.*.func_param_types, p_key, p.ptype);
+                p_i = p_i + @as(c_longlong, 1);
+            }
+        }
+        if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_impl_block))) {
+            var struct_name: [*c]const u8 = stmt.impl_struct_name;
+            _ = &struct_name;
+            if ((cgb_map_find(&self.*.generic_struct_decls, struct_name) < @as(c_longlong, 0)) and (cgb_map_find(&self.*.generic_enum_decls, struct_name) < @as(c_longlong, 0))) {
+                var j: i64 = 0;
+                _ = &j;
+                while (j < ArrayList_Int_length(&stmt.impl_methods)) {
+                    var m_idx: i64 = ArrayList_Int_get(&stmt.impl_methods, j);
+                    _ = &m_idx;
+                    var m_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, m_idx);
+                    _ = &m_node;
+                    var method_name: [*c]const u8 = m_node.func_name;
+                    _ = &method_name;
+                    var is_init: bool = (((strcmp(method_name, "init") == @as(c_int, 0)) or (strcmp(m_node.func_return_type, struct_name) == @as(c_int, 0))) or (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("*", struct_name)) == @as(c_int, 0))) or (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("&", struct_name)) == @as(c_int, 0));
+                    _ = &is_init;
+                    var key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_name, "_"), method_name);
+                    _ = &key;
+                    var ret: [*c]const u8 = m_node.func_return_type;
+                    _ = &ret;
+                    if (is_init) {
+                        ret = struct_name;
+                    }
+                    cgb_map_put(&self.*.func_types, key, ret);
+                    var p_i: i64 = 0;
+                    _ = &p_i;
+                    while (p_i < ArrayList_Param_length(&m_node.func_params)) {
+                        var p: Param = ArrayList_Param_get(&m_node.func_params, p_i);
+                        _ = &p;
+                        var p_key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(key, "_param_"), cgb_int_to_str(p_i));
+                        _ = &p_key;
+                        cgb_map_put(&self.*.func_param_types, p_key, p.ptype);
+                        p_i = p_i + @as(c_longlong, 1);
+                    }
+                    j = j + @as(c_longlong, 1);
+                }
+            }
+        }
+        i2a = i2a + @as(c_longlong, 1);
+    }
+    var @"i2": i64 = 0;
+    _ = &@"i2";
+    while (@"i2" < ArrayList_StmtNode_length(self.*.stmt_pool)) {
+        var stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, @"i2");
+        _ = &stmt;
+        if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_func_decl))) {
+            var has_self_param: bool = @as(c_int, 0) != 0;
+            _ = &has_self_param;
+            var pi: i64 = 0;
+            _ = &pi;
+            while (pi < ArrayList_Param_length(&stmt.func_params)) {
+                var p: Param = ArrayList_Param_get(&stmt.func_params, pi);
+                _ = &p;
+                {
+                    if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(p.name, "self")))) == @as(c_longlong, 0)) {
+                        has_self_param = @as(c_int, 1) != 0;
+                    }
+                }
+                pi = pi + @as(c_longlong, 1);
+            }
+            var is_runtime_helper: bool = @as(c_int, 0) != 0;
+            _ = &is_runtime_helper;
+            {
+                if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(stmt.func_name, "__kai_std_str_concat_alloc")))) == @as(c_longlong, 0)) {
+                    is_runtime_helper = @as(c_int, 1) != 0;
+                }
+            }
+            if (has_self_param) {} else if (is_runtime_helper) {} else {
+                self.*.var_types = ArrayList_CgbMapEntry_init(self.*.allocator);
+                self.*.block_stack = ArrayList_Int_init(self.*.allocator);
+                var params_str: [*c]const u8 = "";
+                _ = &params_str;
+                var pi2: i64 = 0;
+                _ = &pi2;
+                while (pi2 < ArrayList_Param_length(&stmt.func_params)) {
+                    var p: Param = ArrayList_Param_get(&stmt.func_params, pi2);
+                    _ = &p;
+                    if (pi2 > @as(c_longlong, 0)) {
+                        params_str = __kai_std_str_concat_alloc(params_str, ", ");
+                    }
+                    var ctype: [*c]const u8 = CodegenBuilder_map_type(self, p.ptype);
+                    _ = &ctype;
+                    params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, ctype), " "), p.name);
+                    cgb_map_put(&self.*.var_types, p.name, p.ptype);
+                    pi2 = pi2 + @as(c_longlong, 1);
+                }
+                var ret_type: [*c]const u8 = CodegenBuilder_map_type(self, stmt.func_return_type);
+                _ = &ret_type;
+                self.*.cur_func_name = stmt.func_name;
+                self.*.cur_return_type = stmt.func_return_type;
+                self.*.cur_method_is_init = @as(c_int, 0) != 0;
+                var is_main: bool = @as(c_int, 0) != 0;
+                _ = &is_main;
+                {
+                    if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(stmt.func_name, "main")))) == @as(c_longlong, 0)) {
+                        is_main = @as(c_int, 1) != 0;
+                    }
+                }
+                var decl_ret: [*c]const u8 = ret_type;
+                _ = &decl_ret;
+                var decl_params: [*c]const u8 = params_str;
+                _ = &decl_params;
+                var impl_header: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), stmt.func_name), "("), params_str), ")");
+                _ = &impl_header;
+                if (is_main) {
+                    decl_ret = "int";
+                    decl_params = "int argc, char** argv";
+                    impl_header = "int main(int argc, char** argv)";
+                }
+                if (!is_main) {
+                    StrBuf_append(&self.*.func_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(decl_ret, " "), stmt.func_name), "("), decl_params), ");\n"));
+                }
+                var body_idx: i64 = stmt.func_body;
+                _ = &body_idx;
+                if (body_idx >= @as(c_longlong, 0)) {
+                    var body_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, body_idx);
+                    _ = &body_stmt;
+                    if (body_stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) {
+                        CCodeBuilder_emit_line(&self.*.builder, impl_header);
+                        CodegenBuilder_gen_stmt(self, body_idx);
+                        StrBuf_append(&self.*.output_body, CCodeBuilder_to_str(&self.*.builder));
+                        CCodeBuilder_clear(&self.*.builder);
+                    }
+                }
+            }
+        }
+        if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_extern))) {
+            if (!CodegenBuilder_is_standard_c_func(self, stmt.extern_name)) {
+                {
+                    if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(stmt.extern_name, "_kai_set_current_allocator")))) == @as(c_longlong, 0)) {} else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(stmt.extern_name, "__kai_std_str_concat_alloc")))) == @as(c_longlong, 0)) {} else {
+                        var params_str: [*c]const u8 = "";
+                        _ = &params_str;
+                        var pi3: i64 = 0;
+                        _ = &pi3;
+                        while (pi3 < ArrayList_Param_length(&stmt.extern_params)) {
+                            var p: Param = ArrayList_Param_get(&stmt.extern_params, pi3);
+                            _ = &p;
+                            if (pi3 > @as(c_longlong, 0)) {
+                                params_str = __kai_std_str_concat_alloc(params_str, ", ");
+                            }
+                            params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, CodegenBuilder_map_type(self, p.ptype)), " "), p.name);
+                            pi3 = pi3 + @as(c_longlong, 1);
+                        }
+                        var ret_type: [*c]const u8 = CodegenBuilder_map_type(self, stmt.extern_return);
+                        _ = &ret_type;
+                        StrBuf_append(&self.*.func_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("extern ", ret_type), " "), stmt.extern_name), "("), params_str), ");\n"));
+                    }
+                }
+            }
+        }
+        if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_impl_block))) {
+            var struct_name: [*c]const u8 = stmt.impl_struct_name;
+            _ = &struct_name;
+            if ((cgb_map_find(&self.*.generic_struct_decls, struct_name) >= @as(c_longlong, 0)) or (cgb_map_find(&self.*.generic_enum_decls, struct_name) >= @as(c_longlong, 0))) {
+                @"i2" = @"i2" + @as(c_longlong, 1);
+                continue;
+            }
+            var mapped_name: [*c]const u8 = CodegenBuilder_map_type(self, struct_name);
+            _ = &mapped_name;
+            var j: i64 = 0;
+            _ = &j;
+            while (j < ArrayList_Int_length(&stmt.impl_methods)) {
+                var m_idx: i64 = ArrayList_Int_get(&stmt.impl_methods, j);
+                _ = &m_idx;
+                var m_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, m_idx);
+                _ = &m_node;
+                var method_name: [*c]const u8 = m_node.func_name;
+                _ = &method_name;
+                var is_init: bool = (((strcmp(method_name, "init") == @as(c_int, 0)) or (strcmp(m_node.func_return_type, struct_name) == @as(c_int, 0))) or (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("*", struct_name)) == @as(c_int, 0))) or (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("&", struct_name)) == @as(c_int, 0));
+                _ = &is_init;
+                self.*.var_types = ArrayList_CgbMapEntry_init(self.*.allocator);
+                self.*.block_stack = ArrayList_Int_init(self.*.allocator);
+                var params_str: [*c]const u8 = "";
+                _ = &params_str;
+                if (!is_init) {
+                    params_str = __kai_std_str_concat_alloc(mapped_name, "* self");
+                    cgb_map_put(&self.*.var_types, "self", __kai_std_str_concat_alloc("*", struct_name));
+                } else {
+                    cgb_map_put(&self.*.var_types, "self", struct_name);
+                }
+                var pi2: i64 = 0;
+                _ = &pi2;
+                while (pi2 < ArrayList_Param_length(&m_node.func_params)) {
+                    var p: Param = ArrayList_Param_get(&m_node.func_params, pi2);
+                    _ = &p;
+                    var is_self: bool = @as(c_int, 0) != 0;
+                    _ = &is_self;
+                    {
+                        if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(p.name, "self")))) == @as(c_longlong, 0)) {
+                            is_self = @as(c_int, 1) != 0;
+                        }
+                    }
+                    if (!is_self) {
+                        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                            params_str = __kai_std_str_concat_alloc(params_str, ", ");
+                        }
+                        var ctype: [*c]const u8 = CodegenBuilder_map_type(self, p.ptype);
+                        _ = &ctype;
+                        params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, ctype), " "), p.name);
+                        cgb_map_put(&self.*.var_types, p.name, p.ptype);
+                    }
+                    pi2 = pi2 + @as(c_longlong, 1);
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    params_str = "void";
+                }
+                var ret: [*c]const u8 = m_node.func_return_type;
+                _ = &ret;
+                if (is_init) {
+                    ret = struct_name;
+                }
+                var ret_type: [*c]const u8 = CodegenBuilder_map_type(self, ret);
+                _ = &ret_type;
+                var mangled_fn: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(mapped_name, "_"), method_name);
+                _ = &mangled_fn;
+                self.*.cur_func_name = mangled_fn;
+                self.*.cur_return_type = ret;
+                self.*.cur_method_is_init = is_init;
+                StrBuf_append(&self.*.func_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), mangled_fn), "("), params_str), ");\n"));
+                var body_idx: i64 = m_node.func_body;
+                _ = &body_idx;
+                if (body_idx >= @as(c_longlong, 0)) {
+                    var body_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, body_idx);
+                    _ = &body_stmt;
+                    if (body_stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) {
+                        CCodeBuilder_emit_line(&self.*.builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), mangled_fn), "("), params_str), ")"));
+                        CodegenBuilder_gen_stmt(self, body_idx);
+                        var body_str: [*c]const u8 = CCodeBuilder_to_str(&self.*.builder);
+                        _ = &body_str;
+                        if (is_init) {
+                            var brace_pos: i64 = 0;
+                            _ = &brace_pos;
+                            while (@as(c_ulonglong, @bitCast(brace_pos)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(body_str))))) {
+                                if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                                    const tmp = brace_pos;
+                                    if (tmp >= 0) break :blk body_str + @as(usize, @intCast(tmp)) else break :blk body_str - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 123))))))))) {
+                                    break;
+                                }
+                                brace_pos = brace_pos + @as(c_longlong, 1);
+                            }
+                            var header: [*c]const u8 = __kai_str_sub(body_str, @as(c_longlong, 0), brace_pos);
+                            _ = &header;
+                            var raw_body: [*c]const u8 = __kai_str_sub(body_str, brace_pos, @as(i64, @bitCast(@as(c_ulonglong, strlen(body_str)))));
+                            _ = &raw_body;
+                            body_str = __kai_std_str_concat_alloc(header, CodegenBuilder_add_init_return(self, raw_body, mapped_name));
+                        }
+                        StrBuf_append(&self.*.output_body, body_str);
+                        CCodeBuilder_clear(&self.*.builder);
+                    }
+                }
+                j = j + @as(c_longlong, 1);
+            }
+        }
+        @"i2" = @"i2" + @as(c_longlong, 1);
+    }
+    var emitted_struct_bodies: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
+    _ = &emitted_struct_bodies;
+    var @"i4": i64 = 0;
+    _ = &@"i4";
+    while (@"i4" < ArrayList_StmtNode_length(self.*.stmt_pool)) {
+        var stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, @"i4");
+        _ = &stmt;
+        if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) {
+            CodegenBuilder_emit_struct_body_with_deps(self, @"i4", &emitted_struct_bodies);
+        }
+        if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_enum_decl))) {
+            var ename: [*c]const u8 = stmt.enum_name;
+            _ = &ename;
+            if (ArrayList_Str_length(&stmt.enum_type_params) == @as(c_longlong, 0)) {
+                var cename: [*c]const u8 = CodegenBuilder_map_type(self, ename);
+                _ = &cename;
+                var has_payload: bool = @as(c_int, 0) != 0;
+                _ = &has_payload;
+                var vi: i64 = 0;
+                _ = &vi;
+                while (vi < ArrayList_Variant_length(&stmt.enum_variants)) {
+                    var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, vi);
+                    _ = &v;
+                    if (ArrayList_Param_length(&v.params) > @as(c_longlong, 0)) {
+                        has_payload = @as(c_int, 1) != 0;
+                    }
+                    vi = vi + @as(c_longlong, 1);
+                }
+                if (has_payload) {
+                    StrBuf_append(&self.*.struct_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", cename), " {\n"));
+                    StrBuf_append(&self.*.struct_decls, "    uint8_t tag;\n");
+                    StrBuf_append(&self.*.struct_decls, "    union {\n");
+                    var vi4: i64 = 0;
+                    _ = &vi4;
+                    while (vi4 < ArrayList_Variant_length(&stmt.enum_variants)) {
+                        var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, vi4);
+                        _ = &v;
+                        if (ArrayList_Param_length(&v.params) > @as(c_longlong, 0)) {
+                            StrBuf_append(&self.*.struct_decls, "        struct {\n");
+                            var pi3: i64 = 0;
+                            _ = &pi3;
+                            while (pi3 < ArrayList_Param_length(&v.params)) {
+                                var p: Param = ArrayList_Param_get(&v.params, pi3);
+                                _ = &p;
+                                StrBuf_append(&self.*.struct_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("            ", CodegenBuilder_map_type(self, p.ptype)), " "), p.name), ";\n"));
+                                pi3 = pi3 + @as(c_longlong, 1);
+                            }
+                            StrBuf_append(&self.*.struct_decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("        } ", v.vname), ";\n"));
+                        }
+                        vi4 = vi4 + @as(c_longlong, 1);
+                    }
+                    StrBuf_append(&self.*.struct_decls, "    };\n");
+                    StrBuf_append(&self.*.struct_decls, "};\n");
+                }
+            }
+        }
+        @"i4" = @"i4" + @as(c_longlong, 1);
+    }
+}
+pub export fn CodegenBuilder_emit_struct_body_with_deps(arg_self: [*c]CodegenBuilder, arg_stmt_idx: i64, arg_emitted: [*c]ArrayList_Str) void {
+    var self = arg_self;
+    _ = &self;
+    var stmt_idx = arg_stmt_idx;
+    _ = &stmt_idx;
+    var emitted = arg_emitted;
+    _ = &emitted;
+    var stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt_idx);
+    _ = &stmt;
+    if (stmt.kind != @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) {
+        return;
+    }
+    if (ArrayList_Str_length(&stmt.struct_type_params) > @as(c_longlong, 0)) {
+        return;
+    }
+    var cname: [*c]const u8 = CodegenBuilder_map_type(self, stmt.struct_name);
+    _ = &cname;
+    if (cgb_strlist_find(emitted, cname) >= @as(c_longlong, 0)) {
+        return;
+    }
+    ArrayList_Str_push(emitted, cname);
+    var fi: i64 = 0;
+    _ = &fi;
+    while (fi < ArrayList_StructField_length(&stmt.struct_fields)) {
+        var f: StructField = ArrayList_StructField_get(&stmt.struct_fields, fi);
+        _ = &f;
+        var ftype: [*c]const u8 = f.ftype;
+        _ = &ftype;
+        {
+            if (((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(ftype)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, ftype[@as(usize, @intCast(@as(c_longlong, 0)))]))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42)))))))))) and (@as(c_int, @bitCast(@as(c_uint, ftype[@as(usize, @intCast(@as(c_longlong, 0)))]))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
+                var si: i64 = 0;
+                _ = &si;
+                while (si < ArrayList_StmtNode_length(self.*.stmt_pool)) {
+                    var s2: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, si);
+                    _ = &s2;
+                    if ((s2.kind == @as(c_uint, @bitCast(StmtKind_sk_struct_decl))) and (ArrayList_Str_length(&s2.struct_type_params) == @as(c_longlong, 0))) {
+                        if (strcmp(s2.struct_name, ftype) == @as(c_int, 0)) {
+                            CodegenBuilder_emit_struct_body_with_deps(self, si, emitted);
+                        }
+                    }
+                    si = si + @as(c_longlong, 1);
+                }
+            }
+        }
+        fi = fi + @as(c_longlong, 1);
+    }
+    var body_buf: StrBuf = StrBuf_init(self.*.allocator);
+    _ = &body_buf;
+    StrBuf_append(&body_buf, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", cname), " {\n"));
+    var fi2: i64 = 0;
+    _ = &fi2;
+    while (fi2 < ArrayList_StructField_length(&stmt.struct_fields)) {
+        var f: StructField = ArrayList_StructField_get(&stmt.struct_fields, fi2);
+        _ = &f;
+        StrBuf_append(&body_buf, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", CodegenBuilder_map_type(self, f.ftype)), " "), f.name), ";\n"));
+        fi2 = fi2 + @as(c_longlong, 1);
+    }
+    StrBuf_append(&body_buf, "};\n");
+    StrBuf_append(&self.*.struct_decls, StrBuf_to_str(&body_buf));
+    var ti: i64 = 0;
+    _ = &ti;
+    while (ti < ArrayList_Int_length(&stmt.struct_trait_impls)) {
+        var impl_idx: i64 = ArrayList_Int_get(&stmt.struct_trait_impls, ti);
+        _ = &impl_idx;
+        var impl_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, impl_idx);
+        _ = &impl_node;
+        var j: i64 = 0;
+        _ = &j;
+        while (j < ArrayList_Int_length(&impl_node.impl_methods)) {
+            var m_idx: i64 = ArrayList_Int_get(&impl_node.impl_methods, j);
+            _ = &m_idx;
+            var m_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, m_idx);
+            _ = &m_node;
+            var key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(stmt.struct_name, "_"), m_node.func_name);
+            _ = &key;
+            var ret: [*c]const u8 = m_node.func_return_type;
+            _ = &ret;
+            if (strcmp(m_node.func_name, "init") == @as(c_int, 0)) {
+                ret = stmt.struct_name;
+            }
+            cgb_map_put(&self.*.func_types, key, ret);
+            var p_i: i64 = 0;
+            _ = &p_i;
+            while (p_i < ArrayList_Param_length(&m_node.func_params)) {
+                var p: Param = ArrayList_Param_get(&m_node.func_params, p_i);
+                _ = &p;
+                var p_key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(key, "_param_"), cgb_int_to_str(p_i));
+                _ = &p_key;
+                cgb_map_put(&self.*.func_param_types, p_key, p.ptype);
+                p_i = p_i + @as(c_longlong, 1);
+            }
+            j = j + @as(c_longlong, 1);
+        }
+        ti = ti + @as(c_longlong, 1);
+    }
+}
+pub export fn CodegenBuilder_generate(arg_self: [*c]CodegenBuilder, arg_top_stmt_idx: i64) [*c]const u8 {
+    var self = arg_self;
+    _ = &self;
+    var top_stmt_idx = arg_top_stmt_idx;
+    _ = &top_stmt_idx;
+    if (top_stmt_idx >= @as(c_longlong, 0)) {
+        var top_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, top_stmt_idx);
+        _ = &top_stmt;
+        if (top_stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_block))) {
+            var ii: i64 = 0;
+            _ = &ii;
+            while (ii < ArrayList_Int_length(&top_stmt.block_stmts)) {
+                var sub_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, ArrayList_Int_get(&top_stmt.block_stmts, ii));
+                _ = &sub_stmt;
+                if (sub_stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_import))) {
+                    CodegenBuilder_gen_stmt(self, ArrayList_Int_get(&top_stmt.block_stmts, ii));
+                }
+                if (sub_stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_cimport))) {
+                    CodegenBuilder_gen_stmt(self, ArrayList_Int_get(&top_stmt.block_stmts, ii));
+                }
+                ii = ii + @as(c_longlong, 1);
+            }
+        }
+    }
+    CodegenBuilder_build_func_types(self);
+    var result: StrBuf = StrBuf_init(self.*.allocator);
+    _ = &result;
+    StrBuf_append(&result, "/* BUILDER CODEGEN ACTIVE */\n");
+    StrBuf_append(&result, "#ifndef _GNU_SOURCE\n");
+    StrBuf_append(&result, "#define _GNU_SOURCE\n");
+    StrBuf_append(&result, "#endif\n");
+    StrBuf_append(&result, "#include <stdint.h>\n");
+    StrBuf_append(&result, "#include <stdbool.h>\n");
+    StrBuf_append(&result, "#include <stdio.h>\n");
+    StrBuf_append(&result, "#include <stdlib.h>\n");
+    StrBuf_append(&result, "#include <string.h>\n");
+    StrBuf_append(&result, "#include <inttypes.h>\n");
+    StrBuf_append(&result, "#ifndef NO_GET_EXE_DIR\n");
+    StrBuf_append(&result, "#if defined(_WIN32)\n");
+    StrBuf_append(&result, "#include <windows.h>\n");
+    StrBuf_append(&result, "#else\n");
+    StrBuf_append(&result, "#include <dlfcn.h>\n");
+    StrBuf_append(&result, "#include <limits.h>\n");
+    StrBuf_append(&result, "#endif\n\n");
+    StrBuf_append(&result, "int64_t get_exe_dir(char* out_buf, int64_t max_len) {\n");
+    StrBuf_append(&result, "#if defined(_WIN32)\n");
+    StrBuf_append(&result, "    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);\n");
+    StrBuf_append(&result, "    if (len == 0 || len >= max_len) return -1;\n");
+    StrBuf_append(&result, "    for (int i = len - 1; i >= 0; i--) {\n");
+    StrBuf_append(&result, "        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {\n");
+    StrBuf_append(&result, "            out_buf[i] = '\\0';\n");
+    StrBuf_append(&result, "            break;\n");
+    StrBuf_append(&result, "        }\n");
+    StrBuf_append(&result, "    }\n");
+    StrBuf_append(&result, "    return 0;\n");
+    StrBuf_append(&result, "#else\n");
+    StrBuf_append(&result, "    Dl_info info;\n");
+    StrBuf_append(&result, "    char dummy = 0;\n");
+    StrBuf_append(&result, "    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {\n");
+    StrBuf_append(&result, "        char real_path[PATH_MAX];\n");
+    StrBuf_append(&result, "        if (realpath(info.dli_fname, real_path) != NULL) {\n");
+    StrBuf_append(&result, "            char* last_slash = strrchr(real_path, '/');\n");
+    StrBuf_append(&result, "            if (last_slash != NULL) {\n");
+    StrBuf_append(&result, "                *last_slash = '\\0';\n");
+    StrBuf_append(&result, "                int i = 0;\n");
+    StrBuf_append(&result, "                while (i < max_len - 1 && real_path[i] != '\\0') {\n");
+    StrBuf_append(&result, "                    out_buf[i] = real_path[i];\n");
+    StrBuf_append(&result, "                    i++;\n");
+    StrBuf_append(&result, "                }\n");
+    StrBuf_append(&result, "                out_buf[i] = '\\0';\n");
+    StrBuf_append(&result, "                return 0;\n");
+    StrBuf_append(&result, "            }\n");
+    StrBuf_append(&result, "        }\n");
+    StrBuf_append(&result, "    }\n");
+    StrBuf_append(&result, "    return -1;\n");
+    StrBuf_append(&result, "#endif\n");
+    StrBuf_append(&result, "}\n");
+    StrBuf_append(&result, "#endif\n");
+    StrBuf_append(&result, "\n");
+    StrBuf_append(&result, "static char* __kai_str_sub(const char* s, int64_t start, int64_t end) {\n");
+    StrBuf_append(&result, "    int64_t len = strlen(s);\n");
+    StrBuf_append(&result, "    if (end > len) end = len;\n");
+    StrBuf_append(&result, "    if (start < 0) start = 0;\n");
+    StrBuf_append(&result, "    if (start >= end) {\n");
+    StrBuf_append(&result, "        char* empty = malloc(1);\n");
+    StrBuf_append(&result, "        if (empty) empty[0] = '\\0';\n");
+    StrBuf_append(&result, "        return empty;\n");
+    StrBuf_append(&result, "    }\n");
+    StrBuf_append(&result, "    int64_t sub_len = end - start;\n");
+    StrBuf_append(&result, "    char* buf = malloc(sub_len + 1);\n");
+    StrBuf_append(&result, "    if (buf) {\n");
+    StrBuf_append(&result, "        memcpy(buf, s + start, sub_len);\n");
+    StrBuf_append(&result, "        buf[sub_len] = '\\0';\n");
+    StrBuf_append(&result, "    }\n");
+    StrBuf_append(&result, "    return buf;\n");
+    StrBuf_append(&result, "}\n");
+    StrBuf_append(&result, "\n");
+    StrBuf_append(&result, "static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t elem_size) {\n");
+    StrBuf_append(&result, "    int64_t count = end - start;\n");
+    StrBuf_append(&result, "    if (count <= 0) return NULL;\n");
+    StrBuf_append(&result, "    size_t total = (size_t)count * (size_t)elem_size;\n");
+    StrBuf_append(&result, "    void* buf = malloc(total);\n");
+    StrBuf_append(&result, "    if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);\n");
+    StrBuf_append(&result, "    return buf;\n");
+    StrBuf_append(&result, "}\n");
+    StrBuf_append(&result, "\n");
+    StrBuf_append(&result, "static char* __kai_std_str_concat_alloc(const char* left, const char* right) {\n");
+    StrBuf_append(&result, "    size_t left_len = strlen(left);\n");
+    StrBuf_append(&result, "    size_t right_len = strlen(right);\n");
+    StrBuf_append(&result, "    size_t total = left_len + right_len + 1;\n");
+    StrBuf_append(&result, "    char* buf = (char*)malloc(total);\n");
+    StrBuf_append(&result, "    if (buf) {\n");
+    StrBuf_append(&result, "        memcpy(buf, left, left_len);\n");
+    StrBuf_append(&result, "        memcpy(buf + left_len, right, right_len);\n");
+    StrBuf_append(&result, "        buf[total - 1] = '\\0';\n");
+    StrBuf_append(&result, "    }\n");
+    StrBuf_append(&result, "    return buf;\n");
+    StrBuf_append(&result, "}\n");
+    StrBuf_append(&result, "\n");
+    var ci: i64 = 0;
+    _ = &ci;
+    var has_cimports: bool = @as(c_int, 0) != 0;
+    _ = &has_cimports;
+    while (ci < ArrayList_Str_length(&self.*.cimport_headers)) {
+        var hdr: [*c]const u8 = ArrayList_Str_get(&self.*.cimport_headers, ci);
+        _ = &hdr;
+        var is_baseline: bool = @as(c_int, 0) != 0;
+        _ = &is_baseline;
+        if (strcmp(hdr, "stdint.h") == @as(c_int, 0)) {
+            is_baseline = @as(c_int, 1) != 0;
+        } else if (strcmp(hdr, "stdbool.h") == @as(c_int, 0)) {
+            is_baseline = @as(c_int, 1) != 0;
+        } else if (strcmp(hdr, "stdio.h") == @as(c_int, 0)) {
+            is_baseline = @as(c_int, 1) != 0;
+        } else if (strcmp(hdr, "stdlib.h") == @as(c_int, 0)) {
+            is_baseline = @as(c_int, 1) != 0;
+        } else if (strcmp(hdr, "string.h") == @as(c_int, 0)) {
+            is_baseline = @as(c_int, 1) != 0;
+        } else if (strcmp(hdr, "sys/mman.h") == @as(c_int, 0)) {
+            is_baseline = @as(c_int, 1) != 0;
+        } else if (strcmp(hdr, "ctype.h") == @as(c_int, 0)) {
+            is_baseline = @as(c_int, 1) != 0;
+        }
+        if (!is_baseline) {
+            if (!has_cimports) {
+                StrBuf_append(&result, "/* C FFI Imports */\n");
+                has_cimports = @as(c_int, 1) != 0;
+            }
+            var has_slash: bool = @as(c_int, 0) != 0;
+            _ = &has_slash;
+            var dot_start: bool = @as(c_int, 0) != 0;
+            _ = &dot_start;
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(hdr)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                var hi: i64 = 0;
+                _ = &hi;
+                while (@as(c_ulonglong, @bitCast(hi)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(hdr))))) {
+                    if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = hi;
+                        if (tmp >= 0) break :blk hdr + @as(usize, @intCast(tmp)) else break :blk hdr - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 47))))))))) {
+                        has_slash = @as(c_int, 1) != 0;
+                    }
+                    hi = hi + @as(c_longlong, 1);
+                }
+                if (@as(c_int, @bitCast(@as(c_uint, hdr[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 46))))))))) {
+                    dot_start = @as(c_int, 1) != 0;
+                }
+            }
+            if (!has_slash and !dot_start) {
+                StrBuf_append(&result, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include <", hdr), ">\n"));
+            } else {
+                StrBuf_append(&result, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include \"", hdr), "\"\n"));
+            }
+        }
+        ci = ci + @as(c_longlong, 1);
+    }
+    StrBuf_append(&result, "#ifndef MAP_FAILED\n");
+    StrBuf_append(&result, "#define MAP_FAILED ((void*)-1)\n");
+    StrBuf_append(&result, "#endif\n");
+    StrBuf_append(&result, "#ifndef MAP_PRIVATE\n");
+    StrBuf_append(&result, "#define MAP_PRIVATE 2\n");
+    StrBuf_append(&result, "#endif\n");
+    StrBuf_append(&result, "#ifndef MAP_ANONYMOUS\n");
+    StrBuf_append(&result, "#ifdef __APPLE__\n");
+    StrBuf_append(&result, "#define MAP_ANONYMOUS 0x1000\n");
+    StrBuf_append(&result, "#else\n");
+    StrBuf_append(&result, "#define MAP_ANONYMOUS 0x20\n");
+    StrBuf_append(&result, "#endif\n");
+    StrBuf_append(&result, "#endif\n");
+    StrBuf_append(&result, "extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);\n");
+    StrBuf_append(&result, "extern int munmap(void* addr, unsigned long long length);\n");
+    StrBuf_append(&result, "\n");
+    StrBuf_append(&result, "static __thread void* _kai_current_allocator = NULL;\n");
+    StrBuf_append(&result, "\n");
+    StrBuf_append(&result, "static inline void _kai_set_current_allocator(void* allocator) {\n");
+    StrBuf_append(&result, "    _kai_current_allocator = allocator;\n");
+    StrBuf_append(&result, "}\n");
+    StrBuf_append(&result, "\n");
+    StrBuf_append(&result, "void __kai_print_int(int64_t v) {\n");
+    StrBuf_append(&result, "    printf(\"%lld\\n\", (long long)(v));\n");
+    StrBuf_append(&result, "}\n");
+    StrBuf_append(&result, "\n");
+    StrBuf_append(&result, "void __kai_print_float(double v) {\n");
+    StrBuf_append(&result, "    printf(\"%f\\n\", (double)(v));\n");
+    StrBuf_append(&result, "}\n");
+    StrBuf_append(&result, "\n");
+    StrBuf_append(&result, "static inline uint8_t* _kai_mmap(uint8_t* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {\n");
+    StrBuf_append(&result, "    return (uint8_t*)mmap(addr, length, prot, MAP_PRIVATE | MAP_ANONYMOUS, fd, offset);\n");
+    StrBuf_append(&result, "}\n");
+    StrBuf_append(&result, "\n");
+    StrBuf_append(&result, "static inline int64_t _kai_munmap(uint8_t* addr, int64_t length) {\n");
+    StrBuf_append(&result, "    return munmap(addr, length);\n");
+    StrBuf_append(&result, "}\n");
+    StrBuf_append(&result, "\n");
+    StrBuf_append(&result, "extern void __kai_panic(const char* msg);\n");
+    StrBuf_append(&result, "#ifndef __KAI_NO_PANIC\n");
+    StrBuf_append(&result, "void __kai_panic(const char* msg) {\n");
+    StrBuf_append(&result, "    fprintf(stderr, \"KAI PANIC: %s\\n\", msg);\n");
+    StrBuf_append(&result, "    fflush(stderr);\n");
+    StrBuf_append(&result, "    abort();\n");
+    StrBuf_append(&result, "}\n");
+    StrBuf_append(&result, "#endif\n");
+    StrBuf_append(&result, "\n");
+    StrBuf_append(&result, StrBuf_to_str(&self.*.type_defs));
+    StrBuf_append(&result, "\n");
+    StrBuf_append(&result, StrBuf_to_str(&self.*.struct_decls));
+    StrBuf_append(&result, "\n");
+    var func_decl_str: [*c]const u8 = StrBuf_to_str(&self.*.func_decls);
+    _ = &func_decl_str;
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(func_decl_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+        StrBuf_append(&result, func_decl_str);
+        StrBuf_append(&result, "\n");
+    }
+    var output_body_str: [*c]const u8 = StrBuf_to_str(&self.*.output_body);
+    _ = &output_body_str;
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(output_body_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+        StrBuf_append(&result, output_body_str);
+    }
+    var monomorphized_str: [*c]const u8 = StrBuf_to_str(&self.*.monomorphized_bodies);
+    _ = &monomorphized_str;
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(monomorphized_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+        StrBuf_append(&result, monomorphized_str);
+    }
+    return StrBuf_to_str(&result);
 }
 pub export fn get_error_info(arg_code: [*c]const u8) ErrorInfo {
     var code = arg_code;
@@ -15449,7 +20603,7 @@ pub export fn print_diag_json(arg_code: [*c]const u8, arg_message: [*c]const u8,
     print_json_string(message);
     _ = printf("\",\"path\":\"");
     print_json_string(path);
-    _ = printf("\",\"line\":%lld,\"column\":%lld,\"length\":%lld", line, column, len_val);
+    _ = printf("\",\"line\":%ld,\"column\":%ld,\"length\":%ld", line, column, len_val);
     _ = printf(",\"expected\":\"");
     print_json_string(expected);
     _ = printf("\",\"actual\":\"");
@@ -15511,13 +20665,13 @@ pub export fn print_plan(arg_path: [*c]const u8, arg_json_mode: bool, arg_codes:
             _ = printf("No diagnostics found in '%s'\n", path);
             return;
         }
-        _ = printf("Found %lld diagnostic(s) in '%s':\n", count, path);
+        _ = printf("Found %ld diagnostic(s) in '%s':\n", count, path);
         var i: i64 = 0;
         _ = &i;
         while (i < count) {
             var cd: [*c]const u8 = ArrayList_Str_get(codes, i);
             _ = &cd;
-            _ = printf("%s:%lld:%lld %s: %s\n", path, ArrayList_Int_get(dlines, i), ArrayList_Int_get(dcolumns, i), cd, ArrayList_Str_get(messages, i));
+            _ = printf("%s:%ld:%ld %s: %s\n", path, ArrayList_Int_get(dlines, i), ArrayList_Int_get(dcolumns, i), cd, ArrayList_Str_get(messages, i));
             _ = printf("  expected: %s\n", ArrayList_Str_get(expected, i));
             _ = printf("  actual: %s\n", ArrayList_Str_get(actual, i));
             _ = printf("  help: %s\n", ArrayList_Str_get(helpv, i));
@@ -15613,11 +20767,11 @@ pub export fn print_patch(arg_path: [*c]const u8, arg_json_mode: bool, arg_apply
             }
         }
         if (count > patch_count) {
-            _ = printf("(%lld issue(s) without auto-fix \xe2\x80\x94 use kai patch to address them)\n", count - patch_count);
+            _ = printf("(%ld issue(s) without auto-fix \xe2\x80\x94 use kai patch to address them)\n", count - patch_count);
         }
         if (apply) {
             if (applied) {
-                _ = printf("Applied %lld fix(es) to '%s'\n", patch_count, path);
+                _ = printf("Applied %ld fix(es) to '%s'\n", patch_count, path);
             } else {
                 _ = printf("No behavior-preserving edits to apply in '%s'\n", path);
             }
@@ -15686,7 +20840,7 @@ pub export fn print_patch(arg_path: [*c]const u8, arg_json_mode: bool, arg_apply
         }
         _ = printf("\n    {\"path\":\"");
         print_json_string(path);
-        _ = printf("\",\"line\":%lld,\"old\":\"", ArrayList_Int_get(patch_lines, @"i2"));
+        _ = printf("\",\"line\":%ld,\"old\":\"", ArrayList_Int_get(patch_lines, @"i2"));
         print_json_string(ArrayList_Str_get(patch_old, @"i2"));
         _ = printf("\",\"new\":\"");
         print_json_string(ArrayList_Str_get(patch_new, @"i2"));
@@ -15709,7 +20863,7 @@ pub export fn ArrayList_Bool_init(arg_allocator: [*c]KaiAllocator) ArrayList_Boo
     self.cap = 4;
     self.allocator = allocator;
     {
-        self.data = @as([*c]bool, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(self.cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(bool)))))), @as(c_longlong, 1)))));
+        self.data = @as([*c]bool, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, self.cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(bool)))), @as(c_longlong, 1)))));
     }
     return self;
 }
@@ -15722,7 +20876,7 @@ pub export fn ArrayList_Bool_push(arg_self: [*c]ArrayList_Bool, arg_item: bool) 
         var new_cap: i64 = self.*.cap * @as(c_longlong, 2);
         _ = &new_cap;
         {
-            var new_data: [*c]bool = @as([*c]bool, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, @as(i64, @bitCast(@as(c_ulonglong, @bitCast(new_cap)) *% @as(c_ulonglong, @bitCast(@as(c_ulonglong, @sizeOf(bool)))))), @as(c_longlong, 1)))));
+            var new_data: [*c]bool = @as([*c]bool, @ptrCast(@alignCast(KaiAllocator_alloc(self.*.allocator, new_cap * @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(bool)))), @as(c_longlong, 1)))));
             _ = &new_data;
             var i: i64 = 0;
             _ = &i;
@@ -15812,12 +20966,8 @@ pub export fn run_fix(arg_fix_mode: [*c]const u8, arg_fix_file: [*c]const u8, ar
     _ = &fix_file;
     var json = arg_json;
     _ = &json;
-    var fix_alloc: KaiAllocator = KaiAllocator{
-        .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
-        .used = @as(c_longlong, 0),
-    };
+    var fix_alloc: KaiAllocator = KaiAllocator_new();
     _ = &fix_alloc;
-    fix_alloc = KaiAllocator_init();
     _kai_set_current_allocator(@as(?*anyopaque, @ptrCast(&fix_alloc)));
     var src_res: Result_Str_IoError = read_to_string(&fix_alloc, fix_file);
     _ = &src_res;
@@ -15830,11 +20980,11 @@ pub export fn run_fix(arg_fix_mode: [*c]const u8, arg_fix_file: [*c]const u8, ar
     var src_len_val: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(source))));
     _ = &src_len_val;
     if (!json) {
-        var fix_lexer: Lexer = Lexer_init(&fix_alloc, source);
+        var fix_lexer: Lexer = Lexer_init(&fix_alloc, source, fix_file);
         _ = &fix_lexer;
         Lexer_lex(&fix_lexer);
         if (!fix_lexer.has_error) {
-            var fix_parser: Parser = Parser_init(&fix_alloc, fix_lexer.tokens);
+            var fix_parser: Parser = Parser_init(&fix_alloc, fix_file, fix_lexer.tokens);
             _ = &fix_parser;
             var prog_idx: i64 = Parser_parse_program(&fix_parser);
             _ = &prog_idx;
@@ -16500,12 +21650,8 @@ pub export fn run_patch(arg_argc: i64, arg_argv: [*c][*c]u8) i64 {
         _ = printf("  setConst <name> <value>    Change a const value\n");
         return 1;
     }
-    var allocator: KaiAllocator = KaiAllocator{
-        .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
-        .used = @as(c_longlong, 0),
-    };
+    var allocator: KaiAllocator = KaiAllocator_new();
     _ = &allocator;
-    allocator = KaiAllocator_init();
     _kai_set_current_allocator(@as(?*anyopaque, @ptrCast(&allocator)));
     var patch_file: [*c]const u8 = "";
     _ = &patch_file;
@@ -17092,12 +22238,8 @@ pub export fn run_graph(arg_argc: i64, arg_argv: [*c][*c]u8) i64 {
         _ = printf("Error: No input file specified\n");
         return 1;
     }
-    var graph_alloc: KaiAllocator = KaiAllocator{
-        .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
-        .used = @as(c_longlong, 0),
-    };
+    var graph_alloc: KaiAllocator = KaiAllocator_new();
     _ = &graph_alloc;
-    graph_alloc = KaiAllocator_init();
     _kai_set_current_allocator(@as(?*anyopaque, @ptrCast(&graph_alloc)));
     var src_res2: Result_Str_IoError = read_to_string(&graph_alloc, graph_file);
     _ = &src_res2;
@@ -17107,14 +22249,14 @@ pub export fn run_graph(arg_argc: i64, arg_argv: [*c][*c]u8) i64 {
     }
     var graph_source: [*c]const u8 = src_res2.value;
     _ = &graph_source;
-    var graph_lexer: Lexer = Lexer_init(&graph_alloc, graph_source);
+    var graph_lexer: Lexer = Lexer_init(&graph_alloc, graph_source, graph_file);
     _ = &graph_lexer;
     Lexer_lex(&graph_lexer);
     if (graph_lexer.has_error) {
         _ = printf("Error: Lexer error in '%s'\n", graph_file);
         return 1;
     }
-    var graph_parser: Parser = Parser_init(&graph_alloc, graph_lexer.tokens);
+    var graph_parser: Parser = Parser_init(&graph_alloc, graph_file, graph_lexer.tokens);
     _ = &graph_parser;
     var graph_program_idx: i64 = Parser_parse_program(&graph_parser);
     _ = &graph_program_idx;
@@ -17135,7 +22277,7 @@ pub export fn run_graph(arg_argc: i64, arg_argv: [*c][*c]u8) i64 {
                 if (si > @as(c_longlong, 0)) {
                     _ = printf(",\n");
                 }
-                _ = printf("{\"id\":%lld,\"kind\":", si);
+                _ = printf("{\"id\":%ld,\"kind\":", si);
                 var sk: StmtKind = stmt.kind;
                 _ = &sk;
                 if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 0)) {
@@ -17223,7 +22365,7 @@ pub export fn run_graph(arg_argc: i64, arg_argv: [*c][*c]u8) i64 {
                 if (ei > @as(c_longlong, 0)) {
                     _ = printf(",\n");
                 }
-                _ = printf("{\"id\":%lld,\"kind\":", ei);
+                _ = printf("{\"id\":%ld,\"kind\":", ei);
                 var ek: ExprKind = expr.kind;
                 _ = &ek;
                 if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 0)) {
@@ -17430,17 +22572,13 @@ pub export fn run_skills(arg_argc: i64, arg_argv: [*c][*c]u8) i64 {
     _ = &argc;
     var argv = arg_argv;
     _ = &argv;
-    var allocator: KaiAllocator = KaiAllocator{
-        .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
-        .used = @as(c_longlong, 0),
-    };
+    var allocator: KaiAllocator = KaiAllocator_new();
     _ = &allocator;
-    allocator = KaiAllocator_init();
     _kai_set_current_allocator(@as(?*anyopaque, @ptrCast(&allocator)));
     var exe_dir: [*c]const u8 = "";
     _ = &exe_dir;
     {
-        var buf: [*c]u8 = KaiAllocator_alloc(&allocator, @as(c_longlong, 1024), @as(c_longlong, 1));
+        var buf: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(KaiAllocator_alloc(&allocator, @as(c_longlong, 1024), @as(c_longlong, 1)))));
         _ = &buf;
         if (get_exe_dir(buf, @as(c_longlong, 1024)) == @as(c_longlong, 0)) {
             exe_dir = @as([*c]const u8, @ptrCast(@alignCast(buf)));
@@ -17534,6 +22672,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
         _ = printf("  --json          Output diagnostics in JSON format\n");
         _ = printf("  -o <file>       Specify output binary name\n");
         _ = printf("  -c              Emit C code only (no linking)\n");
+        _ = printf("  -CC             Use builder-based codegen (experimental)\n");
         _ = printf("  -O0|-O1|-O2|-O3|-Os  Optimization level (default: -O2)\n");
         return 1;
     }
@@ -17618,6 +22757,8 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     _ = &output_bin;
     var emit_c_only: bool = @as(c_int, 0) != 0;
     _ = &emit_c_only;
+    var use_builder: bool = @as(c_int, 0) != 0;
+    _ = &use_builder;
     var opt_level: [*c]const u8 = "-O2";
     _ = &opt_level;
     var json_mode: bool = @as(c_int, 0) != 0;
@@ -17640,6 +22781,8 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
         {
             if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "-c")))) == @as(c_longlong, 0)) {
                 emit_c_only = @as(c_int, 1) != 0;
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "-CC")))) == @as(c_longlong, 0)) {
+                use_builder = @as(c_int, 1) != 0;
             } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "-o")))) == @as(c_longlong, 0)) {
                 if ((i + @as(c_longlong, 1)) < @as(c_longlong, @bitCast(@as(c_longlong, argc)))) {
                     i = i + @as(c_longlong, 1);
@@ -17678,19 +22821,15 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
         _ = printf("Error: No input file specified\n");
         return 1;
     }
-    var allocator: KaiAllocator = KaiAllocator{
-        .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
-        .used = @as(c_longlong, 0),
-    };
+    var allocator: KaiAllocator = KaiAllocator_new();
     _ = &allocator;
-    allocator = KaiAllocator_init();
     _kai_set_current_allocator(@as(?*anyopaque, @ptrCast(&allocator)));
     var exe_include_flag: [*c]const u8 = "";
     _ = &exe_include_flag;
     var exe_dir: [*c]const u8 = "";
     _ = &exe_dir;
     {
-        var buf: [*c]u8 = KaiAllocator_alloc(&allocator, @as(c_longlong, 1024), @as(c_longlong, 1));
+        var buf: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(KaiAllocator_alloc(&allocator, @as(c_longlong, 1024), @as(c_longlong, 1)))));
         _ = &buf;
         if (get_exe_dir(buf, @as(c_longlong, 1024)) == @as(c_longlong, 0)) {
             exe_dir = @as([*c]const u8, @ptrCast(@alignCast(buf)));
@@ -17706,6 +22845,9 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     }
     var c_file: [*c]const u8 = __kai_std_str_concat_alloc(base, ".c");
     _ = &c_file;
+    if (use_builder) {
+        c_file = __kai_std_str_concat_alloc("CC", c_file);
+    }
     var source_res: Result_Str_IoError = read_to_string(&allocator, input_file);
     _ = &source_res;
     if (source_res.tag != @as(c_longlong, 0)) {
@@ -17716,7 +22858,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     }
     var source: [*c]const u8 = source_res.value;
     _ = &source;
-    var lexer: Lexer = Lexer_init(&allocator, source);
+    var lexer: Lexer = Lexer_init(&allocator, source, input_file);
     _ = &lexer;
     Lexer_lex(&lexer);
     if (lexer.has_error) {
@@ -17725,7 +22867,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
         }
         return 2;
     }
-    var parser: Parser = Parser_init(&allocator, lexer.tokens);
+    var parser: Parser = Parser_init(&allocator, input_file, lexer.tokens);
     _ = &parser;
     var program_idx: i64 = Parser_parse_program(&parser);
     _ = &program_idx;
@@ -17751,10 +22893,17 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
         }
         return 0;
     }
-    var gen: Codegen = Codegen_init(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool);
-    _ = &gen;
-    var output: [*c]const u8 = Codegen_generate(&gen, program_idx);
+    var output: [*c]const u8 = "";
     _ = &output;
+    if (use_builder) {
+        var builder_gen: CodegenBuilder = CodegenBuilder_init(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool);
+        _ = &builder_gen;
+        output = CodegenBuilder_generate(&builder_gen, program_idx);
+    } else {
+        var gen: Codegen = Codegen_init(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool);
+        _ = &gen;
+        output = Codegen_generate(&gen, program_idx);
+    }
     var write_res: Result_Bool_IoError = write_string(c_file, output);
     _ = &write_res;
     if (write_res.tag != @as(c_longlong, 0)) {
@@ -24648,6 +29797,9 @@ pub const _UUID_T = "";
 pub const __GETHOSTUUID_H = "";
 pub const SYNC_VOLUME_FULLSYNC = @as(c_int, 0x01);
 pub const SYNC_VOLUME_WAIT = @as(c_int, 0x02);
+pub const MAP_FAILED = @import("std").zig.c_translation.cast(?*anyopaque, -@as(c_int, 1));
+pub const MAP_PRIVATE = @as(c_int, 2);
+pub const MAP_ANONYMOUS = @as(c_int, 0x1000);
 pub const __darwin_pthread_handler_rec = struct___darwin_pthread_handler_rec;
 pub const _opaque_pthread_attr_t = struct__opaque_pthread_attr_t;
 pub const _opaque_pthread_cond_t = struct__opaque_pthread_cond_t;
