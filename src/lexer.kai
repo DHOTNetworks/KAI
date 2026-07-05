@@ -4,7 +4,9 @@ import is_digit from std.core.string
 import is_alpha from std.core.string
 import is_alnum from std.core.string
 import is_space from std.core.string
+import char_to_str from std.core.string
 import Allocator from std.core.allocator
+import parser_err from parser
 
 extern fn strlen(s: Str) -> Int
 
@@ -172,7 +174,7 @@ impl Lexer {
 
     }
     fn lex_error(self, msg: Str) {
-        printf("%s:%ld:%ld: error[E0100]: %s\n", self.source_file, self.line, self.column, msg)
+        parser_err(self.source_file, self.source, "E0100", msg, self.line, self.column)
         self.has_error = true
     }
     fn skip_line_comment(self) {
@@ -576,7 +578,7 @@ impl Lexer {
 
                 } else {
                     let _ = self.advance()
-                    printf("%s:%ld:%ld: error[E0100]: unexpected character '%c'\n", self.source_file, self.line, self.column, c)
+                    parser_err(self.source_file, self.source, "E0100", "unexpected character '" + char_to_str(c) + "'", self.line, self.column)
                     self.has_error = true
                 }
             }

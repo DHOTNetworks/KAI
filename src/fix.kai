@@ -291,10 +291,10 @@ fn run_fix(fix_mode: Str, fix_file: Str, json: Bool) -> Int {
         var fix_lexer = Lexer(&fix_alloc, source, fix_file)
         fix_lexer.lex()
         if !fix_lexer.has_error {
-            var fix_parser = Parser(&fix_alloc, fix_file, fix_lexer.tokens)
+            var fix_parser = Parser(&fix_alloc, fix_file, fix_lexer.tokens, source)
             let prog_idx = fix_parser.parse_program()
             if prog_idx >= 0 {
-                var chk = TypeChecker(&fix_alloc, fix_parser.stmt_pool, fix_parser.expr_pool, fix_parser.pattern_pool, fix_file)
+                var chk = TypeChecker(&fix_alloc, fix_parser.stmt_pool, fix_parser.expr_pool, fix_parser.pattern_pool, fix_file, source)
                 let ttmp = chk.check_program(prog_idx)
                 if ttmp { } else { }
             }

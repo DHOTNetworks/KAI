@@ -60,7 +60,7 @@ fn run_graph(argc: Int, argv: **Char) -> Int {
         printf("Error: Lexer error in '%s'\n", graph_file)
         return 1
     }
-    var graph_parser = Parser(&graph_alloc, graph_file, graph_lexer.tokens)
+    var graph_parser = Parser(&graph_alloc, graph_file, graph_lexer.tokens, graph_source)
     let graph_program_idx = graph_parser.parse_program()
     if graph_program_idx < 0 {
         printf("Error: Parse error in '%s'\n", graph_file)

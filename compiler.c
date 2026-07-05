@@ -691,6 +691,10 @@ struct ArrayList_SymbolTable {
     int64_t cap;
     KaiAllocator* allocator;
 };
+typedef struct Dir Dir;
+struct Dir {
+    void* handle;
+};
 typedef struct PtrRefResult PtrRefResult;
 struct PtrRefResult {
     bool is_ptr;
@@ -721,6 +725,7 @@ struct TypeChecker {
     bool has_error;
     const char* current_func_ret_type;
     const char* source_file;
+    const char* source;
     bool has_any_import;
     int64_t loop_depth;
 };
@@ -1006,10 +1011,6 @@ struct ErrorEntry {
     const char* code;
     const char* message;
     const char* file;
-};
-typedef struct Dir Dir;
-struct Dir {
-    void* handle;
 };
 typedef struct Optional_Char Optional_Char;
 struct Optional_Char {
@@ -1321,6 +1322,25 @@ int64_t SymbolTable_lookup(SymbolTable* self, const char* name, ArrayList_Symbol
 Symbol SymbolTable_lookup_symbol(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
 void SymbolTable_mark_moved(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
 int64_t SymbolTable_lookup_current(SymbolTable* self, const char* name);
+extern bool kai_fs_exists(const char* path);
+extern bool kai_fs_is_dir(const char* path);
+extern bool kai_fs_mkdir(const char* path);
+extern bool kai_fs_remove(const char* path);
+extern void* kai_fs_opendir(const char* path);
+extern char* kai_fs_readdir(void* handle);
+extern void kai_fs_closedir(void* handle);
+bool fs_exists(const char* path);
+bool fs_is_dir(const char* path);
+bool fs_mkdir(const char* path);
+bool fs_remove(const char* path);
+Dir fs_opendir(const char* path);
+const char* fs_readdir(Dir dir);
+void fs_closedir(Dir dir);
+const char* get_source_line(const char* source, int64_t line_num);
+int64_t find_last(const char* path, char c);
+bool mkdir_p(const char* path);
+const char* str_replace(const char* s, const char* old, const char* new_val);
+const char* get_base_name(const char* path);
 ArrayList_StructInfo ArrayList_StructInfo_init(KaiAllocator* allocator);
 void ArrayList_StructInfo_push(ArrayList_StructInfo* self, StructInfo item);
 StructInfo ArrayList_StructInfo_get(ArrayList_StructInfo* self, int64_t index);
@@ -1328,7 +1348,7 @@ void ArrayList_StructInfo_set(ArrayList_StructInfo* self, int64_t index, StructI
 StructInfo ArrayList_StructInfo_pop(ArrayList_StructInfo* self);
 int64_t ArrayList_StructInfo_length(ArrayList_StructInfo* self);
 void ArrayList_StructInfo_deinit(ArrayList_StructInfo* self);
-TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, const char* source_file);
+TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, const char* source_file, const char* source);
 void TypeChecker_err(TypeChecker* self, const char* code, const char* msg, int64_t line, int64_t col);
 void TypeChecker_enter_scope(TypeChecker* self);
 void TypeChecker_exit_scope(TypeChecker* self);
@@ -1527,24 +1547,6 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self);
 void CodegenBuilder_emit_struct_body_with_deps(CodegenBuilder* self, int64_t stmt_idx, ArrayList_Str* emitted);
 const char* CodegenBuilder_generate(CodegenBuilder* self, int64_t top_stmt_idx);
 ErrorInfo get_error_info(const char* code);
-extern bool kai_fs_exists(const char* path);
-extern bool kai_fs_is_dir(const char* path);
-extern bool kai_fs_mkdir(const char* path);
-extern bool kai_fs_remove(const char* path);
-extern void* kai_fs_opendir(const char* path);
-extern char* kai_fs_readdir(void* handle);
-extern void kai_fs_closedir(void* handle);
-bool fs_exists(const char* path);
-bool fs_is_dir(const char* path);
-bool fs_mkdir(const char* path);
-bool fs_remove(const char* path);
-Dir fs_opendir(const char* path);
-const char* fs_readdir(Dir dir);
-void fs_closedir(Dir dir);
-int64_t find_last(const char* path, char c);
-bool mkdir_p(const char* path);
-const char* str_replace(const char* s, const char* old, const char* new_val);
-const char* get_base_name(const char* path);
 bool __kai_std_ascii_is_digit(char byte);
 bool __kai_std_ascii_is_lower(char byte);
 bool __kai_std_ascii_is_upper(char byte);
@@ -5396,6 +5398,143 @@ int64_t SymbolTable_lookup_current(SymbolTable* self, const char* name) {
 }
     return (-1LL);
 }
+bool fs_exists(const char* path) {
+    {
+    return kai_fs_exists(path);
+}
+}
+bool fs_is_dir(const char* path) {
+    {
+    return kai_fs_is_dir(path);
+}
+}
+bool fs_mkdir(const char* path) {
+    {
+    return kai_fs_mkdir(path);
+}
+}
+bool fs_remove(const char* path) {
+    {
+    return kai_fs_remove(path);
+}
+}
+Dir fs_opendir(const char* path) {
+    {
+    return (Dir){ .handle = kai_fs_opendir(path) };
+}
+}
+const char* fs_readdir(Dir dir) {
+    {
+    char* name_ptr = kai_fs_readdir(dir.handle);
+    if (name_ptr == (char*)(unsigned long long)(0LL)) {
+    return "";
+}
+    return (const char*)(name_ptr);
+}
+}
+void fs_closedir(Dir dir) {
+    {
+    kai_fs_closedir(dir.handle);
+}
+}
+const char* get_source_line(const char* source, int64_t line_num) {
+    int64_t current = 0LL;
+    int64_t line_start = 0LL;
+    int64_t i = 0LL;
+    int64_t len = strlen(source);
+    while ((i < len) && (current < line_num)) {
+    if ((source)[i] == ((char)(10LL))) {
+    current = (current + 1LL);
+    line_start = (i + 1LL);
+}
+    i = (i + 1LL);
+}
+    if (current != line_num) {
+    return "";
+}
+    int64_t line_end = line_start;
+    while ((line_end < len) && ((source)[line_end] != ((char)(10LL)))) {
+    line_end = (line_end + 1LL);
+}
+    return substring(source, line_start, line_end);
+}
+int64_t find_last(const char* path, char c) {
+    int64_t i = (strlen(path) - 1LL);
+    while (i >= 0LL) {
+    if ((path)[i] == c) {
+    return i;
+}
+    i = (i - 1LL);
+}
+    return (-1LL);
+}
+bool mkdir_p(const char* path) {
+    if (fs_exists(path)) {
+    return true;
+}
+    int64_t slash_pos = find_last(path, ((char)(47LL)));
+    if (slash_pos > 0LL) {
+    const char* parent = substring(path, 0LL, slash_pos);
+    if (!mkdir_p(parent)) {
+    return false;
+}
+}
+    return fs_mkdir(path);
+}
+const char* str_replace(const char* s, const char* old, const char* new_val) {
+    int64_t s_len = strlen(s);
+    int64_t old_len = strlen(old);
+    if (old_len == 0LL) {
+    return s;
+}
+    const char* result = "";
+    int64_t i = 0LL;
+    while (i < s_len) {
+    int64_t j = 0LL;
+    bool matched = true;
+    while (j < old_len) {
+    {
+    if ((s)[(i + j)] != (old)[j]) {
+    matched = false;
+    break;
+}
+}
+    j = (j + 1LL);
+}
+    if (matched) {
+    result = __kai_std_str_concat_alloc(result, new_val);
+    i = (i + old_len);
+} else {
+    result = __kai_std_str_concat_alloc(result, substring(s, i, (i + 1LL)));
+    i = (i + 1LL);
+}
+}
+    return result;
+}
+const char* get_base_name(const char* path) {
+    int64_t last_slash = (-1LL);
+    int64_t dot_pos = (-1LL);
+    int64_t i = 0LL;
+    int64_t l = strlen(path);
+    while (i < l) {
+    char c = (path)[i];
+    if (c == ((char)(47LL))) {
+    last_slash = i;
+} else if (c == ((char)(46LL))) {
+    dot_pos = i;
+}
+    i = (i + 1LL);
+}
+    int64_t start = 0LL;
+    if (last_slash >= 0LL) {
+    start = (last_slash + 1LL);
+}
+    int64_t end = l;
+    if (dot_pos > last_slash) {
+    end = dot_pos;
+}
+    return substring(path, start, end);
+}
 ArrayList_StructInfo ArrayList_StructInfo_init(KaiAllocator* allocator) {
     ArrayList_StructInfo self = (ArrayList_StructInfo){0};
     self.len = 0LL;
@@ -5457,7 +5596,7 @@ void ArrayList_StructInfo_deinit(ArrayList_StructInfo* self) {
     KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
 }
 }
-TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, const char* source_file) {
+TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, const char* source_file, const char* source) {
     TypeChecker self = (TypeChecker){0};
     self.allocator = allocator;
     self.stmt_pool = stmt_pool;
@@ -5469,12 +5608,31 @@ TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_p
     self.has_error = false;
     self.current_func_ret_type = "";
     self.source_file = source_file;
+    self.source = source;
     self.has_any_import = false;
     self.loop_depth = 0LL;
     return self;
 }
 void TypeChecker_err(TypeChecker* self, const char* code, const char* msg, int64_t line, int64_t col) {
     printf("%s:%ld:%ld: error[%s]: %s\n", self->source_file, line, col, code, msg);
+    if (line >= 0LL) {
+    const char* line_text = get_source_line(self->source, (line - 1LL));
+    if (strlen(line_text) > 0LL) {
+    printf("    %s\n", line_text);
+    const char* caret = "    ";
+    int64_t ci = 0LL;
+    while ((ci < col) && (ci < strlen(line_text))) {
+    if ((line_text)[ci] == ((char)(9LL))) {
+    caret = __kai_std_str_concat_alloc(caret, "\t");
+} else {
+    caret = __kai_std_str_concat_alloc(caret, " ");
+}
+    ci = (ci + 1LL);
+}
+    caret = __kai_std_str_concat_alloc(caret, "^");
+    printf("%s\n", caret);
+}
+}
     self->has_error = true;
 }
 void TypeChecker_enter_scope(TypeChecker* self) {
@@ -6346,28 +6504,24 @@ void TypeChecker_check_identifier(TypeChecker* self, int64_t expr_idx) {
     Symbol sym = SymbolTable_lookup_symbol(&(table), name, &(self->symbol_tables));
     if (strlen(sym.name) > 0LL) {
     if (sym.moved) {
-    printf("%s:%ld:%ld: error[E0009]: use of moved value: '%s'\n", self->source_file, expr.line, expr.col, name);
-    self->has_error = true;
+    TypeChecker_err(self, "E0009", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("use of moved value: '", name), "'"), expr.line, expr.col);
 }
 } else if ((!TypeChecker_is_enum_or_error_type(self, name)) && (!self->has_any_import)) {
-    printf("%s:%ld:%ld: error[E0019]: undefined identifier: '%s'\n", self->source_file, expr.line, expr.col, name);
-    self->has_error = true;
+    TypeChecker_err(self, "E0019", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined identifier: '", name), "'"), expr.line, expr.col);
 }
 }
 void TypeChecker_check_field_access(TypeChecker* self, int64_t expr_idx) {
     ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
     const char* recv_type = TypeChecker_get_expr_type(self, expr.field_expr);
     if ((strlen(recv_type) > 0LL) && ((recv_type)[0LL] == ((char)(63LL)))) {
-    printf("%s:%ld:%ld: error[E0011]: cannot access field '%s' on optional type '%s'. unwrap it first\n", self->source_file, expr.line, expr.col, expr.field_name, recv_type);
-    self->has_error = true;
+    TypeChecker_err(self, "E0011", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot access field '", expr.field_name), "' on optional type '"), recv_type), "'. unwrap it first"), expr.line, expr.col);
 }
 }
 void TypeChecker_check_method_call(TypeChecker* self, int64_t expr_idx) {
     ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
     const char* recv_type = TypeChecker_get_expr_type(self, expr.meth_expr);
     if ((strlen(recv_type) > 0LL) && ((recv_type)[0LL] == ((char)(63LL)))) {
-    printf("%s:%ld:%ld: error[E0012]: cannot call method '%s' on optional type '%s'. unwrap it first\n", self->source_file, expr.line, expr.col, expr.meth_name, recv_type);
-    self->has_error = true;
+    TypeChecker_err(self, "E0012", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot call method '", expr.meth_name), "' on optional type '"), recv_type), "'. unwrap it first"), expr.line, expr.col);
 }
 }
 void TypeChecker_check_return_stmt(TypeChecker* self, int64_t stmt_idx) {
@@ -6382,8 +6536,7 @@ void TypeChecker_check_return_stmt(TypeChecker* self, int64_t stmt_idx) {
     SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
     Symbol sym = SymbolTable_lookup_symbol(&(table), name, &(self->symbol_tables));
     if ((strcmp(sym.kind, "var") == 0) || (strcmp(sym.kind, "param") == 0)) {
-    printf("%s:%ld:%ld: error[E0010]: cannot return reference to local variable '%s'\n", self->source_file, stmt.line, stmt.col, name);
-    self->has_error = true;
+    TypeChecker_err(self, "E0010", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot return reference to local variable '", name), "'"), stmt.line, stmt.col);
 }
 }
 }
@@ -6394,8 +6547,7 @@ void TypeChecker_check_return_stmt(TypeChecker* self, int64_t stmt_idx) {
     const char* expected_ret = self->current_func_ret_type;
     if ((strlen(expected_ret) > 0LL) && (strcmp(expected_ret, "<infer>") != 0)) {
     if (!TypeChecker_types_compatible(self, expected_ret, val_type)) {
-    printf("%s:%ld:%ld: error[E0007]: return type mismatch: expected '%s', got '%s'\n", self->source_file, stmt.line, stmt.col, expected_ret, val_type);
-    self->has_error = true;
+    TypeChecker_err(self, "E0007", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return type mismatch: expected '", expected_ret), "', got '"), val_type), "'"), stmt.line, stmt.col);
 }
 }
 }
@@ -6425,12 +6577,10 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     ExprNode val_expr = ArrayList_ExprNode_get(self->expr_pool, stmt.vardecl_value);
     int64_t v = TypeChecker_int_literal_value(self, val_expr);
     if (!TypeChecker_fits_in_type(self, v, var_type)) {
-    printf("%s:%ld:%ld: error[E0030]: integer literal %ld does not fit in type '%s'\n", self->source_file, stmt.line, stmt.col, v, var_type);
-    self->has_error = true;
+    TypeChecker_err(self, "E0030", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("integer literal ", int_to_str(v)), " does not fit in type '"), var_type), "'"), stmt.line, stmt.col);
 }
 } else if (!TypeChecker_types_compatible(self, var_type, val_type)) {
-    printf("%s:%ld:%ld: error[E0001]: type mismatch in declaration of '%s': expected '%s', got '%s'\n", self->source_file, stmt.line, stmt.col, stmt.vardecl_name, var_type, val_type);
-    self->has_error = true;
+    TypeChecker_err(self, "E0001", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("type mismatch in declaration of '", stmt.vardecl_name), "': expected '"), var_type), "', got '"), val_type), "'"), stmt.line, stmt.col);
 }
     TypeChecker_define_symbol(self, stmt.vardecl_name, var_type, stmt.vardecl_mut, "var");
     TypeChecker_mark_expr_moved(self, stmt.vardecl_value);
@@ -6447,8 +6597,7 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
     Symbol sym = SymbolTable_lookup_symbol(&(table), target_expr.ident_name, &(self->symbol_tables));
     if ((strlen(sym.name) > 0LL) && (!sym.is_mutable)) {
-    printf("%s:%ld:%ld: error[E0008]: cannot assign to immutable variable '%s'\n", self->source_file, target_expr.line, target_expr.col, target_expr.ident_name);
-    self->has_error = true;
+    TypeChecker_err(self, "E0008", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot assign to immutable variable '", target_expr.ident_name), "'"), target_expr.line, target_expr.col);
 }
 }
 }
@@ -6457,8 +6606,7 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     ExprNode val_expr = ArrayList_ExprNode_get(self->expr_pool, stmt.assign_value);
     int64_t v = TypeChecker_int_literal_value(self, val_expr);
     if (!TypeChecker_fits_in_type(self, v, target_type)) {
-    printf("%s:%ld:%ld: error[E0030]: integer literal %ld does not fit in type '%s'\n", self->source_file, stmt.line, stmt.col, v, target_type);
-    self->has_error = true;
+    TypeChecker_err(self, "E0030", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("integer literal ", int_to_str(v)), " does not fit in type '"), target_type), "'"), stmt.line, stmt.col);
 }
 } else if (!TypeChecker_types_compatible(self, target_type, val_type)) {
     const char* target_name = "<non-ident>";
@@ -6468,8 +6616,7 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     target_name = target_expr.ident_name;
 }
 }
-    printf("%s:%ld:%ld: error[E0002]: type mismatch in assignment to '%s': expected '%s', got '%s'\n", self->source_file, stmt.line, stmt.col, target_name, target_type, val_type);
-    self->has_error = true;
+    TypeChecker_err(self, "E0002", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("type mismatch in assignment to '", target_name), "': expected '"), target_type), "', got '"), val_type), "'"), stmt.line, stmt.col);
 }
     TypeChecker_mark_expr_moved(self, stmt.assign_value);
     return;
@@ -6738,8 +6885,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     type_params = empty_str_array();
 }
     if (ArrayList_Param_length(&(params)) != ArrayList_Int_length(&(expr.func_args))) {
-    printf("%s:%ld:%ld: error[E0005]: argument count mismatch for function '%s': expected %ld, got %ld\n", self->source_file, expr.line, expr.col, name, ArrayList_Param_length(&(params)), ArrayList_Int_length(&(expr.func_args)));
-    self->has_error = true;
+    TypeChecker_err(self, "E0005", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("argument count mismatch for function '", name), "': expected "), int_to_str(ArrayList_Param_length(&(params)))), ", got "), int_to_str(ArrayList_Int_length(&(expr.func_args)))), expr.line, expr.col);
 } else {
     if (ArrayList_Str_length(&(type_params)) > 0LL) {
     return;
@@ -6755,20 +6901,17 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (TypeChecker_is_integer_type(self, ptype) && TypeChecker_is_integer_literal(self, arg)) {
     int64_t v = TypeChecker_int_literal_value(self, ArrayList_ExprNode_get(self->expr_pool, arg));
     if (!TypeChecker_fits_in_type(self, v, ptype)) {
-    printf("%s:%ld:%ld: error[E0030]: integer literal %ld does not fit in type '%s'\n", self->source_file, expr.line, expr.col, v, ptype);
-    self->has_error = true;
+    TypeChecker_err(self, "E0030", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("integer literal ", int_to_str(v)), " does not fit in type '"), ptype), "'"), expr.line, expr.col);
 }
 } else {
-    printf("%s:%ld:%ld: error[E0003]: argument type mismatch for function '%s', parameter '%s': expected '%s', got '%s'\n", self->source_file, expr.line, expr.col, name, param.name, ptype, arg_type);
-    self->has_error = true;
+    TypeChecker_err(self, "E0003", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("argument type mismatch for function '", name), "', parameter '"), param.name), "': expected '"), ptype), "', got '"), arg_type), "'"), expr.line, expr.col);
 }
 }
     arg_i = (arg_i + 1LL);
 }
 }
 } else if (!self->has_any_import) {
-    printf("%s:%ld:%ld: error[E0020]: undefined function: '%s'\n", self->source_file, expr.line, expr.col, name);
-    self->has_error = true;
+    TypeChecker_err(self, "E0020", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined function: '", name), "'"), expr.line, expr.col);
 }
     return;
 }
@@ -6793,8 +6936,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (meth_idx >= 0LL) {
     StmtNode decl = ArrayList_StmtNode_get(self->stmt_pool, meth_idx);
     if (ArrayList_Param_length(&(decl.func_params)) != (ArrayList_Int_length(&(expr.meth_args)) + 1LL)) {
-    printf("%s:%ld:%ld: error[E0006]: argument count mismatch for method '%s': expected %lld, got %ld\n", self->source_file, expr.line, expr.col, meth_name, (ArrayList_Param_length(&(decl.func_params)) - 1LL), ArrayList_Int_length(&(expr.meth_args)));
-    self->has_error = true;
+    TypeChecker_err(self, "E0006", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("argument count mismatch for method '", meth_name), "': expected "), int_to_str((ArrayList_Param_length(&(decl.func_params)) - 1LL))), ", got "), int_to_str(ArrayList_Int_length(&(expr.meth_args)))), expr.line, expr.col);
 } else {
     int64_t arg_i = 0LL;
     while (arg_i < ArrayList_Int_length(&(expr.meth_args))) {
@@ -6805,20 +6947,17 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (TypeChecker_is_integer_type(self, param.ptype) && TypeChecker_is_integer_literal(self, arg)) {
     int64_t v = TypeChecker_int_literal_value(self, ArrayList_ExprNode_get(self->expr_pool, arg));
     if (!TypeChecker_fits_in_type(self, v, param.ptype)) {
-    printf("%s:%ld:%ld: error[E0030]: integer literal %ld does not fit in type '%s'\n", self->source_file, expr.line, expr.col, v, param.ptype);
-    self->has_error = true;
+    TypeChecker_err(self, "E0030", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("integer literal ", int_to_str(v)), " does not fit in type '"), param.ptype), "'"), expr.line, expr.col);
 }
 } else {
-    printf("%s:%ld:%ld: error[E0003]: argument type mismatch for method '%s', parameter '%s': expected '%s', got '%s'\n", self->source_file, expr.line, expr.col, meth_name, param.name, param.ptype, arg_type);
-    self->has_error = true;
+    TypeChecker_err(self, "E0003", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("argument type mismatch for method '", meth_name), "', parameter '"), param.name), "': expected '"), param.ptype), "', got '"), arg_type), "'"), expr.line, expr.col);
 }
 }
     arg_i = (arg_i + 1LL);
 }
 }
 } else if (!self->has_any_import) {
-    printf("%s:%ld:%ld: error[E0022]: undefined method: '%s' for type '%s'\n", self->source_file, expr.line, expr.col, meth_name, recv_type);
-    self->has_error = true;
+    TypeChecker_err(self, "E0022", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined method: '", meth_name), "' for type '"), recv_type), "'"), expr.line, expr.col);
 }
     return;
 }
@@ -6874,8 +7013,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     int64_t struct_idx = TypeChecker_find_struct_decl(self, struct_name);
     if (struct_idx < 0LL) {
     if (!self->has_any_import) {
-    printf("%s:%ld:%ld: error[E0021]: undefined struct: '%s'\n", self->source_file, expr.line, expr.col, struct_name);
-    self->has_error = true;
+    TypeChecker_err(self, "E0021", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined struct: '", struct_name), "'"), expr.line, expr.col);
 }
     return;
 }
@@ -6891,15 +7029,13 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     found = true;
     const char* val_type = TypeChecker_get_expr_type(self, f.value);
     if (!TypeChecker_types_compatible(self, df.ftype, val_type)) {
-    printf("%s:%ld:%ld: error[E0004]: type mismatch in initializer for field '%s' of struct '%s': expected '%s', got '%s'\n", self->source_file, expr.line, expr.col, f.name, struct_name, df.ftype, val_type);
-    self->has_error = true;
+    TypeChecker_err(self, "E0004", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("type mismatch in initializer for field '", f.name), "' of struct '"), struct_name), "': expected '"), df.ftype), "', got '"), val_type), "'"), expr.line, expr.col);
 }
 }
     dfi = (dfi + 1LL);
 }
     if (!found) {
-    printf("%s:%ld:%ld: error[E0013]: field '%s' does not exist in struct '%s'\n", self->source_file, expr.line, expr.col, f.name, struct_name);
-    self->has_error = true;
+    TypeChecker_err(self, "E0013", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("field '", f.name), "' does not exist in struct '"), struct_name), "'"), expr.line, expr.col);
 }
     fi = (fi + 1LL);
 }
@@ -6920,8 +7056,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1LL);
 }
     if (excl_pos < 0LL) {
-    printf("%s:%ld:%ld: error[E0014]: cannot use 'try' on non-error-union type '%s'\n", self->source_file, expr.line, expr.col, inner_ty);
-    self->has_error = true;
+    TypeChecker_err(self, "E0014", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot use 'try' on non-error-union type '", inner_ty), "'"), expr.line, expr.col);
 } else {
     const char* error_set = substring(inner_ty, (excl_pos + 1LL), strlen(inner_ty));
     const char* expected_ret = self->current_func_ret_type;
@@ -6934,13 +7069,11 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1LL);
 }
     if (func_excl < 0LL) {
-    printf("%s:%ld:%ld: error[E0015]: cannot use 'try' in a function that returns non-error-union type '%s'\n", self->source_file, expr.line, expr.col, expected_ret);
-    self->has_error = true;
+    TypeChecker_err(self, "E0015", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot use 'try' in a function that returns non-error-union type '", expected_ret), "'"), expr.line, expr.col);
 } else {
     const char* func_err = substring(expected_ret, (func_excl + 1LL), strlen(expected_ret));
     if (!TypeChecker_types_compatible(self, func_err, error_set)) {
-    printf("%s:%ld:%ld: error[E0016]: error set '%s' of try expression is not compatible with function error set '%s'\n", self->source_file, expr.line, expr.col, error_set, func_err);
-    self->has_error = true;
+    TypeChecker_err(self, "E0016", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("error set '", error_set), "' of try expression is not compatible with function error set '"), func_err), "'"), expr.line, expr.col);
 }
 }
 }
@@ -6968,8 +7101,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     TypeChecker_exit_scope(self);
     const char* fallback_yields = TypeChecker_get_block_yield_type(self, expr.catch_fallback);
     if (!TypeChecker_types_compatible(self, val_type, fallback_yields)) {
-    printf("%s:%ld:%ld: error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", self->source_file, expr.line, expr.col, fallback_yields, val_type);
-    self->has_error = true;
+    TypeChecker_err(self, "E0018", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("catch fallback type '", fallback_yields), "' is not compatible with expected type '"), val_type), "'"), expr.line, expr.col);
 }
     return;
 }
@@ -6982,8 +7114,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1LL);
 }
     if (excl_pos < 0LL) {
-    printf("%s:%ld:%ld: error[E0017]: cannot use 'catch' on non-error-union type '%s'\n", self->source_file, expr.line, expr.col, inner_ty);
-    self->has_error = true;
+    TypeChecker_err(self, "E0017", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot use 'catch' on non-error-union type '", inner_ty), "'"), expr.line, expr.col);
 } else {
     const char* val_type = substring(inner_ty, 0LL, excl_pos);
     const char* error_set = substring(inner_ty, (excl_pos + 1LL), strlen(inner_ty));
@@ -6995,8 +7126,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     TypeChecker_exit_scope(self);
     const char* fallback_yields = TypeChecker_get_block_yield_type(self, expr.catch_fallback);
     if (!TypeChecker_types_compatible(self, val_type, fallback_yields)) {
-    printf("%s:%ld:%ld: error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", self->source_file, expr.line, expr.col, fallback_yields, val_type);
-    self->has_error = true;
+    TypeChecker_err(self, "E0018", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("catch fallback type '", fallback_yields), "' is not compatible with expected type '"), val_type), "'"), expr.line, expr.col);
 }
 }
     return;
@@ -13196,25 +13326,50 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(func_name, "("), args_str), ")")));
 }
     if (expr.kind == ExprKind_ek_slice) {
-    const char* base = CodegenBuilder_gen_expr_str(self, expr.slice_expr);
+    int64_t base_idx = CodegenBuilder_gen_expr(self, expr.slice_expr);
     const char* base_type = CodegenBuilder_get_expr_type(self, expr.slice_expr);
-    const char* lower = "0";
-    const char* upper = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("strlen(", base), ")");
-    if (expr.slice_lower >= 0LL) {
-    lower = CodegenBuilder_gen_expr_str(self, expr.slice_lower);
-}
-    if (expr.slice_upper >= 0LL) {
-    upper = CodegenBuilder_gen_expr_str(self, expr.slice_upper);
-}
     if ((strcmp(base_type, "Str") == 0) || (strcmp(base_type, "*Char") == 0)) {
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_str_sub(", base), ", "), lower), ", "), upper), ")")));
+    int64_t lower_idx = CodegenBuilder_push_expr(self, cexpr_new_int("0"));
+    if (expr.slice_lower >= 0LL) {
+    lower_idx = CodegenBuilder_gen_expr(self, expr.slice_lower);
+}
+    int64_t upper_idx = lower_idx;
+    if (expr.slice_upper >= 0LL) {
+    upper_idx = CodegenBuilder_gen_expr(self, expr.slice_upper);
+} else {
+    ArrayList_Int strlen_args = ArrayList_Int_init(self->allocator);
+    ArrayList_Int_push(&(strlen_args), base_idx);
+    upper_idx = CodegenBuilder_push_expr(self, cexpr_new_call("strlen", strlen_args));
+}
+    ArrayList_Int args = ArrayList_Int_init(self->allocator);
+    ArrayList_Int_push(&(args), base_idx);
+    ArrayList_Int_push(&(args), lower_idx);
+    ArrayList_Int_push(&(args), upper_idx);
+    return CodegenBuilder_push_expr(self, cexpr_new_call("__kai_str_sub", args));
 }
     if ((strlen(base_type) >= 2LL) && (strcmp(__kai_str_sub(base_type, 0LL, 2LL), "[]") == 0)) {
     const char* inner_type = __kai_str_sub(base_type, 2LL, strlen(base_type));
     const char* mapped_inner = CodegenBuilder_map_type(self, inner_type);
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_arr_sub(", base), ", "), lower), ", "), upper), ", sizeof("), mapped_inner), "))")));
+    int64_t lower_idx = CodegenBuilder_push_expr(self, cexpr_new_int("0"));
+    if (expr.slice_lower >= 0LL) {
+    lower_idx = CodegenBuilder_gen_expr(self, expr.slice_lower);
 }
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(base));
+    int64_t upper_idx = lower_idx;
+    if (expr.slice_upper >= 0LL) {
+    upper_idx = CodegenBuilder_gen_expr(self, expr.slice_upper);
+} else {
+    ArrayList_Int strlen_args = ArrayList_Int_init(self->allocator);
+    ArrayList_Int_push(&(strlen_args), base_idx);
+    upper_idx = CodegenBuilder_push_expr(self, cexpr_new_call("strlen", strlen_args));
+}
+    ArrayList_Int args = ArrayList_Int_init(self->allocator);
+    ArrayList_Int_push(&(args), base_idx);
+    ArrayList_Int_push(&(args), lower_idx);
+    ArrayList_Int_push(&(args), upper_idx);
+    ArrayList_Int_push(&(args), CodegenBuilder_push_expr(self, cexpr_new_sizeof_type(ctype_new(mapped_inner, 0LL, false, false))));
+    return CodegenBuilder_push_expr(self, cexpr_new_call("__kai_arr_sub", args));
+}
+    return base_idx;
 }
     if (expr.kind == ExprKind_ek_struct_init) {
     if (CodegenBuilder_str_contains(self, expr.struct_name, ((char)(46LL)))) {
@@ -13267,24 +13422,23 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     return CodegenBuilder_push_expr(self, cexpr_new_compound(ct, fields));
 }
     if (expr.kind == ExprKind_ek_array) {
-    const char* elems_str = "";
+    ArrayList_Str field_strs = ArrayList_Str_init(self->allocator);
     int64_t i = 0LL;
     while (i < ArrayList_Int_length(&(expr.arr_elements))) {
-    if (i > 0LL) {
-    elems_str = __kai_std_str_concat_alloc(elems_str, ", ");
-}
-    elems_str = __kai_std_str_concat_alloc(elems_str, CodegenBuilder_gen_expr_str(self, ArrayList_Int_get(&(expr.arr_elements), i)));
+    int64_t elem_idx = CodegenBuilder_gen_expr(self, ArrayList_Int_get(&(expr.arr_elements), i));
+    ArrayList_Str_push(&(field_strs), CodegenBuilder_expr_to_str(self, elem_idx));
     i = (i + 1LL);
 }
-    if (strlen(elems_str) == 0LL) {
-    elems_str = "0";
+    if (ArrayList_Str_length(&(field_strs)) == 0LL) {
+    ArrayList_Str_push(&(field_strs), "0");
 }
     const char* inner_ty = "Int";
     if ((strlen(expr.inferred_type) > 2LL) && (strcmp(__kai_str_sub(expr.inferred_type, 0LL, 2LL), "[]") == 0)) {
     inner_ty = __kai_str_sub(expr.inferred_type, 2LL, strlen(expr.inferred_type));
 }
     const char* mapped_inner = CodegenBuilder_map_type(self, inner_ty);
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_inner), "[]){ "), elems_str), " }")));
+    CType ct = ctype_new(__kai_std_str_concat_alloc(mapped_inner, "[]"), 0LL, false, false);
+    return CodegenBuilder_push_expr(self, cexpr_new_compound(ct, field_strs));
 }
     if (expr.kind == ExprKind_ek_tuple) {
     if (strlen(expr.inferred_type) > 0LL) {
@@ -13303,13 +13457,18 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     return CodegenBuilder_push_expr(self, cexpr_new_ident("NULL"));
 }
     if (expr.kind == ExprKind_ek_range) {
-    const char* start = CodegenBuilder_gen_expr_str(self, expr.range_start);
-    const char* end = CodegenBuilder_gen_expr_str(self, expr.range_end);
+    int64_t start_idx = CodegenBuilder_gen_expr(self, expr.range_start);
+    int64_t end_idx = CodegenBuilder_gen_expr(self, expr.range_end);
     const char* incl = "false";
     if (expr.range_inclusive) {
     incl = "true";
 }
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(Range){ .start = ", start), ", .end = "), end), ", .is_inclusive = "), incl), " }")));
+    ArrayList_Str fields = ArrayList_Str_init(self->allocator);
+    ArrayList_Str_push(&(fields), __kai_std_str_concat_alloc(".start = ", CodegenBuilder_expr_to_str(self, start_idx)));
+    ArrayList_Str_push(&(fields), __kai_std_str_concat_alloc(".end = ", CodegenBuilder_expr_to_str(self, end_idx)));
+    ArrayList_Str_push(&(fields), __kai_std_str_concat_alloc(".is_inclusive = ", incl));
+    CType ct = ctype_new("Range", 0LL, false, false);
+    return CodegenBuilder_push_expr(self, cexpr_new_compound(ct, fields));
 }
     if (expr.kind == ExprKind_ek_str_interp) {
     if (ArrayList_StrInterpPart_length(&(expr.interp_parts)) == 0LL) {
@@ -14933,122 +15092,6 @@ ErrorInfo get_error_info(const char* code) {
 }
     return (ErrorInfo){ .code = code, .title = "Unknown error code", .description = "No additional information is available for this error code.", .fix = "Refer to the Kai language documentation for more information." };
 }
-bool fs_exists(const char* path) {
-    {
-    return kai_fs_exists(path);
-}
-}
-bool fs_is_dir(const char* path) {
-    {
-    return kai_fs_is_dir(path);
-}
-}
-bool fs_mkdir(const char* path) {
-    {
-    return kai_fs_mkdir(path);
-}
-}
-bool fs_remove(const char* path) {
-    {
-    return kai_fs_remove(path);
-}
-}
-Dir fs_opendir(const char* path) {
-    {
-    return (Dir){ .handle = kai_fs_opendir(path) };
-}
-}
-const char* fs_readdir(Dir dir) {
-    {
-    char* name_ptr = kai_fs_readdir(dir.handle);
-    if (name_ptr == (char*)(unsigned long long)(0LL)) {
-    return "";
-}
-    return (const char*)(name_ptr);
-}
-}
-void fs_closedir(Dir dir) {
-    {
-    kai_fs_closedir(dir.handle);
-}
-}
-int64_t find_last(const char* path, char c) {
-    int64_t i = (strlen(path) - 1LL);
-    while (i >= 0LL) {
-    if ((path)[i] == c) {
-    return i;
-}
-    i = (i - 1LL);
-}
-    return (-1LL);
-}
-bool mkdir_p(const char* path) {
-    if (fs_exists(path)) {
-    return true;
-}
-    int64_t slash_pos = find_last(path, ((char)(47LL)));
-    if (slash_pos > 0LL) {
-    const char* parent = substring(path, 0LL, slash_pos);
-    if (!mkdir_p(parent)) {
-    return false;
-}
-}
-    return fs_mkdir(path);
-}
-const char* str_replace(const char* s, const char* old, const char* new_val) {
-    int64_t s_len = strlen(s);
-    int64_t old_len = strlen(old);
-    if (old_len == 0LL) {
-    return s;
-}
-    const char* result = "";
-    int64_t i = 0LL;
-    while (i < s_len) {
-    int64_t j = 0LL;
-    bool matched = true;
-    while (j < old_len) {
-    {
-    if ((s)[(i + j)] != (old)[j]) {
-    matched = false;
-    break;
-}
-}
-    j = (j + 1LL);
-}
-    if (matched) {
-    result = __kai_std_str_concat_alloc(result, new_val);
-    i = (i + old_len);
-} else {
-    result = __kai_std_str_concat_alloc(result, substring(s, i, (i + 1LL)));
-    i = (i + 1LL);
-}
-}
-    return result;
-}
-const char* get_base_name(const char* path) {
-    int64_t last_slash = (-1LL);
-    int64_t dot_pos = (-1LL);
-    int64_t i = 0LL;
-    int64_t l = strlen(path);
-    while (i < l) {
-    char c = (path)[i];
-    if (c == ((char)(47LL))) {
-    last_slash = i;
-} else if (c == ((char)(46LL))) {
-    dot_pos = i;
-}
-    i = (i + 1LL);
-}
-    int64_t start = 0LL;
-    if (last_slash >= 0LL) {
-    start = (last_slash + 1LL);
-}
-    int64_t end = l;
-    if (dot_pos > last_slash) {
-    end = dot_pos;
-}
-    return substring(path, start, end);
-}
 bool __kai_std_ascii_is_digit(char byte) {
     return ((byte >= ((char)(48LL))) && (byte <= ((char)(57LL))));
 }
@@ -15542,7 +15585,7 @@ int64_t run_fix(const char* fix_mode, const char* fix_file, bool json) {
     Parser fix_parser = Parser_init(&(fix_alloc), fix_file, fix_lexer.tokens);
     int64_t prog_idx = Parser_parse_program(&(fix_parser));
     if (prog_idx >= 0LL) {
-    TypeChecker chk = TypeChecker_init(&(fix_alloc), fix_parser.stmt_pool, fix_parser.expr_pool, fix_parser.pattern_pool, fix_file);
+    TypeChecker chk = TypeChecker_init(&(fix_alloc), fix_parser.stmt_pool, fix_parser.expr_pool, fix_parser.pattern_pool, fix_file, source);
     bool ttmp = TypeChecker_check_program(&(chk), prog_idx);
     if (ttmp) {
 } else {
@@ -16954,7 +16997,7 @@ int main(int argc, char** argv) {
 }
     return 3LL;
 }
-    TypeChecker checker = TypeChecker_init(&(allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool, input_file);
+    TypeChecker checker = TypeChecker_init(&(allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool, input_file, source);
     bool success = TypeChecker_check_program(&(checker), program_idx);
     if (!success) {
     if (json_mode) {

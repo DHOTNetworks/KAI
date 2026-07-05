@@ -2928,7 +2928,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
             if lexer.has_error {
                 return ""
             }
-            var parser = Parser.init_with_pools(self.allocator, "", lexer.tokens, self.expr_pool, self.stmt_pool, self.pattern_pool)
+            var parser = Parser.init_with_pools(self.allocator, "", lexer.tokens, self.expr_pool, self.stmt_pool, self.pattern_pool, source)
             let program_idx = parser.parse_program()
             if program_idx >= 0 {
                 self.build_func_types()

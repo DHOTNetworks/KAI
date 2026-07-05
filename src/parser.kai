@@ -24,6 +24,9 @@ import StmtNode from ast_nodes
 import new_expr_node from ast_nodes
 import new_stmt_node from ast_nodes
 import new_pattern_node from ast_nodes
+import get_source_line from utils
+import length from std.core.string
+import int_to_str from std.core.string
 
 extern fn exit(code: Int)
 extern fn system(cmd: *Char) -> Int
@@ -141,6 +144,7 @@ fn str_array_join(arr: ArrayList<Str>, sep: Str) -> Str {
 struct Parser {
     allocator: *Allocator
     source_file: Str
+    source: Str
     tokens: *ArrayList<Token>
     cursor: Int
     pending_gt: Bool
@@ -149,12 +153,37 @@ struct Parser {
     expr_pool: *ArrayList<ExprNode>
     stmt_pool: *ArrayList<StmtNode>
     pattern_pool: *ArrayList<PatternNode>
+    stmt_line: Int
+    stmt_col: Int
 
 }
+
+fn parser_err(source_file: Str, source: Str, code: Str, msg: Str, line: Int, col: Int) {
+    printf("%s:%ld:%ld: error[%s]: %s\n", source_file, line, col, code, msg)
+    if line >= 0 {
+        let line_text = get_source_line(source, line - 1)
+        if length(line_text) > 0 {
+            printf("    %s\n", line_text)
+            var caret = "    "
+            var ci = 0
+            while ci < col && ci < length(line_text) {
+                if line_text[ci] == Char(9) {
+                    caret = caret + "\t"
+                } else {
+                    caret = caret + " "
+                }
+                ci = ci + 1
+            }
+            caret = caret + "^"
+            printf("%s\n", caret)
+        }
+    }
+}
 impl Parser {
-    fn init_with_pools(self, allocator: *Allocator, source_file: Str, tokens: *ArrayList<Token>, expr_pool: *ArrayList<ExprNode>, stmt_pool: *ArrayList<StmtNode>, pattern_pool: *ArrayList<PatternNode>) -> Parser {
+    fn init_with_pools(self, allocator: *Allocator, source_file: Str, tokens: *ArrayList<Token>, expr_pool: *ArrayList<ExprNode>, stmt_pool: *ArrayList<StmtNode>, pattern_pool: *ArrayList<PatternNode>, source: Str) -> Parser {
         self.allocator = allocator
         self.source_file = source_file
+        self.source = source
         self.tokens = tokens
         self.cursor = 0
         self.pending_gt = false
@@ -163,12 +192,15 @@ impl Parser {
         self.expr_pool = expr_pool
         self.stmt_pool = stmt_pool
         self.pattern_pool = pattern_pool
+        self.stmt_line = 0
+        self.stmt_col = 0
         return self
 
     }
-    fn init(self, allocator: *Allocator, source_file: Str, tokens: *ArrayList<Token>) {
+    fn init(self, allocator: *Allocator, source_file: Str, tokens: *ArrayList<Token>, source: Str) {
         self.allocator = allocator
         self.source_file = source_file
+        self.source = source
         self.tokens = tokens
         self.cursor = 0
         self.pending_gt = false
@@ -182,6 +214,8 @@ impl Parser {
         self.expr_pool.init(allocator)
         self.stmt_pool.init(allocator)
         self.pattern_pool.init(allocator)
+        self.stmt_line = 0
+        self.stmt_col = 0
 
     }
     fn peek(self, offset: Int) -> Token {
@@ -235,7 +269,7 @@ impl Parser {
             return self.advance()
         }
         unsafe {
-            printf("%s:%ld:%ld: error[E0101]: expected token type %ld but found %ld\n", self.source_file, tok.line, tok.column, Int(ttype), Int(tok.tok_type))
+            parser_err(self.source_file, self.source, "E0101", "expected token type " + int_to_str(Int(ttype)) + " but found " + int_to_str(Int(tok.tok_type)), tok.line, tok.column)
             exit(1)
         }
         return tok
@@ -463,15 +497,19 @@ impl Parser {
         return self.expr_pool.length() - 1
 
     }
+    fn mk_stmt_node(self, kind: StmtKind) -> StmtNode {
+        return new_stmt_node(kind, self.stmt_line, self.stmt_col)
+
+    }
     fn st_block(self, stmts: ArrayList<Int>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_block, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_block)
         node.block_stmts = stmts
         self.stmt_pool.push(node)
         return self.stmt_pool.length() - 1
 
     }
     fn st_error(self, name: Str, variants: ArrayList<Str>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_error_decl, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_error_decl)
         node.error_name = name
         node.error_variants = variants
         self.stmt_pool.push(node)
@@ -479,7 +517,7 @@ impl Parser {
 
     }
     fn st_var_decl(self, name: Str, type_ann: Str, value: Int, is_mut: Bool) -> Int {
-        var node = new_stmt_node(StmtKind.sk_var_decl, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_var_decl)
         node.vardecl_name = name
         node.vardecl_type = type_ann
         node.vardecl_value = value
@@ -489,7 +527,7 @@ impl Parser {
 
     }
     fn st_assign(self, target: Int, value: Int, op: Str) -> Int {
-        var node = new_stmt_node(StmtKind.sk_assignment, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_assignment)
         node.assign_target = target
         node.assign_value = value
         node.assign_op = op
@@ -498,7 +536,7 @@ impl Parser {
 
     }
     fn st_func(self, name: Str, params: ArrayList<Param>, ret_type: Str, body: Int, cap: Str, tp: ArrayList<Str>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_func_decl, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_func_decl)
         node.func_name = name
         node.func_params = params
         node.func_return_type = ret_type
@@ -510,7 +548,7 @@ impl Parser {
 
     }
     fn st_struct(self, name: Str, fields: ArrayList<StructField>, tp: ArrayList<Str>, methods: ArrayList<Int>, impls: ArrayList<Int>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_struct_decl, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_struct_decl)
         node.struct_name = name
         node.struct_fields = fields
         node.struct_type_params = tp
@@ -521,7 +559,7 @@ impl Parser {
 
     }
     fn st_impl(self, struct_name: Str, trait_name: Str, methods: ArrayList<Int>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_impl_block, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_impl_block)
         node.impl_struct_name = struct_name
         node.impl_trait_name = trait_name
         node.impl_methods = methods
@@ -530,7 +568,7 @@ impl Parser {
 
     }
     fn st_trait(self, name: Str, methods: ArrayList<Int>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_trait_decl, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_trait_decl)
         node.trait_name = name
         node.trait_methods = methods
         self.stmt_pool.push(node)
@@ -538,7 +576,7 @@ impl Parser {
 
     }
     fn st_enum(self, name: Str, variants: ArrayList<Variant>, tp: ArrayList<Str>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_enum_decl, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_enum_decl)
         node.enum_name = name
         node.enum_variants = variants
         node.enum_type_params = tp
@@ -547,7 +585,7 @@ impl Parser {
 
     }
     fn st_match(self, expr: Int, cases: ArrayList<MatchCase>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_match, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_match)
         node.match_expr = expr
         node.match_cases = cases
         self.stmt_pool.push(node)
@@ -555,14 +593,14 @@ impl Parser {
 
     }
     fn st_unsafe(self, body: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_unsafe, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_unsafe)
         node.unsafe_body = body
         self.stmt_pool.push(node)
         return self.stmt_pool.length() - 1
 
     }
     fn st_extern(self, name: Str, params: ArrayList<Param>, ret: Str) -> Int {
-        var node = new_stmt_node(StmtKind.sk_extern, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_extern)
         node.extern_name = name
         node.extern_params = params
         node.extern_return = ret
@@ -571,7 +609,7 @@ impl Parser {
 
     }
     fn st_if(self, cond: Int, then_b: Int, else_b: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_if, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_if)
         node.if_cond = cond
         node.if_then = then_b
         node.if_else = else_b
@@ -580,7 +618,7 @@ impl Parser {
 
     }
     fn st_if_let(self, vname: Str, expr: Int, then_b: Int, else_b: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_if_let, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_if_let)
         node.iflet_var = vname
         node.iflet_expr = expr
         node.iflet_then = then_b
@@ -590,7 +628,7 @@ impl Parser {
 
     }
     fn st_while(self, cond: Int, body: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_while, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_while)
         node.while_cond = cond
         node.while_body = body
         self.stmt_pool.push(node)
@@ -598,7 +636,7 @@ impl Parser {
 
     }
     fn st_for(self, var_name: Str, start: Int, end: Int, inc: Bool, body: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_for, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_for)
         node.for_var = var_name
         node.for_start = start
         node.for_end = end
@@ -609,47 +647,47 @@ impl Parser {
 
     }
     fn st_return(self, value: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_return, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_return)
         node.return_value = value
         self.stmt_pool.push(node)
         return self.stmt_pool.length() - 1
 
     }
     fn st_expr(self, expr: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_expr, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_expr)
         node.expr_stmt = expr
         self.stmt_pool.push(node)
         return self.stmt_pool.length() - 1
 
     }
     fn st_defer(self, body: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_defer, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_defer)
         node.defer_body = body
         self.stmt_pool.push(node)
         return self.stmt_pool.length() - 1
 
     }
     fn st_errdefer(self, body: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_errdefer, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_errdefer)
         node.errdefer_body = body
         self.stmt_pool.push(node)
         return self.stmt_pool.length() - 1
 
     }
     fn st_break(self) -> Int {
-        var node = new_stmt_node(StmtKind.sk_break, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_break)
         self.stmt_pool.push(node)
         return self.stmt_pool.length() - 1
 
     }
     fn st_continue(self) -> Int {
-        var node = new_stmt_node(StmtKind.sk_continue, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_continue)
         self.stmt_pool.push(node)
         return self.stmt_pool.length() - 1
 
     }
     fn st_import(self, path: ArrayList<Str>, alias: Str) -> Int {
-        var node = new_stmt_node(StmtKind.sk_import, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_import)
         node.import_path = path
         node.import_alias = alias
         self.stmt_pool.push(node)
@@ -657,7 +695,7 @@ impl Parser {
 
     }
     fn st_cimport(self, header: Str, alias: Str) -> Int {
-        var node = new_stmt_node(StmtKind.sk_cimport, self.peek(0).line, self.peek(0).column)
+        var node = self.mk_stmt_node(StmtKind.sk_cimport)
         node.cimport_header = header
         node.cimport_alias = alias
         self.stmt_pool.push(node)
@@ -680,6 +718,8 @@ impl Parser {
     fn parse_statement(self) -> Int {
         self.consume_newlines()
         var tok = self.peek(0)
+        self.stmt_line = tok.line
+        self.stmt_col = tok.column
         var is_public = false
         if tok.tok_type == TokenType.PUB {
             let _ = self.advance()
@@ -917,7 +957,11 @@ impl Parser {
             capability = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
         }
         self.expect_end_of_statement()
+        let saved_line = self.stmt_line
+        let saved_col = self.stmt_col
         let body = self.parse_block()
+        self.stmt_line = saved_line
+        self.stmt_col = saved_col
         return self.st_func(name, params, return_type, body, capability, type_params)
 
     }
@@ -1069,6 +1113,8 @@ impl Parser {
         let _ = self.expect(TokenType.LBRACE)
         var cases = ArrayList<MatchCase>(self.allocator)
         self.consume_newlines()
+        let saved_line = self.stmt_line
+        let saved_col = self.stmt_col
         while self.peek(0).tok_type != TokenType.RBRACE && self.peek(0).tok_type != TokenType.EOF {
             let _ = self.expect(TokenType.CASE)
             let pattern = self.parse_pattern()
@@ -1086,6 +1132,8 @@ impl Parser {
             self.consume_newlines()
         }
         let _ = self.expect(TokenType.RBRACE)
+        self.stmt_line = saved_line
+        self.stmt_col = saved_col
         return self.st_match(expr, cases)
 
     }
@@ -1121,7 +1169,7 @@ impl Parser {
             return self.add_pattern(node)
         } else {
             unsafe {
-                printf("%s:%ld:%ld: error[E0101]: unexpected token in pattern\n", self.source_file, tok.line, tok.column)
+                parser_err(self.source_file, self.source, "E0101", "unexpected token in pattern", tok.line, tok.column)
                 exit(1)
             }
             return -1
@@ -1136,7 +1184,12 @@ impl Parser {
     fn parse_unsafe_block(self) -> Int {
         let _ = self.advance()
         self.expect_end_of_statement()
-        return self.st_unsafe(self.parse_block())
+        let saved_line = self.stmt_line
+        let saved_col = self.stmt_col
+        let body = self.parse_block()
+        self.stmt_line = saved_line
+        self.stmt_col = saved_col
+        return self.st_unsafe(body)
 
     }
     fn parse_extern_decl(self) -> Int {
@@ -1172,6 +1225,8 @@ impl Parser {
     }
     fn parse_if_stmt(self) -> Int {
         let _ = self.advance()
+        let saved_line = self.stmt_line
+        let saved_col = self.stmt_col
         if self.peek(0).tok_type == TokenType.LET {
             let _ = self.advance()
             let var_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
@@ -1192,6 +1247,8 @@ impl Parser {
                     else_branch = self.parse_block()
                 }
             }
+            self.stmt_line = saved_line
+            self.stmt_col = saved_col
             return self.st_if_let(var_name, cond_expr, then_branch, else_branch)
         }
         let cond_expr = self.parse_expression(0)
@@ -1210,6 +1267,8 @@ impl Parser {
                 else_branch = self.parse_block()
             }
         }
+        self.stmt_line = saved_line
+        self.stmt_col = saved_col
         return self.st_if(cond_expr, then_branch, else_branch)
 
     }
@@ -1217,7 +1276,12 @@ impl Parser {
         let _ = self.advance()
         let cond_expr = self.parse_expression(0)
         self.expect_end_of_statement()
-        return self.st_while(cond_expr, self.parse_block())
+        let saved_line = self.stmt_line
+        let saved_col = self.stmt_col
+        let body = self.parse_block()
+        self.stmt_line = saved_line
+        self.stmt_col = saved_col
+        return self.st_while(cond_expr, body)
 
     }
     fn parse_for_stmt(self) -> Int {
@@ -1235,12 +1299,17 @@ impl Parser {
             is_inclusive = expr_node.range_inclusive
         } else {
             unsafe {
-                printf("%s:%ld:%ld: error[E0101]: invalid expression in for loop\n", self.source_file, self.peek(0).line, self.peek(0).column)
+                parser_err(self.source_file, self.source, "E0101", "invalid expression in for loop", self.peek(0).line, self.peek(0).column)
                 exit(1)
             }
         }
         self.expect_end_of_statement()
-        return self.st_for(var_name, range_start, range_end, is_inclusive, self.parse_block())
+        let saved_line = self.stmt_line
+        let saved_col = self.stmt_col
+        let body = self.parse_block()
+        self.stmt_line = saved_line
+        self.stmt_col = saved_col
+        return self.st_for(var_name, range_start, range_end, is_inclusive, body)
 
     }
     fn parse_return_stmt(self) -> Int {
@@ -1273,7 +1342,11 @@ impl Parser {
             if self.peek(0).tok_type == TokenType.NEWLINE {
                 self.expect_end_of_statement()
             }
+            let saved_line = self.stmt_line
+            let saved_col = self.stmt_col
             body = self.parse_block()
+            self.stmt_line = saved_line
+            self.stmt_col = saved_col
         } else {
             body = self.parse_statement()
         }
@@ -1286,7 +1359,11 @@ impl Parser {
             if self.peek(0).tok_type == TokenType.NEWLINE {
                 self.expect_end_of_statement()
             }
+            let saved_line = self.stmt_line
+            let saved_col = self.stmt_col
             body = self.parse_block()
+            self.stmt_line = saved_line
+            self.stmt_col = saved_col
         } else {
             body = self.parse_statement()
         }
@@ -1308,7 +1385,9 @@ impl Parser {
     fn parse_block(self) -> Int {
         self.consume_newlines()
         var stmts = ArrayList<Int>(self.allocator)
-        let _ = self.expect(TokenType.LBRACE)
+        let brace_tok = self.expect(TokenType.LBRACE)
+        self.stmt_line = brace_tok.line
+        self.stmt_col = brace_tok.column
         self.consume_newlines()
         while self.peek(0).tok_type != TokenType.RBRACE && self.peek(0).tok_type != TokenType.EOF {
             let stmt = self.parse_statement()
@@ -1319,7 +1398,7 @@ impl Parser {
         }
         if self.peek(0).tok_type == TokenType.EOF {
             unsafe {
-                printf("%s:0:0: error[E0101]: expected '}' but reached end of file\n", self.source_file)
+                parser_err(self.source_file, self.source, "E0101", "expected '}' but reached end of file", 0, 0)
                 exit(1)
             }
         }
@@ -1487,7 +1566,11 @@ impl Parser {
                     var fallback: Int = -1
                     let next = self.peek(0)
                     if next.tok_type == TokenType.NEWLINE {
+                        let saved_line = self.stmt_line
+                        let saved_col = self.stmt_col
                         fallback = self.parse_block()
+                        self.stmt_line = saved_line
+                        self.stmt_col = saved_col
                     } else if next.tok_type == TokenType.RETURN {
                         let _ = self.advance()
                         var ret_val: Int = -1
@@ -1788,7 +1871,7 @@ impl Parser {
             return first
         } else {
             unsafe {
-                printf("%s:%ld:%ld: error[E0101]: unexpected token (type: %ld)\n", self.source_file, tok.line, tok.column, Int(tok.tok_type))
+                parser_err(self.source_file, self.source, "E0101", "unexpected token (type: " + int_to_str(Int(tok.tok_type)) + ")", tok.line, tok.column)
                 exit(1)
             }
             return -1

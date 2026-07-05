@@ -1671,21 +1671,49 @@ fn gen_expr(self, expr_idx: Int) -> Int {
 
     //== Slice
     if expr.kind == ExprKind.ek_slice {
-        let base = self.gen_expr_str(expr.slice_expr)
+        let base_idx = self.gen_expr(expr.slice_expr)
         let base_type = self.get_expr_type(expr.slice_expr)
-        var lower = "0"
-        var upper = "strlen(" + base + ")"
-        if expr.slice_lower >= 0 { lower = self.gen_expr_str(expr.slice_lower) }
-        if expr.slice_upper >= 0 { upper = self.gen_expr_str(expr.slice_upper) }
+
         if base_type == "Str" || base_type == "*Char" {
-            return self.push_expr(cexpr_new_ident("__kai_str_sub(" + base + ", " + lower + ", " + upper + ")"))
+            var lower_idx = self.push_expr(cexpr_new_int("0"))
+            if expr.slice_lower >= 0 { lower_idx = self.gen_expr(expr.slice_lower) }
+            var upper_idx = lower_idx
+            if expr.slice_upper >= 0 {
+                upper_idx = self.gen_expr(expr.slice_upper)
+            } else {
+                var strlen_args = ArrayList<Int>(self.allocator)
+                strlen_args.push(base_idx)
+                upper_idx = self.push_expr(cexpr_new_call("strlen", strlen_args))
+            }
+            var args = ArrayList<Int>(self.allocator)
+            args.push(base_idx)
+            args.push(lower_idx)
+            args.push(upper_idx)
+            return self.push_expr(cexpr_new_call("__kai_str_sub", args))
         }
+
         if strlen(base_type) >= 2 && base_type[0..2] == "[]" {
             let inner_type = base_type[2..strlen(base_type)]
             let mapped_inner = self.map_type(inner_type)
-            return self.push_expr(cexpr_new_ident("__kai_arr_sub(" + base + ", " + lower + ", " + upper + ", sizeof(" + mapped_inner + "))"))
+            var lower_idx = self.push_expr(cexpr_new_int("0"))
+            if expr.slice_lower >= 0 { lower_idx = self.gen_expr(expr.slice_lower) }
+            var upper_idx = lower_idx
+            if expr.slice_upper >= 0 {
+                upper_idx = self.gen_expr(expr.slice_upper)
+            } else {
+                var strlen_args = ArrayList<Int>(self.allocator)
+                strlen_args.push(base_idx)
+                upper_idx = self.push_expr(cexpr_new_call("strlen", strlen_args))
+            }
+            var args = ArrayList<Int>(self.allocator)
+            args.push(base_idx)
+            args.push(lower_idx)
+            args.push(upper_idx)
+            args.push(self.push_expr(cexpr_new_sizeof_type(ctype_new(mapped_inner, 0, false, false))))
+            return self.push_expr(cexpr_new_call("__kai_arr_sub", args))
         }
-        return self.push_expr(cexpr_new_ident(base))
+
+        return base_idx
     }
 
     //== Struct init
@@ -1738,20 +1766,21 @@ fn gen_expr(self, expr_idx: Int) -> Int {
 
     //== Array literal
     if expr.kind == ExprKind.ek_array {
-        var elems_str = ""
+        var field_strs = ArrayList<Str>(self.allocator)
         var i = 0
         while i < expr.arr_elements.length() {
-            if i > 0 { elems_str = elems_str + ", " }
-            elems_str = elems_str + self.gen_expr_str(expr.arr_elements.get(i))
+            let elem_idx = self.gen_expr(expr.arr_elements.get(i))
+            field_strs.push(self.expr_to_str(elem_idx))
             i = i + 1
         }
-        if strlen(elems_str) == 0 { elems_str = "0" }
+        if field_strs.length() == 0 { field_strs.push("0") }
         var inner_ty = "Int"
         if strlen(expr.inferred_type) > 2 && expr.inferred_type[0..2] == "[]" {
             inner_ty = expr.inferred_type[2..strlen(expr.inferred_type)]
         }
         let mapped_inner = self.map_type(inner_ty)
-        return self.push_expr(cexpr_new_ident("(" + mapped_inner + "[]){ " + elems_str + " }"))
+        let ct = ctype_new(mapped_inner + "[]", 0, false, false)
+        return self.push_expr(cexpr_new_compound(ct, field_strs))
     }
 
     //== Tuple literal
@@ -1772,11 +1801,16 @@ fn gen_expr(self, expr_idx: Int) -> Int {
 
     //== Range
     if expr.kind == ExprKind.ek_range {
-        let start = self.gen_expr_str(expr.range_start)
-        let end = self.gen_expr_str(expr.range_end)
+        let start_idx = self.gen_expr(expr.range_start)
+        let end_idx = self.gen_expr(expr.range_end)
         var incl = "false"
         if expr.range_inclusive { incl = "true" }
-        return self.push_expr(cexpr_new_ident("(Range){ .start = " + start + ", .end = " + end + ", .is_inclusive = " + incl + " }"))
+        var fields = ArrayList<Str>(self.allocator)
+        fields.push(".start = " + self.expr_to_str(start_idx))
+        fields.push(".end = " + self.expr_to_str(end_idx))
+        fields.push(".is_inclusive = " + incl)
+        let ct = ctype_new("Range", 0, false, false)
+        return self.push_expr(cexpr_new_compound(ct, fields))
     }
 
     //== String interpolation
@@ -2696,7 +2730,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
             var lexer = Lexer(self.allocator, source, current_file_path)
             lexer.lex()
             if !lexer.has_error {
-                var parser = Parser.init_with_pools(self.allocator, current_file_path, lexer.tokens, self.expr_pool, self.stmt_pool, self.pattern_pool)
+                var parser = Parser.init_with_pools(self.allocator, current_file_path, lexer.tokens, self.expr_pool, self.stmt_pool, self.pattern_pool, source)
                 let program_idx = parser.parse_program()
                 if program_idx >= 0 {
                     let prog = self.stmt_pool.get(program_idx)

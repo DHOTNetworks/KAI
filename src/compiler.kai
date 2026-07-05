@@ -172,13 +172,13 @@ fn main(argc: Int, argv: **Char) -> Int {
         if json_mode { printf("{\"messages\":[{\"code\":\"E0100\",\"message\":\"Lexer error\",\"file\":\"%s\"}],\"error\":true}\n", input_file) }
         return 2
     }
-    var parser = Parser(&allocator, input_file, lexer.tokens)
+    var parser = Parser(&allocator, input_file, lexer.tokens, source)
     let program_idx = parser.parse_program()
     if program_idx < 0 {
         if json_mode { printf("{\"messages\":[{\"code\":\"E0101\",\"message\":\"Parse error\",\"file\":\"%s\"}],\"error\":true}\n", input_file) }
         return 3
     }
-    var checker = TypeChecker(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, input_file)
+    var checker = TypeChecker(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, input_file, source)
     let success = checker.check_program(program_idx)
     if !success {
         if json_mode { printf("{\"result\":\"typecheck_failed\",\"file\":\"%s\"}\n", input_file) }

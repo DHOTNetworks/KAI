@@ -3,6 +3,28 @@ import substring from std.core.string
 import fs_exists from std.fs.fs
 import fs_mkdir from std.fs.fs
 
+// Extract a specific line (0-indexed) from source text.
+// Returns the line text without the trailing newline.
+fn get_source_line(source: Str, line_num: Int) -> Str {
+    var current = 0
+    var line_start = 0
+    var i = 0
+    let len = length(source)
+    while i < len && current < line_num {
+        if source[i] == Char(10) {
+            current = current + 1
+            line_start = i + 1
+        }
+        i = i + 1
+    }
+    if current != line_num { return "" }
+    var line_end = line_start
+    while line_end < len && source[line_end] != Char(10) {
+        line_end = line_end + 1
+    }
+    return substring(source, line_start, line_end)
+}
+
 fn find_last(path: Str, c: Char) -> Int {
     var i = length(path) - 1
     while i >= 0 {
