@@ -104,6 +104,20 @@ fn print_expr(self, idx: Int) -> Str {
         let val = self.print_expr(node.assign_value)
         return "(" + target + " " + node.assign_op + " " + val + ")"
     }
+    if node.kind == CExprKind.ck_compound {
+        let type_str = ctype_to_str(node.compound_type)
+        var fields_str = ""
+        var ci = 0
+        while ci < node.compound_fields.length() {
+            if ci > 0 { fields_str = fields_str + ", " }
+            fields_str = fields_str + node.compound_fields.get(ci)
+            ci = ci + 1
+        }
+        if strlen(fields_str) > 0 {
+            return "(" + type_str + "){ " + fields_str + " }"
+        }
+        return "(" + type_str + "){0}"
+    }
     return ""
 }
 
