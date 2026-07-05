@@ -1,0 +1,266 @@
+import ArrayList from std.core.array
+import Allocator from std.core.allocator
+
+//== C-AST: Formal C Intermediate Representation
+//
+//   Defines typed representations for C constructs.
+//   Enables programmatic construction of C code before pretty-printing.
+//   The CCodeBuilder consumes C-AST nodes to emit formatted output.
+
+//== 1. C Type Representation
+
+struct CType {
+    base: Str
+    pointer: Int
+    is_const: Bool
+    is_unsigned: Bool
+    array_sizes: ArrayList<Str>
+}
+
+fn ctype_new(base: Str, pointer: Int, is_const: Bool, is_unsigned: Bool) -> CType {
+    var t = CType(
+        base: base,
+        pointer: pointer,
+        is_const: is_const,
+        is_unsigned: is_unsigned,
+        array_sizes: ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    )
+    return t
+}
+
+fn ctype_void() -> CType { return ctype_new("void", 0, false, false) }
+fn ctype_int() -> CType { return ctype_new("int64_t", 0, false, false) }
+fn ctype_bool() -> CType { return ctype_new("bool", 0, false, false) }
+fn ctype_char() -> CType { return ctype_new("char", 0, false, false) }
+fn ctype_float() -> CType { return ctype_new("double", 0, false, false) }
+fn ctype_str() -> CType { return ctype_new("char", 1, true, false) }
+
+fn ctype_ptr(inner: CType) -> CType {
+    var t = inner
+    t.pointer = t.pointer + 1
+    return t
+}
+
+fn ctype_const(inner: CType) -> CType {
+    var t = inner
+    t.is_const = true
+    return t
+}
+
+fn ctype_to_str(t: CType) -> Str {
+    var result = ""
+    if t.is_const { result = "const " }
+    if t.is_unsigned { result = result + "unsigned " }
+    result = result + t.base
+    var i = 0
+    while i < t.pointer {
+        result = result + "*"
+        i = i + 1
+    }
+    var j = 0
+    while j < t.array_sizes.length() {
+        result = result + "[" + t.array_sizes.get(j) + "]"
+        j = j + 1
+    }
+    return result
+}
+
+fn ctype_from_kai(kai_type: Str) -> CType {
+    if kai_type == "Int" { return ctype_int() }
+    if kai_type == "i8" { return ctype_new("int8_t", 0, false, false) }
+    if kai_type == "i32" { return ctype_new("int32_t", 0, false, false) }
+    if kai_type == "i16" { return ctype_new("int16_t", 0, false, false) }
+    if kai_type == "i64" { return ctype_new("int64_t", 0, false, false) }
+    if kai_type == "isize" { return ctype_new("intptr_t", 0, false, false) }
+    if kai_type == "u8" { return ctype_new("uint8_t", 0, false, true) }
+    if kai_type == "u16" { return ctype_new("uint16_t", 0, false, true) }
+    if kai_type == "u32" { return ctype_new("uint32_t", 0, false, true) }
+    if kai_type == "u64" { return ctype_new("uint64_t", 0, false, true) }
+    if kai_type == "usize" { return ctype_new("size_t", 0, false, true) }
+    if kai_type == "Bool" { return ctype_bool() }
+    if kai_type == "Char" { return ctype_char() }
+    if kai_type == "Float" { return ctype_float() }
+    if kai_type == "Void" { return ctype_void() }
+    if kai_type == "Str" { return ctype_str() }
+    // Struct/enum name passthrough
+    return ctype_new(kai_type, 0, false, false)
+}
+
+fn ctype_copy(t: CType) -> CType {
+    var sizes = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    return CType(
+        base: t.base,
+        pointer: t.pointer,
+        is_const: t.is_const,
+        is_unsigned: t.is_unsigned,
+        array_sizes: sizes
+    )
+}
+
+//== 2. C Expression Kind Enum
+
+enum CExprKind {
+    case ck_int_lit
+    case ck_float_lit
+    case ck_str_lit
+    case ck_char_lit
+    case ck_bool_lit
+    case ck_ident
+    case ck_binary
+    case ck_unary
+    case ck_call
+    case ck_field
+    case ck_arrow
+    case ck_index
+    case ck_cast
+    case ck_compound
+    case ck_ternary
+    case ck_sizeof_type
+    case ck_sizeof_expr
+    case ck_assign
+    case ck_comma
+    case ck_stmt_expr
+    case ck_member_access
+}
+
+//== 3. C Expression Node
+
+struct CExprNode {
+    kind: CExprKind
+    // Literals
+    int_val: Str
+    float_val: Str
+    str_val: Str
+    char_val: Str
+    bool_val: Bool
+    // Identifier
+    ident_name: Str
+    // Binary
+    binop_left: Int
+    binop_right: Int
+    binop_op: Str
+    // Unary
+    unop_operand: Int
+    unop_op: Str
+    is_prefix: Bool
+    // Call
+    call_func: Int
+    call_args: ArrayList<Int>
+    callee_name: Str
+    // Field / Arrow
+    field_expr: Int
+    field_name: Str
+    // Index
+    idx_expr: Int
+    idx_index: Int
+    // Cast
+    cast_type: CType
+    cast_expr: Int
+    // Compound literal
+    compound_type: CType
+    compound_fields: ArrayList<(Str, Int)>  // (field_name, expr_idx) pairs
+    // Ternary
+    tern_cond: Int
+    tern_then: Int
+    tern_else: Int
+    // SizeOf
+    sizeof_type: CType
+    sizeof_expr: Int
+    // Assignment
+    assign_target: Int
+    assign_value: Int
+    assign_op: Str
+    // Comma
+    comma_left: Int
+    comma_right: Int
+    // Stmt expr
+    stmts: ArrayList<Int>
+    stmt_result: Int
+}
+
+//== 4. C Statement Kind Enum
+
+enum CStmtKind {
+    case cs_block
+    case cs_expr
+    case cs_if
+    case cs_while
+    case cs_for
+    case cs_do_while
+    case cs_return
+    case cs_break
+    case cs_continue
+    case cs_var_decl
+    case cs_switch
+    case cs_case
+    case cs_default
+    case cs_goto
+    case cs_label
+    case cs_asm
+}
+
+//== 5. C Statement Node
+
+struct CStmtNode {
+    kind: CStmtKind
+    block_stmts: ArrayList<Int>
+    expr_stmt: Int
+    if_cond: Int
+    if_then: Int
+    if_else: Int
+    while_cond: Int
+    while_body: Int
+    for_init: Int
+    for_cond: Int
+    for_inc: Int
+    for_body: Int
+    do_body: Int
+    do_cond: Int
+    return_val: Int
+    var_type: CType
+    var_name: Str
+    var_init: Int
+    switch_expr: Int
+    case_val: Str
+    label_name: Str
+    asm_code: Str
+    asm_volatile: Bool
+}
+
+//== 6. C Declaration Node
+
+struct CDeclNode {
+    is_function: Bool
+    func_ret: CType
+    func_name: Str
+    func_params: ArrayList<(CType, Str)>
+    func_vararg: Bool
+    func_body: ArrayList<Int>  // stmt indices
+    is_extern: Bool
+    var_type: CType
+    var_name: Str
+    var_init: Int
+    is_struct: Bool
+    struct_name: Str
+    struct_fields: ArrayList<(CType, Str)>
+    is_enum: Bool
+    enum_name: Str
+    enum_variants: ArrayList<Str>
+    is_tagged_enum: Bool
+    tagged_name: Str
+    tagged_variants: ArrayList<(Str, ArrayList<(CType, Str)>)>
+    is_typedef: Bool
+    typedef_alias: Str
+    typedef_def: CType
+}
+
+//== 7. C Translation Unit
+
+struct CUnit {
+    includes: ArrayList<Str>
+    decls: ArrayList<CDeclNode>
+}
+
+fn cunit_new(includes: ArrayList<Str>, decls: ArrayList<CDeclNode>) -> CUnit {
+    return CUnit(includes: includes, decls: decls)
+}

@@ -1,3 +1,5 @@
+//== Imports
+
 import ArrayList from std.core.array
 import Allocator from std.core.allocator
 import StringBuilder from std.core.string
@@ -25,6 +27,7 @@ import read_to_string from std.io.file
 import str_array_join from parser
 import std.io.print
 
+//== External C Runtime Functions
 
 extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn exit(code: Int)
@@ -32,6 +35,8 @@ extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
 extern fn strstr(haystack: Str, needle: Str) -> *Char
 extern fn malloc(size: Int) -> *Char
 
+
+//== Runtime String Concatenation Helper
 
 fn __kai_std_str_concat_alloc(left: Str, right: Str) -> Str {
     let left_len = length(left)
@@ -54,6 +59,8 @@ fn __kai_std_str_concat_alloc(left: Str, right: Str) -> Str {
     return buf as Str
 }
 
+//== Type Map Entry (simple key-value pair for type/function lookups)
+
 struct StrMapEntry {
     key: Str
     value: Str
@@ -65,6 +72,7 @@ struct Codegen {
     expr_pool: *ArrayList<ExprNode>
     pattern_pool: *ArrayList<PatternNode>
 
+    //== Legacy string-based accumulators
     output: StringBuilder
     struct_decls: StringBuilder
     func_decls: StringBuilder
@@ -91,6 +99,8 @@ struct Codegen {
     defer_depths: ArrayList<Int>
     func_param_types: ArrayList<StrMapEntry>
 }
+
+//== Type Map Helpers
 
 fn type_map_find(arr: *ArrayList<StrMapEntry>, key: Str) -> Int {
     var i = arr.length() - 1
@@ -124,7 +134,11 @@ fn strlist_find(arr: *ArrayList<Str>, key: Str) -> Int {
     return -1
 }
 
+//== Codegen Implementation
+
 impl Codegen {
+
+//== Init Return Helper
 
 fn add_init_return(self, body_str: Str, struct_name: Str) -> Str {
     let self_decl = "    " + struct_name + " self = (" + struct_name + "){0};\n"
@@ -179,6 +193,8 @@ fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool:
     self.func_param_types = ArrayList<StrMapEntry>(allocator)
 }
 
+//== Type Query Helpers
+
 fn is_pointer_type(self, t: Str) -> Bool {
     if length(t) == 0 { return false }
     if t[0] == Char(42) || t[0] == Char(38) { return true }
@@ -186,6 +202,8 @@ fn is_pointer_type(self, t: Str) -> Bool {
     if length(t) >= 2 && t[0..2] == "[]" { return true }
     return false
 }
+
+//== Type Mapping (Kai -> C)
 
 fn map_type(self, type_name: Str) -> Str {
     if length(type_name) == 0 {
@@ -237,9 +255,16 @@ fn map_type(self, type_name: Str) -> Str {
         return concrete_name
     }
 
-    if resolved_type == "Int" { return "int64_t" }
-    if resolved_type == "Int8" { return "int8_t" }
-    if resolved_type == "Int32" { return "int32_t" }
+    if resolved_type == "Int" || resolved_type == "i64" { return "int64_t" }
+    if resolved_type == "isize" { return "intptr_t" }
+    if resolved_type == "i8" { return "int8_t" }
+    if resolved_type == "i32" { return "int32_t" }
+    if resolved_type == "i16" { return "int16_t" }
+    if resolved_type == "u8" { return "uint8_t" }
+    if resolved_type == "u16" { return "uint16_t" }
+    if resolved_type == "u32" { return "uint32_t" }
+    if resolved_type == "u64" { return "uint64_t" }
+    if resolved_type == "usize" { return "size_t" }
     if resolved_type == "Bool" { return "bool" }
     if resolved_type == "Char" { return "char" }
     if resolved_type == "Float" { return "double" }
@@ -323,6 +348,8 @@ fn map_type(self, type_name: Str) -> Str {
     return resolved_type
 }
 
+//== Generic Type Substitution
+
 fn substitute_generic_type(self, type_name: Str) -> Str {
     let mapped = type_map_get(&self.current_type_map, type_name)
     if length(mapped) > 0 {
@@ -367,6 +394,8 @@ fn substitute_generic_type(self, type_name: Str) -> Str {
     
     return type_name
 }
+
+//== String Utilities
 
 fn trim_spaces(self, s: Str) -> Str {
     var start = 0
@@ -415,6 +444,8 @@ fn str_to_int(self, s: Str) -> Int {
     }
     return res
 }
+
+//== Generic Type Inference & Monomorphization
 
 fn infer_type_args(self, func_stmt_idx: Int, expr_idx: Int) -> ArrayList<Str> {
     let stmt = self.stmt_pool.get(func_stmt_idx)
@@ -491,6 +522,8 @@ fn infer_type_args(self, func_stmt_idx: Int, expr_idx: Int) -> ArrayList<Str> {
     return type_args
 }
 
+//== Type Map Setup for Generics
+
 fn setup_current_type_map(self, type_params: *ArrayList<Str>, type_args: *ArrayList<Str>) -> Void {
     var i = 0
     while i < type_params.length() {
@@ -504,6 +537,8 @@ fn setup_current_type_map(self, type_params: *ArrayList<Str>, type_args: *ArrayL
         i = i + 1
     }
 }
+
+//== Struct Monomorphization
 
 fn monomorphize_struct(self, stmt_idx: Int, concrete_name: Str, type_args: *ArrayList<Str>) -> Void {
     let stmt = self.stmt_pool.get(stmt_idx)
@@ -525,6 +560,8 @@ fn monomorphize_struct(self, stmt_idx: Int, concrete_name: Str, type_args: *Arra
     self.monomorphize_methods(stmt.struct_name, concrete_name)
     self.current_type_map = old_type_map
 }
+
+//== Enum Monomorphization
 
 fn monomorphize_enum(self, stmt_idx: Int, concrete_name: Str, type_args: *ArrayList<Str>) -> Void {
     let stmt = self.stmt_pool.get(stmt_idx)
@@ -567,6 +604,8 @@ fn monomorphize_enum(self, stmt_idx: Int, concrete_name: Str, type_args: *ArrayL
     self.monomorphize_methods(stmt.enum_name, concrete_name)
     self.current_type_map = old_type_map
 }
+
+//== Method Monomorphization
 
 fn monomorphize_methods(self, base_struct_name: Str, concrete_struct_name: Str) -> Void {
     var idx = 0
@@ -657,6 +696,8 @@ fn monomorphize_methods(self, base_struct_name: Str, concrete_struct_name: Str) 
         idx = idx + 1
     }
 }
+
+//== Function Monomorphization
 
 fn monomorphize_func(self, func_stmt_idx: Int, mangled_name: Str, type_args: *ArrayList<Str>) -> Void {
     if strlist_find(&self.monomorphized_types, mangled_name) >= 0 {
@@ -754,6 +795,8 @@ fn extract_first_type_arg(self, type_name: Str) -> Str {
     return "Int"
 }
 
+//== Function Type Registry
+
 fn build_func_types(self) -> Void {
     var i = 0
     while i < self.stmt_pool.length() {
@@ -831,6 +874,8 @@ fn build_func_types(self) -> Void {
         i = i + 1
     }
 }
+
+//== Expression Type Resolution
 
 fn get_expr_type(self, expr_idx: Int) -> Str {
     if expr_idx < 0 { return "Void" }
@@ -1204,6 +1249,8 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
     return "Void"
 }
 
+//== Expression Code Generation
+
 fn gen_expr_with_expected_type(self, expr_idx: Int, expected_type: Str) -> Str {
     if expr_idx < 0 { return "" }
     let expr = self.expr_pool.get(expr_idx)
@@ -1227,6 +1274,8 @@ fn gen_expr_with_expected_type(self, expr_idx: Int, expected_type: Str) -> Str {
     }
     return gen_val
 }
+
+//== Main Expression Generator
 
 fn gen_expr(self, expr_idx: Int) -> Str {
     if expr_idx < 0 { return "" }
@@ -2031,6 +2080,8 @@ fn str_find(self, s: Str, target: Char) -> Int {
     return -1
 }
 
+//== Standard C Detection
+
 fn is_standard_c_func(self, name: Str) -> Bool {
     let l = length(name)
     if l >= 4 {
@@ -2080,6 +2131,8 @@ fn is_standard_c_func(self, name: Str) -> Bool {
     if name == "sqrt" { return true }
     return false
 }
+
+//== Statement Code Generation
 
 fn gen_stmt(self, stmt_idx: Int) -> Str {
     if stmt_idx < 0 { return "" }
@@ -2701,10 +2754,10 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
         let val = self.gen_expr(arg)
         let arg_type = self.get_expr_type(arg)
         if arg_type == "Int" {
-            return "printf(\"%lld\\n\", (long long)(" + val + "));"
+            return "__kai_print_int(" + val + ");"
         }
         if arg_type == "Float" {
-            return "printf(\"%f\\n\", (double)(" + val + "));"
+            return "__kai_print_float(" + val + ");"
         }
         if arg_type == "Char" {
             return "printf(\"%c\\n\", (char)(" + val + "));"
@@ -3145,85 +3198,94 @@ fn _collect_loop_drops(self) -> ArrayList<Str> {
 fn generate(self, top_stmt_idx: Int) -> Str {
     self.build_func_types()
     let body = self.gen_stmt(top_stmt_idx)
-    
-    var final_code = ""
-    final_code = final_code + "#include <stdint.h>\n"
-    final_code = final_code + "#include <stdbool.h>\n"
-    final_code = final_code + "#include <stdio.h>\n"
-    final_code = final_code + "#include <stdlib.h>\n"
-    final_code = final_code + "#include <string.h>\n"
-    final_code = final_code + "#ifndef NO_GET_EXE_DIR\n"
-    final_code = final_code + "#if defined(_WIN32)\n"
-    final_code = final_code + "#include <windows.h>\n"
-    final_code = final_code + "#else\n"
-    final_code = final_code + "#ifndef _GNU_SOURCE\n"
-    final_code = final_code + "#define _GNU_SOURCE\n"
-    final_code = final_code + "#endif\n"
-    final_code = final_code + "#include <dlfcn.h>\n"
-    final_code = final_code + "#include <limits.h>\n"
-    final_code = final_code + "#endif\n\n"
-    final_code = final_code + "int64_t get_exe_dir(char* out_buf, int64_t max_len) {\n"
-    final_code = final_code + "#if defined(_WIN32)\n"
-    final_code = final_code + "    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);\n"
-    final_code = final_code + "    if (len == 0 || len >= max_len) return -1;\n"
-    final_code = final_code + "    for (int i = len - 1; i >= 0; i--) {\n"
-    final_code = final_code + "        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {\n"
-    final_code = final_code + "            out_buf[i] = '\\0';\n"
-    final_code = final_code + "            break;\n"
-    final_code = final_code + "        }\n"
-    final_code = final_code + "    }\n"
-    final_code = final_code + "    return 0;\n"
-    final_code = final_code + "#else\n"
-    final_code = final_code + "    Dl_info info;\n"
-    final_code = final_code + "    char dummy = 0;\n"
-    final_code = final_code + "    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {\n"
-    final_code = final_code + "        char real_path[PATH_MAX];\n"
-    final_code = final_code + "        if (realpath(info.dli_fname, real_path) != NULL) {\n"
-    final_code = final_code + "            char* last_slash = strrchr(real_path, '/');\n"
-    final_code = final_code + "            if (last_slash != NULL) {\n"
-    final_code = final_code + "                *last_slash = '\\0';\n"
-    final_code = final_code + "                int i = 0;\n"
-    final_code = final_code + "                while (i < max_len - 1 && real_path[i] != '\\0') {\n"
-    final_code = final_code + "                    out_buf[i] = real_path[i];\n"
-    final_code = final_code + "                    i++;\n"
-    final_code = final_code + "                }\n"
-    final_code = final_code + "                out_buf[i] = '\\0';\n"
-    final_code = final_code + "                return 0;\n"
-    final_code = final_code + "            }\n"
-    final_code = final_code + "        }\n"
-    final_code = final_code + "    }\n"
-    final_code = final_code + "    return -1;\n"
-    final_code = final_code + "#endif\n"
-    final_code = final_code + "}\n"
-    final_code = final_code + "#endif\n\n"
 
-    final_code = final_code + "static char* __kai_str_sub(const char* s, int64_t start, int64_t end) {\n"
-    final_code = final_code + "    int64_t len = strlen(s);\n"
-    final_code = final_code + "    if (end > len) end = len;\n"
-    final_code = final_code + "    if (start < 0) start = 0;\n"
-    final_code = final_code + "    if (start >= end) {\n"
-    final_code = final_code + "        char* empty = malloc(1);\n"
-    final_code = final_code + "        if (empty) empty[0] = '\\0';\n"
-    final_code = final_code + "        return empty;\n"
-    final_code = final_code + "    }\n"
-    final_code = final_code + "    int64_t sub_len = end - start;\n"
-    final_code = final_code + "    char* buf = malloc(sub_len + 1);\n"
-    final_code = final_code + "    if (buf) {\n"
-    final_code = final_code + "        memcpy(buf, s + start, sub_len);\n"
-    final_code = final_code + "        buf[sub_len] = '\\0';\n"
-    final_code = final_code + "    }\n"
-    final_code = final_code + "    return buf;\n"
-    final_code = final_code + "}\n\n"
+    //== Assemble final C output
+    var result = StringBuilder(self.allocator)
 
-    final_code = final_code + "static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t elem_size) {\n"
-    final_code = final_code + "    int64_t count = end - start;\n"
-    final_code = final_code + "    if (count <= 0) return NULL;\n"
-    final_code = final_code + "    size_t total = (size_t)count * (size_t)elem_size;\n"
-    final_code = final_code + "    void* buf = malloc(total);\n"
-    final_code = final_code + "    if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);\n"
-    final_code = final_code + "    return buf;\n"
-    final_code = final_code + "}\n\n"
+    //== Phase 1: Baseline C headers
+    result.append("#include <stdint.h>\n")
+    result.append("#include <stdbool.h>\n")
+    result.append("#include <stdio.h>\n")
+    result.append("#include <stdlib.h>\n")
+    result.append("#include <string.h>\n")
 
+    //== Phase 2: get_exe_dir runtime (platform-conditional)
+    result.append("#ifndef NO_GET_EXE_DIR\n")
+    result.append("#if defined(_WIN32)\n")
+    result.append("#include <windows.h>\n")
+    result.append("#else\n")
+    result.append("#ifndef _GNU_SOURCE\n")
+    result.append("#define _GNU_SOURCE\n")
+    result.append("#endif\n")
+    result.append("#include <dlfcn.h>\n")
+    result.append("#include <limits.h>\n")
+    result.append("#endif\n\n")
+    result.append("int64_t get_exe_dir(char* out_buf, int64_t max_len) {\n")
+    result.append("#if defined(_WIN32)\n")
+    result.append("    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);\n")
+    result.append("    if (len == 0 || len >= max_len) return -1;\n")
+    result.append("    for (int i = len - 1; i >= 0; i--) {\n")
+    result.append("        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {\n")
+    result.append("            out_buf[i] = '\\0';\n")
+    result.append("            break;\n")
+    result.append("        }\n")
+    result.append("    }\n")
+    result.append("    return 0;\n")
+    result.append("#else\n")
+    result.append("    Dl_info info;\n")
+    result.append("    char dummy = 0;\n")
+    result.append("    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {\n")
+    result.append("        char real_path[PATH_MAX];\n")
+    result.append("        if (realpath(info.dli_fname, real_path) != NULL) {\n")
+    result.append("            char* last_slash = strrchr(real_path, '/');\n")
+    result.append("            if (last_slash != NULL) {\n")
+    result.append("                *last_slash = '\\0';\n")
+    result.append("                int i = 0;\n")
+    result.append("                while (i < max_len - 1 && real_path[i] != '\\0') {\n")
+    result.append("                    out_buf[i] = real_path[i];\n")
+    result.append("                    i++;\n")
+    result.append("                }\n")
+    result.append("                out_buf[i] = '\\0';\n")
+    result.append("                return 0;\n")
+    result.append("            }\n")
+    result.append("        }\n")
+    result.append("    }\n")
+    result.append("    return -1;\n")
+    result.append("#endif\n")
+    result.append("}\n")
+    result.append("#endif\n")
+    result.append("\n")
+
+    //== Phase 3: Runtime helper functions (str_sub, arr_sub)
+    result.append("static char* __kai_str_sub(const char* s, int64_t start, int64_t end) {\n")
+    result.append("    int64_t len = strlen(s);\n")
+    result.append("    if (end > len) end = len;\n")
+    result.append("    if (start < 0) start = 0;\n")
+    result.append("    if (start >= end) {\n")
+    result.append("        char* empty = malloc(1);\n")
+    result.append("        if (empty) empty[0] = '\\0';\n")
+    result.append("        return empty;\n")
+    result.append("    }\n")
+    result.append("    int64_t sub_len = end - start;\n")
+    result.append("    char* buf = malloc(sub_len + 1);\n")
+    result.append("    if (buf) {\n")
+    result.append("        memcpy(buf, s + start, sub_len);\n")
+    result.append("        buf[sub_len] = '\\0';\n")
+    result.append("    }\n")
+    result.append("    return buf;\n")
+    result.append("}\n")
+    result.append("\n")
+    result.append("static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t elem_size) {\n")
+    result.append("    int64_t count = end - start;\n")
+    result.append("    if (count <= 0) return NULL;\n")
+    result.append("    size_t total = (size_t)count * (size_t)elem_size;\n")
+    result.append("    void* buf = malloc(total);\n")
+    result.append("    if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);\n")
+    result.append("    return buf;\n")
+    result.append("}\n")
+    result.append("\n")
+
+    //== Phase 4: User C FFI imports (non-baseline headers)
     var ci = 0
     var has_cimports = false
     while ci < self.cimport_headers.length() {
@@ -3239,7 +3301,7 @@ fn generate(self, top_stmt_idx: Int) -> Str {
 
         if !is_baseline {
             if !has_cimports {
-                final_code = final_code + "/* C FFI Imports */\n"
+                result.append("/* C FFI Imports */\n")
                 has_cimports = true
             }
             var has_slash = false
@@ -3253,53 +3315,75 @@ fn generate(self, top_stmt_idx: Int) -> Str {
                 if hdr[0] == Char(46) { dot_start = true }
             }
             if !has_slash && !dot_start {
-                final_code = final_code + "#include <" + hdr + ">\n"
+                result.append("#include <" + hdr + ">\n")
             } else {
-                final_code = final_code + "#include \"" + hdr + "\"\n"
+                result.append("#include \"" + hdr + "\"\n")
             }
         }
         ci = ci + 1
     }
-    final_code = final_code + "static __thread void* _kai_current_allocator = NULL;\n\n"
-    
-    final_code = final_code + "static inline void _kai_set_current_allocator(void* allocator) {\n"
-    final_code = final_code + "    _kai_current_allocator = allocator;\n"
-    final_code = final_code + "}\n\n"
-    
-    final_code = final_code + "extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);\n"
-    final_code = final_code + "extern int munmap(void* addr, unsigned long long length);\n\n"
-    
-    final_code = final_code + "static inline char* _kai_mmap(char* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {\n"
-    final_code = final_code + "    return (char*)mmap(addr, (unsigned long long)length, prot, flags, fd, offset);\n"
-    final_code = final_code + "}\n\n"
-    
-    final_code = final_code + "static inline int64_t _kai_munmap(char* addr, int64_t length) {\n"
-    final_code = final_code + "    return munmap(addr, (unsigned long long)length);\n"
-    final_code = final_code + "}\n\n"
-    
-    final_code = final_code + "void __kai_print_int(int64_t v) {\n"
-    final_code = final_code + "    printf(\"%lld\\n\", (long long)(v));\n"
-    final_code = final_code + "}\n\n"
-    
-    final_code = final_code + "void __kai_print_float(double v) {\n"
-    final_code = final_code + "    printf(\"%f\\n\", (double)(v));\n"
-    final_code = final_code + "}\n\n"
-    
-    final_code = final_code + "extern void __kai_panic(const char* msg);\n"
-    final_code = final_code + "#ifndef __KAI_NO_PANIC\n"
-    final_code = final_code + "void __kai_panic(const char* msg) {\n"
-    final_code = final_code + "    fprintf(stderr, \"KAI PANIC: %s\\n\", msg);\n"
-    final_code = final_code + "    fflush(stderr);\n"
-    final_code = final_code + "    abort();\n"
-    final_code = final_code + "}\n"
-    final_code = final_code + "#endif\n\n"
-    
-    final_code = final_code + self.struct_decls.to_str() + "\n"
-    final_code = final_code + self.func_decls.to_str() + "\n"
-    
-    final_code = final_code + self.output.to_str()
-    
-    return final_code
+
+    //== Phase 5: Allocator + runtime glue
+    result.append("#ifndef MAP_FAILED\n")
+    result.append("#define MAP_FAILED ((void*)-1)\n")
+    result.append("#endif\n")
+    result.append("#ifndef MAP_PRIVATE\n")
+    result.append("#define MAP_PRIVATE 2\n")
+    result.append("#endif\n")
+    result.append("#ifndef MAP_ANONYMOUS\n")
+    result.append("#ifdef __APPLE__\n")
+    result.append("#define MAP_ANONYMOUS 0x1000\n")
+    result.append("#else\n")
+    result.append("#define MAP_ANONYMOUS 0x20\n")
+    result.append("#endif\n")
+    result.append("#endif\n")
+    result.append("extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);\n")
+    result.append("extern int munmap(void* addr, unsigned long long length);\n")
+    result.append("\n")
+    result.append("static __thread void* _kai_current_allocator = NULL;\n")
+    result.append("\n")
+    result.append("static inline void _kai_set_current_allocator(void* allocator) {\n")
+    result.append("    _kai_current_allocator = allocator;\n")
+    result.append("}\n")
+    result.append("\n")
+    result.append("void __kai_print_int(int64_t v) {\n")
+    result.append("    printf(\"%lld\\n\", (long long)(v));\n")
+    result.append("}\n")
+    result.append("\n")
+    result.append("void __kai_print_float(double v) {\n")
+    result.append("    printf(\"%f\\n\", (double)(v));\n")
+    result.append("}\n")
+    result.append("\n")
+    result.append("static inline char* _kai_mmap(char* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {\n")
+    result.append("    return (char*)mmap(addr, length, prot, MAP_PRIVATE | MAP_ANONYMOUS, fd, offset);\n")
+    result.append("}\n")
+    result.append("\n")
+    result.append("static inline int64_t _kai_munmap(char* addr, int64_t length) {\n")
+    result.append("    return munmap(addr, length);\n")
+    result.append("}\n")
+    result.append("\n")
+    result.append("extern void __kai_panic(const char* msg);\n")
+    result.append("#ifndef __KAI_NO_PANIC\n")
+    result.append("void __kai_panic(const char* msg) {\n")
+    result.append("    fprintf(stderr, \"KAI PANIC: %s\\n\", msg);\n")
+    result.append("    fflush(stderr);\n")
+    result.append("    abort();\n")
+    result.append("}\n")
+    result.append("#endif\n")
+    result.append("\n")
+
+    //== Phase 6: User struct declarations
+    result.append(self.struct_decls.to_str())
+    result.append("\n")
+
+    //== Phase 7: User function declarations
+    result.append(self.func_decls.to_str())
+    result.append("\n")
+
+    //== Phase 8: User function implementations
+    result.append(self.output.to_str())
+
+    return result.to_str()
 }
 
 }

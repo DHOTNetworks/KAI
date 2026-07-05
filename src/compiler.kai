@@ -6,6 +6,7 @@ import Lexer from lexer
 import Parser from parser
 import TypeChecker from type_checker
 import Codegen from codegen
+import CodegenBuilder from codegen_builder
 import length from std.core.string
 import substring from std.core.string
 import ArrayList from std.core.array
@@ -44,6 +45,7 @@ fn main(argc: Int, argv: **Char) -> Int {
         printf("  --json          Output diagnostics in JSON format\n")
         printf("  -o <file>       Specify output binary name\n")
         printf("  -c              Emit C code only (no linking)\n")
+        printf("  -CC             Use builder-based codegen (experimental)\n")
         printf("  -O0|-O1|-O2|-O3|-Os  Optimization level (default: -O2)\n")
         return 1
     }
@@ -99,6 +101,7 @@ fn main(argc: Int, argv: **Char) -> Int {
 
     var output_bin = ""
     var emit_c_only = false
+    var use_builder = false
     var opt_level = "-O2"
     var json_mode = false
     var check_only = false
@@ -110,6 +113,7 @@ fn main(argc: Int, argv: **Char) -> Int {
         var matched = true
         unsafe {
             if strcmp(arg, "-c") == 0 { emit_c_only = true }
+            else if strcmp(arg, "-CC") == 0 { use_builder = true }
             else if strcmp(arg, "-o") == 0 {
                 if i + 1 < argc { i = i + 1; output_bin = argv[i] as Str }
                 else { printf("Error: -o requires an argument\n"); return 1 }
@@ -148,7 +152,8 @@ fn main(argc: Int, argv: **Char) -> Int {
     let base = get_base_name(input_file)
     var bin_name = base
     if length(output_bin) > 0 { bin_name = output_bin }
-    let c_file = base + ".c"
+    var c_file = base + ".c"
+    if use_builder { c_file = "CC" + c_file }
 
     let source_res = read_to_string(&allocator, input_file)
     if source_res.tag != 0 {
@@ -181,8 +186,14 @@ fn main(argc: Int, argv: **Char) -> Int {
         return 0
     }
 
-    var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
-    let output = gen.generate(program_idx)
+    var output: Str = ""
+    if use_builder {
+        var builder_gen = CodegenBuilder(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
+        output = builder_gen.generate(program_idx)
+    } else {
+        var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
+        output = gen.generate(program_idx)
+    }
     let write_res = write_string(c_file, output)
     if write_res.tag != 0 { return 5 }
     if emit_c_only { return 0 }

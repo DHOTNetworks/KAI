@@ -1,0 +1,125 @@
+import length from std.core.string
+
+extern fn strcmp(s1: Str, s2: Str) -> Int
+
+//== C Type String Helpers
+//   All types are represented as C-type strings (e.g. "int64_t", "const char*").
+//   These helpers provide inspection and transformation utilities.
+
+//== 1. Type Classification
+
+fn ctype_is_void(t: Str) -> Bool {
+    if length(t) == 0 { return true }
+    if strcmp(t, "void") == 0 { return true }
+    return false
+}
+
+fn ctype_is_ptr(t: Str) -> Bool {
+    let l = length(t)
+    if l == 0 { return false }
+    if t[l - 1] == Char(42) { return true }
+    let last_two = t[l - 2..l]
+    if strcmp(last_two, "*") == 0 { return true }
+    return false
+}
+
+fn ctype_is_const_ptr(t: Str) -> Bool {
+    if length(t) >= 11 {
+        let prefix = t[0..11]
+        if strcmp(prefix, "const char*") == 0 { return true }
+    }
+    return false
+}
+
+//== 2. Kai-to-C Type Mapping
+
+fn ctype_map_base(resolved_type: Str) -> Str {
+    if length(resolved_type) == 0 { return "void" }
+    if strcmp(resolved_type, "Int") == 0 { return "int64_t" }
+    if strcmp(resolved_type, "i8") == 0 { return "int8_t" }
+    if strcmp(resolved_type, "i16") == 0 { return "int16_t" }
+    if strcmp(resolved_type, "i32") == 0 { return "int32_t" }
+    if strcmp(resolved_type, "i64") == 0 { return "int64_t" }
+    if strcmp(resolved_type, "isize") == 0 { return "intptr_t" }
+    if strcmp(resolved_type, "u8") == 0 { return "uint8_t" }
+    if strcmp(resolved_type, "u16") == 0 { return "uint16_t" }
+    if strcmp(resolved_type, "u32") == 0 { return "uint32_t" }
+    if strcmp(resolved_type, "u64") == 0 { return "uint64_t" }
+    if strcmp(resolved_type, "usize") == 0 { return "size_t" }
+    if strcmp(resolved_type, "Bool") == 0 { return "bool" }
+    if strcmp(resolved_type, "Char") == 0 { return "char" }
+    if strcmp(resolved_type, "Float") == 0 { return "double" }
+    if strcmp(resolved_type, "Void") == 0 { return "void" }
+    if strcmp(resolved_type, "Str") == 0 { return "const char*" }
+    return resolved_type
+}
+
+fn ctype_is_integer(ctype: Str) -> Bool {
+    if strcmp(ctype, "int64_t") == 0 { return true }
+    if strcmp(ctype, "int32_t") == 0 { return true }
+    if strcmp(ctype, "int16_t") == 0 { return true }
+    if strcmp(ctype, "int8_t") == 0 { return true }
+    if strcmp(ctype, "uint64_t") == 0 { return true }
+    if strcmp(ctype, "uint32_t") == 0 { return true }
+    if strcmp(ctype, "uint16_t") == 0 { return true }
+    if strcmp(ctype, "uint8_t") == 0 { return true }
+    if strcmp(ctype, "size_t") == 0 { return true }
+    if strcmp(ctype, "intptr_t") == 0 { return true }
+    if strcmp(ctype, "bool") == 0 { return true }
+    if strcmp(ctype, "char") == 0 { return true }
+    return false
+}
+
+fn ctype_is_float(ctype: Str) -> Bool {
+    if strcmp(ctype, "double") == 0 { return true }
+    if strcmp(ctype, "float") == 0 { return true }
+    return false
+}
+
+fn ctype_is_numeric(ctype: Str) -> Bool {
+    if ctype_is_integer(ctype) { return true }
+    if ctype_is_float(ctype) { return true }
+    return false
+}
+
+//== 3. C Type Construction Helpers
+
+fn ctype_make_ptr(inner: Str) -> Str {
+    return inner + "*"
+}
+
+fn ctype_make_const_ptr(inner: Str) -> Str {
+    return "const " + inner + "*"
+}
+
+fn ctype_make_array(elem: Str, size: Str) -> Str {
+    return elem + "[" + size + "]"
+}
+
+fn ctype_strip_ptr(t: Str) -> Str {
+    let l = length(t)
+    if l > 0 && t[l - 1] == Char(42) {
+        return t[0..l - 1]
+    }
+    return t
+}
+
+//== 4. Integer Suffix Helpers
+
+fn ctype_int_suffix(v: Str) -> Str {
+    return v + "LL"
+}
+
+fn ctype_bool_val(v: Bool) -> Str {
+    if v { return "true" }
+    return "false"
+}
+
+fn ctype_null() -> Str {
+    return "NULL"
+}
+
+fn ctype_zero_init(t: Str) -> Str {
+    if ctype_is_ptr(t) { return "NULL" }
+    return "(" + t + "){0}"
+}

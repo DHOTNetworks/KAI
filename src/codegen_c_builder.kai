@@ -1,0 +1,146 @@
+import ArrayList from std.core.array
+import Allocator from std.core.allocator
+import StringBuilder from std.core.string
+import int_to_str from std.core.string
+import length from std.core.string
+import char_to_str from std.core.string
+
+//== CCodeBuilder — Structured C Code Emission Engine
+//
+//   Line-oriented builder for emitting syntactically correct C code.
+//   Every "line" is a single unit — no embedded \n in line strings.
+//   The builder handles indentation, block nesting, and final assembly.
+
+struct CCodeBuilder {
+    alloc: *Allocator
+    lines: ArrayList<Str>
+    indent_level: Int
+}
+
+impl CCodeBuilder {
+
+//== Lifecycle
+
+fn init(self, allocator: *Allocator) {
+    self.alloc = allocator
+    self.lines.init(allocator)
+    self.indent_level = 0
+}
+
+fn clear(self) {
+    self.lines.init(self.alloc)
+    self.indent_level = 0
+}
+
+//== Line Emission (auto-indented, one logical line per call)
+
+fn emit_line(self, code: Str) {
+    var indent_str = ""
+    var i = 0
+    while i < self.indent_level {
+        indent_str = indent_str + "    "
+        i = i + 1
+    }
+    self.lines.push(indent_str + code)
+}
+
+fn emit_blank(self) {
+    self.lines.push("")
+}
+
+//== Raw Emission (pass-through — caller controls newlines for multi-line blocks)
+
+fn emit_raw(self, code: Str) {
+    self.lines.push(code)
+}
+
+//== Preprocessor Directives (no indent, convenience wrappers)
+
+fn emit_include(self, header: Str, is_system: Bool) {
+    if is_system {
+        self.lines.push("#include <" + header + ">")
+    } else {
+        self.lines.push("#include \"" + header + "\"")
+    }
+}
+
+fn emit_directive(self, code: Str) {
+    self.lines.push(code)
+}
+
+//== Indentation
+
+fn indent(self) {
+    self.indent_level = self.indent_level + 1
+}
+
+fn dedent(self) {
+    if self.indent_level > 0 {
+        self.indent_level = self.indent_level - 1
+    }
+}
+
+//== Block Scoping
+
+fn begin_block(self) {
+    self.emit_line("{")
+    self.indent()
+}
+
+fn end_block(self) {
+    self.dedent()
+    self.emit_line("}")
+}
+
+//== Output Assembly
+
+fn to_str(self) -> Str {
+    var result = ""
+    var i = 0
+    while i < self.lines.length() {
+        if i > 0 {
+            result = result + "\n"
+        }
+        result = result + self.lines.get(i)
+        i = i + 1
+    }
+    result = result + "\n"
+    return result
+}
+
+fn line_count(self) -> Int {
+    return self.lines.length()
+}
+
+}
+
+//== Module-Level Helper Functions
+
+fn cb_escape_string(s: Str) -> Str {
+    var res = ""
+    var i = 0
+    while i < length(s) {
+        let c = s[i]
+        if c == Char(10) { res = res + "\\n" }
+        else if c == Char(13) { res = res + "\\r" }
+        else if c == Char(9) { res = res + "\\t" }
+        else if c == Char(92) { res = res + "\\\\" }
+        else if c == Char(34) { res = res + "\\\"" }
+        else { res = res + char_to_str(c) }
+        i = i + 1
+    }
+    return res
+}
+
+fn cb_escape_asm(s: Str) -> Str {
+    var res = ""
+    var i = 0
+    while i < length(s) {
+        let c = s[i]
+        if c == Char(10) { res = res + "\\n\\t" }
+        else if c == Char(34) { res = res + "\\\"" }
+        else { res = res + char_to_str(c) }
+        i = i + 1
+    }
+    return res
+}

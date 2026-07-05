@@ -1,0 +1,36 @@
+import ArrayList from std.core.array
+
+//== Type Map Entry (shared between codegen.kai and codegen_builder.kai)
+
+struct StrMapEntry {
+    key: Str
+    value: Str
+}
+
+fn type_map_find(arr: *ArrayList<StrMapEntry>, key: Str) -> Int {
+    var i = arr.length() - 1
+    while i >= 0 {
+        if arr.get(i).key == key { return i }
+        i = i - 1
+    }
+    return -1
+}
+
+fn type_map_get(arr: *ArrayList<StrMapEntry>, key: Str) -> Str {
+    let idx = type_map_find(arr, key)
+    if idx < 0 { return "" }
+    return arr.get(idx).value
+}
+
+fn type_map_put(arr: *ArrayList<StrMapEntry>, key: Str, value: Str) {
+    arr.push(StrMapEntry(key: key, value: value))
+}
+
+fn strlist_find(arr: *ArrayList<Str>, key: Str) -> Int {
+    var i = 0
+    while i < arr.length() {
+        if arr.get(i) == key { return i }
+        i = i + 1
+    }
+    return -1
+}
