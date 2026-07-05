@@ -23,6 +23,27 @@ import cgb_char_to_str from codegen_c_builder
 import cgb_int_to_str from codegen_c_builder
 import std.io.print
 
+import CType from codegen_c_ast
+import CExprNode from codegen_c_ast
+import CExprKind from codegen_c_ast
+import CStmtNode from codegen_c_ast
+import CStmtKind from codegen_c_ast
+import CDeclNode from codegen_c_ast
+import CPrinter from codegen_c_printer
+import ctype_void from codegen_c_ast
+import ctype_int from codegen_c_ast
+import ctype_bool from codegen_c_ast
+import ctype_char from codegen_c_ast
+import ctype_float from codegen_c_ast
+import ctype_str from codegen_c_ast
+import ctype_from_kai from codegen_c_ast
+import cexpr_new_int from codegen_c_ast
+import cexpr_new_ident from codegen_c_ast
+import cexpr_new_binary from codegen_c_ast
+import cexpr_new_call from codegen_c_ast
+import cstmt_new_expr from codegen_c_ast
+import cstmt_new_block from codegen_c_ast
+
 extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn strstr(haystack: Str, needle: Str) -> *Char
 extern fn malloc(size: Int) -> *Char
@@ -98,6 +119,8 @@ struct CodegenBuilder {
     func_param_types: ArrayList<CgbMapEntry>
     type_defs: StrBuf
     monomorphized_bodies: StrBuf
+    c_exprs: ArrayList<CExprNode>
+    c_stmts: ArrayList<CStmtNode>
 }
 
 //== Type Map Helpers (cgb_ prefix to avoid conflict with codegen.kai)
@@ -211,6 +234,8 @@ fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool:
     self.defer_depths.init(allocator)
     self.func_param_types.init(allocator)
     self.type_defs.init(allocator)
+    self.c_exprs.init(allocator)
+    self.c_stmts.init(allocator)
 }
 
 //== Type Query Helpers
@@ -361,6 +386,49 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
     }
     if expr.kind == ExprKind.ek_field_access {
         let base_type = self.get_expr_type(expr.field_expr)
+        if strlen(base_type) > 0 && base_type[0] == Char(40) { // starts with '(' (tuple type)
+            let field_name = expr.field_name
+            if strlen(field_name) > 1 && field_name[0] == Char(102) { // starts with 'f'
+                var idx_val = 0
+                var fi = 1
+                var valid = true
+                while fi < strlen(field_name) {
+                    let c = field_name[fi]
+                    if c >= Char(48) && c <= Char(57) {
+                        idx_val = idx_val * 10 + (Int(c) - 48)
+                    } else {
+                        valid = false
+                    }
+                    fi = fi + 1
+                }
+                if valid {
+                    let inner_types = base_type[1..strlen(base_type) - 1]
+                    var types_list = ArrayList<Str>(self.allocator)
+                    var start = 0
+                    var i = 0
+                    while i < strlen(inner_types) {
+                        if inner_types[i] == Char(44) {
+                            var ts_start = start
+                            while ts_start < i && inner_types[ts_start] == Char(32) { ts_start = ts_start + 1 }
+                            var ts_end = i
+                            while ts_end > ts_start && inner_types[ts_end - 1] == Char(32) { ts_end = ts_end - 1 }
+                            types_list.push(inner_types[ts_start..ts_end])
+                            start = i + 1
+                        }
+                        i = i + 1
+                    }
+                    var ts_start = start
+                    while ts_start < strlen(inner_types) && inner_types[ts_start] == Char(32) { ts_start = ts_start + 1 }
+                    var ts_end = strlen(inner_types)
+                    while ts_end > ts_start && inner_types[ts_end - 1] == Char(32) { ts_end = ts_end - 1 }
+                    types_list.push(inner_types[ts_start..ts_end])
+
+                    if idx_val < types_list.length() {
+                        return types_list.get(idx_val)
+                    }
+                }
+            }
+        }
         var clean_base = base_type
         var done_strip = false
         while !done_strip {
@@ -442,7 +510,24 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
         return expr.inferred_type
     }
     if expr.kind == ExprKind.ek_tuple {
-        return expr.inferred_type
+        if strlen(expr.inferred_type) > 0 {
+            return expr.inferred_type
+        }
+        var types = ArrayList<Str>(self.allocator)
+        var i = 0
+        while i < expr.tup_elements.length() {
+            types.push(self.get_expr_type(expr.tup_elements.get(i)))
+            i = i + 1
+        }
+        var res = "("
+        var j = 0
+        while j < types.length() {
+            if j > 0 { res = res + ", " }
+            res = res + types.get(j)
+            j = j + 1
+        }
+        res = res + ")"
+        return res
     }
     if expr.kind == ExprKind.ek_asm {
         return expr.inferred_type
@@ -510,7 +595,7 @@ fn cgb_clean_type_for_mangling(self, s: Str) -> Str {
         if c == Char(42) { result = result + "ptr" }
         else if c == Char(38) { result = result + "ref" }
         else if c == Char(32) { result = result + "_" }
-        else if c == Char(60) || c == Char(62) || c == Char(44) || c == Char(33) || c == Char(63) {
+        else if c == Char(60) || c == Char(62) || c == Char(44) || c == Char(33) || c == Char(63) || c == Char(40) || c == Char(41) {
             result = result + "_"
         }
         else { result = result + cgb_char_to_str(c) }
@@ -728,6 +813,45 @@ fn map_type(self, resolved_type: Str) -> Str {
         }
     }
 
+    if strlen(orig) > 0 && orig[0] == Char(40) { // starts with '(' indicating a tuple type (T1, T2, ...)
+        let clean_name = "Tuple_" + self.cgb_clean_type_for_mangling(orig)
+        if cgb_strlist_find(&self.monomorphized_types, clean_name) < 0 {
+            self.monomorphized_types.push(clean_name)
+            // Parse comma-separated types
+            let inner_types = orig[1..strlen(orig) - 1]
+            var types_list = ArrayList<Str>(self.allocator)
+            var start = 0
+            var i = 0
+            while i < strlen(inner_types) {
+                if inner_types[i] == Char(44) {
+                    // Inline trim spaces
+                    var ts_start = start
+                    while ts_start < i && inner_types[ts_start] == Char(32) { ts_start = ts_start + 1 }
+                    var ts_end = i
+                    while ts_end > ts_start && inner_types[ts_end - 1] == Char(32) { ts_end = ts_end - 1 }
+                    types_list.push(inner_types[ts_start..ts_end])
+                    start = i + 1
+                }
+                i = i + 1
+            }
+            var ts_start = start
+            while ts_start < strlen(inner_types) && inner_types[ts_start] == Char(32) { ts_start = ts_start + 1 }
+            var ts_end = strlen(inner_types)
+            while ts_end > ts_start && inner_types[ts_end - 1] == Char(32) { ts_end = ts_end - 1 }
+            types_list.push(inner_types[ts_start..ts_end])
+
+            self.struct_decls.append("typedef struct " + clean_name + " " + clean_name + ";\n")
+            self.struct_decls.append("struct " + clean_name + " {\n")
+            var ti = 0
+            while ti < types_list.length() {
+                self.struct_decls.append("    " + self.map_type(types_list.get(ti)) + " f" + cgb_int_to_str(ti) + ";\n")
+                ti = ti + 1
+            }
+            self.struct_decls.append("};\n")
+        }
+        return clean_name
+    }
+
     if orig == "Int" || orig == "i64" { return "int64_t" }
     if orig == "i8" { return "int8_t" }
     if orig == "i16" { return "int16_t" }
@@ -776,6 +900,45 @@ fn map_type(self, resolved_type: Str) -> Str {
     }
 
     var base = inner
+
+    if strlen(base) > 0 && base[0] == Char(40) { // starts with '(' indicating a tuple type (T1, T2, ...)
+        let clean_name = "Tuple_" + self.cgb_clean_type_for_mangling(base)
+        if cgb_strlist_find(&self.monomorphized_types, clean_name) < 0 {
+            self.monomorphized_types.push(clean_name)
+            // Parse comma-separated types
+            let inner_types = base[1..strlen(base) - 1]
+            var types_list = ArrayList<Str>(self.allocator)
+            var start = 0
+            var i = 0
+            while i < strlen(inner_types) {
+                if inner_types[i] == Char(44) {
+                    // Inline trim spaces
+                    var ts_start = start
+                    while ts_start < i && inner_types[ts_start] == Char(32) { ts_start = ts_start + 1 }
+                    var ts_end = i
+                    while ts_end > ts_start && inner_types[ts_end - 1] == Char(32) { ts_end = ts_end - 1 }
+                    types_list.push(inner_types[ts_start..ts_end])
+                    start = i + 1
+                }
+                i = i + 1
+            }
+            var ts_start = start
+            while ts_start < strlen(inner_types) && inner_types[ts_start] == Char(32) { ts_start = ts_start + 1 }
+            var ts_end = strlen(inner_types)
+            while ts_end > ts_start && inner_types[ts_end - 1] == Char(32) { ts_end = ts_end - 1 }
+            types_list.push(inner_types[ts_start..ts_end])
+
+            self.struct_decls.append("typedef struct " + clean_name + " " + clean_name + ";\n")
+            self.struct_decls.append("struct " + clean_name + " {\n")
+            var ti = 0
+            while ti < types_list.length() {
+                self.struct_decls.append("    " + self.map_type(types_list.get(ti)) + " f" + cgb_int_to_str(ti) + ";\n")
+                ti = ti + 1
+            }
+            self.struct_decls.append("};\n")
+        }
+        base = clean_name
+    }
 
     if self.current_type_map.length() > 0 {
         var tmi2 = 0
@@ -1083,16 +1246,22 @@ fn gen_expr(self, expr_idx: Int) -> Str {
 
     if expr.kind == ExprKind.ek_literal {
         let vkind = expr.lit_vkind
+        var printed = ""
         if vkind == "INT" {
+            var val_str = "0"
             match expr.lit_value {
-                case .tv_str(v) => {
-                    let s: Str = v
-                    return s + "LL"
-                }
-                case .tv_int(v) => { return cgb_int_to_str(v) + "LL" }
-                case else => { return "0LL" }
+                case .tv_str(v) => { val_str = v }
+                case .tv_int(v) => { val_str = cgb_int_to_str(v) }
+                case else => {}
             }
+            let cnode = cexpr_new_int(val_str)
+            let c_idx = self.c_exprs.length()
+            self.c_exprs.push(cnode)
+            var printer = CPrinter(builder: self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+            printed = printer.print_expr(c_idx)
         }
+        if strlen(printed) > 0 { return printed }
+        // Fallback for non-INT literals temporarily
         if vkind == "FLOAT" {
             match expr.lit_value {
                 case .tv_str(v) => { return v }
@@ -1136,7 +1305,11 @@ fn gen_expr(self, expr_idx: Int) -> Str {
     }
 
     if expr.kind == ExprKind.ek_identifier {
-        return expr.ident_name
+        let cnode = cexpr_new_ident(expr.ident_name)
+        let c_idx = self.c_exprs.length()
+        self.c_exprs.push(cnode)
+        var printer = CPrinter(builder: self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+        return printer.print_expr(c_idx)
     }
 
     if expr.kind == ExprKind.ek_binary_op {
@@ -2056,7 +2229,18 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
             bi = bi - 1
         }
         if drop_calls.length() == 0 {
-            self.builder.emit_line("break;")
+            // ROUTE VIA C-AST
+            var block_stmts = ArrayList<Int>(self.allocator)
+            let cnode = CStmtNode(
+                kind: CStmtKind.cs_break, block_stmts: block_stmts, expr_stmt: -1, if_cond: -1, if_then: -1, if_else: -1,
+                while_cond: -1, while_body: -1, for_init: -1, for_cond: -1, for_inc: -1, for_body: -1, do_body: -1, do_cond: -1,
+                return_val: -1, var_type: ctype_void(), var_name: "", var_init: -1, switch_expr: -1, case_val: "",
+                label_name: "", asm_code: "", asm_volatile: false
+            )
+            let c_idx = self.c_stmts.length()
+            self.c_stmts.push(cnode)
+            var printer = CPrinter(builder: self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+            printer.print_stmt(c_idx)
         } else {
             self.builder.begin_block()
             var ci = 0
@@ -2102,7 +2286,18 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
             bi = bi - 1
         }
         if drop_calls.length() == 0 {
-            self.builder.emit_line("continue;")
+            // ROUTE VIA C-AST
+            var block_stmts = ArrayList<Int>(self.allocator)
+            let cnode = CStmtNode(
+                kind: CStmtKind.cs_continue, block_stmts: block_stmts, expr_stmt: -1, if_cond: -1, if_then: -1, if_else: -1,
+                while_cond: -1, while_body: -1, for_init: -1, for_cond: -1, for_inc: -1, for_body: -1, do_body: -1, do_cond: -1,
+                return_val: -1, var_type: ctype_void(), var_name: "", var_init: -1, switch_expr: -1, case_val: "",
+                label_name: "", asm_code: "", asm_volatile: false
+            )
+            let c_idx = self.c_stmts.length()
+            self.c_stmts.push(cnode)
+            var printer = CPrinter(builder: self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+            printer.print_stmt(c_idx)
         } else {
             self.builder.begin_block()
             var ci = 0
@@ -2283,9 +2478,17 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     if stmt.kind == StmtKind.sk_expr {
         let expr = self.expr_pool.get(stmt.expr_stmt)
         if expr.kind != ExprKind.ek_identifier && expr.kind != ExprKind.ek_literal {
+            // Build the expression string
             let val = self.gen_expr(stmt.expr_stmt)
             if strlen(val) > 0 {
-                self.builder.emit_line(val + ";")
+                // To keep it fully aligned, we wrap this in our intermediate CStmtNode
+                let c_expr_idx = self.c_exprs.length() - 1 // the index of the already generated expression node or we map it
+                let c_stmt = cstmt_new_expr(c_expr_idx)
+                let c_stmt_idx = self.c_stmts.length()
+                self.c_stmts.push(c_stmt)
+                // Use printer to emit the formatted statement
+                var printer = CPrinter(builder: self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+                printer.print_stmt(c_stmt_idx)
             }
         }
         return
@@ -2362,10 +2565,23 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
         }
 
         if has_source {
-            var lexer = Lexer(self.allocator, source, "")
+            var current_file_path = ""
+            if path.length() > 0 && path.get(0) == "std" {
+                var path_str = ""
+                var i = 0
+                while i < path.length() {
+                    if i > 0 { path_str = path_str + "/" }
+                    path_str = path_str + path.get(i)
+                    i = i + 1
+                }
+                current_file_path = path_str + ".kai"
+            } else {
+                current_file_path = "src/" + module_key + ".kai"
+            }
+            var lexer = Lexer(self.allocator, source, current_file_path)
             lexer.lex()
             if !lexer.has_error {
-                var parser = Parser.init_with_pools(self.allocator, "", lexer.tokens, self.expr_pool, self.stmt_pool, self.pattern_pool)
+                var parser = Parser.init_with_pools(self.allocator, current_file_path, lexer.tokens, self.expr_pool, self.stmt_pool, self.pattern_pool)
                 let program_idx = parser.parse_program()
                 if program_idx >= 0 {
                     let prog = self.stmt_pool.get(program_idx)
@@ -2624,7 +2840,6 @@ fn build_func_types(self) -> Void {
         if stmt.kind == StmtKind.sk_impl_block {
             let struct_name = stmt.impl_struct_name
             if cgb_map_find(&self.generic_struct_decls, struct_name) >= 0 || cgb_map_find(&self.generic_enum_decls, struct_name) >= 0 {
-                i2 = i2 + 1
                 continue
             }
             let mapped_name = self.map_type(struct_name)

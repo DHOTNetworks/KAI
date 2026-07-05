@@ -215,6 +215,37 @@ fn map_type(self, type_name: Str) -> Str {
         resolved_type = self.substitute_generic_type(type_name)
     }
 
+    if length(resolved_type) > 0 && resolved_type[0] == Char(40) { // starts with '(' indicating a tuple type (T1, T2, ...)
+        let clean_name = "Tuple_" + self.clean_type_for_mangling(resolved_type)
+        if strlist_find(&self.result_definitions, clean_name) < 0 {
+            self.result_definitions.push(clean_name)
+            // Parse the comma-separated types inside
+            let inner_types = resolved_type[1..length(resolved_type) - 1]
+            var types_list = ArrayList<Str>(self.allocator)
+            var start = 0
+            var i = 0
+            while i < length(inner_types) {
+                if inner_types[i] == Char(44) {
+                    types_list.push(self.trim_spaces(inner_types[start..i]))
+                    start = i + 1
+                }
+                i = i + 1
+            }
+            types_list.push(self.trim_spaces(inner_types[start..length(inner_types)]))
+
+            var struct_str = "typedef struct " + clean_name + " " + clean_name + ";\n"
+            struct_str = struct_str + "struct " + clean_name + " {\n"
+            var ti = 0
+            while ti < types_list.length() {
+                struct_str = struct_str + "    " + self.map_type(types_list.get(ti)) + " f" + int_to_str(ti) + ";\n"
+                ti = ti + 1
+            }
+            struct_str = struct_str + "};\n"
+            let _ = self.struct_decls.append(struct_str)
+        }
+        return clean_name
+    }
+
     if length(resolved_type) > 0 && resolved_type[0] == Char(63) {
         let val_type = resolved_type[1..length(resolved_type)]
         if self.is_pointer_type(val_type) {
@@ -422,7 +453,7 @@ fn clean_type_for_mangling(self, s: Str) -> Str {
             res = res + "_"
         } else if c == Char(63) {
             res = res + "opt_"
-        } else if c == Char(60) || c == Char(62) || c == Char(44) || c == Char(33) {
+        } else if c == Char(60) || c == Char(62) || c == Char(44) || c == Char(33) || c == Char(40) || c == Char(41) {
             res = res + "_"
         } else {
             res = res + char_to_str(c)

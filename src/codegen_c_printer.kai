@@ -1,0 +1,162 @@
+import ArrayList from std.core.array
+import CCodeBuilder from codegen_c_builder
+import CType from codegen_c_ast
+import CExprNode from codegen_c_ast
+import CExprKind from codegen_c_ast
+import CStmtNode from codegen_c_ast
+import CStmtKind from codegen_c_ast
+import CDeclNode from codegen_c_ast
+import ctype_to_str from codegen_c_ast
+
+struct CPrinter {
+    builder: CCodeBuilder
+    expr_pool: *ArrayList<CExprNode>
+    stmt_pool: *ArrayList<CStmtNode>
+}
+
+impl CPrinter {
+
+fn init(self, builder: CCodeBuilder, expr_pool: *ArrayList<CExprNode>, stmt_pool: *ArrayList<CStmtNode>) {
+    self.builder = builder
+    self.expr_pool = expr_pool
+    self.stmt_pool = stmt_pool
+}
+
+fn print_expr(self, idx: Int) -> Str {
+    if idx < 0 { return "" }
+    let node = self.expr_pool.get(idx)
+    if node.kind == CExprKind.ck_int_lit {
+        return node.int_val + "LL"
+    }
+    if node.kind == CExprKind.ck_float_lit {
+        return node.float_val
+    }
+    if node.kind == CExprKind.ck_str_lit {
+        return node.str_val
+    }
+    if node.kind == CExprKind.ck_char_lit {
+        return node.char_val
+    }
+    if node.kind == CExprKind.ck_bool_lit {
+        if node.bool_val { return "true" }
+        return "false"
+    }
+    if node.kind == CExprKind.ck_ident {
+        return node.ident_name
+    }
+    if node.kind == CExprKind.ck_binary {
+        let left = self.print_expr(node.binop_left)
+        let right = self.print_expr(node.binop_right)
+        return "(" + left + " " + node.binop_op + " " + right + ")"
+    }
+    if node.kind == CExprKind.ck_unary {
+        let operand = self.print_expr(node.unop_operand)
+        if node.is_prefix {
+            return "(" + node.unop_op + operand + ")"
+        }
+        return "(" + operand + node.unop_op + ")"
+    }
+    if node.kind == CExprKind.ck_call {
+        var args_str = ""
+        var i = 0
+        while i < node.call_args.length() {
+            if i > 0 { args_str = args_str + ", " }
+            args_str = args_str + self.print_expr(node.call_args.get(i))
+            i = i + 1
+        }
+        return node.callee_name + "(" + args_str + ")"
+    }
+    if node.kind == CExprKind.ck_field {
+        let base = self.print_expr(node.field_expr)
+        return base + "." + node.field_name
+    }
+    if node.kind == CExprKind.ck_arrow {
+        let base = self.print_expr(node.field_expr)
+        return base + "->" + node.field_name
+    }
+    if node.kind == CExprKind.ck_index {
+        let base = self.print_expr(node.idx_expr)
+        let idx = self.print_expr(node.idx_index)
+        return base + "[" + idx + "]"
+    }
+    if node.kind == CExprKind.ck_cast {
+        let base = self.print_expr(node.cast_expr)
+        let target = ctype_to_str(node.cast_type)
+        return "((" + target + ")(" + base + "))"
+    }
+    if node.kind == CExprKind.ck_ternary {
+        let cond = self.print_expr(node.tern_cond)
+        let then_expr = self.print_expr(node.tern_then)
+        let else_expr = self.print_expr(node.tern_else)
+        return "(" + cond + " ? " + then_expr + " : " + else_expr + ")"
+    }
+    if node.kind == CExprKind.ck_sizeof_type {
+        return "sizeof(" + ctype_to_str(node.sizeof_type) + ")"
+    }
+    if node.kind == CExprKind.ck_sizeof_expr {
+        let base = self.print_expr(node.sizeof_expr)
+        return "sizeof(" + base + ")"
+    }
+    if node.kind == CExprKind.ck_assign {
+        let target = self.print_expr(node.assign_target)
+        let val = self.print_expr(node.assign_value)
+        return "(" + target + " " + node.assign_op + " " + val + ")"
+    }
+    return ""
+}
+
+fn print_stmt(self, idx: Int) {
+    if idx < 0 { return }
+    let node = self.stmt_pool.get(idx)
+    if node.kind == CStmtKind.cs_block {
+        self.builder.begin_block()
+        var i = 0
+        while i < node.block_stmts.length() {
+            self.print_stmt(node.block_stmts.get(i))
+            i = i + 1
+        }
+        self.builder.end_block()
+    }
+    if node.kind == CStmtKind.cs_expr {
+        self.builder.emit_line(self.print_expr(node.expr_stmt) + ";")
+    }
+    if node.kind == CStmtKind.cs_if {
+        let cond = self.print_expr(node.if_cond)
+        self.builder.emit_line("if (" + cond + ")")
+        self.print_stmt(node.if_then)
+        if node.if_else >= 0 {
+            self.builder.emit_line("else")
+            self.print_stmt(node.if_else)
+        }
+    }
+    if node.kind == CStmtKind.cs_while {
+        let cond = self.print_expr(node.while_cond)
+        self.builder.emit_line("while (" + cond + ")")
+        self.print_stmt(node.while_body)
+    }
+    if node.kind == CStmtKind.cs_return {
+        if node.return_val >= 0 {
+            let val = self.print_expr(node.return_val)
+            self.builder.emit_line("return " + val + ";")
+        } else {
+            self.builder.emit_line("return;")
+        }
+    }
+    if node.kind == CStmtKind.cs_break {
+        self.builder.emit_line("break;")
+    }
+    if node.kind == CStmtKind.cs_continue {
+        self.builder.emit_line("continue;")
+    }
+    if node.kind == CStmtKind.cs_var_decl {
+        let type_str = ctype_to_str(node.var_type)
+        if node.var_init >= 0 {
+            let init_val = self.print_expr(node.var_init)
+            self.builder.emit_line(type_str + " " + node.var_name + " = " + init_val + ";")
+        } else {
+            self.builder.emit_line(type_str + " " + node.var_name + ";")
+        }
+    }
+}
+
+}

@@ -106,13 +106,14 @@ fn main(argc: Int, argv: **Char) -> Int {
     var json_mode = false
     var check_only = false
 
-    var i = 2
-    if !is_run { i = 2 }
+    var i = 1
+    if is_run { i = 2 }
     while i < argc {
         let arg = argv[i] as Str
         var matched = true
         unsafe {
-            if strcmp(arg, "-c") == 0 { emit_c_only = true }
+            if strcmp(arg, "run") == 0 { /* skip */ }
+            else if strcmp(arg, "-c") == 0 { emit_c_only = true }
             else if strcmp(arg, "-CC") == 0 { use_builder = true }
             else if strcmp(arg, "-o") == 0 {
                 if i + 1 < argc { i = i + 1; output_bin = argv[i] as Str }
@@ -126,7 +127,11 @@ fn main(argc: Int, argv: **Char) -> Int {
             else if strcmp(arg, "check") == 0 { check_only = true }
             else { matched = false }
         }
-        if matched == false && !is_run { input_file = arg }
+        if matched == false {
+            if strlen(arg) > 0 && arg[0] != Char(45) {
+                input_file = arg
+            }
+        }
         i = i + 1
     }
 

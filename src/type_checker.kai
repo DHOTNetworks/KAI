@@ -309,6 +309,62 @@ impl TypeChecker {
         if t == s {
             return true
         }
+        if length(t) > 0 && t[0] == Char(40) && length(s) > 0 && s[0] == Char(40) {
+            // Extract comma-separated types from both tuples
+            let t_inner = t[1..length(t) - 1]
+            var t_list = ArrayList<Str>(self.allocator)
+            var start = 0
+            var i = 0
+            while i < length(t_inner) {
+                if t_inner[i] == Char(44) {
+                    var ts_start = start
+                    while ts_start < i && t_inner[ts_start] == Char(32) { ts_start = ts_start + 1 }
+                    var ts_end = i
+                    while ts_end > ts_start && t_inner[ts_end - 1] == Char(32) { ts_end = ts_end - 1 }
+                    t_list.push(t_inner[ts_start..ts_end])
+                    start = i + 1
+                }
+                i = i + 1
+            }
+            var ts_start = start
+            while ts_start < length(t_inner) && t_inner[ts_start] == Char(32) { ts_start = ts_start + 1 }
+            var ts_end = length(t_inner)
+            while ts_end > ts_start && t_inner[ts_end - 1] == Char(32) { ts_end = ts_end - 1 }
+            t_list.push(t_inner[ts_start..ts_end])
+
+            let s_inner = s[1..length(s) - 1]
+            var s_list = ArrayList<Str>(self.allocator)
+            start = 0
+            i = 0
+            while i < length(s_inner) {
+                if s_inner[i] == Char(44) {
+                    var ts_start = start
+                    while ts_start < i && s_inner[ts_start] == Char(32) { ts_start = ts_start + 1 }
+                    var ts_end = i
+                    while ts_end > ts_start && s_inner[ts_end - 1] == Char(32) { ts_end = ts_end - 1 }
+                    s_list.push(s_inner[ts_start..ts_end])
+                    start = i + 1
+                }
+                i = i + 1
+            }
+            ts_start = start
+            while ts_start < length(s_inner) && s_inner[ts_start] == Char(32) { ts_start = ts_start + 1 }
+            ts_end = length(s_inner)
+            while ts_end > ts_start && s_inner[ts_end - 1] == Char(32) { ts_end = ts_end - 1 }
+            s_list.push(s_inner[ts_start..ts_end])
+
+            if t_list.length() != s_list.length() {
+                return false
+            }
+            var ti = 0
+            while ti < t_list.length() {
+                if !self.types_compatible(t_list.get(ti), s_list.get(ti)) {
+                    return false
+                }
+                ti = ti + 1
+            }
+            return true
+        }
         // Integer types are fully explicit — no implicit cross-type coercion
         if self.is_integer_type(t) && self.is_integer_type(s) {
             return false
@@ -599,6 +655,52 @@ impl TypeChecker {
                 }
             }
             let base_type = self.get_expr_type(expr.field_expr)
+            if length(base_type) > 0 && base_type[0] == Char(40) { // starts with '(' (tuple type)
+                let field_name = expr.field_name
+                if length(field_name) > 1 && field_name[0] == Char(102) { // starts with 'f'
+                    // Parse index
+                    var idx_val = 0
+                    var fi = 1
+                    var valid = true
+                    while fi < length(field_name) {
+                        let c = field_name[fi]
+                        if c >= Char(48) && c <= Char(57) {
+                            idx_val = idx_val * 10 + (Int(c) - 48)
+                        } else {
+                            valid = false
+                        }
+                        fi = fi + 1
+                    }
+                    if valid {
+                        // Extract comma-separated types from tuple
+                        let inner_types = base_type[1..length(base_type) - 1]
+                        var types_list = ArrayList<Str>(self.allocator)
+                        var start = 0
+                        var i = 0
+                        while i < length(inner_types) {
+                            if inner_types[i] == Char(44) {
+                                // Trim spaces
+                                var ts_start = start
+                                while ts_start < i && inner_types[ts_start] == Char(32) { ts_start = ts_start + 1 }
+                                var ts_end = i
+                                while ts_end > ts_start && inner_types[ts_end - 1] == Char(32) { ts_end = ts_end - 1 }
+                                types_list.push(inner_types[ts_start..ts_end])
+                                start = i + 1
+                            }
+                            i = i + 1
+                        }
+                        var ts_start = start
+                        while ts_start < length(inner_types) && inner_types[ts_start] == Char(32) { ts_start = ts_start + 1 }
+                        var ts_end = length(inner_types)
+                        while ts_end > ts_start && inner_types[ts_end - 1] == Char(32) { ts_end = ts_end - 1 }
+                        types_list.push(inner_types[ts_start..ts_end])
+
+                        if idx_val < types_list.length() {
+                            return types_list.get(idx_val)
+                        }
+                    }
+                }
+            }
             var clean_type = ""
             var i = 0
             while i < length(base_type) {
@@ -701,6 +803,15 @@ impl TypeChecker {
                 return substring(inner_ty, 0, excl_pos)
             }
             return "Void"
+        }
+        if expr.kind == ExprKind.ek_tuple {
+            var types = ArrayList<Str>(self.allocator)
+            var i = 0
+            while i < expr.tup_elements.length() {
+                types.push(self.get_expr_type(expr.tup_elements.get(i)))
+                i = i + 1
+            }
+            return "(" + str_array_join(types, ", ") + ")"
         }
         return "Void"
     }

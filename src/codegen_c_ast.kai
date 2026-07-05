@@ -158,7 +158,7 @@ struct CExprNode {
     cast_expr: Int
     // Compound literal
     compound_type: CType
-    compound_fields: ArrayList<(Str, Int)>  // (field_name, expr_idx) pairs
+    compound_fields: ArrayList<Str>  // changed from tuple array to simple array
     // Ternary
     tern_cond: Int
     tern_then: Int
@@ -233,7 +233,7 @@ struct CDeclNode {
     is_function: Bool
     func_ret: CType
     func_name: Str
-    func_params: ArrayList<(CType, Str)>
+    func_params: ArrayList<Str>
     func_vararg: Bool
     func_body: ArrayList<Int>  // stmt indices
     is_extern: Bool
@@ -242,13 +242,13 @@ struct CDeclNode {
     var_init: Int
     is_struct: Bool
     struct_name: Str
-    struct_fields: ArrayList<(CType, Str)>
+    struct_fields: ArrayList<Str>
     is_enum: Bool
     enum_name: Str
     enum_variants: ArrayList<Str>
     is_tagged_enum: Bool
     tagged_name: Str
-    tagged_variants: ArrayList<(Str, ArrayList<(CType, Str)>)>
+    tagged_variants: ArrayList<Str>
     is_typedef: Bool
     typedef_alias: Str
     typedef_def: CType
@@ -263,4 +263,80 @@ struct CUnit {
 
 fn cunit_new(includes: ArrayList<Str>, decls: ArrayList<CDeclNode>) -> CUnit {
     return CUnit(includes: includes, decls: decls)
+}
+
+//== 8. Node Constructors
+
+fn cexpr_new_int(val: Str) -> CExprNode {
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    return CExprNode(
+        kind: CExprKind.ck_int_lit, int_val: val, float_val: "", str_val: "", char_val: "", bool_val: false,
+        ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
+        call_func: -1, call_args: args, callee_name: "", field_expr: -1, field_name: "", idx_expr: -1, idx_index: -1,
+        cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
+        tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
+        assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+    )
+}
+
+fn cexpr_new_ident(name: Str) -> CExprNode {
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    return CExprNode(
+        kind: CExprKind.ck_ident, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
+        ident_name: name, binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
+        call_func: -1, call_args: args, callee_name: "", field_expr: -1, field_name: "", idx_expr: -1, idx_index: -1,
+        cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
+        tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
+        assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+    )
+}
+
+fn cexpr_new_binary(left: Int, op: Str, right: Int) -> CExprNode {
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    return CExprNode(
+        kind: CExprKind.ck_binary, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
+        ident_name: "", binop_left: left, binop_right: right, binop_op: op, unop_operand: -1, unop_op: "", is_prefix: false,
+        call_func: -1, call_args: args, callee_name: "", field_expr: -1, field_name: "", idx_expr: -1, idx_index: -1,
+        cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
+        tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
+        assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+    )
+}
+
+fn cexpr_new_call(callee: Str, args: ArrayList<Int>) -> CExprNode {
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    return CExprNode(
+        kind: CExprKind.ck_call, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
+        ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
+        call_func: -1, call_args: args, callee_name: callee, field_expr: -1, field_name: "", idx_expr: -1, idx_index: -1,
+        cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
+        tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
+        assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+    )
+}
+
+fn cstmt_new_expr(expr_idx: Int) -> CStmtNode {
+    var block_stmts = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
+    return CStmtNode(
+        kind: CStmtKind.cs_expr, block_stmts: block_stmts, expr_stmt: expr_idx, if_cond: -1, if_then: -1, if_else: -1,
+        while_cond: -1, while_body: -1, for_init: -1, for_cond: -1, for_inc: -1, for_body: -1, do_body: -1, do_cond: -1,
+        return_val: -1, var_type: ctype_void(), var_name: "", var_init: -1, switch_expr: -1, case_val: "",
+        label_name: "", asm_code: "", asm_volatile: false
+    )
+}
+
+fn cstmt_new_block(stmts: ArrayList<Int>) -> CStmtNode {
+    return CStmtNode(
+        kind: CStmtKind.cs_block, block_stmts: stmts, expr_stmt: -1, if_cond: -1, if_then: -1, if_else: -1,
+        while_cond: -1, while_body: -1, for_init: -1, for_cond: -1, for_inc: -1, for_body: -1, do_body: -1, do_cond: -1,
+        return_val: -1, var_type: ctype_void(), var_name: "", var_init: -1, switch_expr: -1, case_val: "",
+        label_name: "", asm_code: "", asm_volatile: false
+    )
 }
