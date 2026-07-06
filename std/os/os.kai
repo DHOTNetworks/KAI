@@ -1,9 +1,11 @@
 cimport "std/os/os.h"
+import Allocator from std.core.allocator
 
 extern fn kai_os_sleep_ms(ms: Int)
 extern fn kai_os_getpid() -> Int
 extern fn kai_os_getenv(name: Str) -> *Char
 extern fn kai_os_setenv(name: Str, val: Str) -> Int
+extern fn kai_os_get_exe_dir(buf: *Char, max_len: Int) -> Int
 
 fn os_sleep_ms(ms: Int) {
     unsafe {
@@ -30,5 +32,22 @@ fn os_getenv(name: Str) -> Str {
 fn os_setenv(name: Str, val: Str) -> Bool {
     unsafe {
         return kai_os_setenv(name, val) == 0
+    }
+}
+
+fn os_get_exe_dir(buf: *Char, max_len: Int) -> Bool {
+    unsafe {
+        return kai_os_get_exe_dir(buf, max_len) == 0
+    }
+}
+
+fn os_get_exe_dir_alloc(allocator: *Allocator) -> ?Str {
+    unsafe {
+        let buf = allocator.alloc(1024, 1) as *Char
+        if kai_os_get_exe_dir(buf, 1024) == 0 {
+            return buf as Str
+        }
+        allocator.free(buf)
+        return none
     }
 }

@@ -1,7 +1,4 @@
 /* BUILDER CODEGEN ACTIVE */
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -9,45 +6,9 @@
 #include <string.h>
 #include <inttypes.h>
 #ifndef NO_GET_EXE_DIR
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <dlfcn.h>
-#include <limits.h>
-#endif
-
+#include "std/os/os.h"
 int64_t get_exe_dir(char* out_buf, int64_t max_len) {
-#if defined(_WIN32)
-    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);
-    if (len == 0 || len >= max_len) return -1;
-    for (int i = len - 1; i >= 0; i--) {
-        if (out_buf[i] == '\\' || out_buf[i] == '/') {
-            out_buf[i] = '\0';
-            break;
-        }
-    }
-    return 0;
-#else
-    Dl_info info;
-    char dummy = 0;
-    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {
-        char real_path[PATH_MAX];
-        if (realpath(info.dli_fname, real_path) != NULL) {
-            char* last_slash = strrchr(real_path, '/');
-            if (last_slash != NULL) {
-                *last_slash = '\0';
-                int i = 0;
-                while (i < max_len - 1 && real_path[i] != '\0') {
-                    out_buf[i] = real_path[i];
-                    i++;
-                }
-                out_buf[i] = '\0';
-                return 0;
-            }
-        }
-    }
-    return -1;
-#endif
+    return kai_os_get_exe_dir(out_buf, max_len);
 }
 #endif
 
@@ -75,19 +36,6 @@ static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t 
     size_t total = (size_t)count * (size_t)elem_size;
     void* buf = malloc(total);
     if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);
-    return buf;
-}
-
-static char* __kai_std_str_concat_alloc(const char* left, const char* right) {
-    size_t left_len = strlen(left);
-    size_t right_len = strlen(right);
-    size_t total = left_len + right_len + 1;
-    char* buf = (char*)malloc(total);
-    if (buf) {
-        memcpy(buf, left, left_len);
-        memcpy(buf + left_len, right, right_len);
-        buf[total - 1] = '\0';
-    }
     return buf;
 }
 
@@ -1443,6 +1391,7 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
 void ImportResolver_resolve_all(ImportResolver* self, int64_t program_idx, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool);
 extern int64_t get_exe_dir(char* buf, int64_t max_len);
 extern char* strstr(const char* haystack, const char* needle);
+const char* __kai_std_str_concat_alloc(const char* left, const char* right);
 int64_t type_map_find(ArrayList_StrMapEntry* arr, const char* key);
 const char* type_map_get(ArrayList_StrMapEntry* arr, const char* key);
 void type_map_put(ArrayList_StrMapEntry* arr, const char* key, const char* value);
@@ -1478,7 +1427,6 @@ ArrayList_Str Codegen__collect_loop_drops(Codegen* self);
 void Codegen_emit_struct_body_with_deps(Codegen* self, int64_t stmt_idx, ArrayList_Str* emitted);
 const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx);
 extern char* strstr(const char* haystack, const char* needle);
-extern int64_t get_exe_dir(char* buf, int64_t max_len);
 StrBuf StrBuf_init(KaiAllocator* a);
 void StrBuf_append(StrBuf* self, const char* s);
 const char* StrBuf_to_str(StrBuf* self);
@@ -1531,6 +1479,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx);
 void CodegenBuilder_build_func_types(CodegenBuilder* self);
 void CodegenBuilder_emit_struct_body_with_deps(CodegenBuilder* self, int64_t stmt_idx, ArrayList_Str* emitted);
 const char* CodegenBuilder_generate(CodegenBuilder* self, int64_t top_stmt_idx);
+extern const char* __kai_std_str_concat_alloc(const char* left, const char* right);
 CCodeBuilder CCodeBuilder_init(KaiAllocator* allocator);
 void CCodeBuilder_clear(CCodeBuilder* self);
 void CCodeBuilder_emit_line(CCodeBuilder* self, const char* code);
@@ -8628,6 +8577,30 @@ void ImportResolver_resolve_all(ImportResolver* self, int64_t program_idx, Array
         }
     }
 }
+const char* __kai_std_str_concat_alloc(const char* left, const char* right)
+{
+    int64_t left_len = strlen(left);
+    int64_t right_len = strlen(right);
+    int64_t total = ((left_len + right_len) + 1LL);
+    char* buf = malloc(total);
+    if (buf != ((char*)(((unsigned long long)(0LL)))))
+    {
+        int64_t i = 0LL;
+        while (i < left_len)
+        {
+            buf[i] = left[i];
+            i = (i + 1LL);
+        }
+        int64_t j = 0LL;
+        while (j < right_len)
+        {
+            buf[(left_len + j)] = right[j];
+            j = (j + 1LL);
+        }
+        buf[(total - 1LL)] = ((char)(0LL));
+    }
+    return ((const char*)(buf));
+}
 int64_t type_map_find(ArrayList_StrMapEntry* arr, const char* key)
 {
     int64_t i = (ArrayList_StrMapEntry_length(arr) - 1LL);
@@ -11365,8 +11338,6 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx)
         }
         if (stmt.func_body < 0LL)
         {
-            const char* proto = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), name), "("), params_str), ");\n");
-            (void)(StringBuilder_append(&(self->func_decls), proto));
             self->cur_func_name = old_fn;
             self->cur_return_type = old_ret;
             self->cur_method_is_init = old_init;
@@ -12561,47 +12532,9 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx)
     StringBuilder_append(&(result), "#include <stdlib.h>\n");
     StringBuilder_append(&(result), "#include <string.h>\n");
     StringBuilder_append(&(result), "#ifndef NO_GET_EXE_DIR\n");
-    StringBuilder_append(&(result), "#if defined(_WIN32)\n");
-    StringBuilder_append(&(result), "#include <windows.h>\n");
-    StringBuilder_append(&(result), "#else\n");
-    StringBuilder_append(&(result), "#ifndef _GNU_SOURCE\n");
-    StringBuilder_append(&(result), "#define _GNU_SOURCE\n");
-    StringBuilder_append(&(result), "#endif\n");
-    StringBuilder_append(&(result), "#include <dlfcn.h>\n");
-    StringBuilder_append(&(result), "#include <limits.h>\n");
-    StringBuilder_append(&(result), "#endif\n\n");
+    StringBuilder_append(&(result), "#include \"std/os/os.h\"\n");
     StringBuilder_append(&(result), "int64_t get_exe_dir(char* out_buf, int64_t max_len) {\n");
-    StringBuilder_append(&(result), "#if defined(_WIN32)\n");
-    StringBuilder_append(&(result), "    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);\n");
-    StringBuilder_append(&(result), "    if (len == 0 || len >= max_len) return -1;\n");
-    StringBuilder_append(&(result), "    for (int i = len - 1; i >= 0; i--) {\n");
-    StringBuilder_append(&(result), "        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {\n");
-    StringBuilder_append(&(result), "            out_buf[i] = '\\0';\n");
-    StringBuilder_append(&(result), "            break;\n");
-    StringBuilder_append(&(result), "        }\n");
-    StringBuilder_append(&(result), "    }\n");
-    StringBuilder_append(&(result), "    return 0;\n");
-    StringBuilder_append(&(result), "#else\n");
-    StringBuilder_append(&(result), "    Dl_info info;\n");
-    StringBuilder_append(&(result), "    char dummy = 0;\n");
-    StringBuilder_append(&(result), "    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {\n");
-    StringBuilder_append(&(result), "        char real_path[PATH_MAX];\n");
-    StringBuilder_append(&(result), "        if (realpath(info.dli_fname, real_path) != NULL) {\n");
-    StringBuilder_append(&(result), "            char* last_slash = strrchr(real_path, '/');\n");
-    StringBuilder_append(&(result), "            if (last_slash != NULL) {\n");
-    StringBuilder_append(&(result), "                *last_slash = '\\0';\n");
-    StringBuilder_append(&(result), "                int i = 0;\n");
-    StringBuilder_append(&(result), "                while (i < max_len - 1 && real_path[i] != '\\0') {\n");
-    StringBuilder_append(&(result), "                    out_buf[i] = real_path[i];\n");
-    StringBuilder_append(&(result), "                    i++;\n");
-    StringBuilder_append(&(result), "                }\n");
-    StringBuilder_append(&(result), "                out_buf[i] = '\\0';\n");
-    StringBuilder_append(&(result), "                return 0;\n");
-    StringBuilder_append(&(result), "            }\n");
-    StringBuilder_append(&(result), "        }\n");
-    StringBuilder_append(&(result), "    }\n");
-    StringBuilder_append(&(result), "    return -1;\n");
-    StringBuilder_append(&(result), "#endif\n");
+    StringBuilder_append(&(result), "    return kai_os_get_exe_dir(out_buf, max_len);\n");
     StringBuilder_append(&(result), "}\n");
     StringBuilder_append(&(result), "#endif\n");
     StringBuilder_append(&(result), "\n");
@@ -15036,11 +14969,11 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx)
                     fn_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fn_name, "_"), clean);
                     tai = (tai + 1LL);
                 }
-                fn_name = __kai_std_str_concat_alloc(fn_name, "_new");
+                fn_name = __kai_std_str_concat_alloc(fn_name, "_init");
             }
             else
             {
-                fn_name = __kai_std_str_concat_alloc(name, "_new");
+                fn_name = __kai_std_str_concat_alloc(name, "_init");
             }
         }
         ArrayList_Int call_args = ArrayList_Int_init(self->allocator);
@@ -16702,14 +16635,7 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self)
                 }
                 pi = (pi + 1LL);
             }
-            bool is_runtime_helper = false;
-            {
-                if (strcmp(stmt.func_name, "__kai_std_str_concat_alloc") == 0LL)
-                {
-                    is_runtime_helper = true;
-                }
-            }
-            if ((!has_self_param) && (!is_runtime_helper))
+            if (!has_self_param)
             {
                 const char* params_str = "";
                 int64_t pi2 = 0LL;
@@ -16800,22 +16726,15 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self)
                 }
                 pi = (pi + 1LL);
             }
-            bool is_runtime_helper = false;
-            {
-                if (strcmp(stmt.func_name, "__kai_std_str_concat_alloc") == 0LL)
-                {
-                    is_runtime_helper = true;
-                }
-            }
             if (has_self_param)
             {
             }
             else
-            if (is_runtime_helper)
+            if (ArrayList_Str_length(&(stmt.func_type_params)) > 0LL)
             {
             }
             else
-            if (ArrayList_Str_length(&(stmt.func_type_params)) > 0LL)
+            if (stmt.func_body < 0LL)
             {
             }
             else
@@ -16893,10 +16812,6 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self)
             {
                 {
                     if (strcmp(stmt.extern_name, "_kai_set_current_allocator") == 0LL)
-                    {
-                    }
-                    else
-                    if (strcmp(stmt.extern_name, "__kai_std_str_concat_alloc") == 0LL)
                     {
                     }
                     else
@@ -18046,9 +17961,6 @@ void CPrinter_print_decl(CPrinter* self, CDeclNode decl)
 void CPrinter_emit_runtime_preamble(CPrinter* self, ArrayList_Str* cimport_headers)
 {
     CCodeBuilder_emit_line(self->builder, "/* BUILDER CODEGEN ACTIVE */");
-    CCodeBuilder_emit_line(self->builder, "#ifndef _GNU_SOURCE");
-    CCodeBuilder_emit_line(self->builder, "#define _GNU_SOURCE");
-    CCodeBuilder_emit_line(self->builder, "#endif");
     CCodeBuilder_emit_line(self->builder, "#include <stdint.h>");
     CCodeBuilder_emit_line(self->builder, "#include <stdbool.h>");
     CCodeBuilder_emit_line(self->builder, "#include <stdio.h>");
@@ -18056,45 +17968,9 @@ void CPrinter_emit_runtime_preamble(CPrinter* self, ArrayList_Str* cimport_heade
     CCodeBuilder_emit_line(self->builder, "#include <string.h>");
     CCodeBuilder_emit_line(self->builder, "#include <inttypes.h>");
     CCodeBuilder_emit_line(self->builder, "#ifndef NO_GET_EXE_DIR");
-    CCodeBuilder_emit_line(self->builder, "#if defined(_WIN32)");
-    CCodeBuilder_emit_line(self->builder, "#include <windows.h>");
-    CCodeBuilder_emit_line(self->builder, "#else");
-    CCodeBuilder_emit_line(self->builder, "#include <dlfcn.h>");
-    CCodeBuilder_emit_line(self->builder, "#include <limits.h>");
-    CCodeBuilder_emit_line(self->builder, "#endif");
-    CCodeBuilder_emit_blank(self->builder);
+    CCodeBuilder_emit_line(self->builder, "#include \"std/os/os.h\"");
     CCodeBuilder_emit_line(self->builder, "int64_t get_exe_dir(char* out_buf, int64_t max_len) {");
-    CCodeBuilder_emit_line(self->builder, "#if defined(_WIN32)");
-    CCodeBuilder_emit_line(self->builder, "    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);");
-    CCodeBuilder_emit_line(self->builder, "    if (len == 0 || len >= max_len) return -1;");
-    CCodeBuilder_emit_line(self->builder, "    for (int i = len - 1; i >= 0; i--) {");
-    CCodeBuilder_emit_line(self->builder, "        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {");
-    CCodeBuilder_emit_line(self->builder, "            out_buf[i] = '\\0';");
-    CCodeBuilder_emit_line(self->builder, "            break;");
-    CCodeBuilder_emit_line(self->builder, "        }");
-    CCodeBuilder_emit_line(self->builder, "    }");
-    CCodeBuilder_emit_line(self->builder, "    return 0;");
-    CCodeBuilder_emit_line(self->builder, "#else");
-    CCodeBuilder_emit_line(self->builder, "    Dl_info info;");
-    CCodeBuilder_emit_line(self->builder, "    char dummy = 0;");
-    CCodeBuilder_emit_line(self->builder, "    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {");
-    CCodeBuilder_emit_line(self->builder, "        char real_path[PATH_MAX];");
-    CCodeBuilder_emit_line(self->builder, "        if (realpath(info.dli_fname, real_path) != NULL) {");
-    CCodeBuilder_emit_line(self->builder, "            char* last_slash = strrchr(real_path, '/');");
-    CCodeBuilder_emit_line(self->builder, "            if (last_slash != NULL) {");
-    CCodeBuilder_emit_line(self->builder, "                *last_slash = '\\0';");
-    CCodeBuilder_emit_line(self->builder, "                int i = 0;");
-    CCodeBuilder_emit_line(self->builder, "                while (i < max_len - 1 && real_path[i] != '\\0') {");
-    CCodeBuilder_emit_line(self->builder, "                    out_buf[i] = real_path[i];");
-    CCodeBuilder_emit_line(self->builder, "                    i++;");
-    CCodeBuilder_emit_line(self->builder, "                }");
-    CCodeBuilder_emit_line(self->builder, "                out_buf[i] = '\\0';");
-    CCodeBuilder_emit_line(self->builder, "                return 0;");
-    CCodeBuilder_emit_line(self->builder, "            }");
-    CCodeBuilder_emit_line(self->builder, "        }");
-    CCodeBuilder_emit_line(self->builder, "    }");
-    CCodeBuilder_emit_line(self->builder, "    return -1;");
-    CCodeBuilder_emit_line(self->builder, "#endif");
+    CCodeBuilder_emit_line(self->builder, "    return kai_os_get_exe_dir(out_buf, max_len);");
     CCodeBuilder_emit_line(self->builder, "}");
     CCodeBuilder_emit_line(self->builder, "#endif");
     CCodeBuilder_emit_blank(self->builder);
@@ -18122,19 +17998,6 @@ void CPrinter_emit_runtime_preamble(CPrinter* self, ArrayList_Str* cimport_heade
     CCodeBuilder_emit_line(self->builder, "    size_t total = (size_t)count * (size_t)elem_size;");
     CCodeBuilder_emit_line(self->builder, "    void* buf = malloc(total);");
     CCodeBuilder_emit_line(self->builder, "    if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);");
-    CCodeBuilder_emit_line(self->builder, "    return buf;");
-    CCodeBuilder_emit_line(self->builder, "}");
-    CCodeBuilder_emit_blank(self->builder);
-    CCodeBuilder_emit_line(self->builder, "static char* __kai_std_str_concat_alloc(const char* left, const char* right) {");
-    CCodeBuilder_emit_line(self->builder, "    size_t left_len = strlen(left);");
-    CCodeBuilder_emit_line(self->builder, "    size_t right_len = strlen(right);");
-    CCodeBuilder_emit_line(self->builder, "    size_t total = left_len + right_len + 1;");
-    CCodeBuilder_emit_line(self->builder, "    char* buf = (char*)malloc(total);");
-    CCodeBuilder_emit_line(self->builder, "    if (buf) {");
-    CCodeBuilder_emit_line(self->builder, "        memcpy(buf, left, left_len);");
-    CCodeBuilder_emit_line(self->builder, "        memcpy(buf + left_len, right, right_len);");
-    CCodeBuilder_emit_line(self->builder, "        buf[total - 1] = '\\0';");
-    CCodeBuilder_emit_line(self->builder, "    }");
     CCodeBuilder_emit_line(self->builder, "    return buf;");
     CCodeBuilder_emit_line(self->builder, "}");
     CCodeBuilder_emit_blank(self->builder);

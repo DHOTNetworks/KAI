@@ -1,6 +1,8 @@
 #ifndef KAI_FAST_MATH_H
 #define KAI_FAST_MATH_H
 
+#include "../core/platform.h"
+
 #include <math.h>
 
 #if defined(__aarch64__)

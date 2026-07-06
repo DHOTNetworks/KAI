@@ -1,7 +1,11 @@
 #ifndef KAI_FS_H
 #define KAI_FS_H
 
-#if defined(_WIN32)
+#include "../core/platform.h"
+
+#include <stdlib.h>
+
+#if KAI_OS_WIN
 #include <windows.h>
 #include <direct.h>
 #include <stdio.h>
@@ -12,12 +16,8 @@
 #include <unistd.h>
 #endif
 
-#include <stdlib.h>
-#include <stdint.h>
-#include <stdbool.h>
-
 static inline bool kai_fs_exists(const char* path) {
-#if defined(_WIN32)
+#if KAI_OS_WIN
     DWORD dwAttrib = GetFileAttributesA(path);
     return (dwAttrib != INVALID_FILE_ATTRIBUTES);
 #else
@@ -27,7 +27,7 @@ static inline bool kai_fs_exists(const char* path) {
 }
 
 static inline bool kai_fs_is_dir(const char* path) {
-#if defined(_WIN32)
+#if KAI_OS_WIN
     DWORD dwAttrib = GetFileAttributesA(path);
     return (dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 #else
@@ -38,7 +38,7 @@ static inline bool kai_fs_is_dir(const char* path) {
 }
 
 static inline bool kai_fs_mkdir(const char* path) {
-#if defined(_WIN32)
+#if KAI_OS_WIN
     return _mkdir(path) == 0;
 #else
     return mkdir(path, 0777) == 0;
@@ -46,7 +46,7 @@ static inline bool kai_fs_mkdir(const char* path) {
 }
 
 static inline bool kai_fs_remove(const char* path) {
-#if defined(_WIN32)
+#if KAI_OS_WIN
     DWORD dwAttrib = GetFileAttributesA(path);
     if (dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY)) {
         return RemoveDirectoryA(path) != 0;
@@ -62,7 +62,7 @@ static inline bool kai_fs_remove(const char* path) {
 #endif
 }
 
-#if defined(_WIN32)
+#if KAI_OS_WIN
 typedef struct {
     HANDLE handle;
     WIN32_FIND_DATAA findData;
@@ -75,7 +75,7 @@ typedef struct {
 #endif
 
 static inline void* kai_fs_opendir(const char* path) {
-#if defined(_WIN32)
+#if KAI_OS_WIN
     char search_path[MAX_PATH];
     snprintf(search_path, sizeof(search_path), "%s\\*", path);
     KaiDir* kd = malloc(sizeof(KaiDir));
@@ -98,7 +98,7 @@ static inline void* kai_fs_opendir(const char* path) {
 static inline char* kai_fs_readdir(void* handle) {
     if (handle == NULL) return NULL;
     KaiDir* kd = (KaiDir*)handle;
-#if defined(_WIN32)
+#if KAI_OS_WIN
     if (kd->first) {
         kd->first = false;
         return (char*)kd->findData.cFileName;
@@ -117,7 +117,7 @@ static inline char* kai_fs_readdir(void* handle) {
 static inline void kai_fs_closedir(void* handle) {
     if (handle == NULL) return;
     KaiDir* kd = (KaiDir*)handle;
-#if defined(_WIN32)
+#if KAI_OS_WIN
     if (kd->handle != INVALID_HANDLE_VALUE) {
         FindClose(kd->handle);
     }

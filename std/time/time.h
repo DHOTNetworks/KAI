@@ -1,17 +1,17 @@
 #ifndef KAI_TIME_H
 #define KAI_TIME_H
 
-#if defined(_WIN32)
+#include "../core/platform.h"
+
+#if KAI_OS_WIN
 #include <windows.h>
 #else
 #include <time.h>
 #include <sys/time.h>
 #endif
 
-#include <stdint.h>
-
 static inline int64_t kai_time_monotonic_ns(void) {
-#if defined(_WIN32)
+#if KAI_OS_WIN
     LARGE_INTEGER count, freq;
     if (QueryPerformanceCounter(&count) && QueryPerformanceFrequency(&freq)) {
         return (int64_t)((double)count.QuadPart / (double)freq.QuadPart * 1e9);
@@ -27,7 +27,7 @@ static inline int64_t kai_time_monotonic_ns(void) {
 }
 
 static inline int64_t kai_time_system_ms(void) {
-#if defined(_WIN32)
+#if KAI_OS_WIN
     FILETIME ft;
     GetSystemTimeAsFileTime(&ft);
     ULARGE_INTEGER u;

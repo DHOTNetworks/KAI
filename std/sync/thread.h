@@ -1,17 +1,18 @@
 #ifndef KAI_THREAD_H
 #define KAI_THREAD_H
 
-#if defined(_WIN32)
+#include "../core/platform.h"
+
+#include <stdlib.h>
+
+#if KAI_OS_WIN
 #include <windows.h>
 #else
 #include <pthread.h>
-#include <stdlib.h>
 #endif
 
-#include <stdint.h>
-
 static inline void* kai_thread_spawn(void* f_ptr, void* arg) {
-#if defined(_WIN32)
+#if KAI_OS_WIN
     HANDLE thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)f_ptr, arg, 0, NULL);
     return (void*)thread;
 #else
@@ -27,7 +28,7 @@ static inline void* kai_thread_spawn(void* f_ptr, void* arg) {
 
 static inline void* kai_thread_join(void* handle) {
     if (handle == NULL) return NULL;
-#if defined(_WIN32)
+#if KAI_OS_WIN
     WaitForSingleObject((HANDLE)handle, INFINITE);
     CloseHandle((HANDLE)handle);
     return NULL;
@@ -41,7 +42,7 @@ static inline void* kai_thread_join(void* handle) {
 }
 
 static inline void* kai_mutex_init(void) {
-#if defined(_WIN32)
+#if KAI_OS_WIN
     CRITICAL_SECTION* cs = malloc(sizeof(CRITICAL_SECTION));
     InitializeCriticalSection(cs);
     return (void*)cs;
@@ -54,7 +55,7 @@ static inline void* kai_mutex_init(void) {
 
 static inline void kai_mutex_lock(void* handle) {
     if (handle == NULL) return;
-#if defined(_WIN32)
+#if KAI_OS_WIN
     EnterCriticalSection((CRITICAL_SECTION*)handle);
 #else
     pthread_mutex_lock((pthread_mutex_t*)handle);
@@ -63,7 +64,7 @@ static inline void kai_mutex_lock(void* handle) {
 
 static inline void kai_mutex_unlock(void* handle) {
     if (handle == NULL) return;
-#if defined(_WIN32)
+#if KAI_OS_WIN
     LeaveCriticalSection((CRITICAL_SECTION*)handle);
 #else
     pthread_mutex_unlock((pthread_mutex_t*)handle);
@@ -72,7 +73,7 @@ static inline void kai_mutex_unlock(void* handle) {
 
 static inline void kai_mutex_destroy(void* handle) {
     if (handle == NULL) return;
-#if defined(_WIN32)
+#if KAI_OS_WIN
     DeleteCriticalSection((CRITICAL_SECTION*)handle);
     free(handle);
 #else

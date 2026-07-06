@@ -58,7 +58,6 @@ extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn strstr(haystack: Str, needle: Str) -> *Char
 extern fn malloc(size: Int) -> *Char
 extern fn strlen(s: Str) -> Int
-extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
 
 //== Minimal string builder (replaces buggy StringBuilder from std.core.string)
 
@@ -1520,9 +1519,9 @@ fn gen_expr(self, expr_idx: Int) -> Int {
                     fn_name = fn_name + "_" + clean
                     tai = tai + 1
                 }
-                fn_name = fn_name + "_new"
+                fn_name = fn_name + "_init"
             } else {
-                fn_name = name + "_new"
+                fn_name = name + "_init"
             }
         }
 
@@ -2813,9 +2812,7 @@ fn build_func_types(self) -> Void {
                 unsafe { if strcmp(p.name, "self") == 0 { has_self_param = true } }
                 pi = pi + 1
             }
-            var is_runtime_helper = false
-            unsafe { if strcmp(stmt.func_name, "__kai_std_str_concat_alloc") == 0 { is_runtime_helper = true } }
-            if !has_self_param && !is_runtime_helper {
+            if !has_self_param {
                 var params_str = ""
                 var pi2 = 0
                 while pi2 < stmt.func_params.length() {
@@ -2885,11 +2882,9 @@ fn build_func_types(self) -> Void {
                 unsafe { if strcmp(p.name, "self") == 0 { has_self_param = true } }
                 pi = pi + 1
             }
-            var is_runtime_helper = false
-            unsafe { if strcmp(stmt.func_name, "__kai_std_str_concat_alloc") == 0 { is_runtime_helper = true } }
             if has_self_param { /* skip impl methods — handled by sk_impl_block */ }
-            else if is_runtime_helper { /* skip — emitted as runtime helper */ }
             else if stmt.func_type_params.length() > 0 { /* skip generic functions — monomorphized separately */ }
+            else if stmt.func_body < 0 { /* skip auto-generated stubs (e.g. _new constructors) */ }
             else {
                 self.var_types.init(self.allocator)
                 self.block_stack.init(self.allocator)
@@ -2952,7 +2947,6 @@ fn build_func_types(self) -> Void {
             if !self.is_standard_c_func(stmt.extern_name) {
                 unsafe {
                     if strcmp(stmt.extern_name, "_kai_set_current_allocator") == 0 { /* skip */ }
-                    else if strcmp(stmt.extern_name, "__kai_std_str_concat_alloc") == 0 { /* skip */ }
                     else {
                         var params_str = ""
                         var pi3 = 0

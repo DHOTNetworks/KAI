@@ -1,7 +1,11 @@
 #ifndef KAI_SOCKET_H
 #define KAI_SOCKET_H
 
-#if defined(_WIN32)
+#include "../core/platform.h"
+
+#include <string.h>
+
+#if KAI_OS_WIN
 #include <winsock2.h>
 #include <ws2tcpip.h>
 typedef int32_t kai_sock_len_t;
@@ -10,18 +14,14 @@ typedef int32_t kai_sock_len_t;
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <string.h>
 typedef socklen_t kai_sock_len_t;
 #define INVALID_SOCKET -1
 #define SOCKET_ERROR -1
 typedef int SOCKET;
 #endif
 
-#include <stdint.h>
-#include <stdbool.h>
-
 static inline void kai_socket_init(void) {
-#if defined(_WIN32)
+#if KAI_OS_WIN
     WSADATA wsaData;
     WSAStartup(MAKEWORD(2, 2), &wsaData);
 #endif
@@ -62,7 +62,7 @@ static inline bool kai_socket_connect(int64_t fd, const char* ip, int64_t port) 
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons((uint16_t)port);
-#if defined(_WIN32)
+#if KAI_OS_WIN
     addr.sin_addr.s_addr = inet_addr(ip);
     if (addr.sin_addr.s_addr == INADDR_NONE) return false;
 #else
@@ -73,7 +73,7 @@ static inline bool kai_socket_connect(int64_t fd, const char* ip, int64_t port) 
 
 static inline int64_t kai_socket_send(int64_t fd, char* data, int64_t len) {
     SOCKET s = (SOCKET)fd;
-#if defined(_WIN32)
+#if KAI_OS_WIN
     return (int64_t)send(s, data, (int)len, 0);
 #else
     return (int64_t)send(s, data, (size_t)len, 0);
@@ -82,7 +82,7 @@ static inline int64_t kai_socket_send(int64_t fd, char* data, int64_t len) {
 
 static inline int64_t kai_socket_recv(int64_t fd, char* buf, int64_t max_len) {
     SOCKET s = (SOCKET)fd;
-#if defined(_WIN32)
+#if KAI_OS_WIN
     return (int64_t)recv(s, buf, (int)max_len, 0);
 #else
     return (int64_t)recv(s, buf, (size_t)max_len, 0);
@@ -92,7 +92,7 @@ static inline int64_t kai_socket_recv(int64_t fd, char* buf, int64_t max_len) {
 static inline void kai_socket_close(int64_t fd) {
     SOCKET s = (SOCKET)fd;
     if (s == INVALID_SOCKET) return;
-#if defined(_WIN32)
+#if KAI_OS_WIN
     closesocket(s);
 #else
     close(s);

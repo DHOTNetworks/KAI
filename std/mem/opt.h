@@ -1,7 +1,7 @@
 #ifndef KAI_MEM_OPT_H
 #define KAI_MEM_OPT_H
 
-#include <stdint.h>
+#include "../core/platform.h"
 
 static inline void opt_memcpy(void* dest, void* src, int64_t n) {
 #if defined(__x86_64__)

@@ -1,8 +1,7 @@
 #ifndef KAI_ATOMIC_H
 #define KAI_ATOMIC_H
 
-#include <stdint.h>
-#include <stdbool.h>
+#include "../core/platform.h"
 
 static inline int64_t atomic_add(void* ptr, int64_t delta) {
 #if defined(__aarch64__)

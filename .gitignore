@@ -26,3 +26,7 @@ zero
 release/
 build.sh
 kai-linux
+
+# Temporary
+CCkai*
+kai*
