@@ -91,6 +91,8 @@ enum ExprKind {
 }
 struct ExprNode {
     kind: ExprKind
+    line: Int
+    col: Int
     inferred_type: Str
     lit_value: TokenValue
     lit_vkind: Str
@@ -156,6 +158,7 @@ enum StmtKind {
     case sk_print
     case sk_expr
     case sk_defer
+    case sk_errdefer
     case sk_unsafe
     case sk_extern
     case sk_import
@@ -168,6 +171,8 @@ enum StmtKind {
 }
 struct StmtNode {
     kind: StmtKind
+    line: Int
+    col: Int
     block_stmts: ArrayList<Int>
     vardecl_name: Str
     vardecl_type: Str
@@ -217,6 +222,7 @@ struct StmtNode {
     print_value: Int
     expr_stmt: Int
     defer_body: Int
+    errdefer_body: Int
     unsafe_body: Int
     extern_name: Str
     extern_params: ArrayList<Param>
@@ -266,9 +272,11 @@ fn empty_asmoutput_array() -> ArrayList<AsmOutput> {
 fn empty_asminput_array() -> ArrayList<AsmInput> {
     return ArrayList<AsmInput>(data: 0 as *AsmInput, len: 0, cap: 0, allocator: 0 as *Allocator)
 }
-fn new_expr_node(kind: ExprKind) -> ExprNode {
+fn new_expr_node(kind: ExprKind, line: Int, col: Int) -> ExprNode {
     var node = ExprNode(
         kind: kind,
+        line: line,
+        col: col,
         inferred_type: "",
         lit_value: TokenValue.tv_none,
         lit_vkind: "",
@@ -318,9 +326,11 @@ fn new_expr_node(kind: ExprKind) -> ExprNode {
     return node
 
 }
-fn new_stmt_node(kind: StmtKind) -> StmtNode {
+fn new_stmt_node(kind: StmtKind, line: Int, col: Int) -> StmtNode {
     var node = StmtNode(
         kind: kind,
+        line: line,
+        col: col,
         block_stmts: empty_int_array(),
         vardecl_name: "",
         vardecl_type: "",
@@ -370,6 +380,7 @@ fn new_stmt_node(kind: StmtKind) -> StmtNode {
         print_value: -1,
         expr_stmt: -1,
         defer_body: -1,
+    errdefer_body: -1,
         unsafe_body: -1,
         extern_name: "",
         extern_params: empty_param_array(),

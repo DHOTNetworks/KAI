@@ -1,0 +1,26 @@
+import std.io.print
+
+fn main() -> Int {
+    let a: i8 = 127
+    let b: i16 = 32767
+    let c: i32 = 2147483647
+    let d: i64 = 9223372036854775807
+    let e: u8 = 255
+    let f: u16 = 65535
+    let g: u32 = 4294967295
+    let h: u64 = 18446744073709551615
+    let i: usize = 100
+    let j: isize = -100 as isize
+    
+    printf("i8=%d\n", a)
+    printf("i16=%d\n", b)
+    printf("i32=%d\n", c)
+    printf("i64=%ld\n", d)
+    printf("u8=%u\n", e)
+    printf("u16=%u\n", f)
+    printf("u32=%u\n", g)
+    printf("u64=%lu\n", h)
+    printf("usize=%zu\n", i)
+    printf("isize=%td\n", j)
+    return 0
+}

@@ -71,6 +71,8 @@ fn keyword_type(ident: Str) -> TokenType {
         return TokenType.SIZEOF
     } else if ident == "defer" {
         return TokenType.DEFER
+    } else if ident == "errdefer" {
+        return TokenType.ERRDEFER
     } else if ident == "none" {
         return TokenType.NONE
     } else if ident == "try" {
@@ -107,6 +109,7 @@ fn make_keyword_value(ident: Str, ttype: TokenType) -> TokenValue {
 struct Lexer {
     allocator: *Allocator
     source: Str
+    source_file: Str
     source_len: Int
     cursor: Int
     line: Int
@@ -119,7 +122,7 @@ struct Lexer {
 
 }
 impl Lexer {
-    fn init(self, allocator: *Allocator, source: Str) {
+    fn init(self, allocator: *Allocator, source: Str, source_file: Str) {
         self.allocator = allocator
         self.source = source
         self.cursor = 0
@@ -128,6 +131,7 @@ impl Lexer {
         self.paren_depth = 0
         self.brace_depth = 0
         self.has_error = false
+        self.source_file = source_file
         unsafe {
             self.tokens = allocator.alloc(sizeof(ArrayList<Token>), 1) as *ArrayList<Token>
             self.indent_stack = allocator.alloc(sizeof(ArrayList<Int>), 1) as *ArrayList<Int>
@@ -168,7 +172,7 @@ impl Lexer {
 
     }
     fn lex_error(self, msg: Str) {
-        printf("error[E0100]: %s at line %lld, column %lld\n", msg, self.line, self.column)
+        printf("%s:%ld:%ld: error[E0100]: %s\n", self.source_file, self.line, self.column, msg)
         self.has_error = true
     }
     fn skip_line_comment(self) {
@@ -572,7 +576,7 @@ impl Lexer {
 
                 } else {
                     let _ = self.advance()
-                    printf("error[E0100]: unexpected character '%c' at line %lld, column %lld\n", c, self.line, self.column)
+                    printf("%s:%ld:%ld: error[E0100]: unexpected character '%c'\n", self.source_file, self.line, self.column, c)
                     self.has_error = true
                 }
             }

@@ -140,6 +140,7 @@ fn str_array_join(arr: ArrayList<Str>, sep: Str) -> Str {
 }
 struct Parser {
     allocator: *Allocator
+    source_file: Str
     tokens: *ArrayList<Token>
     cursor: Int
     pending_gt: Bool
@@ -151,8 +152,9 @@ struct Parser {
 
 }
 impl Parser {
-    fn init_with_pools(self, allocator: *Allocator, tokens: *ArrayList<Token>, expr_pool: *ArrayList<ExprNode>, stmt_pool: *ArrayList<StmtNode>, pattern_pool: *ArrayList<PatternNode>) -> Parser {
+    fn init_with_pools(self, allocator: *Allocator, source_file: Str, tokens: *ArrayList<Token>, expr_pool: *ArrayList<ExprNode>, stmt_pool: *ArrayList<StmtNode>, pattern_pool: *ArrayList<PatternNode>) -> Parser {
         self.allocator = allocator
+        self.source_file = source_file
         self.tokens = tokens
         self.cursor = 0
         self.pending_gt = false
@@ -164,8 +166,9 @@ impl Parser {
         return self
 
     }
-    fn init(self, allocator: *Allocator, tokens: *ArrayList<Token>) {
+    fn init(self, allocator: *Allocator, source_file: Str, tokens: *ArrayList<Token>) {
         self.allocator = allocator
+        self.source_file = source_file
         self.tokens = tokens
         self.cursor = 0
         self.pending_gt = false
@@ -232,7 +235,7 @@ impl Parser {
             return self.advance()
         }
         unsafe {
-            printf("error[E0101]: expected token type %lld but found %lld at line %lld, column %lld\n", Int(ttype), Int(tok.tok_type), tok.line, tok.column)
+            printf("%s:%ld:%ld: error[E0101]: expected token type %ld but found %ld\n", self.source_file, tok.line, tok.column, Int(ttype), Int(tok.tok_type))
             exit(1)
         }
         return tok
@@ -289,7 +292,7 @@ impl Parser {
 
     }
     fn ex_literal(self, val: TokenValue, vkind: Str) -> Int {
-        var node = new_expr_node(ExprKind.ek_literal)
+        var node = new_expr_node(ExprKind.ek_literal, self.peek(0).line, self.peek(0).column)
         node.lit_value = val
         node.lit_vkind = vkind
         self.expr_pool.push(node)
@@ -297,14 +300,14 @@ impl Parser {
 
     }
     fn ex_ident(self, name: Str) -> Int {
-        var node = new_expr_node(ExprKind.ek_identifier)
+        var node = new_expr_node(ExprKind.ek_identifier, self.peek(0).line, self.peek(0).column)
         node.ident_name = name
         self.expr_pool.push(node)
         return self.expr_pool.length() - 1
 
     }
     fn ex_ident_with(self, name: Str, targs: ArrayList<Str>) -> Int {
-        var node = new_expr_node(ExprKind.ek_identifier)
+        var node = new_expr_node(ExprKind.ek_identifier, self.peek(0).line, self.peek(0).column)
         node.ident_name = name
         node.ident_type_args = targs
         self.expr_pool.push(node)
@@ -312,7 +315,7 @@ impl Parser {
 
     }
     fn ex_binop(self, op: Str, left: Int, right: Int) -> Int {
-        var node = new_expr_node(ExprKind.ek_binary_op)
+        var node = new_expr_node(ExprKind.ek_binary_op, self.peek(0).line, self.peek(0).column)
         node.binop_op = op
         node.binop_left = left
         node.binop_right = right
@@ -321,7 +324,7 @@ impl Parser {
 
     }
     fn ex_unop(self, op: Str, operand: Int) -> Int {
-        var node = new_expr_node(ExprKind.ek_unary_op)
+        var node = new_expr_node(ExprKind.ek_unary_op, self.peek(0).line, self.peek(0).column)
         node.unop_op = op
         node.unop_operand = operand
         self.expr_pool.push(node)
@@ -329,7 +332,7 @@ impl Parser {
 
     }
     fn ex_call(self, name: Str, args: ArrayList<Int>) -> Int {
-        var node = new_expr_node(ExprKind.ek_func_call)
+        var node = new_expr_node(ExprKind.ek_func_call, self.peek(0).line, self.peek(0).column)
         node.func_name = name
         node.func_args = args
         self.expr_pool.push(node)
@@ -337,7 +340,7 @@ impl Parser {
 
     }
     fn ex_call_with(self, name: Str, args: ArrayList<Int>, targs: ArrayList<Str>) -> Int {
-        var node = new_expr_node(ExprKind.ek_func_call)
+        var node = new_expr_node(ExprKind.ek_func_call, self.peek(0).line, self.peek(0).column)
         node.func_name = name
         node.func_args = args
         node.func_type_args = targs
@@ -346,7 +349,7 @@ impl Parser {
 
     }
     fn ex_struct_init(self, name: Str, fields: ArrayList<FieldInit>) -> Int {
-        var node = new_expr_node(ExprKind.ek_struct_init)
+        var node = new_expr_node(ExprKind.ek_struct_init, self.peek(0).line, self.peek(0).column)
         node.struct_name = name
         node.struct_fields = fields
         self.expr_pool.push(node)
@@ -354,7 +357,7 @@ impl Parser {
 
     }
     fn ex_field(self, expr: Int, field: Str) -> Int {
-        var node = new_expr_node(ExprKind.ek_field_access)
+        var node = new_expr_node(ExprKind.ek_field_access, self.peek(0).line, self.peek(0).column)
         node.field_expr = expr
         node.field_name = field
         self.expr_pool.push(node)
@@ -362,7 +365,7 @@ impl Parser {
 
     }
     fn ex_method(self, expr: Int, method: Str, args: ArrayList<Int>) -> Int {
-        var node = new_expr_node(ExprKind.ek_method_call)
+        var node = new_expr_node(ExprKind.ek_method_call, self.peek(0).line, self.peek(0).column)
         node.meth_expr = expr
         node.meth_name = method
         node.meth_args = args
@@ -371,7 +374,7 @@ impl Parser {
 
     }
     fn ex_index(self, expr: Int, idx: Int) -> Int {
-        var node = new_expr_node(ExprKind.ek_index)
+        var node = new_expr_node(ExprKind.ek_index, self.peek(0).line, self.peek(0).column)
         node.idx_expr = expr
         node.idx_index = idx
         self.expr_pool.push(node)
@@ -379,14 +382,14 @@ impl Parser {
 
     }
     fn ex_check(self, expr: Int) -> Int {
-        var node = new_expr_node(ExprKind.ek_check)
+        var node = new_expr_node(ExprKind.ek_check, self.peek(0).line, self.peek(0).column)
         node.check_expr = expr
         self.expr_pool.push(node)
         return self.expr_pool.length() - 1
 
     }
     fn ex_slice(self, expr: Int, lower: Int, upper: Int, is_inclusive: Bool) -> Int {
-        var node = new_expr_node(ExprKind.ek_slice)
+        var node = new_expr_node(ExprKind.ek_slice, self.peek(0).line, self.peek(0).column)
         node.slice_expr = expr
         node.slice_lower = lower
         node.slice_upper = upper
@@ -396,7 +399,7 @@ impl Parser {
 
     }
     fn ex_range(self, start: Int, end: Int, is_inclusive: Bool) -> Int {
-        var node = new_expr_node(ExprKind.ek_range)
+        var node = new_expr_node(ExprKind.ek_range, self.peek(0).line, self.peek(0).column)
         node.range_start = start
         node.range_end = end
         node.range_inclusive = is_inclusive
@@ -405,21 +408,21 @@ impl Parser {
 
     }
     fn ex_array(self, elements: ArrayList<Int>) -> Int {
-        var node = new_expr_node(ExprKind.ek_array)
+        var node = new_expr_node(ExprKind.ek_array, self.peek(0).line, self.peek(0).column)
         node.arr_elements = elements
         self.expr_pool.push(node)
         return self.expr_pool.length() - 1
 
     }
     fn ex_tuple(self, elements: ArrayList<Int>) -> Int {
-        var node = new_expr_node(ExprKind.ek_tuple)
+        var node = new_expr_node(ExprKind.ek_tuple, self.peek(0).line, self.peek(0).column)
         node.tup_elements = elements
         self.expr_pool.push(node)
         return self.expr_pool.length() - 1
 
     }
     fn ex_borrow(self, expr: Int, is_mut: Bool) -> Int {
-        var node = new_expr_node(ExprKind.ek_borrow)
+        var node = new_expr_node(ExprKind.ek_borrow, self.peek(0).line, self.peek(0).column)
         node.borrow_expr = expr
         node.borrow_mut = is_mut
         self.expr_pool.push(node)
@@ -427,21 +430,21 @@ impl Parser {
 
     }
     fn ex_deref(self, expr: Int) -> Int {
-        var node = new_expr_node(ExprKind.ek_deref)
+        var node = new_expr_node(ExprKind.ek_deref, self.peek(0).line, self.peek(0).column)
         node.deref_expr = expr
         self.expr_pool.push(node)
         return self.expr_pool.length() - 1
 
     }
     fn ex_try(self, expr: Int) -> Int {
-        var node = new_expr_node(ExprKind.ek_try)
+        var node = new_expr_node(ExprKind.ek_try, self.peek(0).line, self.peek(0).column)
         node.try_expr = expr
         self.expr_pool.push(node)
         return self.expr_pool.length() - 1
 
     }
     fn ex_catch(self, expr: Int, var_name: Str, fallback: Int) -> Int {
-        var node = new_expr_node(ExprKind.ek_catch)
+        var node = new_expr_node(ExprKind.ek_catch, self.peek(0).line, self.peek(0).column)
         node.catch_expr = expr
         node.catch_var = var_name
         node.catch_fallback = fallback
@@ -450,7 +453,7 @@ impl Parser {
 
     }
     fn ex_asm(self, code: Str, is_volatile: Bool, outputs: ArrayList<AsmOutput>, inputs: ArrayList<AsmInput>, clobbers: ArrayList<Str>) -> Int {
-        var node = new_expr_node(ExprKind.ek_asm)
+        var node = new_expr_node(ExprKind.ek_asm, self.peek(0).line, self.peek(0).column)
         node.asm_code = code
         node.asm_is_volatile = is_volatile
         node.asm_outputs = outputs
@@ -461,14 +464,14 @@ impl Parser {
 
     }
     fn st_block(self, stmts: ArrayList<Int>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_block)
+        var node = new_stmt_node(StmtKind.sk_block, self.peek(0).line, self.peek(0).column)
         node.block_stmts = stmts
         self.stmt_pool.push(node)
         return self.stmt_pool.length() - 1
 
     }
     fn st_error(self, name: Str, variants: ArrayList<Str>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_error_decl)
+        var node = new_stmt_node(StmtKind.sk_error_decl, self.peek(0).line, self.peek(0).column)
         node.error_name = name
         node.error_variants = variants
         self.stmt_pool.push(node)
@@ -476,7 +479,7 @@ impl Parser {
 
     }
     fn st_var_decl(self, name: Str, type_ann: Str, value: Int, is_mut: Bool) -> Int {
-        var node = new_stmt_node(StmtKind.sk_var_decl)
+        var node = new_stmt_node(StmtKind.sk_var_decl, self.peek(0).line, self.peek(0).column)
         node.vardecl_name = name
         node.vardecl_type = type_ann
         node.vardecl_value = value
@@ -486,7 +489,7 @@ impl Parser {
 
     }
     fn st_assign(self, target: Int, value: Int, op: Str) -> Int {
-        var node = new_stmt_node(StmtKind.sk_assignment)
+        var node = new_stmt_node(StmtKind.sk_assignment, self.peek(0).line, self.peek(0).column)
         node.assign_target = target
         node.assign_value = value
         node.assign_op = op
@@ -495,7 +498,7 @@ impl Parser {
 
     }
     fn st_func(self, name: Str, params: ArrayList<Param>, ret_type: Str, body: Int, cap: Str, tp: ArrayList<Str>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_func_decl)
+        var node = new_stmt_node(StmtKind.sk_func_decl, self.peek(0).line, self.peek(0).column)
         node.func_name = name
         node.func_params = params
         node.func_return_type = ret_type
@@ -507,7 +510,7 @@ impl Parser {
 
     }
     fn st_struct(self, name: Str, fields: ArrayList<StructField>, tp: ArrayList<Str>, methods: ArrayList<Int>, impls: ArrayList<Int>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_struct_decl)
+        var node = new_stmt_node(StmtKind.sk_struct_decl, self.peek(0).line, self.peek(0).column)
         node.struct_name = name
         node.struct_fields = fields
         node.struct_type_params = tp
@@ -518,7 +521,7 @@ impl Parser {
 
     }
     fn st_impl(self, struct_name: Str, trait_name: Str, methods: ArrayList<Int>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_impl_block)
+        var node = new_stmt_node(StmtKind.sk_impl_block, self.peek(0).line, self.peek(0).column)
         node.impl_struct_name = struct_name
         node.impl_trait_name = trait_name
         node.impl_methods = methods
@@ -527,7 +530,7 @@ impl Parser {
 
     }
     fn st_trait(self, name: Str, methods: ArrayList<Int>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_trait_decl)
+        var node = new_stmt_node(StmtKind.sk_trait_decl, self.peek(0).line, self.peek(0).column)
         node.trait_name = name
         node.trait_methods = methods
         self.stmt_pool.push(node)
@@ -535,7 +538,7 @@ impl Parser {
 
     }
     fn st_enum(self, name: Str, variants: ArrayList<Variant>, tp: ArrayList<Str>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_enum_decl)
+        var node = new_stmt_node(StmtKind.sk_enum_decl, self.peek(0).line, self.peek(0).column)
         node.enum_name = name
         node.enum_variants = variants
         node.enum_type_params = tp
@@ -544,7 +547,7 @@ impl Parser {
 
     }
     fn st_match(self, expr: Int, cases: ArrayList<MatchCase>) -> Int {
-        var node = new_stmt_node(StmtKind.sk_match)
+        var node = new_stmt_node(StmtKind.sk_match, self.peek(0).line, self.peek(0).column)
         node.match_expr = expr
         node.match_cases = cases
         self.stmt_pool.push(node)
@@ -552,14 +555,14 @@ impl Parser {
 
     }
     fn st_unsafe(self, body: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_unsafe)
+        var node = new_stmt_node(StmtKind.sk_unsafe, self.peek(0).line, self.peek(0).column)
         node.unsafe_body = body
         self.stmt_pool.push(node)
         return self.stmt_pool.length() - 1
 
     }
     fn st_extern(self, name: Str, params: ArrayList<Param>, ret: Str) -> Int {
-        var node = new_stmt_node(StmtKind.sk_extern)
+        var node = new_stmt_node(StmtKind.sk_extern, self.peek(0).line, self.peek(0).column)
         node.extern_name = name
         node.extern_params = params
         node.extern_return = ret
@@ -568,7 +571,7 @@ impl Parser {
 
     }
     fn st_if(self, cond: Int, then_b: Int, else_b: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_if)
+        var node = new_stmt_node(StmtKind.sk_if, self.peek(0).line, self.peek(0).column)
         node.if_cond = cond
         node.if_then = then_b
         node.if_else = else_b
@@ -577,7 +580,7 @@ impl Parser {
 
     }
     fn st_if_let(self, vname: Str, expr: Int, then_b: Int, else_b: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_if_let)
+        var node = new_stmt_node(StmtKind.sk_if_let, self.peek(0).line, self.peek(0).column)
         node.iflet_var = vname
         node.iflet_expr = expr
         node.iflet_then = then_b
@@ -587,7 +590,7 @@ impl Parser {
 
     }
     fn st_while(self, cond: Int, body: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_while)
+        var node = new_stmt_node(StmtKind.sk_while, self.peek(0).line, self.peek(0).column)
         node.while_cond = cond
         node.while_body = body
         self.stmt_pool.push(node)
@@ -595,7 +598,7 @@ impl Parser {
 
     }
     fn st_for(self, var_name: Str, start: Int, end: Int, inc: Bool, body: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_for)
+        var node = new_stmt_node(StmtKind.sk_for, self.peek(0).line, self.peek(0).column)
         node.for_var = var_name
         node.for_start = start
         node.for_end = end
@@ -606,40 +609,47 @@ impl Parser {
 
     }
     fn st_return(self, value: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_return)
+        var node = new_stmt_node(StmtKind.sk_return, self.peek(0).line, self.peek(0).column)
         node.return_value = value
         self.stmt_pool.push(node)
         return self.stmt_pool.length() - 1
 
     }
     fn st_expr(self, expr: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_expr)
+        var node = new_stmt_node(StmtKind.sk_expr, self.peek(0).line, self.peek(0).column)
         node.expr_stmt = expr
         self.stmt_pool.push(node)
         return self.stmt_pool.length() - 1
 
     }
     fn st_defer(self, body: Int) -> Int {
-        var node = new_stmt_node(StmtKind.sk_defer)
+        var node = new_stmt_node(StmtKind.sk_defer, self.peek(0).line, self.peek(0).column)
         node.defer_body = body
         self.stmt_pool.push(node)
         return self.stmt_pool.length() - 1
 
     }
+    fn st_errdefer(self, body: Int) -> Int {
+        var node = new_stmt_node(StmtKind.sk_errdefer, self.peek(0).line, self.peek(0).column)
+        node.errdefer_body = body
+        self.stmt_pool.push(node)
+        return self.stmt_pool.length() - 1
+
+    }
     fn st_break(self) -> Int {
-        var node = new_stmt_node(StmtKind.sk_break)
+        var node = new_stmt_node(StmtKind.sk_break, self.peek(0).line, self.peek(0).column)
         self.stmt_pool.push(node)
         return self.stmt_pool.length() - 1
 
     }
     fn st_continue(self) -> Int {
-        var node = new_stmt_node(StmtKind.sk_continue)
+        var node = new_stmt_node(StmtKind.sk_continue, self.peek(0).line, self.peek(0).column)
         self.stmt_pool.push(node)
         return self.stmt_pool.length() - 1
 
     }
     fn st_import(self, path: ArrayList<Str>, alias: Str) -> Int {
-        var node = new_stmt_node(StmtKind.sk_import)
+        var node = new_stmt_node(StmtKind.sk_import, self.peek(0).line, self.peek(0).column)
         node.import_path = path
         node.import_alias = alias
         self.stmt_pool.push(node)
@@ -647,7 +657,7 @@ impl Parser {
 
     }
     fn st_cimport(self, header: Str, alias: Str) -> Int {
-        var node = new_stmt_node(StmtKind.sk_cimport)
+        var node = new_stmt_node(StmtKind.sk_cimport, self.peek(0).line, self.peek(0).column)
         node.cimport_header = header
         node.cimport_alias = alias
         self.stmt_pool.push(node)
@@ -724,6 +734,8 @@ impl Parser {
             return self.parse_return_stmt()
         } else if tok.tok_type == TokenType.DEFER {
             return self.parse_defer_stmt()
+        } else if tok.tok_type == TokenType.ERRDEFER {
+            return self.parse_errdefer_stmt()
         } else if tok.tok_type == TokenType.BREAK {
             return self.parse_break_stmt()
         } else if tok.tok_type == TokenType.CONTINUE {
@@ -1109,7 +1121,7 @@ impl Parser {
             return self.add_pattern(node)
         } else {
             unsafe {
-                printf("error[E0101]: unexpected token in pattern at line %lld, column %lld\n", tok.line, tok.column)
+                printf("%s:%ld:%ld: error[E0101]: unexpected token in pattern\n", self.source_file, tok.line, tok.column)
                 exit(1)
             }
             return -1
@@ -1223,7 +1235,7 @@ impl Parser {
             is_inclusive = expr_node.range_inclusive
         } else {
             unsafe {
-                printf("error[E0101]: invalid expression in for loop at line %lld, column %lld\n", self.peek(0).line, self.peek(0).column)
+                printf("%s:%ld:%ld: error[E0101]: invalid expression in for loop\n", self.source_file, self.peek(0).line, self.peek(0).column)
                 exit(1)
             }
         }
@@ -1267,6 +1279,19 @@ impl Parser {
         }
         return self.st_defer(body)
     }
+    fn parse_errdefer_stmt(self) -> Int {
+        let _ = self.advance()
+        var body: Int = -1
+        if self.peek(0).tok_type == TokenType.NEWLINE || self.peek(0).tok_type == TokenType.LBRACE {
+            if self.peek(0).tok_type == TokenType.NEWLINE {
+                self.expect_end_of_statement()
+            }
+            body = self.parse_block()
+        } else {
+            body = self.parse_statement()
+        }
+        return self.st_errdefer(body)
+    }
     fn parse_expr_or_assignment_stmt(self) -> Int {
         let expr = self.parse_expression(0)
         let next = self.peek(0)
@@ -1294,7 +1319,7 @@ impl Parser {
         }
         if self.peek(0).tok_type == TokenType.EOF {
             unsafe {
-                printf("error[E0101]: expected '}' but reached end of file\n")
+                printf("%s:0:0: error[E0101]: expected '}' but reached end of file\n", self.source_file)
                 exit(1)
             }
         }
@@ -1663,7 +1688,7 @@ impl Parser {
                     let _ = self.expect(TokenType.RPAREN)
                     return self.ex_call_with(ident, args, type_args)
                 }
-                var id_node = new_expr_node(ExprKind.ek_identifier)
+                var id_node = new_expr_node(ExprKind.ek_identifier, self.peek(0).line, self.peek(0).column)
                 id_node.ident_name = ident
                 id_node.ident_type_args = id_type_args
                 self.expr_pool.push(id_node)
@@ -1763,7 +1788,7 @@ impl Parser {
             return first
         } else {
             unsafe {
-                printf("error[E0101]: unexpected token at line %lld, column %lld (token type: %lld)\n", tok.line, tok.column, Int(tok.tok_type))
+                printf("%s:%ld:%ld: error[E0101]: unexpected token (type: %ld)\n", self.source_file, tok.line, tok.column, Int(tok.tok_type))
                 exit(1)
             }
             return -1

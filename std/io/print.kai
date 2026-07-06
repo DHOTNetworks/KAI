@@ -2,6 +2,8 @@
 import KaiAllocator from std.core.allocator
 
 extern fn printf(format: *Void) Str
+extern fn __kai_print_int(i: Int) -> Void
+extern fn __kai_print_float(f: Float) -> Void
 
 fn print_separator () {
     printf("---\n")
@@ -25,11 +27,11 @@ fn print() {
 */
 
 fn printi(i: Int) {
-    printf("%lld\n", i)
+    __kai_print_int(i)
 }
 
 fn printff(f: Float) {
-    printf("%f\n", f)
+    __kai_print_float(f)
 }
 
 fn prints(s: Str) {

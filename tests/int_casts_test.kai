@@ -1,0 +1,40 @@
+import std.io.print
+
+fn print_i64(v: i64) {
+    printf("%ld\n", v)
+}
+
+fn main() -> Int {
+    // Cast between different int types
+    let a: i32 = 42
+    let b: i64 = a as i64
+    let c: u32 = a as u32
+    let d: i16 = a as i16
+    let e: i8 = a as i8
+    let f: u8 = a as u8
+    
+    printf("i32=%d -> ", a)
+    printf("i64=%ld ", b)
+    printf("u32=%u ", c)
+    printf("i16=%d ", d)
+    printf("i8=%d ", e)
+    printf("u8=%u\n", f)
+    
+    // Unsigned to signed
+    let g: u32 = 300
+    let h: i32 = g as i32
+    printf("u32=%u -> i32=%d\n", g, h)
+    
+    // Wider to narrower
+    let i: i64 = 1000
+    let j: i16 = i as i16
+    printf("i64=%ld -> i16=%d\n", i, j)
+    
+    // Int to usize/isize
+    let k: Int = 42
+    let l: usize = k as usize
+    let m: isize = k as isize
+    printf("Int=%ld -> usize=%zu isize=%td\n", k, l, m)
+    
+    return 0
+}

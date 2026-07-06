@@ -157,13 +157,13 @@ fn main(argc: Int, argv: **Char) -> Int {
     }
     let source = source_res.value as Str
 
-    var lexer = Lexer(&allocator, source)
+    var lexer = Lexer(&allocator, source, input_file)
     lexer.lex()
     if lexer.has_error {
         if json_mode { printf("{\"messages\":[{\"code\":\"E0100\",\"message\":\"Lexer error\",\"file\":\"%s\"}],\"error\":true}\n", input_file) }
         return 2
     }
-    var parser = Parser(&allocator, lexer.tokens)
+    var parser = Parser(&allocator, input_file, lexer.tokens)
     let program_idx = parser.parse_program()
     if program_idx < 0 {
         if json_mode { printf("{\"messages\":[{\"code\":\"E0101\",\"message\":\"Parse error\",\"file\":\"%s\"}],\"error\":true}\n", input_file) }

@@ -1,0 +1,47 @@
+extern fn printf(fmt: Str) -> Int
+
+fn expect_compile_error() {
+    // These should all cause type checker errors:
+    
+    // Mismatch: i8 to i16
+    // let a: i8 = 1
+    // let b: i16 = a
+    
+    // Mismatch: i32 to i64
+    // let c: i32 = 1
+    // let d: i64 = c
+    
+    // Mismatch: u8 to i8 (signed vs unsigned)
+    // let e: u8 = 1
+    // let f: i8 = e
+    
+    // Mismatch: usize to i32
+    // let g: usize = 1
+    // let h: i32 = g
+    
+    // Mismatch: Int to i8
+    // let i: Int = 1
+    // let j: i8 = i
+    
+    // But these should work:
+    // let k: Int = 1
+    // let l: i64 = k  // Int is alias for i64
+    
+    printf("int type mismatch tests (compile-time only)\n")
+}
+
+fn main() -> Void {
+    // Test that Int and i64 are compatible
+    let a: Int = 42
+    var b: i64 = 0
+    b = a
+    printf("Int and i64 are compatible\n")
+    
+    // Test explicit casts work for different int types
+    let c: i8 = 10
+    let d: i16 = c as i16
+    let e: i32 = c as i32
+    let f: i64 = c as i64
+    let g: u8 = c as u8
+    printf("explicit int casts work\n")
+}

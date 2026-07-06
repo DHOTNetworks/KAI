@@ -1,3 +1,4 @@
+comptime { _ = @import("windows_compat.zig"); }
 pub const __builtin_bswap16 = @import("std").zig.c_builtins.__builtin_bswap16;
 pub const __builtin_bswap32 = @import("std").zig.c_builtins.__builtin_bswap32;
 pub const __builtin_bswap64 = @import("std").zig.c_builtins.__builtin_bswap64;
@@ -1014,6 +1015,65 @@ pub extern fn ffsll(c_longlong) c_int;
 pub extern fn fls(c_int) c_int;
 pub extern fn flsl(c_long) c_int;
 pub extern fn flsll(c_longlong) c_int;
+pub extern fn mmap(addr: ?*anyopaque, length: c_ulonglong, prot: c_int, flags: c_int, fd: c_int, offset: c_longlong) ?*anyopaque;
+pub extern fn munmap(addr: ?*anyopaque, length: c_ulonglong) c_int;
+pub fn __kai_str_sub(arg_s: [*c]const u8, arg_start: i64, arg_end: i64) callconv(.c) [*c]u8 {
+    var s = arg_s;
+    _ = &s;
+    var start = arg_start;
+    _ = &start;
+    var end = arg_end;
+    _ = &end;
+    var len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(s))));
+    _ = &len;
+    if (end > len) {
+        end = len;
+    }
+    if (start < @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
+        start = 0;
+    }
+    if (start >= end) {
+        var empty: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))))));
+        _ = &empty;
+        if (empty != null) {
+            empty[@as(c_uint, @intCast(@as(c_int, 0)))] = '\x00';
+        }
+        return empty;
+    }
+    var sub_len: i64 = end - start;
+    _ = &sub_len;
+    var buf: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, @truncate(sub_len + @as(i64, @bitCast(@as(c_longlong, @as(c_int, 1))))))))))));
+    _ = &buf;
+    if (buf != null) {
+        _ = __builtin___memcpy_chk(@as(?*anyopaque, @ptrCast(buf)), @as(?*const anyopaque, @ptrCast(s + @as(usize, @bitCast(@as(isize, @intCast(start)))))), @as(c_ulong, @bitCast(@as(c_long, @truncate(sub_len)))), __builtin_object_size(@as(?*const anyopaque, @ptrCast(buf)), @as(c_int, 0)));
+        (blk: {
+            const tmp = sub_len;
+            if (tmp >= 0) break :blk buf + @as(usize, @intCast(tmp)) else break :blk buf - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).* = '\x00';
+    }
+    return buf;
+}
+pub fn __kai_arr_sub(arg_arr: ?*const anyopaque, arg_start: i64, arg_end: i64, arg_elem_size: i64) callconv(.c) ?*anyopaque {
+    var arr = arg_arr;
+    _ = &arr;
+    var start = arg_start;
+    _ = &start;
+    var end = arg_end;
+    _ = &end;
+    var elem_size = arg_elem_size;
+    _ = &elem_size;
+    var count: i64 = end - start;
+    _ = &count;
+    if (count <= @as(i64, @bitCast(@as(c_longlong, @as(c_int, 0))))) return @as(?*anyopaque, @ptrFromInt(@as(c_int, 0)));
+    var total: usize = @as(usize, @bitCast(@as(c_long, @truncate(count)))) *% @as(usize, @bitCast(@as(c_long, @truncate(elem_size))));
+    _ = &total;
+    var buf: ?*anyopaque = malloc(total);
+    _ = &buf;
+    if (buf != null) {
+        _ = __builtin___memcpy_chk(buf, @as(?*const anyopaque, @ptrCast(@as([*c]const u8, @ptrCast(@alignCast(arr))) + @as(usize, @bitCast(@as(isize, @intCast(start * elem_size)))))), total, __builtin_object_size(buf, @as(c_int, 0)));
+    }
+    return buf;
+}
 pub const struct_timespec = extern struct {
     tv_sec: __darwin_time_t = @import("std").mem.zeroes(__darwin_time_t),
     tv_nsec: c_long = @import("std").mem.zeroes(c_long),
@@ -1467,8 +1527,6 @@ pub fn _kai_set_current_allocator(arg_allocator: ?*anyopaque) callconv(.c) void 
     _ = &allocator;
     _kai_current_allocator = allocator;
 }
-pub extern fn mmap(addr: ?*anyopaque, length: c_ulonglong, prot: c_int, flags: c_int, fd: c_int, offset: c_longlong) ?*anyopaque;
-pub extern fn munmap(addr: ?*anyopaque, length: c_ulonglong) c_int;
 pub fn _kai_mmap(arg_addr: [*c]u8, arg_length_1: i64, arg_prot: i64, arg_flags: i64, arg_fd: i64, arg_offset: i64) callconv(.c) [*c]u8 {
     var addr = arg_addr;
     _ = &addr;
@@ -1482,7 +1540,7 @@ pub fn _kai_mmap(arg_addr: [*c]u8, arg_length_1: i64, arg_prot: i64, arg_flags: 
     _ = &fd;
     var offset = arg_offset;
     _ = &offset;
-    return @as([*c]u8, @ptrCast(@alignCast(mmap(@as(?*anyopaque, @ptrCast(addr)), @as(c_ulonglong, @bitCast(length_1)), @as(c_int, @bitCast(@as(c_int, @truncate(prot)))), @as(c_int, @bitCast(@as(c_int, @truncate(flags)))), @as(c_int, @bitCast(@as(c_int, @truncate(fd)))), offset))));
+    return @as([*c]u8, @ptrCast(@alignCast(mmap(@as(?*anyopaque, @ptrCast(addr)), @as(c_ulonglong, @bitCast(length_1)), @as(c_int, @bitCast(@as(c_int, @truncate(prot)))), @as(c_int, 2) | @as(c_int, 4096), @as(c_int, @bitCast(@as(c_int, @truncate(fd)))), offset))));
 }
 pub fn _kai_munmap(arg_addr: [*c]u8, arg_length_1: i64) callconv(.c) i64 {
     var addr = arg_addr;
@@ -1490,45 +1548,6 @@ pub fn _kai_munmap(arg_addr: [*c]u8, arg_length_1: i64) callconv(.c) i64 {
     var length_1 = arg_length_1;
     _ = &length_1;
     return @as(i64, @bitCast(@as(c_longlong, munmap(@as(?*anyopaque, @ptrCast(addr)), @as(c_ulonglong, @bitCast(length_1))))));
-}
-pub fn _kai_str_concat(arg_l: [*c]const u8, arg_r: [*c]const u8) callconv(.c) [*c]u8 {
-    var l = arg_l;
-    _ = &l;
-    var r = arg_r;
-    _ = &r;
-    var l1: c_ulonglong = 0;
-    _ = &l1;
-    while (@as(c_int, @bitCast(@as(c_uint, l[@as(usize, @intCast(l1))]))) != @as(c_int, '\x00')) {
-        l1 +%= 1;
-    }
-    var l2: c_ulonglong = 0;
-    _ = &l2;
-    while (@as(c_int, @bitCast(@as(c_uint, r[@as(usize, @intCast(l2))]))) != @as(c_int, '\x00')) {
-        l2 +%= 1;
-    }
-    if ((l1 > @as(c_ulonglong, 1000000)) or (l2 > (@as(c_ulonglong, 1000000) -% l1))) {
-        return null;
-    }
-    var total: c_ulonglong = (l1 +% l2) +% @as(c_ulonglong, 1);
-    _ = &total;
-    var buf: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_ulong, @truncate(total))))))));
-    _ = &buf;
-    if (buf != null) {
-        var i: c_ulonglong = 0;
-        _ = &i;
-        while (i < l1) {
-            buf[@as(usize, @intCast(i))] = l[@as(usize, @intCast(i))];
-            i +%= 1;
-        }
-        var j: c_ulonglong = 0;
-        _ = &j;
-        while (j < l2) {
-            buf[@as(usize, @intCast(l1 +% j))] = r[@as(usize, @intCast(j))];
-            j +%= 1;
-        }
-        buf[@as(usize, @intCast(l1 +% l2))] = '\x00';
-    }
-    return buf;
 }
 pub const struct_CAlloc = extern struct {
     dummy: i64 = @import("std").mem.zeroes(i64),
@@ -1719,6 +1738,7 @@ pub const ArrayList_Int = struct_ArrayList_Int;
 pub const struct_Lexer = extern struct {
     allocator: [*c]KaiAllocator = @import("std").mem.zeroes([*c]KaiAllocator),
     source: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
+    source_file: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     source_len: i64 = @import("std").mem.zeroes(i64),
     cursor: i64 = @import("std").mem.zeroes(i64),
     line: i64 = @import("std").mem.zeroes(i64),
@@ -1856,6 +1876,8 @@ pub const struct_ArrayList_AsmInput = extern struct {
 pub const ArrayList_AsmInput = struct_ArrayList_AsmInput;
 pub const struct_ExprNode = extern struct {
     kind: ExprKind = @import("std").mem.zeroes(ExprKind),
+    line: i64 = @import("std").mem.zeroes(i64),
+    col: i64 = @import("std").mem.zeroes(i64),
     inferred_type: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     lit_value: TokenValue = @import("std").mem.zeroes(TokenValue),
     lit_vkind: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
@@ -1959,6 +1981,8 @@ pub const struct_ArrayList_MatchCase = extern struct {
 pub const ArrayList_MatchCase = struct_ArrayList_MatchCase;
 pub const struct_StmtNode = extern struct {
     kind: StmtKind = @import("std").mem.zeroes(StmtKind),
+    line: i64 = @import("std").mem.zeroes(i64),
+    col: i64 = @import("std").mem.zeroes(i64),
     block_stmts: ArrayList_Int = @import("std").mem.zeroes(ArrayList_Int),
     vardecl_name: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     vardecl_type: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
@@ -2047,6 +2071,7 @@ pub const struct_ArrayList_PatternNode = extern struct {
 pub const ArrayList_PatternNode = struct_ArrayList_PatternNode;
 pub const struct_Parser = extern struct {
     allocator: [*c]KaiAllocator = @import("std").mem.zeroes([*c]KaiAllocator),
+    source_file: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     tokens: [*c]ArrayList_Token = @import("std").mem.zeroes([*c]ArrayList_Token),
     cursor: i64 = @import("std").mem.zeroes(i64),
     pending_gt: bool = @import("std").mem.zeroes(bool),
@@ -2116,6 +2141,7 @@ pub const struct_TypeChecker = extern struct {
     current_func_ret_type: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     source_file: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     has_any_import: bool = @import("std").mem.zeroes(bool),
+    loop_depth: i64 = @import("std").mem.zeroes(i64),
 };
 pub const TypeChecker = struct_TypeChecker;
 pub const struct_StrMapEntry = extern struct {
@@ -2159,10 +2185,6 @@ pub const struct_Codegen = extern struct {
     func_param_types: ArrayList_StrMapEntry = @import("std").mem.zeroes(ArrayList_StrMapEntry),
 };
 pub const Codegen = struct_Codegen;
-pub const struct_Dir = extern struct {
-    handle: ?*anyopaque = @import("std").mem.zeroes(?*anyopaque),
-};
-pub const Dir = struct_Dir;
 pub const struct_ErrorInfo = extern struct {
     code: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     title: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
@@ -2176,6 +2198,20 @@ pub const struct_ErrorEntry = extern struct {
     file: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
 };
 pub const ErrorEntry = struct_ErrorEntry;
+pub const struct_Dir = extern struct {
+    handle: ?*anyopaque = @import("std").mem.zeroes(?*anyopaque),
+};
+pub const Dir = struct_Dir;
+pub const struct_Optional_Char = extern struct {
+    has_value: bool = @import("std").mem.zeroes(bool),
+    value: u8 = @import("std").mem.zeroes(u8),
+};
+pub const Optional_Char = struct_Optional_Char;
+pub const struct_Optional_Int = extern struct {
+    has_value: bool = @import("std").mem.zeroes(bool),
+    value: i64 = @import("std").mem.zeroes(i64),
+};
+pub const Optional_Int = struct_Optional_Int;
 pub const struct_ArrayList_Bool = extern struct {
     data: [*c]bool = @import("std").mem.zeroes([*c]bool),
     len: i64 = @import("std").mem.zeroes(i64),
@@ -3222,14 +3258,17 @@ pub export fn ArrayList_Int_deinit(arg_self: [*c]ArrayList_Int) void {
         KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
     }
 }
-pub export fn Lexer_init(arg_allocator: [*c]KaiAllocator, arg_source: [*c]const u8) Lexer {
+pub export fn Lexer_init(arg_allocator: [*c]KaiAllocator, arg_source: [*c]const u8, arg_source_file: [*c]const u8) Lexer {
     var allocator = arg_allocator;
     _ = &allocator;
     var source = arg_source;
     _ = &source;
+    var source_file = arg_source_file;
+    _ = &source_file;
     var self: Lexer = Lexer{
         .allocator = null,
         .source = null,
+        .source_file = null,
         .source_len = @import("std").mem.zeroes(i64),
         .cursor = @import("std").mem.zeroes(i64),
         .line = @import("std").mem.zeroes(i64),
@@ -3249,6 +3288,7 @@ pub export fn Lexer_init(arg_allocator: [*c]KaiAllocator, arg_source: [*c]const 
     self.paren_depth = 0;
     self.brace_depth = 0;
     self.has_error = @as(c_int, 0) != 0;
+    self.source_file = source_file;
     {
         self.tokens = @as([*c]ArrayList_Token, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ArrayList_Token)))), @as(c_longlong, 1)))));
         self.indent_stack = @as([*c]ArrayList_Int, @ptrCast(@alignCast(KaiAllocator_alloc(allocator, @as(i64, @bitCast(@as(c_ulonglong, @sizeOf(ArrayList_Int)))), @as(c_longlong, 1)))));
@@ -3315,7 +3355,7 @@ pub export fn Lexer_lex_error(arg_self: [*c]Lexer, arg_msg: [*c]const u8) void {
     _ = &self;
     var msg = arg_msg;
     _ = &msg;
-    _ = printf("error[E0100]: %s at line %lld, column %lld\n", msg, self.*.line, self.*.column);
+    _ = printf("%s:%lld:%lld: error[E0100]: %s\n", self.*.source_file, self.*.line, self.*.column, msg);
     self.*.has_error = @as(c_int, 1) != 0;
 }
 pub export fn Lexer_skip_line_comment(arg_self: [*c]Lexer) void {
@@ -4103,7 +4143,7 @@ pub export fn Lexer_lex(arg_self: [*c]Lexer) void {
                 });
             } else {
                 _ = Lexer_advance(self);
-                _ = printf("error[E0100]: unexpected character '%c' at line %lld, column %lld\n", @as(c_int, @bitCast(@as(c_uint, c))), self.*.line, self.*.column);
+                _ = printf("%s:%lld:%lld: error[E0100]: unexpected character '%c'\n", self.*.source_file, self.*.line, self.*.column, @as(c_int, @bitCast(@as(c_uint, c))));
                 self.*.has_error = @as(c_int, 1) != 0;
             }
         }
@@ -5335,11 +5375,17 @@ pub export fn empty_asminput_array() ArrayList_AsmInput {
         .allocator = @as([*c]KaiAllocator, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
     };
 }
-pub export fn new_expr_node(arg_kind: ExprKind) ExprNode {
+pub export fn new_expr_node(arg_kind: ExprKind, arg_line: i64, arg_col: i64) ExprNode {
     var kind = arg_kind;
     _ = &kind;
+    var line = arg_line;
+    _ = &line;
+    var col = arg_col;
+    _ = &col;
     var node: ExprNode = ExprNode{
         .kind = kind,
+        .line = line,
+        .col = col,
         .inferred_type = "",
         .lit_value = TokenValue{
             .tag = @as(u8, @bitCast(@as(i8, @truncate(TokenValue_tv_none_TAG)))),
@@ -5392,11 +5438,17 @@ pub export fn new_expr_node(arg_kind: ExprKind) ExprNode {
     _ = &node;
     return node;
 }
-pub export fn new_stmt_node(arg_kind: StmtKind) StmtNode {
+pub export fn new_stmt_node(arg_kind: StmtKind, arg_line: i64, arg_col: i64) StmtNode {
     var kind = arg_kind;
     _ = &kind;
+    var line = arg_line;
+    _ = &line;
+    var col = arg_col;
+    _ = &col;
     var node: StmtNode = StmtNode{
         .kind = kind,
+        .line = line,
+        .col = col,
         .block_stmts = empty_int_array(),
         .vardecl_name = "",
         .vardecl_type = "",
@@ -5597,7 +5649,7 @@ pub export fn str_array_join(arg_arr: ArrayList_Str, arg_sep: [*c]const u8) [*c]
     var i: i64 = 1;
     _ = &i;
     while (i < ArrayList_Str_length(&arr)) {
-        result = _kai_str_concat(_kai_str_concat(result, sep), ArrayList_Str_get(&arr, i));
+        result = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(result, sep), ArrayList_Str_get(&arr, i));
         i = i + @as(c_longlong, 1);
     }
     return result;
@@ -5932,9 +5984,11 @@ pub export fn ArrayList_PatternNode_deinit(arg_self: [*c]ArrayList_PatternNode) 
         KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
     }
 }
-pub export fn Parser_init_with_pools(arg_allocator: [*c]KaiAllocator, arg_tokens: [*c]ArrayList_Token, arg_expr_pool: [*c]ArrayList_ExprNode, arg_stmt_pool: [*c]ArrayList_StmtNode, arg_pattern_pool: [*c]ArrayList_PatternNode) Parser {
+pub export fn Parser_init_with_pools(arg_allocator: [*c]KaiAllocator, arg_source_file: [*c]const u8, arg_tokens: [*c]ArrayList_Token, arg_expr_pool: [*c]ArrayList_ExprNode, arg_stmt_pool: [*c]ArrayList_StmtNode, arg_pattern_pool: [*c]ArrayList_PatternNode) Parser {
     var allocator = arg_allocator;
     _ = &allocator;
+    var source_file = arg_source_file;
+    _ = &source_file;
     var tokens = arg_tokens;
     _ = &tokens;
     var expr_pool = arg_expr_pool;
@@ -5945,6 +5999,7 @@ pub export fn Parser_init_with_pools(arg_allocator: [*c]KaiAllocator, arg_tokens
     _ = &pattern_pool;
     var self: Parser = Parser{
         .allocator = null,
+        .source_file = null,
         .tokens = null,
         .cursor = @import("std").mem.zeroes(i64),
         .pending_gt = false,
@@ -5956,6 +6011,7 @@ pub export fn Parser_init_with_pools(arg_allocator: [*c]KaiAllocator, arg_tokens
     };
     _ = &self;
     self.allocator = allocator;
+    self.source_file = source_file;
     self.tokens = tokens;
     self.cursor = 0;
     self.pending_gt = @as(c_int, 0) != 0;
@@ -5966,13 +6022,16 @@ pub export fn Parser_init_with_pools(arg_allocator: [*c]KaiAllocator, arg_tokens
     self.pattern_pool = pattern_pool;
     return self;
 }
-pub export fn Parser_init(arg_allocator: [*c]KaiAllocator, arg_tokens: [*c]ArrayList_Token) Parser {
+pub export fn Parser_init(arg_allocator: [*c]KaiAllocator, arg_source_file: [*c]const u8, arg_tokens: [*c]ArrayList_Token) Parser {
     var allocator = arg_allocator;
     _ = &allocator;
+    var source_file = arg_source_file;
+    _ = &source_file;
     var tokens = arg_tokens;
     _ = &tokens;
     var self: Parser = Parser{
         .allocator = null,
+        .source_file = null,
         .tokens = null,
         .cursor = @import("std").mem.zeroes(i64),
         .pending_gt = false,
@@ -5984,6 +6043,7 @@ pub export fn Parser_init(arg_allocator: [*c]KaiAllocator, arg_tokens: [*c]Array
     };
     _ = &self;
     self.allocator = allocator;
+    self.source_file = source_file;
     self.tokens = tokens;
     self.cursor = 0;
     self.pending_gt = @as(c_int, 0) != 0;
@@ -6112,7 +6172,7 @@ pub export fn Parser_expect(arg_self: [*c]Parser, arg_ttype: TokenType) Token {
         return Parser_advance(self);
     }
     {
-        _ = printf("error[E0101]: expected token type %lld but found %lld at line %lld, column %lld\n", @as(i64, @bitCast(@as(c_ulonglong, ttype))), @as(i64, @bitCast(@as(c_ulonglong, tok.tok_type))), tok.line, tok.column);
+        _ = printf("%s:%lld:%lld: error[E0101]: expected token type %lld but found %lld\n", self.*.source_file, tok.line, tok.column, @as(i64, @bitCast(@as(c_ulonglong, ttype))), @as(i64, @bitCast(@as(c_ulonglong, tok.tok_type))));
         exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
     }
     return tok;
@@ -6184,7 +6244,7 @@ pub export fn Parser_ex_literal(arg_self: [*c]Parser, arg_val: TokenValue, arg_v
     _ = &val;
     var vkind = arg_vkind;
     _ = &vkind;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_literal)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_literal)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.lit_value = val;
     node.lit_vkind = vkind;
@@ -6196,7 +6256,7 @@ pub export fn Parser_ex_ident(arg_self: [*c]Parser, arg_name: [*c]const u8) i64 
     _ = &self;
     var name = arg_name;
     _ = &name;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_identifier)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_identifier)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.ident_name = name;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
@@ -6209,7 +6269,7 @@ pub export fn Parser_ex_ident_with(arg_self: [*c]Parser, arg_name: [*c]const u8,
     _ = &name;
     var targs = arg_targs;
     _ = &targs;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_identifier)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_identifier)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.ident_name = name;
     node.ident_type_args = targs;
@@ -6225,7 +6285,7 @@ pub export fn Parser_ex_binop(arg_self: [*c]Parser, arg_op: [*c]const u8, arg_le
     _ = &left;
     var right = arg_right;
     _ = &right;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_binary_op)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_binary_op)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.binop_op = op;
     node.binop_left = left;
@@ -6240,7 +6300,7 @@ pub export fn Parser_ex_unop(arg_self: [*c]Parser, arg_op: [*c]const u8, arg_ope
     _ = &op;
     var operand = arg_operand;
     _ = &operand;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_unary_op)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_unary_op)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.unop_op = op;
     node.unop_operand = operand;
@@ -6254,7 +6314,7 @@ pub export fn Parser_ex_call(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_a
     _ = &name;
     var args = arg_args;
     _ = &args;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_func_call)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_func_call)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.func_name = name;
     node.func_args = args;
@@ -6270,7 +6330,7 @@ pub export fn Parser_ex_call_with(arg_self: [*c]Parser, arg_name: [*c]const u8, 
     _ = &args;
     var targs = arg_targs;
     _ = &targs;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_func_call)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_func_call)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.func_name = name;
     node.func_args = args;
@@ -6285,7 +6345,7 @@ pub export fn Parser_ex_struct_init(arg_self: [*c]Parser, arg_name: [*c]const u8
     _ = &name;
     var fields = arg_fields;
     _ = &fields;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_struct_init)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_struct_init)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.struct_name = name;
     node.struct_fields = fields;
@@ -6299,7 +6359,7 @@ pub export fn Parser_ex_field(arg_self: [*c]Parser, arg_expr: i64, arg_field: [*
     _ = &expr;
     var field = arg_field;
     _ = &field;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_field_access)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_field_access)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.field_expr = expr;
     node.field_name = field;
@@ -6315,7 +6375,7 @@ pub export fn Parser_ex_method(arg_self: [*c]Parser, arg_expr: i64, arg_method: 
     _ = &method;
     var args = arg_args;
     _ = &args;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_method_call)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_method_call)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.meth_expr = expr;
     node.meth_name = method;
@@ -6330,7 +6390,7 @@ pub export fn Parser_ex_index(arg_self: [*c]Parser, arg_expr: i64, arg_idx: i64)
     _ = &expr;
     var idx = arg_idx;
     _ = &idx;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_index)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_index)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.idx_expr = expr;
     node.idx_index = idx;
@@ -6342,7 +6402,7 @@ pub export fn Parser_ex_check(arg_self: [*c]Parser, arg_expr: i64) i64 {
     _ = &self;
     var expr = arg_expr;
     _ = &expr;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_check)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_check)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.check_expr = expr;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
@@ -6359,7 +6419,7 @@ pub export fn Parser_ex_slice(arg_self: [*c]Parser, arg_expr: i64, arg_lower: i6
     _ = &upper;
     var is_inclusive = arg_is_inclusive;
     _ = &is_inclusive;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_slice)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_slice)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.slice_expr = expr;
     node.slice_lower = lower;
@@ -6377,7 +6437,7 @@ pub export fn Parser_ex_range(arg_self: [*c]Parser, arg_start: i64, arg_end: i64
     _ = &end;
     var is_inclusive = arg_is_inclusive;
     _ = &is_inclusive;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_range)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_range)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.range_start = start;
     node.range_end = end;
@@ -6390,7 +6450,7 @@ pub export fn Parser_ex_array(arg_self: [*c]Parser, arg_elements: ArrayList_Int)
     _ = &self;
     var elements = arg_elements;
     _ = &elements;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_array)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_array)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.arr_elements = elements;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
@@ -6401,7 +6461,7 @@ pub export fn Parser_ex_tuple(arg_self: [*c]Parser, arg_elements: ArrayList_Int)
     _ = &self;
     var elements = arg_elements;
     _ = &elements;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_tuple)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_tuple)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.tup_elements = elements;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
@@ -6414,7 +6474,7 @@ pub export fn Parser_ex_borrow(arg_self: [*c]Parser, arg_expr: i64, arg_is_mut: 
     _ = &expr;
     var is_mut = arg_is_mut;
     _ = &is_mut;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_borrow)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_borrow)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.borrow_expr = expr;
     node.borrow_mut = is_mut;
@@ -6426,7 +6486,7 @@ pub export fn Parser_ex_deref(arg_self: [*c]Parser, arg_expr: i64) i64 {
     _ = &self;
     var expr = arg_expr;
     _ = &expr;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_deref)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_deref)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.deref_expr = expr;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
@@ -6437,7 +6497,7 @@ pub export fn Parser_ex_try(arg_self: [*c]Parser, arg_expr: i64) i64 {
     _ = &self;
     var expr = arg_expr;
     _ = &expr;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_try)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_try)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.try_expr = expr;
     ArrayList_ExprNode_push(self.*.expr_pool, node);
@@ -6452,7 +6512,7 @@ pub export fn Parser_ex_catch(arg_self: [*c]Parser, arg_expr: i64, arg_var_name:
     _ = &var_name;
     var fallback = arg_fallback;
     _ = &fallback;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_catch)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_catch)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.catch_expr = expr;
     node.catch_var = var_name;
@@ -6473,7 +6533,7 @@ pub export fn Parser_ex_asm(arg_self: [*c]Parser, arg_code: [*c]const u8, arg_is
     _ = &inputs;
     var clobbers = arg_clobbers;
     _ = &clobbers;
-    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_asm)));
+    var node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_asm)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.asm_code = code;
     node.asm_is_volatile = is_volatile;
@@ -6488,7 +6548,7 @@ pub export fn Parser_st_block(arg_self: [*c]Parser, arg_stmts: ArrayList_Int) i6
     _ = &self;
     var stmts = arg_stmts;
     _ = &stmts;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_block)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_block)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.block_stmts = stmts;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
@@ -6501,7 +6561,7 @@ pub export fn Parser_st_error(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_
     _ = &name;
     var variants = arg_variants;
     _ = &variants;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_error_decl)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_error_decl)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.error_name = name;
     node.error_variants = variants;
@@ -6519,7 +6579,7 @@ pub export fn Parser_st_var_decl(arg_self: [*c]Parser, arg_name: [*c]const u8, a
     _ = &value;
     var is_mut = arg_is_mut;
     _ = &is_mut;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_var_decl)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_var_decl)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.vardecl_name = name;
     node.vardecl_type = type_ann;
@@ -6537,7 +6597,7 @@ pub export fn Parser_st_assign(arg_self: [*c]Parser, arg_target: i64, arg_value:
     _ = &value;
     var op = arg_op;
     _ = &op;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_assignment)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_assignment)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.assign_target = target;
     node.assign_value = value;
@@ -6560,7 +6620,7 @@ pub export fn Parser_st_func(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_p
     _ = &cap;
     var tp = arg_tp;
     _ = &tp;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_func_decl)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_func_decl)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.func_name = name;
     node.func_params = params;
@@ -6584,7 +6644,7 @@ pub export fn Parser_st_struct(arg_self: [*c]Parser, arg_name: [*c]const u8, arg
     _ = &methods;
     var impls = arg_impls;
     _ = &impls;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_struct_decl)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_struct_decl)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.struct_name = name;
     node.struct_fields = fields;
@@ -6603,7 +6663,7 @@ pub export fn Parser_st_impl(arg_self: [*c]Parser, arg_struct_name: [*c]const u8
     _ = &trait_name;
     var methods = arg_methods;
     _ = &methods;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_impl_block)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_impl_block)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.impl_struct_name = struct_name;
     node.impl_trait_name = trait_name;
@@ -6618,7 +6678,7 @@ pub export fn Parser_st_trait(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_
     _ = &name;
     var methods = arg_methods;
     _ = &methods;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_trait_decl)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_trait_decl)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.trait_name = name;
     node.trait_methods = methods;
@@ -6634,7 +6694,7 @@ pub export fn Parser_st_enum(arg_self: [*c]Parser, arg_name: [*c]const u8, arg_v
     _ = &variants;
     var tp = arg_tp;
     _ = &tp;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_enum_decl)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_enum_decl)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.enum_name = name;
     node.enum_variants = variants;
@@ -6649,7 +6709,7 @@ pub export fn Parser_st_match(arg_self: [*c]Parser, arg_expr: i64, arg_cases: Ar
     _ = &expr;
     var cases = arg_cases;
     _ = &cases;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_match)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_match)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.match_expr = expr;
     node.match_cases = cases;
@@ -6661,7 +6721,7 @@ pub export fn Parser_st_unsafe(arg_self: [*c]Parser, arg_body: i64) i64 {
     _ = &self;
     var body = arg_body;
     _ = &body;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_unsafe)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_unsafe)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.unsafe_body = body;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
@@ -6676,7 +6736,7 @@ pub export fn Parser_st_extern(arg_self: [*c]Parser, arg_name: [*c]const u8, arg
     _ = &params;
     var ret = arg_ret;
     _ = &ret;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_extern)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_extern)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.extern_name = name;
     node.extern_params = params;
@@ -6693,7 +6753,7 @@ pub export fn Parser_st_if(arg_self: [*c]Parser, arg_cond: i64, arg_then_b: i64,
     _ = &then_b;
     var else_b = arg_else_b;
     _ = &else_b;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_if)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_if)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.if_cond = cond;
     node.if_then = then_b;
@@ -6712,7 +6772,7 @@ pub export fn Parser_st_if_let(arg_self: [*c]Parser, arg_vname: [*c]const u8, ar
     _ = &then_b;
     var else_b = arg_else_b;
     _ = &else_b;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_if_let)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_if_let)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.iflet_var = vname;
     node.iflet_expr = expr;
@@ -6728,7 +6788,7 @@ pub export fn Parser_st_while(arg_self: [*c]Parser, arg_cond: i64, arg_body: i64
     _ = &cond;
     var body = arg_body;
     _ = &body;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_while)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_while)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.while_cond = cond;
     node.while_body = body;
@@ -6748,7 +6808,7 @@ pub export fn Parser_st_for(arg_self: [*c]Parser, arg_var_name: [*c]const u8, ar
     _ = &inc;
     var body = arg_body;
     _ = &body;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_for)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_for)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.for_var = var_name;
     node.for_start = start;
@@ -6763,7 +6823,7 @@ pub export fn Parser_st_return(arg_self: [*c]Parser, arg_value: i64) i64 {
     _ = &self;
     var value = arg_value;
     _ = &value;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_return)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_return)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.return_value = value;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
@@ -6774,7 +6834,7 @@ pub export fn Parser_st_expr(arg_self: [*c]Parser, arg_expr: i64) i64 {
     _ = &self;
     var expr = arg_expr;
     _ = &expr;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_expr)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_expr)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.expr_stmt = expr;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
@@ -6785,7 +6845,7 @@ pub export fn Parser_st_defer(arg_self: [*c]Parser, arg_body: i64) i64 {
     _ = &self;
     var body = arg_body;
     _ = &body;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_defer)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_defer)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.defer_body = body;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
@@ -6794,7 +6854,7 @@ pub export fn Parser_st_defer(arg_self: [*c]Parser, arg_body: i64) i64 {
 pub export fn Parser_st_break(arg_self: [*c]Parser) i64 {
     var self = arg_self;
     _ = &self;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_break)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_break)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
     return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
@@ -6802,7 +6862,7 @@ pub export fn Parser_st_break(arg_self: [*c]Parser) i64 {
 pub export fn Parser_st_continue(arg_self: [*c]Parser) i64 {
     var self = arg_self;
     _ = &self;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_continue)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_continue)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     ArrayList_StmtNode_push(self.*.stmt_pool, node);
     return ArrayList_StmtNode_length(self.*.stmt_pool) - @as(c_longlong, 1);
@@ -6814,7 +6874,7 @@ pub export fn Parser_st_import(arg_self: [*c]Parser, arg_path: ArrayList_Str, ar
     _ = &path;
     var alias = arg_alias;
     _ = &alias;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_import)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_import)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.import_path = path;
     node.import_alias = alias;
@@ -6828,7 +6888,7 @@ pub export fn Parser_st_cimport(arg_self: [*c]Parser, arg_header: [*c]const u8, 
     _ = &header;
     var alias = arg_alias;
     _ = &alias;
-    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_cimport)));
+    var node: StmtNode = new_stmt_node(@as(c_uint, @bitCast(StmtKind_sk_cimport)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
     _ = &node;
     node.cimport_header = header;
     node.cimport_alias = alias;
@@ -6951,7 +7011,7 @@ pub export fn Parser_parse_type(arg_self: [*c]Parser) [*c]const u8 {
     if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_NOT)))) {
         var error_set: [*c]const u8 = Parser_parse_type(self);
         _ = &error_set;
-        return _kai_str_concat(_kai_str_concat(base_type, "!"), error_set);
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(base_type, "!"), error_set);
     }
     return base_type;
 }
@@ -6961,9 +7021,9 @@ pub export fn Parser_parse_base_type(arg_self: [*c]Parser) [*c]const u8 {
     if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_OWN)))) {
         var inner: [*c]const u8 = Parser_parse_type(self);
         _ = &inner;
-        return _kai_str_concat("own ", inner);
+        return __kai_std_str_concat_alloc("own ", inner);
     } else if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_QUESTION)))) {
-        return _kai_str_concat("?", Parser_parse_type(self));
+        return __kai_std_str_concat_alloc("?", Parser_parse_type(self));
     } else if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_AMP)))) {
         var is_mut: bool = @as(c_int, 0) != 0;
         _ = &is_mut;
@@ -6973,9 +7033,9 @@ pub export fn Parser_parse_base_type(arg_self: [*c]Parser) [*c]const u8 {
         var inner: [*c]const u8 = Parser_parse_type(self);
         _ = &inner;
         if (is_mut) {
-            return _kai_str_concat("*mut ", inner);
+            return __kai_std_str_concat_alloc("*mut ", inner);
         }
-        return _kai_str_concat("*", inner);
+        return __kai_std_str_concat_alloc("*", inner);
     } else if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_MUL)))) {
         var is_mut: bool = @as(c_int, 0) != 0;
         _ = &is_mut;
@@ -6985,12 +7045,12 @@ pub export fn Parser_parse_base_type(arg_self: [*c]Parser) [*c]const u8 {
         var inner: [*c]const u8 = Parser_parse_type(self);
         _ = &inner;
         if (is_mut) {
-            return _kai_str_concat("*mut ", inner);
+            return __kai_std_str_concat_alloc("*mut ", inner);
         }
-        return _kai_str_concat("*", inner);
+        return __kai_std_str_concat_alloc("*", inner);
     } else if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_LBRACKET)))) {
         _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_RBRACKET)));
-        return _kai_str_concat("[]", Parser_parse_type(self));
+        return __kai_std_str_concat_alloc("[]", Parser_parse_type(self));
     } else if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_LPAREN)))) {
         var types: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
         _ = &types;
@@ -7005,7 +7065,7 @@ pub export fn Parser_parse_base_type(arg_self: [*c]Parser) [*c]const u8 {
             }
         }
         _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_RPAREN)));
-        return _kai_str_concat(_kai_str_concat("(", str_array_join(types, ", ")), ")");
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", str_array_join(types, ", ")), ")");
     } else {
         var name: [*c]const u8 = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
         _ = &name;
@@ -7022,7 +7082,7 @@ pub export fn Parser_parse_base_type(arg_self: [*c]Parser) [*c]const u8 {
                 }
             }
             _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_GT)));
-            return _kai_str_concat(_kai_str_concat(_kai_str_concat(name, "<"), str_array_join(type_args, ", ")), ">");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(name, "<"), str_array_join(type_args, ", ")), ">");
         }
         return name;
     }
@@ -7041,7 +7101,7 @@ pub export fn Parser_parse_generic_params(arg_self: [*c]Parser) ArrayList_Str {
             var tp_name: [*c]const u8 = tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value);
             _ = &tp_name;
             if (Parser_match_token(self, @as(c_uint, @bitCast(TokenType_COLON)))) {
-                ArrayList_Str_push(&type_params, _kai_str_concat(_kai_str_concat(tp_name, ":"), tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value)));
+                ArrayList_Str_push(&type_params, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(tp_name, ":"), tv_get_str(Parser_expect(self, @as(c_uint, @bitCast(TokenType_IDENTIFIER))).value)));
             } else {
                 ArrayList_Str_push(&type_params, tp_name);
             }
@@ -7407,7 +7467,7 @@ pub export fn Parser_parse_pattern(arg_self: [*c]Parser) i64 {
         return Parser_add_pattern(self, node);
     } else {
         {
-            _ = printf("error[E0101]: unexpected token in pattern at line %lld, column %lld\n", tok.line, tok.column);
+            _ = printf("%s:%lld:%lld: error[E0101]: unexpected token in pattern\n", self.*.source_file, tok.line, tok.column);
             exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
         return -@as(c_longlong, 1);
@@ -7555,7 +7615,7 @@ pub export fn Parser_parse_for_stmt(arg_self: [*c]Parser) i64 {
         is_inclusive = expr_node.range_inclusive;
     } else {
         {
-            _ = printf("error[E0101]: invalid expression in for loop at line %lld, column %lld\n", Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
+            _ = printf("%s:%lld:%lld: error[E0101]: invalid expression in for loop\n", self.*.source_file, Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
             exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
@@ -7642,7 +7702,7 @@ pub export fn Parser_parse_block(arg_self: [*c]Parser) i64 {
     }
     if (Parser_peek(self, @as(c_longlong, 0)).tok_type == @as(c_uint, @bitCast(TokenType_EOF))) {
         {
-            _ = printf("error[E0101]: expected '}' but reached end of file\n");
+            _ = printf("%s:0:0: error[E0101]: expected '}' but reached end of file\n", self.*.source_file);
             exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
     }
@@ -7777,10 +7837,10 @@ pub export fn Parser_parse_expression(arg_self: [*c]Parser, arg_precedence: i64)
                         if (left_node.kind == @as(c_uint, @bitCast(ExprKind_ek_identifier))) {
                             full_name = left_node.ident_name;
                             if (ArrayList_Str_length(&left_node.ident_type_args) > @as(c_longlong, 0)) {
-                                full_name = _kai_str_concat(_kai_str_concat(_kai_str_concat(full_name, "<"), str_array_join(left_node.ident_type_args, ", ")), ">");
+                                full_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(full_name, "<"), str_array_join(left_node.ident_type_args, ", ")), ">");
                             }
                         }
-                        left = Parser_ex_struct_init(self, _kai_str_concat(_kai_str_concat(full_name, "."), member_name), fields);
+                        left = Parser_ex_struct_init(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(full_name, "."), member_name), fields);
                     } else {
                         var args: ArrayList_Int = ArrayList_Int_init(self.*.allocator);
                         _ = &args;
@@ -8103,7 +8163,7 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
                     }
                     var type_args_str: [*c]const u8 = str_array_join(sa_type_args, ", ");
                     _ = &type_args_str;
-                    return Parser_ex_struct_init(self, _kai_str_concat(_kai_str_concat(_kai_str_concat(ident, "<"), type_args_str), ">"), fields);
+                    return Parser_ex_struct_init(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ident, "<"), type_args_str), ">"), fields);
                 }
                 var args: ArrayList_Int = ArrayList_Int_init(self.*.allocator);
                 _ = &args;
@@ -8120,7 +8180,7 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
                 _ = Parser_expect(self, @as(c_uint, @bitCast(TokenType_RPAREN)));
                 return Parser_ex_call_with(self, ident, args, type_args);
             }
-            var id_node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_identifier)));
+            var id_node: ExprNode = new_expr_node(@as(c_uint, @bitCast(ExprKind_ek_identifier)), Parser_peek(self, @as(c_longlong, 0)).line, Parser_peek(self, @as(c_longlong, 0)).column);
             _ = &id_node;
             id_node.ident_name = ident;
             id_node.ident_type_args = id_type_args;
@@ -8237,7 +8297,7 @@ pub export fn Parser_parse_primary(arg_self: [*c]Parser) i64 {
         return first;
     } else {
         {
-            _ = printf("error[E0101]: unexpected token at line %lld, column %lld (token type: %lld)\n", tok.line, tok.column, @as(i64, @bitCast(@as(c_ulonglong, tok.tok_type))));
+            _ = printf("%s:%lld:%lld: error[E0101]: unexpected token (type: %lld)\n", self.*.source_file, tok.line, tok.column, @as(i64, @bitCast(@as(c_ulonglong, tok.tok_type))));
             exit(@as(c_int, @bitCast(@as(c_int, @truncate(@as(c_longlong, 1))))));
         }
         return -@as(c_longlong, 1);
@@ -8732,6 +8792,7 @@ pub export fn TypeChecker_init(arg_allocator: [*c]KaiAllocator, arg_stmt_pool: [
         .current_func_ret_type = null,
         .source_file = null,
         .has_any_import = false,
+        .loop_depth = @import("std").mem.zeroes(i64),
     };
     _ = &self;
     self.allocator = allocator;
@@ -8745,7 +8806,22 @@ pub export fn TypeChecker_init(arg_allocator: [*c]KaiAllocator, arg_stmt_pool: [
     self.current_func_ret_type = "";
     self.source_file = source_file;
     self.has_any_import = @as(c_int, 0) != 0;
+    self.loop_depth = 0;
     return self;
+}
+pub export fn TypeChecker_err(arg_self: [*c]TypeChecker, arg_code: [*c]const u8, arg_msg: [*c]const u8, arg_line: i64, arg_col: i64) void {
+    var self = arg_self;
+    _ = &self;
+    var code = arg_code;
+    _ = &code;
+    var msg = arg_msg;
+    _ = &msg;
+    var line = arg_line;
+    _ = &line;
+    var col = arg_col;
+    _ = &col;
+    _ = printf("%s:%lld:%lld: error[%s]: %s\n", self.*.source_file, line, col, code, msg);
+    self.*.has_error = @as(c_int, 1) != 0;
 }
 pub export fn TypeChecker_enter_scope(arg_self: [*c]TypeChecker) void {
     var self = arg_self;
@@ -8920,12 +8996,113 @@ pub export fn TypeChecker_collect_block_drops(arg_self: [*c]TypeChecker, arg_stm
     block_stmt.block_drop_vars = drop_vars;
     ArrayList_StmtNode_set(self.*.stmt_pool, stmt_idx, block_stmt);
 }
-pub export fn TypeChecker_is_copy_type(arg_self: [*c]TypeChecker, arg_type_name: [*c]const u8) bool {
+pub export fn TypeChecker_is_integer_type(arg_self: [*c]TypeChecker, arg_type_name: [*c]const u8) bool {
     var self = arg_self;
     _ = &self;
     var type_name = arg_type_name;
     _ = &type_name;
     if (strcmp(type_name, "Int") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "i8") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "i16") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "i32") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "i64") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "u8") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "u16") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "u32") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "u64") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "usize") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "isize") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    return @as(c_int, 0) != 0;
+}
+pub export fn TypeChecker_is_numeric_type(arg_self: [*c]TypeChecker, arg_type_name: [*c]const u8) bool {
+    var self = arg_self;
+    _ = &self;
+    var type_name = arg_type_name;
+    _ = &type_name;
+    if (TypeChecker_is_integer_type(self, type_name)) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "Float") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    return @as(c_int, 0) != 0;
+}
+pub export fn TypeChecker_fits_in_type(arg_self: [*c]TypeChecker, arg_val: i64, arg_type_name: [*c]const u8) bool {
+    var self = arg_self;
+    _ = &self;
+    var val = arg_val;
+    _ = &val;
+    var type_name = arg_type_name;
+    _ = &type_name;
+    if (strcmp(type_name, "i8") == @as(c_int, 0)) {
+        return (val >= -@as(c_longlong, 128)) and (val <= @as(c_longlong, 127));
+    }
+    if (strcmp(type_name, "i16") == @as(c_int, 0)) {
+        return (val >= -@as(c_longlong, 32768)) and (val <= @as(c_longlong, 32767));
+    }
+    if (strcmp(type_name, "i32") == @as(c_int, 0)) {
+        return (val >= -@as(c_longlong, 2147483648)) and (val <= @as(c_longlong, 2147483647));
+    }
+    if (strcmp(type_name, "u8") == @as(c_int, 0)) {
+        return (val >= @as(c_longlong, 0)) and (val <= @as(c_longlong, 255));
+    }
+    if (strcmp(type_name, "u16") == @as(c_int, 0)) {
+        return (val >= @as(c_longlong, 0)) and (val <= @as(c_longlong, 65535));
+    }
+    if (strcmp(type_name, "u32") == @as(c_int, 0)) {
+        return (val >= @as(c_longlong, 0)) and (val <= @as(c_longlong, 4294967295));
+    }
+    if (strcmp(type_name, "u64") == @as(c_int, 0)) {
+        return val >= @as(c_longlong, 0);
+    }
+    if (((strcmp(type_name, "Int") == @as(c_int, 0)) or (strcmp(type_name, "i64") == @as(c_int, 0))) or (strcmp(type_name, "isize") == @as(c_int, 0))) {
+        return @as(c_int, 1) != 0;
+    }
+    if (strcmp(type_name, "usize") == @as(c_int, 0)) {
+        return val >= @as(c_longlong, 0);
+    }
+    return @as(c_int, 1) != 0;
+}
+pub export fn TypeChecker_is_integer_literal(arg_self: [*c]TypeChecker, arg_expr_idx: i64) bool {
+    var self = arg_self;
+    _ = &self;
+    var expr_idx = arg_expr_idx;
+    _ = &expr_idx;
+    if (expr_idx < @as(c_longlong, 0)) {
+        return @as(c_int, 0) != 0;
+    }
+    var expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr_idx);
+    _ = &expr;
+    return (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_literal))) and (strcmp(expr.lit_vkind, "INT") == @as(c_int, 0));
+}
+pub export fn TypeChecker_is_copy_type(arg_self: [*c]TypeChecker, arg_type_name: [*c]const u8) bool {
+    var self = arg_self;
+    _ = &self;
+    var type_name = arg_type_name;
+    _ = &type_name;
+    if (TypeChecker_is_integer_type(self, type_name)) {
         return @as(c_int, 1) != 0;
     }
     if (strcmp(type_name, "Float") == @as(c_int, 0)) {
@@ -9010,6 +9187,18 @@ pub export fn TypeChecker_types_compatible(arg_self: [*c]TypeChecker, arg_target
         return @as(c_int, 1) != 0;
     }
     if (strcmp(t, s) == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
+    if ((@as(c_int, @intFromBool(TypeChecker_is_integer_type(self, t))) != 0) and (@as(c_int, @intFromBool(TypeChecker_is_integer_type(self, s))) != 0)) {
+        if ((strcmp(t, "Int") == @as(c_int, 0)) and (strcmp(s, "i64") == @as(c_int, 0))) {
+            return @as(c_int, 1) != 0;
+        }
+        if ((strcmp(t, "i64") == @as(c_int, 0)) and (strcmp(s, "Int") == @as(c_int, 0))) {
+            return @as(c_int, 1) != 0;
+        }
+        return @as(c_int, 0) != 0;
+    }
+    if (((strcmp(t, "Str") == @as(c_int, 0)) and (strcmp(s, "*Char") == @as(c_int, 0))) or ((strcmp(t, "*Char") == @as(c_int, 0)) and (strcmp(s, "Str") == @as(c_int, 0)))) {
         return @as(c_int, 1) != 0;
     }
     if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(t)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, t[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
@@ -9124,7 +9313,7 @@ pub export fn TypeChecker_find_method_decl(arg_self: [*c]TypeChecker, arg_struct
         }).*;
         _ = &c;
         if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
-            clean = _kai_str_concat(clean, char_to_str(c));
+            clean = __kai_std_str_concat_alloc(clean, char_to_str(c));
         }
         i = i + @as(c_longlong, 1);
     }
@@ -9345,9 +9534,9 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
         }
         if (is_struct) {
             if (ArrayList_Str_length(&expr.func_type_args) > @as(c_longlong, 0)) {
-                return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("*", name), "<"), str_array_join(expr.func_type_args, ", ")), ">");
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("*", name), "<"), str_array_join(expr.func_type_args, ", ")), ">");
             }
-            return _kai_str_concat("*", name);
+            return __kai_std_str_concat_alloc("*", name);
         }
         var table: SymbolTable = ArrayList_SymbolTable_get(&self.*.symbol_tables, self.*.current_table_idx);
         _ = &table;
@@ -9391,7 +9580,7 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
             }).*;
             _ = &c;
             if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
-                clean_type = _kai_str_concat(clean_type, char_to_str(c));
+                clean_type = __kai_std_str_concat_alloc(clean_type, char_to_str(c));
             }
             i = i + @as(c_longlong, 1);
         }
@@ -9432,13 +9621,19 @@ pub export fn TypeChecker_get_expr_type(arg_self: [*c]TypeChecker, arg_expr_idx:
         }
         return "Void";
     }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_slice))) {
+        return TypeChecker_get_expr_type(self, expr.slice_expr);
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_range))) {
+        return "Range";
+    }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_borrow))) {
         var base_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.borrow_expr);
         _ = &base_type;
         if (TypeChecker_expr_is_mutable(self, expr.borrow_expr)) {
-            return _kai_str_concat("*mut ", base_type);
+            return __kai_std_str_concat_alloc("*mut ", base_type);
         }
-        return _kai_str_concat("*", base_type);
+        return __kai_std_str_concat_alloc("*", base_type);
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_deref))) {
         var base_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.deref_expr);
@@ -9566,11 +9761,11 @@ pub export fn TypeChecker_check_identifier(arg_self: [*c]TypeChecker, arg_expr_i
     _ = &sym;
     if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(sym.name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
         if (sym.moved) {
-            _ = printf("error[E0009]: use of moved value: '%s'\n", name);
+            _ = printf("%s:%lld:%lld: error[E0009]: use of moved value: '%s'\n", self.*.source_file, expr.line, expr.col, name);
             self.*.has_error = @as(c_int, 1) != 0;
         }
     } else if (!TypeChecker_is_enum_or_error_type(self, name) and !self.*.has_any_import) {
-        _ = printf("error[E0019]: undefined identifier: '%s'\n", name);
+        _ = printf("%s:%lld:%lld: error[E0019]: undefined identifier: '%s'\n", self.*.source_file, expr.line, expr.col, name);
         self.*.has_error = @as(c_int, 1) != 0;
     }
 }
@@ -9584,7 +9779,7 @@ pub export fn TypeChecker_check_field_access(arg_self: [*c]TypeChecker, arg_expr
     var recv_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.field_expr);
     _ = &recv_type;
     if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(recv_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, recv_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
-        _ = printf("error[E0011]: cannot access field '%s' on optional type '%s'. unwrap it first\n", expr.field_name, recv_type);
+        _ = printf("%s:%lld:%lld: error[E0011]: cannot access field '%s' on optional type '%s'. unwrap it first\n", self.*.source_file, expr.line, expr.col, expr.field_name, recv_type);
         self.*.has_error = @as(c_int, 1) != 0;
     }
 }
@@ -9598,7 +9793,7 @@ pub export fn TypeChecker_check_method_call(arg_self: [*c]TypeChecker, arg_expr_
     var recv_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.meth_expr);
     _ = &recv_type;
     if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(recv_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, recv_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
-        _ = printf("error[E0012]: cannot call method '%s' on optional type '%s'. unwrap it first\n", expr.meth_name, recv_type);
+        _ = printf("%s:%lld:%lld: error[E0012]: cannot call method '%s' on optional type '%s'. unwrap it first\n", self.*.source_file, expr.line, expr.col, expr.meth_name, recv_type);
         self.*.has_error = @as(c_int, 1) != 0;
     }
 }
@@ -9625,7 +9820,7 @@ pub export fn TypeChecker_check_return_stmt(arg_self: [*c]TypeChecker, arg_stmt_
                 var sym: Symbol = SymbolTable_lookup_symbol(&table, name, &self.*.symbol_tables);
                 _ = &sym;
                 if ((strcmp(sym.kind, "var") == @as(c_int, 0)) or (strcmp(sym.kind, "param") == @as(c_int, 0))) {
-                    _ = printf("error[E0010]: cannot return reference to local variable '%s'\n", name);
+                    _ = printf("%s:%lld:%lld: error[E0010]: cannot return reference to local variable '%s'\n", self.*.source_file, stmt.line, stmt.col, name);
                     self.*.has_error = @as(c_int, 1) != 0;
                 }
             }
@@ -9638,7 +9833,7 @@ pub export fn TypeChecker_check_return_stmt(arg_self: [*c]TypeChecker, arg_stmt_
     _ = &expected_ret;
     if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expected_ret)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (strcmp(expected_ret, "<infer>") != @as(c_int, 0))) {
         if (!TypeChecker_types_compatible(self, expected_ret, val_type)) {
-            _ = printf("error[E0007]: return type mismatch: expected '%s', got '%s'\n", expected_ret, val_type);
+            _ = printf("%s:%lld:%lld: error[E0007]: return type mismatch: expected '%s', got '%s'\n", self.*.source_file, stmt.line, stmt.col, expected_ret, val_type);
             self.*.has_error = @as(c_int, 1) != 0;
         }
     }
@@ -9673,8 +9868,19 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
         _ = &var_type;
         if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(var_type)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             var_type = val_type;
+        } else if ((@as(c_int, @intFromBool(TypeChecker_is_integer_type(self, var_type))) != 0) and (@as(c_int, @intFromBool(TypeChecker_is_integer_literal(self, stmt.vardecl_value))) != 0)) {
+            var val_expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, stmt.vardecl_value);
+            _ = &val_expr;
+            if (@as(c_int, @bitCast(@as(c_uint, val_expr.lit_value.tag))) == TokenValue_tv_int_TAG) {
+                var v: i64 = val_expr.lit_value.payload.tv_int.v;
+                _ = &v;
+                if (!TypeChecker_fits_in_type(self, v, var_type)) {
+                    _ = printf("%s:%lld:%lld: error[E0030]: integer literal %lld does not fit in type '%s'\n", self.*.source_file, stmt.line, stmt.col, v, var_type);
+                    self.*.has_error = @as(c_int, 1) != 0;
+                }
+            } else {}
         } else if (!TypeChecker_types_compatible(self, var_type, val_type)) {
-            _ = printf("error[E0001]: type mismatch in declaration of '%s': expected '%s', got '%s'\n", stmt.vardecl_name, var_type, val_type);
+            _ = printf("%s:%lld:%lld: error[E0001]: type mismatch in declaration of '%s': expected '%s', got '%s'\n", self.*.source_file, stmt.line, stmt.col, stmt.vardecl_name, var_type, val_type);
             self.*.has_error = @as(c_int, 1) != 0;
         }
         TypeChecker_define_symbol(self, stmt.vardecl_name, var_type, stmt.vardecl_mut, "var");
@@ -9696,14 +9902,25 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
                 var sym: Symbol = SymbolTable_lookup_symbol(&table, target_expr.ident_name, &self.*.symbol_tables);
                 _ = &sym;
                 if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(sym.name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and !sym.is_mutable) {
-                    _ = printf("error[E0008]: cannot assign to immutable variable '%s'\n", target_expr.ident_name);
+                    _ = printf("%s:%lld:%lld: error[E0008]: cannot assign to immutable variable '%s'\n", self.*.source_file, target_expr.line, target_expr.col, target_expr.ident_name);
                     self.*.has_error = @as(c_int, 1) != 0;
                 }
             }
         }
         var val_type: [*c]const u8 = TypeChecker_get_expr_type(self, stmt.assign_value);
         _ = &val_type;
-        if (!TypeChecker_types_compatible(self, target_type, val_type)) {
+        if ((@as(c_int, @intFromBool(TypeChecker_is_integer_type(self, target_type))) != 0) and (@as(c_int, @intFromBool(TypeChecker_is_integer_literal(self, stmt.assign_value))) != 0)) {
+            var val_expr: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, stmt.assign_value);
+            _ = &val_expr;
+            if (@as(c_int, @bitCast(@as(c_uint, val_expr.lit_value.tag))) == TokenValue_tv_int_TAG) {
+                var v: i64 = val_expr.lit_value.payload.tv_int.v;
+                _ = &v;
+                if (!TypeChecker_fits_in_type(self, v, target_type)) {
+                    _ = printf("%s:%lld:%lld: error[E0030]: integer literal %lld does not fit in type '%s'\n", self.*.source_file, stmt.line, stmt.col, v, target_type);
+                    self.*.has_error = @as(c_int, 1) != 0;
+                }
+            } else {}
+        } else if (!TypeChecker_types_compatible(self, target_type, val_type)) {
             var target_name: [*c]const u8 = "<non-ident>";
             _ = &target_name;
             if (stmt.assign_target >= @as(c_longlong, 0)) {
@@ -9713,7 +9930,7 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
                     target_name = target_expr.ident_name;
                 }
             }
-            _ = printf("error[E0002]: type mismatch in assignment to '%s': expected '%s', got '%s'\n", target_name, target_type, val_type);
+            _ = printf("%s:%lld:%lld: error[E0002]: type mismatch in assignment to '%s': expected '%s', got '%s'\n", self.*.source_file, stmt.line, stmt.col, target_name, target_type, val_type);
             self.*.has_error = @as(c_int, 1) != 0;
         }
         TypeChecker_mark_expr_moved(self, stmt.assign_value);
@@ -9746,6 +9963,11 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_if))) {
         TypeChecker_check_expr(self, stmt.if_cond);
+        var cond_type: [*c]const u8 = TypeChecker_get_expr_type(self, stmt.if_cond);
+        _ = &cond_type;
+        if ((strcmp(cond_type, "Bool") != @as(c_int, 0)) and (strcmp(cond_type, "Void") != @as(c_int, 0))) {
+            TypeChecker_err(self, "E0024", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if condition must be Bool, got '", cond_type), "'"), stmt.line, stmt.col);
+        }
         TypeChecker_check_stmt(self, stmt.if_then);
         TypeChecker_check_stmt(self, stmt.if_else);
         return;
@@ -9768,12 +9990,20 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_while))) {
         TypeChecker_check_expr(self, stmt.while_cond);
+        var cond_type: [*c]const u8 = TypeChecker_get_expr_type(self, stmt.while_cond);
+        _ = &cond_type;
+        if ((strcmp(cond_type, "Bool") != @as(c_int, 0)) and (strcmp(cond_type, "Void") != @as(c_int, 0))) {
+            TypeChecker_err(self, "E0024", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("while condition must be Bool, got '", cond_type), "'"), stmt.line, stmt.col);
+        }
+        self.*.loop_depth = self.*.loop_depth + @as(c_longlong, 1);
         TypeChecker_check_stmt(self, stmt.while_body);
+        self.*.loop_depth = self.*.loop_depth - @as(c_longlong, 1);
         return;
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_for))) {
         TypeChecker_check_expr(self, stmt.for_start);
         TypeChecker_check_expr(self, stmt.for_end);
+        self.*.loop_depth = self.*.loop_depth + @as(c_longlong, 1);
         TypeChecker_enter_scope(self);
         var iter_type: [*c]const u8 = TypeChecker_get_expr_type(self, stmt.for_start);
         _ = &iter_type;
@@ -9783,6 +10013,7 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
         TypeChecker_define_symbol(self, stmt.for_var, iter_type, @as(c_int, 0) != 0, "var");
         TypeChecker_check_stmt(self, stmt.for_body);
         TypeChecker_exit_scope(self);
+        self.*.loop_depth = self.*.loop_depth - @as(c_longlong, 1);
         return;
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_return))) {
@@ -9829,7 +10060,7 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
             _ = &m_idx;
             var m: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, m_idx);
             _ = &m;
-            var mangled_name: [*c]const u8 = _kai_str_concat(_kai_str_concat(stmt.impl_struct_name, "_"), m.func_name);
+            var mangled_name: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(stmt.impl_struct_name, "_"), m.func_name);
             _ = &mangled_name;
             TypeChecker_define_symbol(self, mangled_name, m.func_return_type, @as(c_int, 0) != 0, "func");
             var old_ret: [*c]const u8 = self.*.current_func_ret_type;
@@ -9871,6 +10102,26 @@ pub export fn TypeChecker_check_stmt(arg_self: [*c]TypeChecker, arg_stmt_idx: i6
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_error_decl))) {
         return;
     }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_break))) {
+        if (self.*.loop_depth <= @as(c_longlong, 0)) {
+            TypeChecker_err(self, "E0029", "'break' outside of loop", stmt.line, stmt.col);
+        }
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_continue))) {
+        if (self.*.loop_depth <= @as(c_longlong, 0)) {
+            TypeChecker_err(self, "E0029", "'continue' outside of loop", stmt.line, stmt.col);
+        }
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_defer))) {
+        TypeChecker_check_stmt(self, stmt.defer_body);
+        return;
+    }
+    if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_print))) {
+        TypeChecker_check_expr(self, stmt.print_value);
+        return;
+    }
 }
 pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i64) void {
     var self = arg_self;
@@ -9889,10 +10140,66 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_binary_op))) {
         TypeChecker_check_expr(self, expr.binop_left);
         TypeChecker_check_expr(self, expr.binop_right);
+        var left_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.binop_left);
+        _ = &left_type;
+        var right_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.binop_right);
+        _ = &right_type;
+        var op: [*c]const u8 = expr.binop_op;
+        _ = &op;
+        if (strcmp(op, "+") == @as(c_int, 0)) {
+            if ((!TypeChecker_is_numeric_type(self, left_type) and (strcmp(left_type, "Str") != @as(c_int, 0))) and (strcmp(left_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '+' must be numeric or Str, got '", left_type), "'"), expr.line, expr.col);
+            }
+            if ((!TypeChecker_is_numeric_type(self, right_type) and (strcmp(right_type, "Str") != @as(c_int, 0))) and (strcmp(right_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '+' must be numeric or Str, got '", right_type), "'"), expr.line, expr.col);
+            }
+        } else if ((((strcmp(op, "-") == @as(c_int, 0)) or (strcmp(op, "*") == @as(c_int, 0))) or (strcmp(op, "/") == @as(c_int, 0))) or (strcmp(op, "%") == @as(c_int, 0))) {
+            if (!TypeChecker_is_numeric_type(self, left_type) and (strcmp(left_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '", op), "' must be numeric, got '"), left_type), "'"), expr.line, expr.col);
+            }
+            if (!TypeChecker_is_numeric_type(self, right_type) and (strcmp(right_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '", op), "' must be numeric, got '"), right_type), "'"), expr.line, expr.col);
+            }
+        } else if ((strcmp(op, "&&") == @as(c_int, 0)) or (strcmp(op, "||") == @as(c_int, 0))) {
+            if ((strcmp(left_type, "Bool") != @as(c_int, 0)) and (strcmp(left_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '", op), "' must be Bool, got '"), left_type), "'"), expr.line, expr.col);
+            }
+            if ((strcmp(right_type, "Bool") != @as(c_int, 0)) and (strcmp(right_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '", op), "' must be Bool, got '"), right_type), "'"), expr.line, expr.col);
+            }
+        } else if (((((strcmp(op, "|") == @as(c_int, 0)) or (strcmp(op, "^") == @as(c_int, 0))) or (strcmp(op, "&") == @as(c_int, 0))) or (strcmp(op, "<<") == @as(c_int, 0))) or (strcmp(op, ">>") == @as(c_int, 0))) {
+            if (!TypeChecker_is_integer_type(self, left_type) and (strcmp(left_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '", op), "' must be an integer type, got '"), left_type), "'"), expr.line, expr.col);
+            }
+            if (!TypeChecker_is_integer_type(self, right_type) and (strcmp(right_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '", op), "' must be an integer type, got '"), right_type), "'"), expr.line, expr.col);
+            }
+        } else if ((((((strcmp(op, "==") == @as(c_int, 0)) or (strcmp(op, "!=") == @as(c_int, 0))) or (strcmp(op, "<") == @as(c_int, 0))) or (strcmp(op, ">") == @as(c_int, 0))) or (strcmp(op, "<=") == @as(c_int, 0))) or (strcmp(op, ">=") == @as(c_int, 0))) {
+            if (((strcmp(left_type, "Void") != @as(c_int, 0)) and (strcmp(right_type, "Void") != @as(c_int, 0))) and !TypeChecker_types_compatible(self, left_type, right_type)) {
+                TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("type mismatch in comparison: '", left_type), "' and '"), right_type), "' are not compatible"), expr.line, expr.col);
+            }
+        }
         return;
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_unary_op))) {
         TypeChecker_check_expr(self, expr.unop_operand);
+        var operand_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.unop_operand);
+        _ = &operand_type;
+        var binop: [*c]const u8 = expr.unop_op;
+        _ = &binop;
+        if (strcmp(binop, "!") == @as(c_int, 0)) {
+            if ((strcmp(operand_type, "Bool") != @as(c_int, 0)) and (strcmp(operand_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0026", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("operand of '!' must be Bool, got '", operand_type), "'"), expr.line, expr.col);
+            }
+        } else if (strcmp(binop, "-") == @as(c_int, 0)) {
+            if (!TypeChecker_is_numeric_type(self, operand_type) and (strcmp(operand_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0026", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("operand of negation must be numeric, got '", operand_type), "'"), expr.line, expr.col);
+            }
+        } else if (strcmp(binop, "~") == @as(c_int, 0)) {
+            if (!TypeChecker_is_integer_type(self, operand_type) and (strcmp(operand_type, "Void") != @as(c_int, 0))) {
+                TypeChecker_err(self, "E0026", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("operand of '~' must be an integer type, got '", operand_type), "'"), expr.line, expr.col);
+            }
+        }
         return;
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_func_call))) {
@@ -9926,7 +10233,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
                 type_params = empty_str_array();
             }
             if (ArrayList_Param_length(&params) != ArrayList_Int_length(&expr.func_args)) {
-                _ = printf("error[E0005]: argument count mismatch for function '%s': expected %lld, got %lld\n", name, ArrayList_Param_length(&params), ArrayList_Int_length(&expr.func_args));
+                _ = printf("%s:%lld:%lld: error[E0005]: argument count mismatch for function '%s': expected %lld, got %lld\n", self.*.source_file, expr.line, expr.col, name, ArrayList_Param_length(&params), ArrayList_Int_length(&expr.func_args));
                 self.*.has_error = @as(c_int, 1) != 0;
             } else {
                 if (ArrayList_Str_length(&type_params) > @as(c_longlong, 0)) {
@@ -9946,14 +10253,14 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
                     var is_generic_param: bool = ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(ptype)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))) and (@as(c_int, @bitCast(@as(c_uint, ptype[@as(usize, @intCast(@as(c_longlong, 0)))]))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 65)))))))))) and (@as(c_int, @bitCast(@as(c_uint, ptype[@as(usize, @intCast(@as(c_longlong, 0)))]))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 90)))))))));
                     _ = &is_generic_param;
                     if (!is_generic_param and !TypeChecker_types_compatible(self, ptype, arg_type)) {
-                        _ = printf("error[E0003]: argument type mismatch for function '%s', parameter '%s': expected '%s', got '%s'\n", name, param.name, ptype, arg_type);
+                        _ = printf("%s:%lld:%lld: error[E0003]: argument type mismatch for function '%s', parameter '%s': expected '%s', got '%s'\n", self.*.source_file, expr.line, expr.col, name, param.name, ptype, arg_type);
                         self.*.has_error = @as(c_int, 1) != 0;
                     }
                     arg_i = arg_i + @as(c_longlong, 1);
                 }
             }
         } else if (!self.*.has_any_import) {
-            _ = printf("error[E0020]: undefined function: '%s'\n", name);
+            _ = printf("%s:%lld:%lld: error[E0020]: undefined function: '%s'\n", self.*.source_file, expr.line, expr.col, name);
             self.*.has_error = @as(c_int, 1) != 0;
         }
         return;
@@ -9985,7 +10292,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             var decl: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, meth_idx);
             _ = &decl;
             if (ArrayList_Param_length(&decl.func_params) != (ArrayList_Int_length(&expr.meth_args) + @as(c_longlong, 1))) {
-                _ = printf("error[E0006]: argument count mismatch for method '%s': expected %lld, got %lld\n", meth_name, ArrayList_Param_length(&decl.func_params) - @as(c_longlong, 1), ArrayList_Int_length(&expr.meth_args));
+                _ = printf("%s:%lld:%lld: error[E0006]: argument count mismatch for method '%s': expected %lld, got %lld\n", self.*.source_file, expr.line, expr.col, meth_name, ArrayList_Param_length(&decl.func_params) - @as(c_longlong, 1), ArrayList_Int_length(&expr.meth_args));
                 self.*.has_error = @as(c_int, 1) != 0;
             } else {
                 var arg_i: i64 = 0;
@@ -9998,20 +10305,50 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
                     var arg_type: [*c]const u8 = TypeChecker_get_expr_type(self, arg);
                     _ = &arg_type;
                     if (!TypeChecker_types_compatible(self, param.ptype, arg_type)) {
-                        _ = printf("error[E0003]: argument type mismatch for method '%s', parameter '%s': expected '%s', got '%s'\n", meth_name, param.name, param.ptype, arg_type);
+                        _ = printf("%s:%lld:%lld: error[E0003]: argument type mismatch for method '%s', parameter '%s': expected '%s', got '%s'\n", self.*.source_file, expr.line, expr.col, meth_name, param.name, param.ptype, arg_type);
                         self.*.has_error = @as(c_int, 1) != 0;
                     }
                     arg_i = arg_i + @as(c_longlong, 1);
                 }
             }
         } else if (!self.*.has_any_import) {
-            _ = printf("error[E0022]: undefined method: '%s' for type '%s'\n", meth_name, recv_type);
+            _ = printf("%s:%lld:%lld: error[E0022]: undefined method: '%s' for type '%s'\n", self.*.source_file, expr.line, expr.col, meth_name, recv_type);
             self.*.has_error = @as(c_int, 1) != 0;
         }
         return;
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_index))) {
         TypeChecker_check_expr(self, expr.idx_expr);
+        TypeChecker_check_expr(self, expr.idx_index);
+        var index_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.idx_index);
+        _ = &index_type;
+        if ((strcmp(index_type, "Int") != @as(c_int, 0)) and (strcmp(index_type, "Void") != @as(c_int, 0))) {
+            TypeChecker_err(self, "E0027", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("index must be Int, got '", index_type), "'"), expr.line, expr.col);
+        }
+        var base_type: [*c]const u8 = TypeChecker_get_expr_type(self, expr.idx_expr);
+        _ = &base_type;
+        if ((strcmp(base_type, "Str") != @as(c_int, 0)) and (strcmp(base_type, "Void") != @as(c_int, 0))) {
+            if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) or ((@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
+                if (!((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(__kai_str_sub(base_type, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0)))) {
+                    TypeChecker_err(self, "E0028", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("type '", base_type), "' is not indexable"), expr.line, expr.col);
+                }
+            }
+        }
+        return;
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_slice))) {
+        TypeChecker_check_expr(self, expr.slice_expr);
+        if (expr.slice_lower >= @as(c_longlong, 0)) {
+            TypeChecker_check_expr(self, expr.slice_lower);
+        }
+        if (expr.slice_upper >= @as(c_longlong, 0)) {
+            TypeChecker_check_expr(self, expr.slice_upper);
+        }
+        return;
+    }
+    if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_range))) {
+        TypeChecker_check_expr(self, expr.range_start);
+        TypeChecker_check_expr(self, expr.range_end);
         return;
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_borrow))) {
@@ -10038,7 +10375,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
         _ = &struct_idx;
         if (struct_idx < @as(c_longlong, 0)) {
             if (!self.*.has_any_import) {
-                _ = printf("error[E0021]: undefined struct: '%s'\n", struct_name);
+                _ = printf("%s:%lld:%lld: error[E0021]: undefined struct: '%s'\n", self.*.source_file, expr.line, expr.col, struct_name);
                 self.*.has_error = @as(c_int, 1) != 0;
             }
             return;
@@ -10062,14 +10399,14 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
                     var val_type: [*c]const u8 = TypeChecker_get_expr_type(self, f.value);
                     _ = &val_type;
                     if (!TypeChecker_types_compatible(self, df.ftype, val_type)) {
-                        _ = printf("error[E0004]: type mismatch in initializer for field '%s' of struct '%s': expected '%s', got '%s'\n", f.name, struct_name, df.ftype, val_type);
+                        _ = printf("%s:%lld:%lld: error[E0004]: type mismatch in initializer for field '%s' of struct '%s': expected '%s', got '%s'\n", self.*.source_file, expr.line, expr.col, f.name, struct_name, df.ftype, val_type);
                         self.*.has_error = @as(c_int, 1) != 0;
                     }
                 }
                 dfi = dfi + @as(c_longlong, 1);
             }
             if (!found) {
-                _ = printf("error[E0013]: field '%s' does not exist in struct '%s'\n", f.name, struct_name);
+                _ = printf("%s:%lld:%lld: error[E0013]: field '%s' does not exist in struct '%s'\n", self.*.source_file, expr.line, expr.col, f.name, struct_name);
                 self.*.has_error = @as(c_int, 1) != 0;
             }
             fi = fi + @as(c_longlong, 1);
@@ -10097,7 +10434,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             i = i + @as(c_longlong, 1);
         }
         if (excl_pos < @as(c_longlong, 0)) {
-            _ = printf("error[E0014]: cannot use 'try' on non-error-union type '%s'\n", inner_ty);
+            _ = printf("%s:%lld:%lld: error[E0014]: cannot use 'try' on non-error-union type '%s'\n", self.*.source_file, expr.line, expr.col, inner_ty);
             self.*.has_error = @as(c_int, 1) != 0;
         } else {
             var error_set: [*c]const u8 = substring(inner_ty, excl_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
@@ -10117,13 +10454,13 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
                 i = i + @as(c_longlong, 1);
             }
             if (func_excl < @as(c_longlong, 0)) {
-                _ = printf("error[E0015]: cannot use 'try' in a function that returns non-error-union type '%s'\n", expected_ret);
+                _ = printf("%s:%lld:%lld: error[E0015]: cannot use 'try' in a function that returns non-error-union type '%s'\n", self.*.source_file, expr.line, expr.col, expected_ret);
                 self.*.has_error = @as(c_int, 1) != 0;
             } else {
                 var func_err: [*c]const u8 = substring(expected_ret, func_excl + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(expected_ret)))));
                 _ = &func_err;
                 if (!TypeChecker_types_compatible(self, func_err, error_set)) {
-                    _ = printf("error[E0016]: error set '%s' of try expression is not compatible with function error set '%s'\n", error_set, func_err);
+                    _ = printf("%s:%lld:%lld: error[E0016]: error set '%s' of try expression is not compatible with function error set '%s'\n", self.*.source_file, expr.line, expr.col, error_set, func_err);
                     self.*.has_error = @as(c_int, 1) != 0;
                 }
             }
@@ -10155,7 +10492,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             var fallback_yields: [*c]const u8 = TypeChecker_get_block_yield_type(self, expr.catch_fallback);
             _ = &fallback_yields;
             if (!TypeChecker_types_compatible(self, val_type, fallback_yields)) {
-                _ = printf("error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", fallback_yields, val_type);
+                _ = printf("%s:%lld:%lld: error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", self.*.source_file, expr.line, expr.col, fallback_yields, val_type);
                 self.*.has_error = @as(c_int, 1) != 0;
             }
             return;
@@ -10174,7 +10511,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             i = i + @as(c_longlong, 1);
         }
         if (excl_pos < @as(c_longlong, 0)) {
-            _ = printf("error[E0017]: cannot use 'catch' on non-error-union type '%s'\n", inner_ty);
+            _ = printf("%s:%lld:%lld: error[E0017]: cannot use 'catch' on non-error-union type '%s'\n", self.*.source_file, expr.line, expr.col, inner_ty);
             self.*.has_error = @as(c_int, 1) != 0;
         } else {
             var val_type: [*c]const u8 = substring(inner_ty, @as(c_longlong, 0), excl_pos);
@@ -10190,7 +10527,7 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
             var fallback_yields: [*c]const u8 = TypeChecker_get_block_yield_type(self, expr.catch_fallback);
             _ = &fallback_yields;
             if (!TypeChecker_types_compatible(self, val_type, fallback_yields)) {
-                _ = printf("error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", fallback_yields, val_type);
+                _ = printf("%s:%lld:%lld: error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", self.*.source_file, expr.line, expr.col, fallback_yields, val_type);
                 self.*.has_error = @as(c_int, 1) != 0;
             }
         }
@@ -10198,6 +10535,51 @@ pub export fn TypeChecker_check_expr(arg_self: [*c]TypeChecker, arg_expr_idx: i6
     }
 }
 pub extern fn get_exe_dir(buf: [*c]u8, max_len: i64) i64;
+pub export fn __kai_std_str_concat_alloc(arg_left: [*c]const u8, arg_right: [*c]const u8) [*c]const u8 {
+    var left = arg_left;
+    _ = &left;
+    var right = arg_right;
+    _ = &right;
+    var left_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(left))));
+    _ = &left_len;
+    var right_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(right))));
+    _ = &right_len;
+    var total: i64 = (left_len + right_len) + @as(c_longlong, 1);
+    _ = &total;
+    var buf: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, @truncate(total))))))));
+    _ = &buf;
+    if (buf != @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
+        var i: i64 = 0;
+        _ = &i;
+        while (i < left_len) {
+            (blk: {
+                const tmp = i;
+                if (tmp >= 0) break :blk buf + @as(usize, @intCast(tmp)) else break :blk buf - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).* = (blk: {
+                const tmp = i;
+                if (tmp >= 0) break :blk left + @as(usize, @intCast(tmp)) else break :blk left - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).*;
+            i = i + @as(c_longlong, 1);
+        }
+        var j: i64 = 0;
+        _ = &j;
+        while (j < right_len) {
+            (blk: {
+                const tmp = left_len + j;
+                if (tmp >= 0) break :blk buf + @as(usize, @intCast(tmp)) else break :blk buf - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).* = (blk: {
+                const tmp = j;
+                if (tmp >= 0) break :blk right + @as(usize, @intCast(tmp)) else break :blk right - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).*;
+            j = j + @as(c_longlong, 1);
+        }
+        (blk: {
+            const tmp = total - @as(c_longlong, 1);
+            if (tmp >= 0) break :blk buf + @as(usize, @intCast(tmp)) else break :blk buf - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).* = @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 0)))));
+    }
+    return @as([*c]const u8, @ptrCast(@alignCast(buf)));
+}
 pub export fn ArrayList_StrMapEntry_init(arg_allocator: [*c]KaiAllocator) ArrayList_StrMapEntry {
     var allocator = arg_allocator;
     _ = &allocator;
@@ -10369,11 +10751,11 @@ pub export fn Codegen_add_init_return(arg_self: [*c]Codegen, arg_body_str: [*c]c
     _ = &body_str;
     var struct_name = arg_struct_name;
     _ = &struct_name;
-    var self_decl: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("    ", struct_name), " self = ("), struct_name), "){0};\n");
+    var self_decl: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", struct_name), " self = ("), struct_name), "){0};\n");
     _ = &self_decl;
     var body_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(body_str))));
     _ = &body_len;
-    var stripped_body: [*c]const u8 = substring(body_str, @as(c_longlong, 2), body_len - @as(c_longlong, 1));
+    var stripped_body: [*c]const u8 = __kai_str_sub(body_str, @as(c_longlong, 2), body_len - @as(c_longlong, 1));
     _ = &stripped_body;
     var ends_with_return: bool = @as(c_int, 0) != 0;
     _ = &ends_with_return;
@@ -10389,11 +10771,11 @@ pub export fn Codegen_add_init_return(arg_self: [*c]Codegen, arg_body_str: [*c]c
         }
     }
     if (ends_with_return) {
-        return _kai_str_concat(_kai_str_concat(_kai_str_concat("{\n", self_decl), stripped_body), "}");
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("{\n", self_decl), stripped_body), "}");
     }
     var self_ret: [*c]const u8 = "    return self;\n}";
     _ = &self_ret;
-    return _kai_str_concat(_kai_str_concat(_kai_str_concat("{\n", self_decl), stripped_body), self_ret);
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("{\n", self_decl), stripped_body), self_ret);
 }
 pub export fn Codegen_init(arg_allocator: [*c]KaiAllocator, arg_stmt_pool: [*c]ArrayList_StmtNode, arg_expr_pool: [*c]ArrayList_ExprNode, arg_pattern_pool: [*c]ArrayList_PatternNode) Codegen {
     var allocator = arg_allocator;
@@ -10475,7 +10857,7 @@ pub export fn Codegen_is_pointer_type(arg_self: [*c]Codegen, arg_t: [*c]const u8
     if (strcmp(t, "Str") == @as(c_int, 0)) {
         return @as(c_int, 1) != 0;
     }
-    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(t)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(substring(t, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0))) {
+    if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(t)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(__kai_str_sub(t, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0))) {
         return @as(c_int, 1) != 0;
     }
     return @as(c_int, 0) != 0;
@@ -10494,23 +10876,23 @@ pub export fn Codegen_map_type(arg_self: [*c]Codegen, arg_type_name: [*c]const u
         resolved_type = Codegen_substitute_generic_type(self, type_name);
     }
     if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(resolved_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, resolved_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
-        var val_type: [*c]const u8 = substring(resolved_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
+        var val_type: [*c]const u8 = __kai_str_sub(resolved_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
         _ = &val_type;
         if (Codegen_is_pointer_type(self, val_type)) {
             return Codegen_map_type(self, val_type);
         }
         var clean_val: [*c]const u8 = Codegen_clean_type_for_mangling(self, val_type);
         _ = &clean_val;
-        var concrete_name: [*c]const u8 = _kai_str_concat("Optional_", clean_val);
+        var concrete_name: [*c]const u8 = __kai_std_str_concat_alloc("Optional_", clean_val);
         _ = &concrete_name;
         if (strlist_find(&self.*.result_definitions, concrete_name) < @as(c_longlong, 0)) {
             ArrayList_Str_push(&self.*.result_definitions, concrete_name);
-            var struct_str: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("typedef struct ", concrete_name), " "), concrete_name), ";\n");
+            var struct_str: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", concrete_name), " "), concrete_name), ";\n");
             _ = &struct_str;
-            struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(struct_str, "struct "), concrete_name), " {\n");
-            struct_str = _kai_str_concat(struct_str, "    bool has_value;\n");
-            struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(struct_str, "    "), Codegen_map_type(self, val_type)), " value;\n");
-            struct_str = _kai_str_concat(struct_str, "};\n");
+            struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "struct "), concrete_name), " {\n");
+            struct_str = __kai_std_str_concat_alloc(struct_str, "    bool has_value;\n");
+            struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "    "), Codegen_map_type(self, val_type)), " value;\n");
+            struct_str = __kai_std_str_concat_alloc(struct_str, "};\n");
             _ = StringBuilder_append(&self.*.struct_decls, struct_str);
         }
         return concrete_name;
@@ -10518,26 +10900,26 @@ pub export fn Codegen_map_type(arg_self: [*c]Codegen, arg_type_name: [*c]const u
     if (Codegen_str_contains(self, resolved_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))))) {
         var excl_pos: i64 = Codegen_str_find(self, resolved_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
         _ = &excl_pos;
-        var val_type: [*c]const u8 = substring(resolved_type, @as(c_longlong, 0), excl_pos);
+        var val_type: [*c]const u8 = __kai_str_sub(resolved_type, @as(c_longlong, 0), excl_pos);
         _ = &val_type;
-        var err_type: [*c]const u8 = substring(resolved_type, excl_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
+        var err_type: [*c]const u8 = __kai_str_sub(resolved_type, excl_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
         _ = &err_type;
         var clean_val: [*c]const u8 = Codegen_clean_type_for_mangling(self, val_type);
         _ = &clean_val;
         var clean_err: [*c]const u8 = Codegen_clean_type_for_mangling(self, err_type);
         _ = &clean_err;
-        var concrete_name: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat("Result_", clean_val), "_"), clean_err);
+        var concrete_name: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("Result_", clean_val), "_"), clean_err);
         _ = &concrete_name;
         if (strlist_find(&self.*.result_definitions, concrete_name) < @as(c_longlong, 0)) {
             ArrayList_Str_push(&self.*.result_definitions, concrete_name);
-            var struct_str: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("typedef struct ", concrete_name), " "), concrete_name), ";\n");
+            var struct_str: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", concrete_name), " "), concrete_name), ";\n");
             _ = &struct_str;
-            struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(struct_str, "struct "), concrete_name), " {\n");
-            struct_str = _kai_str_concat(struct_str, "    int64_t tag;\n");
+            struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "struct "), concrete_name), " {\n");
+            struct_str = __kai_std_str_concat_alloc(struct_str, "    int64_t tag;\n");
             if (strcmp(val_type, "Void") != @as(c_int, 0)) {
-                struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(struct_str, "    "), Codegen_map_type(self, val_type)), " value;\n");
+                struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "    "), Codegen_map_type(self, val_type)), " value;\n");
             }
-            struct_str = _kai_str_concat(struct_str, "};\n");
+            struct_str = __kai_std_str_concat_alloc(struct_str, "};\n");
             _ = StringBuilder_append(&self.*.struct_decls, struct_str);
         }
         return concrete_name;
@@ -10569,45 +10951,75 @@ pub export fn Codegen_map_type(arg_self: [*c]Codegen, arg_type_name: [*c]const u
     if (strcmp(resolved_type, "Allocator") == @as(c_int, 0)) {
         return "KaiAllocator";
     }
-    if (strcmp(substring(resolved_type, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0)) {
-        var inner: [*c]const u8 = substring(resolved_type, @as(c_longlong, 2), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
+    if (strcmp(resolved_type, "i8") == @as(c_int, 0)) {
+        return "int8_t";
+    }
+    if (strcmp(resolved_type, "i16") == @as(c_int, 0)) {
+        return "int16_t";
+    }
+    if (strcmp(resolved_type, "i32") == @as(c_int, 0)) {
+        return "int32_t";
+    }
+    if (strcmp(resolved_type, "i64") == @as(c_int, 0)) {
+        return "int64_t";
+    }
+    if (strcmp(resolved_type, "u8") == @as(c_int, 0)) {
+        return "uint8_t";
+    }
+    if (strcmp(resolved_type, "u16") == @as(c_int, 0)) {
+        return "uint16_t";
+    }
+    if (strcmp(resolved_type, "u32") == @as(c_int, 0)) {
+        return "uint32_t";
+    }
+    if (strcmp(resolved_type, "u64") == @as(c_int, 0)) {
+        return "uint64_t";
+    }
+    if (strcmp(resolved_type, "usize") == @as(c_int, 0)) {
+        return "size_t";
+    }
+    if (strcmp(resolved_type, "isize") == @as(c_int, 0)) {
+        return "intptr_t";
+    }
+    if (strcmp(__kai_str_sub(resolved_type, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0)) {
+        var inner: [*c]const u8 = __kai_str_sub(resolved_type, @as(c_longlong, 2), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
         _ = &inner;
-        return _kai_str_concat(Codegen_map_type(self, inner), "*");
+        return __kai_std_str_concat_alloc(Codegen_map_type(self, inner), "*");
     }
     if (@as(c_int, @bitCast(@as(c_uint, resolved_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) {
-        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(resolved_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(substring(resolved_type, @as(c_longlong, 0), @as(c_longlong, 5)), "*mut ") == @as(c_int, 0))) {
-            var inner: [*c]const u8 = substring(resolved_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(resolved_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(__kai_str_sub(resolved_type, @as(c_longlong, 0), @as(c_longlong, 5)), "*mut ") == @as(c_int, 0))) {
+            var inner: [*c]const u8 = __kai_str_sub(resolved_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
             _ = &inner;
             if (strcmp(inner, "Void") == @as(c_int, 0)) {
                 return "void*";
             }
-            return _kai_str_concat(Codegen_map_type(self, inner), "*");
+            return __kai_std_str_concat_alloc(Codegen_map_type(self, inner), "*");
         } else {
-            var inner: [*c]const u8 = substring(resolved_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
+            var inner: [*c]const u8 = __kai_str_sub(resolved_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
             _ = &inner;
             if (strcmp(inner, "Void") == @as(c_int, 0)) {
                 return "void*";
             }
-            return _kai_str_concat(Codegen_map_type(self, inner), "*");
+            return __kai_std_str_concat_alloc(Codegen_map_type(self, inner), "*");
         }
     }
     if (@as(c_int, @bitCast(@as(c_uint, resolved_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))) {
-        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(resolved_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(substring(resolved_type, @as(c_longlong, 0), @as(c_longlong, 5)), "&mut ") == @as(c_int, 0))) {
-            var inner: [*c]const u8 = substring(resolved_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(resolved_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(__kai_str_sub(resolved_type, @as(c_longlong, 0), @as(c_longlong, 5)), "&mut ") == @as(c_int, 0))) {
+            var inner: [*c]const u8 = __kai_str_sub(resolved_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
             _ = &inner;
-            return _kai_str_concat(Codegen_map_type(self, inner), "*");
+            return __kai_std_str_concat_alloc(Codegen_map_type(self, inner), "*");
         } else {
-            var inner: [*c]const u8 = substring(resolved_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
+            var inner: [*c]const u8 = __kai_str_sub(resolved_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(resolved_type)))));
             _ = &inner;
-            return _kai_str_concat(Codegen_map_type(self, inner), "*");
+            return __kai_std_str_concat_alloc(Codegen_map_type(self, inner), "*");
         }
     }
     if (Codegen_str_contains(self, resolved_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))))) {
         var lt_pos: i64 = Codegen_str_find(self, resolved_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))));
         _ = &lt_pos;
-        var base_name: [*c]const u8 = substring(resolved_type, @as(c_longlong, 0), lt_pos);
+        var base_name: [*c]const u8 = __kai_str_sub(resolved_type, @as(c_longlong, 0), lt_pos);
         _ = &base_name;
-        var args_str: [*c]const u8 = substring(resolved_type, lt_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(resolved_type)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))));
+        var args_str: [*c]const u8 = __kai_str_sub(resolved_type, lt_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(resolved_type)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))));
         _ = &args_str;
         var args: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
         _ = &args;
@@ -10622,12 +11034,12 @@ pub export fn Codegen_map_type(arg_self: [*c]Codegen, arg_type_name: [*c]const u
             }).*;
             _ = &c;
             if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 44))))))))) {
-                ArrayList_Str_push(&args, Codegen_trim_spaces(self, substring(args_str, start, i)));
+                ArrayList_Str_push(&args, Codegen_trim_spaces(self, __kai_str_sub(args_str, start, i)));
                 start = i + @as(c_longlong, 1);
             }
             i = i + @as(c_longlong, 1);
         }
-        ArrayList_Str_push(&args, Codegen_trim_spaces(self, substring(args_str, start, @as(i64, @bitCast(@as(c_ulonglong, strlen(args_str)))))));
+        ArrayList_Str_push(&args, Codegen_trim_spaces(self, __kai_str_sub(args_str, start, @as(i64, @bitCast(@as(c_ulonglong, strlen(args_str)))))));
         var concrete_name: [*c]const u8 = base_name;
         _ = &concrete_name;
         var ai: i64 = 0;
@@ -10637,7 +11049,7 @@ pub export fn Codegen_map_type(arg_self: [*c]Codegen, arg_type_name: [*c]const u
             _ = &raw_arg;
             var clean_arg: [*c]const u8 = Codegen_clean_type_for_mangling(self, raw_arg);
             _ = &clean_arg;
-            concrete_name = _kai_str_concat(_kai_str_concat(concrete_name, "_"), clean_arg);
+            concrete_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(concrete_name, "_"), clean_arg);
             ai = ai + @as(c_longlong, 1);
         }
         var struct_idx_str: [*c]const u8 = type_map_get(&self.*.generic_struct_decls, base_name);
@@ -10673,22 +11085,22 @@ pub export fn Codegen_substitute_generic_type(arg_self: [*c]Codegen, arg_type_na
         return mapped;
     }
     if (@as(c_int, @bitCast(@as(c_uint, type_name[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) {
-        return _kai_str_concat("*", Codegen_substitute_generic_type(self, substring(type_name, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(type_name)))))));
+        return __kai_std_str_concat_alloc("*", Codegen_substitute_generic_type(self, __kai_str_sub(type_name, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(type_name)))))));
     }
     if (@as(c_int, @bitCast(@as(c_uint, type_name[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))) {
-        if (strcmp(substring(type_name, @as(c_longlong, 0), @as(c_longlong, 5)), "&mut ") == @as(c_int, 0)) {
-            return _kai_str_concat("&mut ", Codegen_substitute_generic_type(self, substring(type_name, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(type_name)))))));
+        if (strcmp(__kai_str_sub(type_name, @as(c_longlong, 0), @as(c_longlong, 5)), "&mut ") == @as(c_int, 0)) {
+            return __kai_std_str_concat_alloc("&mut ", Codegen_substitute_generic_type(self, __kai_str_sub(type_name, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(type_name)))))));
         }
-        return _kai_str_concat("&", Codegen_substitute_generic_type(self, substring(type_name, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(type_name)))))));
+        return __kai_std_str_concat_alloc("&", Codegen_substitute_generic_type(self, __kai_str_sub(type_name, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(type_name)))))));
     }
     if (Codegen_str_contains(self, type_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))))) {
         var lt_pos: i64 = Codegen_str_find(self, type_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))));
         _ = &lt_pos;
-        var base: [*c]const u8 = substring(type_name, @as(c_longlong, 0), lt_pos);
+        var base: [*c]const u8 = __kai_str_sub(type_name, @as(c_longlong, 0), lt_pos);
         _ = &base;
-        var inner: [*c]const u8 = substring(type_name, lt_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(type_name)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))));
+        var inner: [*c]const u8 = __kai_str_sub(type_name, lt_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(type_name)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))));
         _ = &inner;
-        var res: [*c]const u8 = _kai_str_concat(base, "<");
+        var res: [*c]const u8 = __kai_std_str_concat_alloc(base, "<");
         _ = &res;
         var start: i64 = 0;
         _ = &start;
@@ -10703,24 +11115,24 @@ pub export fn Codegen_substitute_generic_type(arg_self: [*c]Codegen, arg_type_na
             }).*;
             _ = &c;
             if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 44))))))))) {
-                var arg: [*c]const u8 = Codegen_trim_spaces(self, substring(inner, start, i));
+                var arg: [*c]const u8 = Codegen_trim_spaces(self, __kai_str_sub(inner, start, i));
                 _ = &arg;
                 if (arg_count > @as(c_longlong, 0)) {
-                    res = _kai_str_concat(res, ", ");
+                    res = __kai_std_str_concat_alloc(res, ", ");
                 }
-                res = _kai_str_concat(res, Codegen_substitute_generic_type(self, arg));
+                res = __kai_std_str_concat_alloc(res, Codegen_substitute_generic_type(self, arg));
                 start = i + @as(c_longlong, 1);
                 arg_count = arg_count + @as(c_longlong, 1);
             }
             i = i + @as(c_longlong, 1);
         }
-        var arg: [*c]const u8 = Codegen_trim_spaces(self, substring(inner, start, @as(i64, @bitCast(@as(c_ulonglong, strlen(inner))))));
+        var arg: [*c]const u8 = Codegen_trim_spaces(self, __kai_str_sub(inner, start, @as(i64, @bitCast(@as(c_ulonglong, strlen(inner))))));
         _ = &arg;
         if (arg_count > @as(c_longlong, 0)) {
-            res = _kai_str_concat(res, ", ");
+            res = __kai_std_str_concat_alloc(res, ", ");
         }
-        res = _kai_str_concat(res, Codegen_substitute_generic_type(self, arg));
-        res = _kai_str_concat(res, ">");
+        res = __kai_std_str_concat_alloc(res, Codegen_substitute_generic_type(self, arg));
+        res = __kai_std_str_concat_alloc(res, ">");
         return res;
     }
     return type_name;
@@ -10746,7 +11158,7 @@ pub export fn Codegen_trim_spaces(arg_self: [*c]Codegen, arg_s: [*c]const u8) [*
     }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32)))))))))) {
         end = end - @as(c_longlong, 1);
     }
-    return substring(s, start, end);
+    return __kai_str_sub(s, start, end);
 }
 pub export fn Codegen_clean_type_for_mangling(arg_self: [*c]Codegen, arg_s: [*c]const u8) [*c]const u8 {
     var self = arg_self;
@@ -10764,17 +11176,17 @@ pub export fn Codegen_clean_type_for_mangling(arg_self: [*c]Codegen, arg_s: [*c]
         }).*;
         _ = &c;
         if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) {
-            res = _kai_str_concat(res, "ptr");
+            res = __kai_std_str_concat_alloc(res, "ptr");
         } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))) {
-            res = _kai_str_concat(res, "ref");
+            res = __kai_std_str_concat_alloc(res, "ref");
         } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) {
-            res = _kai_str_concat(res, "_");
+            res = __kai_std_str_concat_alloc(res, "_");
         } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63))))))))) {
-            res = _kai_str_concat(res, "opt_");
+            res = __kai_std_str_concat_alloc(res, "opt_");
         } else if ((((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 62)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 44)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33)))))))))) {
-            res = _kai_str_concat(res, "_");
+            res = __kai_std_str_concat_alloc(res, "_");
         } else {
-            res = _kai_str_concat(res, char_to_str(c));
+            res = __kai_std_str_concat_alloc(res, char_to_str(c));
         }
         i = i + @as(c_longlong, 1);
     }
@@ -10838,7 +11250,7 @@ pub export fn Codegen_infer_type_args(arg_self: [*c]Codegen, arg_func_stmt_idx: 
         _ = &done;
         while (!done) {
             if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(ptype)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, ptype[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, ptype[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
-                ptype = substring(ptype, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(ptype)))));
+                ptype = __kai_str_sub(ptype, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(ptype)))));
             } else {
                 done = @as(c_int, 1) != 0;
             }
@@ -10846,16 +11258,16 @@ pub export fn Codegen_infer_type_args(arg_self: [*c]Codegen, arg_func_stmt_idx: 
         done = @as(c_int, 0) != 0;
         while (!done) {
             if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(atype)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, atype[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, atype[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
-                atype = substring(atype, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(atype)))));
+                atype = __kai_str_sub(atype, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(atype)))));
             } else {
                 done = @as(c_int, 1) != 0;
             }
         }
-        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(ptype)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 4)))) and (strcmp(substring(ptype, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0))) {
-            ptype = substring(ptype, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(ptype)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(ptype)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 4)))) and (strcmp(__kai_str_sub(ptype, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0))) {
+            ptype = __kai_str_sub(ptype, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(ptype)))));
         }
-        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(atype)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 4)))) and (strcmp(substring(atype, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0))) {
-            atype = substring(atype, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(atype)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(atype)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 4)))) and (strcmp(__kai_str_sub(atype, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0))) {
+            atype = __kai_str_sub(atype, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(atype)))));
         }
         var is_param: bool = @as(c_int, 0) != 0;
         _ = &is_param;
@@ -10871,7 +11283,7 @@ pub export fn Codegen_infer_type_args(arg_self: [*c]Codegen, arg_func_stmt_idx: 
                 if (Codegen_str_contains(self, tp_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58))))))) {
                     var colon_pos: i64 = Codegen_str_find(self, tp_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58))))));
                     _ = &colon_pos;
-                    tp_name = substring(tp_name, @as(c_longlong, 0), colon_pos);
+                    tp_name = __kai_str_sub(tp_name, @as(c_longlong, 0), colon_pos);
                 }
                 if (strcmp(tp_name, ptype) == @as(c_int, 0)) {
                     ArrayList_Str_set(&type_args, tp_i, atype);
@@ -10908,7 +11320,7 @@ pub export fn Codegen_setup_current_type_map(arg_self: [*c]Codegen, arg_type_par
         if (Codegen_str_contains(self, param_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58))))))) {
             var colon_pos: i64 = Codegen_str_find(self, param_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58))))));
             _ = &colon_pos;
-            param_name = substring(param_name, @as(c_longlong, 0), colon_pos);
+            param_name = __kai_str_sub(param_name, @as(c_longlong, 0), colon_pos);
         }
         type_map_put(&self.*.current_type_map, param_name, arg_name);
         i = i + @as(c_longlong, 1);
@@ -10929,10 +11341,10 @@ pub export fn Codegen_monomorphize_struct(arg_self: [*c]Codegen, arg_stmt_idx: i
     _ = &old_type_map;
     self.*.current_type_map = ArrayList_StrMapEntry_init(self.*.allocator);
     Codegen_setup_current_type_map(self, &stmt.struct_type_params, type_args);
-    var typedef_str: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("typedef struct ", concrete_name), " "), concrete_name), ";\n");
+    var typedef_str: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", concrete_name), " "), concrete_name), ";\n");
     _ = &typedef_str;
     _ = StringBuilder_append(&self.*.struct_decls, typedef_str);
-    var body: [*c]const u8 = _kai_str_concat(_kai_str_concat("struct ", concrete_name), " {\n");
+    var body: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", concrete_name), " {\n");
     _ = &body;
     var i: i64 = 0;
     _ = &i;
@@ -10941,10 +11353,10 @@ pub export fn Codegen_monomorphize_struct(arg_self: [*c]Codegen, arg_stmt_idx: i
         _ = &f;
         var f_type: [*c]const u8 = Codegen_map_type(self, f.ftype);
         _ = &f_type;
-        body = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(body, "    "), f_type), " "), f.name), ";\n");
+        body = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(body, "    "), f_type), " "), f.name), ";\n");
         i = i + @as(c_longlong, 1);
     }
-    body = _kai_str_concat(body, "};\n");
+    body = __kai_std_str_concat_alloc(body, "};\n");
     _ = StringBuilder_append(&self.*.struct_decls, body);
     Codegen_monomorphize_methods(self, stmt.struct_name, concrete_name);
     self.*.current_type_map = old_type_map;
@@ -10964,10 +11376,10 @@ pub export fn Codegen_monomorphize_enum(arg_self: [*c]Codegen, arg_stmt_idx: i64
     _ = &old_type_map;
     self.*.current_type_map = ArrayList_StrMapEntry_init(self.*.allocator);
     Codegen_setup_current_type_map(self, &stmt.enum_type_params, type_args);
-    var typedef_str: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("typedef struct ", concrete_name), " "), concrete_name), ";\n");
+    var typedef_str: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", concrete_name), " "), concrete_name), ";\n");
     _ = &typedef_str;
     _ = StringBuilder_append(&self.*.struct_decls, typedef_str);
-    var tags_name: [*c]const u8 = _kai_str_concat(concrete_name, "_tags");
+    var tags_name: [*c]const u8 = __kai_std_str_concat_alloc(concrete_name, "_tags");
     _ = &tags_name;
     var tags_str: [*c]const u8 = "typedef enum {\n";
     _ = &tags_str;
@@ -10976,35 +11388,35 @@ pub export fn Codegen_monomorphize_enum(arg_self: [*c]Codegen, arg_stmt_idx: i64
     while (i < ArrayList_Variant_length(&stmt.enum_variants)) {
         var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, i);
         _ = &v;
-        tags_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(tags_str, "    "), concrete_name), "_"), v.vname), "_TAG,\n");
+        tags_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(tags_str, "    "), concrete_name), "_"), v.vname), "_TAG,\n");
         i = i + @as(c_longlong, 1);
     }
-    tags_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(tags_str, "} "), tags_name), ";\n");
+    tags_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(tags_str, "} "), tags_name), ";\n");
     _ = StringBuilder_append(&self.*.struct_decls, tags_str);
-    var body: [*c]const u8 = _kai_str_concat(_kai_str_concat("struct ", concrete_name), " {\n");
+    var body: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", concrete_name), " {\n");
     _ = &body;
-    body = _kai_str_concat(body, "    uint8_t tag;\n");
-    body = _kai_str_concat(body, "    union {\n");
+    body = __kai_std_str_concat_alloc(body, "    uint8_t tag;\n");
+    body = __kai_std_str_concat_alloc(body, "    union {\n");
     i = 0;
     while (i < ArrayList_Variant_length(&stmt.enum_variants)) {
         var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, i);
         _ = &v;
         if (ArrayList_Param_length(&v.params) > @as(c_longlong, 0)) {
-            body = _kai_str_concat(body, "        struct {\n");
+            body = __kai_std_str_concat_alloc(body, "        struct {\n");
             var p_idx: i64 = 0;
             _ = &p_idx;
             while (p_idx < ArrayList_Param_length(&v.params)) {
                 var p: Param = ArrayList_Param_get(&v.params, p_idx);
                 _ = &p;
-                body = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(body, "            "), Codegen_map_type(self, p.ptype)), " "), p.name), ";\n");
+                body = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(body, "            "), Codegen_map_type(self, p.ptype)), " "), p.name), ";\n");
                 p_idx = p_idx + @as(c_longlong, 1);
             }
-            body = _kai_str_concat(_kai_str_concat(_kai_str_concat(body, "        } "), v.vname), ";\n");
+            body = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(body, "        } "), v.vname), ";\n");
         }
         i = i + @as(c_longlong, 1);
     }
-    body = _kai_str_concat(body, "    } payload;\n");
-    body = _kai_str_concat(body, "};\n");
+    body = __kai_std_str_concat_alloc(body, "    } payload;\n");
+    body = __kai_std_str_concat_alloc(body, "};\n");
     _ = StringBuilder_append(&self.*.struct_decls, body);
     Codegen_monomorphize_methods(self, stmt.enum_name, concrete_name);
     self.*.current_type_map = old_type_map;
@@ -11031,7 +11443,7 @@ pub export fn Codegen_monomorphize_methods(arg_self: [*c]Codegen, arg_base_struc
                 _ = &m_node;
                 var method_name: [*c]const u8 = m_node.func_name;
                 _ = &method_name;
-                var is_init: bool = (((strcmp(method_name, "init") == @as(c_int, 0)) or (strcmp(m_node.func_return_type, base_struct_name) == @as(c_int, 0))) or (strcmp(m_node.func_return_type, _kai_str_concat("*", base_struct_name)) == @as(c_int, 0))) or (strcmp(m_node.func_return_type, _kai_str_concat("&", base_struct_name)) == @as(c_int, 0));
+                var is_init: bool = (((strcmp(method_name, "init") == @as(c_int, 0)) or (strcmp(m_node.func_return_type, base_struct_name) == @as(c_int, 0))) or (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("*", base_struct_name)) == @as(c_int, 0))) or (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("&", base_struct_name)) == @as(c_int, 0));
                 _ = &is_init;
                 var ret_type: [*c]const u8 = "";
                 _ = &ret_type;
@@ -11043,7 +11455,7 @@ pub export fn Codegen_monomorphize_methods(arg_self: [*c]Codegen, arg_base_struc
                 var params_str: [*c]const u8 = "";
                 _ = &params_str;
                 if (!is_init) {
-                    params_str = _kai_str_concat(concrete_struct_name, "* self");
+                    params_str = __kai_std_str_concat_alloc(concrete_struct_name, "* self");
                 }
                 var p_idx: i64 = 0;
                 _ = &p_idx;
@@ -11052,16 +11464,16 @@ pub export fn Codegen_monomorphize_methods(arg_self: [*c]Codegen, arg_base_struc
                     _ = &p;
                     if (strcmp(p.name, "self") != @as(c_int, 0)) {
                         if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                            params_str = _kai_str_concat(params_str, ", ");
+                            params_str = __kai_std_str_concat_alloc(params_str, ", ");
                         }
-                        params_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
+                        params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
                     }
                     p_idx = p_idx + @as(c_longlong, 1);
                 }
                 if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                     params_str = "void";
                 }
-                var mangled_fn_name: [*c]const u8 = _kai_str_concat(_kai_str_concat(concrete_struct_name, "_"), method_name);
+                var mangled_fn_name: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(concrete_struct_name, "_"), method_name);
                 _ = &mangled_fn_name;
                 var concrete_ret: [*c]const u8 = m_node.func_return_type;
                 _ = &concrete_ret;
@@ -11087,7 +11499,7 @@ pub export fn Codegen_monomorphize_methods(arg_self: [*c]Codegen, arg_base_struc
                 if (is_init) {
                     type_map_put(&self.*.var_types, "self", concrete_struct_name);
                 } else {
-                    type_map_put(&self.*.var_types, "self", _kai_str_concat("*", concrete_struct_name));
+                    type_map_put(&self.*.var_types, "self", __kai_std_str_concat_alloc("*", concrete_struct_name));
                 }
                 var p_idx2: i64 = 0;
                 _ = &p_idx2;
@@ -11107,9 +11519,9 @@ pub export fn Codegen_monomorphize_methods(arg_self: [*c]Codegen, arg_base_struc
                 if (is_init) {
                     body_str = Codegen_add_init_return(self, body_str, concrete_struct_name);
                 }
-                var proto: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), mangled_fn_name), "("), params_str), ");\n");
+                var proto: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), mangled_fn_name), "("), params_str), ");\n");
                 _ = &proto;
-                var impl_str: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), mangled_fn_name), "("), params_str), ") "), body_str), "\n");
+                var impl_str: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), mangled_fn_name), "("), params_str), ") "), body_str), "\n");
                 _ = &impl_str;
                 _ = StringBuilder_append(&self.*.func_decls, proto);
                 _ = StringBuilder_append(&self.*.output, impl_str);
@@ -11153,11 +11565,11 @@ pub export fn Codegen_monomorphize_func(arg_self: [*c]Codegen, arg_func_stmt_idx
         var p: Param = ArrayList_Param_get(&stmt.func_params, p_idx);
         _ = &p;
         if (p_idx > @as(c_longlong, 0)) {
-            params_str = _kai_str_concat(params_str, ", ");
+            params_str = __kai_std_str_concat_alloc(params_str, ", ");
         }
         var concrete_ptype: [*c]const u8 = Codegen_substitute_generic_type(self, p.ptype);
         _ = &concrete_ptype;
-        params_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(params_str, Codegen_map_type(self, concrete_ptype)), " "), p.name);
+        params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, Codegen_map_type(self, concrete_ptype)), " "), p.name);
         p_idx = p_idx + @as(c_longlong, 1);
     }
     if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
@@ -11202,9 +11614,9 @@ pub export fn Codegen_monomorphize_func(arg_self: [*c]Codegen, arg_func_stmt_idx
     while (ArrayList_StrMapEntry_length(&self.*.var_types) > old_var_len) {
         _ = ArrayList_StrMapEntry_pop(&self.*.var_types);
     }
-    var proto: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(mapped_ret, " "), mangled_name), "("), params_str), ");\n");
+    var proto: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(mapped_ret, " "), mangled_name), "("), params_str), ");\n");
     _ = &proto;
-    var impl_str: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(mapped_ret, " "), mangled_name), "("), params_str), ") "), body_str), "\n");
+    var impl_str: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(mapped_ret, " "), mangled_name), "("), params_str), ") "), body_str), "\n");
     _ = &impl_str;
     _ = StringBuilder_append(&self.*.func_decls, proto);
     _ = StringBuilder_append(&self.*.output, impl_str);
@@ -11242,7 +11654,7 @@ pub export fn Codegen_extract_first_type_arg(arg_self: [*c]Codegen, arg_type_nam
         i = i + @as(c_longlong, 1);
     }
     if ((start >= @as(c_longlong, 0)) and (end >= @as(c_longlong, 0))) {
-        return substring(type_name, start, end);
+        return __kai_str_sub(type_name, start, end);
     }
     return "Int";
 }
@@ -11261,7 +11673,7 @@ pub export fn Codegen_build_func_types(arg_self: [*c]Codegen) void {
             while (p_i < ArrayList_Param_length(&stmt.func_params)) {
                 var p: Param = ArrayList_Param_get(&stmt.func_params, p_i);
                 _ = &p;
-                var p_key: [*c]const u8 = _kai_str_concat(_kai_str_concat(stmt.func_name, "_param_"), int_to_str(p_i));
+                var p_key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(stmt.func_name, "_param_"), int_to_str(p_i));
                 _ = &p_key;
                 type_map_put(&self.*.func_param_types, p_key, p.ptype);
                 p_i = p_i + @as(c_longlong, 1);
@@ -11274,7 +11686,7 @@ pub export fn Codegen_build_func_types(arg_self: [*c]Codegen) void {
             while (p_i < ArrayList_Param_length(&stmt.extern_params)) {
                 var p: Param = ArrayList_Param_get(&stmt.extern_params, p_i);
                 _ = &p;
-                var p_key: [*c]const u8 = _kai_str_concat(_kai_str_concat(stmt.extern_name, "_param_"), int_to_str(p_i));
+                var p_key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(stmt.extern_name, "_param_"), int_to_str(p_i));
                 _ = &p_key;
                 type_map_put(&self.*.func_param_types, p_key, p.ptype);
                 p_i = p_i + @as(c_longlong, 1);
@@ -11290,7 +11702,7 @@ pub export fn Codegen_build_func_types(arg_self: [*c]Codegen) void {
                 _ = &m_idx;
                 var m_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, m_idx);
                 _ = &m_node;
-                var key: [*c]const u8 = _kai_str_concat(_kai_str_concat(struct_name, "_"), m_node.func_name);
+                var key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_name, "_"), m_node.func_name);
                 _ = &key;
                 var ret: [*c]const u8 = m_node.func_return_type;
                 _ = &ret;
@@ -11303,7 +11715,7 @@ pub export fn Codegen_build_func_types(arg_self: [*c]Codegen) void {
                 while (p_i < ArrayList_Param_length(&m_node.func_params)) {
                     var p: Param = ArrayList_Param_get(&m_node.func_params, p_i);
                     _ = &p;
-                    var p_key: [*c]const u8 = _kai_str_concat(_kai_str_concat(key, "_param_"), int_to_str(p_i));
+                    var p_key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(key, "_param_"), int_to_str(p_i));
                     _ = &p_key;
                     type_map_put(&self.*.func_param_types, p_key, p.ptype);
                     p_i = p_i + @as(c_longlong, 1);
@@ -11328,7 +11740,7 @@ pub export fn Codegen_build_func_types(arg_self: [*c]Codegen) void {
                     _ = &m_idx;
                     var m_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, m_idx);
                     _ = &m_node;
-                    var key: [*c]const u8 = _kai_str_concat(_kai_str_concat(struct_name, "_"), m_node.func_name);
+                    var key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_name, "_"), m_node.func_name);
                     _ = &key;
                     var ret: [*c]const u8 = m_node.func_return_type;
                     _ = &ret;
@@ -11341,7 +11753,7 @@ pub export fn Codegen_build_func_types(arg_self: [*c]Codegen) void {
                     while (p_i < ArrayList_Param_length(&m_node.func_params)) {
                         var p: Param = ArrayList_Param_get(&m_node.func_params, p_i);
                         _ = &p;
-                        var p_key: [*c]const u8 = _kai_str_concat(_kai_str_concat(key, "_param_"), int_to_str(p_i));
+                        var p_key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(key, "_param_"), int_to_str(p_i));
                         _ = &p_key;
                         type_map_put(&self.*.func_param_types, p_key, p.ptype);
                         p_i = p_i + @as(c_longlong, 1);
@@ -11401,18 +11813,18 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
         _ = &first_char;
         if ((@as(c_int, @bitCast(@as(c_uint, first_char))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 65))))))))) and (@as(c_int, @bitCast(@as(c_uint, first_char))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 90)))))))))) {
             if (ArrayList_Str_length(&expr.ident_type_args) > @as(c_longlong, 0)) {
-                var full_name: [*c]const u8 = _kai_str_concat(name, "<");
+                var full_name: [*c]const u8 = __kai_std_str_concat_alloc(name, "<");
                 _ = &full_name;
                 var tai: i64 = 0;
                 _ = &tai;
                 while (tai < ArrayList_Str_length(&expr.ident_type_args)) {
                     if (tai > @as(c_longlong, 0)) {
-                        full_name = _kai_str_concat(full_name, ", ");
+                        full_name = __kai_std_str_concat_alloc(full_name, ", ");
                     }
-                    full_name = _kai_str_concat(full_name, ArrayList_Str_get(&expr.ident_type_args, tai));
+                    full_name = __kai_std_str_concat_alloc(full_name, ArrayList_Str_get(&expr.ident_type_args, tai));
                     tai = tai + @as(c_longlong, 1);
                 }
-                full_name = _kai_str_concat(full_name, ">");
+                full_name = __kai_std_str_concat_alloc(full_name, ">");
                 return full_name;
             }
             return name;
@@ -11464,7 +11876,7 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
         }
         if (is_struct) {
             if (ArrayList_Str_length(&expr.func_type_args) > @as(c_longlong, 0)) {
-                return _kai_str_concat(_kai_str_concat(_kai_str_concat(name, "<"), str_array_join(expr.func_type_args, ", ")), ">");
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(name, "<"), str_array_join(expr.func_type_args, ", ")), ">");
             }
             return name;
         }
@@ -11536,12 +11948,12 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
             }).*;
             _ = &c;
             if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
-                clean_type = _kai_str_concat(clean_type, char_to_str(c));
+                clean_type = __kai_std_str_concat_alloc(clean_type, char_to_str(c));
             }
             i = i + @as(c_longlong, 1);
         }
-        if (strcmp(substring(clean_type, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0)) {
-            clean_type = substring(clean_type, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
+        if (strcmp(__kai_str_sub(clean_type, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0)) {
+            clean_type = __kai_str_sub(clean_type, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
         }
         var s_idx: i64 = 0;
         _ = &s_idx;
@@ -11557,7 +11969,7 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
                     if (ArrayList_Str_length(&stmt.struct_type_params) > @as(c_longlong, 0)) {
                         var underscore_pos: i64 = Codegen_str_find(self, clean_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 95))))));
                         _ = &underscore_pos;
-                        var base_name: [*c]const u8 = substring(clean_type, @as(c_longlong, 0), underscore_pos);
+                        var base_name: [*c]const u8 = __kai_str_sub(clean_type, @as(c_longlong, 0), underscore_pos);
                         _ = &base_name;
                         if (strcmp(stmt.struct_name, base_name) == @as(c_int, 0)) {
                             is_match = @as(c_int, 1) != 0;
@@ -11592,25 +12004,28 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
         if (strcmp(base_type, "Str") == @as(c_int, 0)) {
             return "Char";
         }
-        if (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) {
-            return substring(base_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(__kai_str_sub(base_type, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0))) {
+            return __kai_str_sub(base_type, @as(c_longlong, 2), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        }
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42)))))))))) {
+            return __kai_str_sub(base_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
         }
         return "Void";
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_borrow))) {
-        return _kai_str_concat("&", Codegen_get_expr_type(self, expr.borrow_expr));
+        return __kai_std_str_concat_alloc("&", Codegen_get_expr_type(self, expr.borrow_expr));
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_deref))) {
         var base_type: [*c]const u8 = Codegen_get_expr_type(self, expr.deref_expr);
         _ = &base_type;
-        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(substring(base_type, @as(c_longlong, 0), @as(c_longlong, 5)), "*mut ") == @as(c_int, 0))) {
-            return substring(base_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(__kai_str_sub(base_type, @as(c_longlong, 0), @as(c_longlong, 5)), "*mut ") == @as(c_int, 0))) {
+            return __kai_str_sub(base_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
         }
-        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(substring(base_type, @as(c_longlong, 0), @as(c_longlong, 5)), "&mut ") == @as(c_int, 0))) {
-            return substring(base_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 5)))) and (strcmp(__kai_str_sub(base_type, @as(c_longlong, 0), @as(c_longlong, 5)), "&mut ") == @as(c_int, 0))) {
+            return __kai_str_sub(base_type, @as(c_longlong, 5), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
         }
         if ((@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
-            return substring(base_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+            return __kai_str_sub(base_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
         }
         return "Void";
     }
@@ -11635,12 +12050,12 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
             }).*;
             _ = &c;
             if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
-                clean_type = _kai_str_concat(clean_type, char_to_str(c));
+                clean_type = __kai_std_str_concat_alloc(clean_type, char_to_str(c));
             }
             i = i + @as(c_longlong, 1);
         }
-        if (strcmp(substring(clean_type, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0)) {
-            clean_type = substring(clean_type, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
+        if (strcmp(__kai_str_sub(clean_type, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0)) {
+            clean_type = __kai_str_sub(clean_type, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
         }
         var is_constructor: bool = @as(c_int, 0) != 0;
         _ = &is_constructor;
@@ -11656,7 +12071,7 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
         if (strcmp(method_name, "init") == @as(c_int, 0)) {
             return clean_type;
         }
-        var key: [*c]const u8 = _kai_str_concat(_kai_str_concat(clean_type, "_"), method_name);
+        var key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(clean_type, "_"), method_name);
         _ = &key;
         var ret: [*c]const u8 = type_map_get(&self.*.func_types, key);
         _ = &ret;
@@ -11669,20 +12084,20 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
         _ = &done;
         while (!done) {
             if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clean_rec)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, clean_rec[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, clean_rec[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
-                clean_rec = substring(clean_rec, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_rec)))));
+                clean_rec = __kai_str_sub(clean_rec, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_rec)))));
             } else {
                 done = @as(c_int, 1) != 0;
             }
         }
-        if (strcmp(substring(clean_rec, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0)) {
-            clean_rec = substring(clean_rec, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_rec)))));
+        if (strcmp(__kai_str_sub(clean_rec, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0)) {
+            clean_rec = __kai_str_sub(clean_rec, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_rec)))));
         }
         if (Codegen_str_contains(self, clean_rec, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))))) {
             var lt_pos: i64 = Codegen_str_find(self, clean_rec, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))));
             _ = &lt_pos;
-            var base_struct: [*c]const u8 = substring(clean_rec, @as(c_longlong, 0), lt_pos);
+            var base_struct: [*c]const u8 = __kai_str_sub(clean_rec, @as(c_longlong, 0), lt_pos);
             _ = &base_struct;
-            var args_str: [*c]const u8 = substring(clean_rec, lt_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clean_rec)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))));
+            var args_str: [*c]const u8 = __kai_str_sub(clean_rec, lt_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(clean_rec)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))));
             _ = &args_str;
             var args: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
             _ = &args;
@@ -11697,12 +12112,12 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
                 }).*;
                 _ = &c;
                 if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 44))))))))) {
-                    ArrayList_Str_push(&args, Codegen_trim_spaces(self, substring(args_str, start, ai)));
+                    ArrayList_Str_push(&args, Codegen_trim_spaces(self, __kai_str_sub(args_str, start, ai)));
                     start = ai + @as(c_longlong, 1);
                 }
                 ai = ai + @as(c_longlong, 1);
             }
-            ArrayList_Str_push(&args, Codegen_trim_spaces(self, substring(args_str, start, @as(i64, @bitCast(@as(c_ulonglong, strlen(args_str)))))));
+            ArrayList_Str_push(&args, Codegen_trim_spaces(self, __kai_str_sub(args_str, start, @as(i64, @bitCast(@as(c_ulonglong, strlen(args_str)))))));
             var struct_idx: i64 = -@as(c_longlong, 1);
             _ = &struct_idx;
             var si: i64 = 0;
@@ -11728,7 +12143,7 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
                     if (Codegen_str_contains(self, p_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58))))))) {
                         var cp: i64 = Codegen_str_find(self, p_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58))))));
                         _ = &cp;
-                        p_name = substring(p_name, @as(c_longlong, 0), cp);
+                        p_name = __kai_str_sub(p_name, @as(c_longlong, 0), cp);
                     }
                     var a_name: [*c]const u8 = ArrayList_Str_get(&args, pi);
                     _ = &a_name;
@@ -11769,7 +12184,10 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
         return "Range";
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_slice))) {
-        return expr.inferred_type;
+        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+            return expr.inferred_type;
+        }
+        return Codegen_get_expr_type(self, expr.slice_expr);
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_array))) {
         return expr.inferred_type;
@@ -11786,7 +12204,7 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
         var excl_pos: i64 = Codegen_str_find(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
         _ = &excl_pos;
         if (excl_pos >= @as(c_longlong, 0)) {
-            return substring(inner_ty, @as(c_longlong, 0), excl_pos);
+            return __kai_str_sub(inner_ty, @as(c_longlong, 0), excl_pos);
         }
         return inner_ty;
     }
@@ -11794,12 +12212,12 @@ pub export fn Codegen_get_expr_type(arg_self: [*c]Codegen, arg_expr_idx: i64) [*
         var inner_ty: [*c]const u8 = Codegen_get_expr_type(self, expr.catch_expr);
         _ = &inner_ty;
         if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner_ty)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, inner_ty[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
-            return substring(inner_ty, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
+            return __kai_str_sub(inner_ty, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
         }
         var excl_pos: i64 = Codegen_str_find(self, inner_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
         _ = &excl_pos;
         if (excl_pos >= @as(c_longlong, 0)) {
-            return substring(inner_ty, @as(c_longlong, 0), excl_pos);
+            return __kai_str_sub(inner_ty, @as(c_longlong, 0), excl_pos);
         }
         return inner_ty;
     }
@@ -11821,22 +12239,22 @@ pub export fn Codegen_gen_expr_with_expected_type(arg_self: [*c]Codegen, arg_exp
     _ = &actual_type;
     if ((expr.kind == @as(c_uint, @bitCast(ExprKind_ek_literal))) and (strcmp(expr.lit_vkind, "NONE") == @as(c_int, 0))) {
         if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expected_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, expected_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
-            var val_type: [*c]const u8 = substring(expected_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(expected_type)))));
+            var val_type: [*c]const u8 = __kai_str_sub(expected_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(expected_type)))));
             _ = &val_type;
             if (Codegen_is_pointer_type(self, val_type)) {
                 return "NULL";
             }
-            return _kai_str_concat(_kai_str_concat("(", Codegen_map_type(self, expected_type)), "){0}");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", Codegen_map_type(self, expected_type)), "){0}");
         }
         return "NULL";
     }
     var gen_val: [*c]const u8 = Codegen_gen_expr(self, expr_idx);
     _ = &gen_val;
     if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expected_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, expected_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
-        var val_type: [*c]const u8 = substring(expected_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(expected_type)))));
+        var val_type: [*c]const u8 = __kai_str_sub(expected_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(expected_type)))));
         _ = &val_type;
         if (!Codegen_is_pointer_type(self, val_type) and (strcmp(actual_type, val_type) == @as(c_int, 0))) {
-            return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", Codegen_map_type(self, expected_type)), "){ .has_value = true, .value = "), gen_val), " }");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", Codegen_map_type(self, expected_type)), "){ .has_value = true, .value = "), gen_val), " }");
         }
     }
     return gen_val;
@@ -11861,20 +12279,20 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         if (excl_pos < @as(c_longlong, 0)) {
             return inner;
         }
-        var val_type: [*c]const u8 = substring(inner_ty, @as(c_longlong, 0), excl_pos);
+        var val_type: [*c]const u8 = __kai_str_sub(inner_ty, @as(c_longlong, 0), excl_pos);
         _ = &val_type;
         var result_ctype: [*c]const u8 = Codegen_map_type(self, inner_ty);
         _ = &result_ctype;
         var ret_ctype: [*c]const u8 = Codegen_map_type(self, self.*.cur_return_type);
         _ = &ret_ctype;
-        var try_code: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("({ ", result_ctype), " _kai_res = ("), inner), "); ");
+        var try_code: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("({ ", result_ctype), " _kai_res = ("), inner), "); ");
         _ = &try_code;
-        try_code = _kai_str_concat(try_code, "if (_kai_res.tag != 0) { ");
-        try_code = _kai_str_concat(_kai_str_concat(try_code, ret_ctype), " _kai_err_ret; _kai_err_ret.tag = _kai_res.tag; return _kai_err_ret; } ");
+        try_code = __kai_std_str_concat_alloc(try_code, "if (_kai_res.tag != 0) { ");
+        try_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(try_code, ret_ctype), " _kai_err_ret; _kai_err_ret.tag = _kai_res.tag; return _kai_err_ret; } ");
         if (strcmp(val_type, "Void") == @as(c_int, 0)) {
-            try_code = _kai_str_concat(try_code, "0; })");
+            try_code = __kai_std_str_concat_alloc(try_code, "0; })");
         } else {
-            try_code = _kai_str_concat(try_code, "_kai_res.value; })");
+            try_code = __kai_std_str_concat_alloc(try_code, "_kai_res.value; })");
         }
         return try_code;
     }
@@ -11887,11 +12305,11 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 _ = &v;
                 var s: [*c]const u8 = v;
                 _ = &s;
-                return _kai_str_concat(s, "LL");
+                return __kai_std_str_concat_alloc(s, "LL");
             } else if (@as(c_int, @bitCast(@as(c_uint, expr.lit_value.tag))) == TokenValue_tv_int_TAG) {
                 var v: i64 = expr.lit_value.payload.tv_int.v;
                 _ = &v;
-                return _kai_str_concat(int_to_str(v), "LL");
+                return __kai_std_str_concat_alloc(int_to_str(v), "LL");
             } else {
                 return "0LL";
             }
@@ -11909,7 +12327,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             if (@as(c_int, @bitCast(@as(c_uint, expr.lit_value.tag))) == TokenValue_tv_str_TAG) {
                 var v: [*c]const u8 = expr.lit_value.payload.tv_str.v;
                 _ = &v;
-                return _kai_str_concat(_kai_str_concat("\"", Codegen_escape_string(self, v)), "\"");
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("\"", Codegen_escape_string(self, v)), "\"");
             } else {
                 return "\"\"";
             }
@@ -11960,7 +12378,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 39))))))))) {
                     return "'\\''";
                 }
-                return _kai_str_concat(_kai_str_concat("'", char_to_str(v)), "'");
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("'", char_to_str(v)), "'");
             } else {
                 return "'\\0'";
             }
@@ -11984,18 +12402,18 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             var part_str: [*c]const u8 = "";
             _ = &part_str;
             if (part.kind == @as(c_longlong, 0)) {
-                part_str = _kai_str_concat(_kai_str_concat("\"", Codegen_escape_string(self, part.str_val)), "\"");
+                part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("\"", Codegen_escape_string(self, part.str_val)), "\"");
             } else {
                 var expr_val: [*c]const u8 = Codegen_gen_expr(self, part.expr_idx);
                 _ = &expr_val;
                 var expr_type: [*c]const u8 = Codegen_get_expr_type(self, part.expr_idx);
                 _ = &expr_type;
                 if (strcmp(expr_type, "Int") == @as(c_int, 0)) {
-                    part_str = _kai_str_concat(_kai_str_concat("int_to_str(", expr_val), ")");
+                    part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("int_to_str(", expr_val), ")");
                 } else if (strcmp(expr_type, "Char") == @as(c_int, 0)) {
-                    part_str = _kai_str_concat(_kai_str_concat("char_to_str(", expr_val), ")");
+                    part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("char_to_str(", expr_val), ")");
                 } else if (strcmp(expr_type, "Bool") == @as(c_int, 0)) {
-                    part_str = _kai_str_concat(_kai_str_concat("((", expr_val), ") ? \"true\" : \"false\")");
+                    part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", expr_val), ") ? \"true\" : \"false\")");
                 } else if (strcmp(expr_type, "Str") == @as(c_int, 0)) {
                     part_str = expr_val;
                 } else {
@@ -12005,13 +12423,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             if (i == @as(c_longlong, 0)) {
                 result = part_str;
             } else {
-                var has_str: bool = (strlist_find(&self.*.loaded_modules, "std.lib.str") >= @as(c_longlong, 0)) or (strlist_find(&self.*.loaded_modules, "std.zero_ported.str") >= @as(c_longlong, 0));
-                _ = &has_str;
-                if (has_str) {
-                    result = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("__kai_std_str_concat_alloc(", result), ", "), part_str), ")");
-                } else {
-                    result = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("_kai_str_concat(", result), ", "), part_str), ")");
-                }
+                result = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_std_str_concat_alloc(", result), ", "), part_str), ")");
             }
             i = i + @as(c_longlong, 1);
         }
@@ -12033,44 +12445,39 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         _ = &rhs_type;
         if ((strcmp(op, "==") == @as(c_int, 0)) or (strcmp(op, "!=") == @as(c_int, 0))) {
             if (((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(lhs_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, lhs_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) and (strcmp(rhs, "NULL") == @as(c_int, 0))) {
-                var val_type: [*c]const u8 = substring(lhs_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(lhs_type)))));
+                var val_type: [*c]const u8 = __kai_str_sub(lhs_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(lhs_type)))));
                 _ = &val_type;
                 if (Codegen_is_pointer_type(self, val_type)) {
-                    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", lhs), " "), op), " NULL)");
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", lhs), " "), op), " NULL)");
                 }
                 if (strcmp(op, "==") == @as(c_int, 0)) {
-                    return _kai_str_concat(_kai_str_concat("(!", lhs), ".has_value)");
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(!", lhs), ".has_value)");
                 }
-                return _kai_str_concat(_kai_str_concat("(", lhs), ".has_value)");
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", lhs), ".has_value)");
             }
             if (((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(rhs_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, rhs_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) and (strcmp(lhs, "NULL") == @as(c_int, 0))) {
-                var val_type: [*c]const u8 = substring(rhs_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(rhs_type)))));
+                var val_type: [*c]const u8 = __kai_str_sub(rhs_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(rhs_type)))));
                 _ = &val_type;
                 if (Codegen_is_pointer_type(self, val_type)) {
-                    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(NULL ", op), " "), rhs), ")");
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(NULL ", op), " "), rhs), ")");
                 }
                 if (strcmp(op, "==") == @as(c_int, 0)) {
-                    return _kai_str_concat(_kai_str_concat("(!", rhs), ".has_value)");
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(!", rhs), ".has_value)");
                 }
-                return _kai_str_concat(_kai_str_concat("(", rhs), ".has_value)");
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", rhs), ".has_value)");
             }
         }
         var lhs_node: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr.binop_left);
         _ = &lhs_node;
         if (strcmp(lhs_type, "Str") == @as(c_int, 0)) {
             if (strcmp(op, "+") == @as(c_int, 0)) {
-                var has_str: bool = (strlist_find(&self.*.loaded_modules, "std.lib.str") >= @as(c_longlong, 0)) or (strlist_find(&self.*.loaded_modules, "std.zero_ported.str") >= @as(c_longlong, 0));
-                _ = &has_str;
-                if (has_str) {
-                    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("__kai_std_str_concat_alloc(", lhs), ", "), rhs), ")");
-                }
-                return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("_kai_str_concat(", lhs), ", "), rhs), ")");
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_std_str_concat_alloc(", lhs), ", "), rhs), ")");
             }
             if (strcmp(op, "==") == @as(c_int, 0)) {
-                return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(strcmp(", lhs), ", "), rhs), ") == 0)");
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(strcmp(", lhs), ", "), rhs), ") == 0)");
             }
             if (strcmp(op, "!=") == @as(c_int, 0)) {
-                return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(strcmp(", lhs), ", "), rhs), ") != 0)");
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(strcmp(", lhs), ", "), rhs), ") != 0)");
             }
         }
         if (((strcmp(op, "==") == @as(c_int, 0)) or (strcmp(op, "!=") == @as(c_int, 0))) and (@as(c_int, @intFromBool(Codegen_is_enum_type(self, lhs_type))) != 0)) {
@@ -12097,10 +12504,10 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 if (rhs_is_ptr) {
                     rhs_tag_op = "->";
                 }
-                return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("((", lhs), ")"), tag_op), "tag "), op), " ("), rhs), ")"), rhs_tag_op), "tag)");
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", lhs), ")"), tag_op), "tag "), op), " ("), rhs), ")"), rhs_tag_op), "tag)");
             }
         }
-        return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", lhs), " "), op), " "), rhs), ")");
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", lhs), " "), op), " "), rhs), ")");
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_unary_op))) {
         var operand: [*c]const u8 = Codegen_gen_expr(self, expr.unop_operand);
@@ -12110,7 +12517,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         if (strcmp(op, "own") == @as(c_int, 0)) {
             return operand;
         }
-        return _kai_str_concat(_kai_str_concat(_kai_str_concat("(", op), operand), ")");
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", op), operand), ")");
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_func_call))) {
         var name: [*c]const u8 = expr.func_name;
@@ -12125,24 +12532,24 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             var is_operand_int: bool = ((@as(c_longlong, @bitCast(@as(c_longlong, strcmp(operand_type, "Int")))) == @as(c_longlong, 0)) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(operand_type, "Char")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(operand_type, "Bool")))) == @as(c_longlong, 0));
             _ = &is_operand_int;
             if ((@as(c_int, @intFromBool(is_target_ptr)) != 0) and (@as(c_int, @intFromBool(is_operand_int)) != 0)) {
-                return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", Codegen_map_type(self, target_type)), ")(unsigned long long)("), Codegen_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)))), ")");
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", Codegen_map_type(self, target_type)), ")(unsigned long long)("), Codegen_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)))), ")");
             }
-            return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", Codegen_map_type(self, target_type)), ")("), Codegen_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)))), ")");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", Codegen_map_type(self, target_type)), ")("), Codegen_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)))), ")");
         }
         if (strcmp(name, "size_of") == @as(c_int, 0)) {
-            return _kai_str_concat(_kai_str_concat("sizeof(", Codegen_map_type(self, ArrayList_Str_get(&expr.func_type_args, @as(c_longlong, 0)))), ")");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("sizeof(", Codegen_map_type(self, ArrayList_Str_get(&expr.func_type_args, @as(c_longlong, 0)))), ")");
         }
         if ((((strcmp(name, "Char") == @as(c_int, 0)) or (strcmp(name, "Int") == @as(c_int, 0))) or (strcmp(name, "Float") == @as(c_int, 0))) or (strcmp(name, "Bool") == @as(c_int, 0))) {
             var ctype: [*c]const u8 = Codegen_map_type(self, name);
             _ = &ctype;
             var arg_val: [*c]const u8 = Codegen_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)));
             _ = &arg_val;
-            return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("((", ctype), ")("), arg_val), "))");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", ctype), ")("), arg_val), "))");
         }
         if (strcmp(name, "length") == @as(c_int, 0)) {
             var arg_val: [*c]const u8 = Codegen_gen_expr(self, ArrayList_Int_get(&expr.func_args, @as(c_longlong, 0)));
             _ = &arg_val;
-            return _kai_str_concat(_kai_str_concat("strlen(", arg_val), ")");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("strlen(", arg_val), ")");
         }
         var is_struct: bool = @as(c_int, 0) != 0;
         _ = &is_struct;
@@ -12181,7 +12588,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             var j: i64 = 0;
             _ = &j;
             while (j < ArrayList_Str_length(&type_args)) {
-                fn_name = _kai_str_concat(_kai_str_concat(fn_name, "_"), Codegen_clean_type_for_mangling(self, ArrayList_Str_get(&type_args, j)));
+                fn_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fn_name, "_"), Codegen_clean_type_for_mangling(self, ArrayList_Str_get(&type_args, j)));
                 j = j + @as(c_longlong, 1);
             }
             Codegen_monomorphize_func(self, gf_idx, fn_name, &type_args);
@@ -12189,12 +12596,12 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             var j: i64 = 0;
             _ = &j;
             while (j < ArrayList_Str_length(&expr.func_type_args)) {
-                fn_name = _kai_str_concat(_kai_str_concat(fn_name, "_"), Codegen_clean_type_for_mangling(self, ArrayList_Str_get(&expr.func_type_args, j)));
+                fn_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fn_name, "_"), Codegen_clean_type_for_mangling(self, ArrayList_Str_get(&expr.func_type_args, j)));
                 j = j + @as(c_longlong, 1);
             }
         }
         if (is_struct) {
-            fn_name = _kai_str_concat(fn_name, "_init");
+            fn_name = __kai_std_str_concat_alloc(fn_name, "_init");
         }
         var args_str: [*c]const u8 = "";
         _ = &args_str;
@@ -12202,21 +12609,21 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         _ = &i;
         while (i < ArrayList_Int_length(&expr.func_args)) {
             if (i > @as(c_longlong, 0)) {
-                args_str = _kai_str_concat(args_str, ", ");
+                args_str = __kai_std_str_concat_alloc(args_str, ", ");
             }
             var p_idx: i64 = i;
             _ = &p_idx;
             if (is_struct) {
                 p_idx = i + @as(c_longlong, 1);
             }
-            var p_key: [*c]const u8 = _kai_str_concat(_kai_str_concat(fn_name, "_param_"), int_to_str(p_idx));
+            var p_key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fn_name, "_param_"), int_to_str(p_idx));
             _ = &p_key;
             var expected_type: [*c]const u8 = type_map_get(&self.*.func_param_types, p_key);
             _ = &expected_type;
-            args_str = _kai_str_concat(args_str, Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&expr.func_args, i), expected_type));
+            args_str = __kai_std_str_concat_alloc(args_str, Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&expr.func_args, i), expected_type));
             i = i + @as(c_longlong, 1);
         }
-        return _kai_str_concat(_kai_str_concat(_kai_str_concat(fn_name, "("), args_str), ")");
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fn_name, "("), args_str), ")");
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_field_access))) {
         var base_node: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, expr.field_expr);
@@ -12227,9 +12634,9 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             var var_name: [*c]const u8 = expr.field_name;
             _ = &var_name;
             if (Codegen_enum_has_payload(self, base_node.ident_name)) {
-                return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", enum_name), "){ .tag = "), enum_name), "_"), var_name), "_TAG }");
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", enum_name), "){ .tag = "), enum_name), "_"), var_name), "_TAG }");
             } else {
-                return _kai_str_concat(_kai_str_concat(enum_name, "_"), var_name);
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_name, "_"), var_name);
             }
         }
         var base_val: [*c]const u8 = Codegen_gen_expr(self, expr.field_expr);
@@ -12251,22 +12658,22 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         var is_complex: bool = ((base_node.kind == @as(c_uint, @bitCast(ExprKind_ek_func_call))) or (base_node.kind == @as(c_uint, @bitCast(ExprKind_ek_index)))) or (base_node.kind == @as(c_uint, @bitCast(ExprKind_ek_deref)));
         _ = &is_complex;
         if ((@as(c_int, @intFromBool(is_ptr)) != 0) and (@as(c_int, @intFromBool(is_complex)) != 0)) {
-            return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", base_val), ")"), op), expr.field_name);
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", base_val), ")"), op), expr.field_name);
         }
-        return _kai_str_concat(_kai_str_concat(base_val, op), expr.field_name);
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(base_val, op), expr.field_name);
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_index))) {
         var base_val: [*c]const u8 = Codegen_gen_expr(self, expr.idx_expr);
         _ = &base_val;
         var idx_val: [*c]const u8 = Codegen_gen_expr(self, expr.idx_index);
         _ = &idx_val;
-        return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", base_val), ")["), idx_val), "]");
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", base_val), ")["), idx_val), "]");
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_borrow))) {
-        return _kai_str_concat(_kai_str_concat("&(", Codegen_gen_expr(self, expr.borrow_expr)), ")");
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("&(", Codegen_gen_expr(self, expr.borrow_expr)), ")");
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_deref))) {
-        return _kai_str_concat(_kai_str_concat("*(", Codegen_gen_expr(self, expr.deref_expr)), ")");
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("*(", Codegen_gen_expr(self, expr.deref_expr)), ")");
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_check))) {
         return Codegen_gen_expr(self, expr.check_expr);
@@ -12284,10 +12691,34 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         if (expr.range_inclusive) {
             incl = "true";
         }
-        return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(Range){ .start = ", start), ", .end = "), end), ", .is_inclusive = "), incl), " }");
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(Range){ .start = ", start), ", .end = "), end), ", .is_inclusive = "), incl), " }");
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_slice))) {
-        return Codegen_gen_expr(self, expr.slice_expr);
+        var base: [*c]const u8 = Codegen_gen_expr(self, expr.slice_expr);
+        _ = &base;
+        var base_type: [*c]const u8 = Codegen_get_expr_type(self, expr.slice_expr);
+        _ = &base_type;
+        var lower: [*c]const u8 = "0";
+        _ = &lower;
+        var upper: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("strlen(", base), ")");
+        _ = &upper;
+        if (expr.slice_lower >= @as(c_longlong, 0)) {
+            lower = Codegen_gen_expr(self, expr.slice_lower);
+        }
+        if (expr.slice_upper >= @as(c_longlong, 0)) {
+            upper = Codegen_gen_expr(self, expr.slice_upper);
+        }
+        if ((strcmp(base_type, "Str") == @as(c_int, 0)) or (strcmp(base_type, "*Char") == @as(c_int, 0))) {
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_str_sub(", base), ", "), lower), ", "), upper), ")");
+        }
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) >= @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(__kai_str_sub(base_type, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0))) {
+            var inner_type: [*c]const u8 = __kai_str_sub(base_type, @as(c_longlong, 2), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+            _ = &inner_type;
+            var mapped_inner: [*c]const u8 = Codegen_map_type(self, inner_type);
+            _ = &mapped_inner;
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_arr_sub(", base), ", "), lower), ", "), upper), ", sizeof("), mapped_inner), "))");
+        }
+        return base;
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_array))) {
         var elems: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
@@ -12305,12 +12736,12 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         }
         var inner_ty: [*c]const u8 = "Int";
         _ = &inner_ty;
-        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(substring(expr.inferred_type, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0))) {
-            inner_ty = substring(expr.inferred_type, @as(c_longlong, 2), @as(i64, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))));
+        if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 2)))) and (strcmp(__kai_str_sub(expr.inferred_type, @as(c_longlong, 0), @as(c_longlong, 2)), "[]") == @as(c_int, 0))) {
+            inner_ty = __kai_str_sub(expr.inferred_type, @as(c_longlong, 2), @as(i64, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))));
         }
         var mapped_inner: [*c]const u8 = Codegen_map_type(self, inner_ty);
         _ = &mapped_inner;
-        return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", mapped_inner), "[]){ "), elems_str), " }");
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_inner), "[]){ "), elems_str), " }");
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_tuple))) {
         if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
@@ -12324,7 +12755,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 ArrayList_Str_push(&elems, Codegen_gen_expr(self, ArrayList_Int_get(&expr.tup_elements, i)));
                 i = i + @as(c_longlong, 1);
             }
-            return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", mapped_ty), "){ "), str_array_join(elems, ", ")), " }");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_ty), "){ "), str_array_join(elems, ", ")), " }");
         }
         return "NULL";
     }
@@ -12341,14 +12772,14 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(out.type_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 var mapped_type: [*c]const u8 = Codegen_map_type(self, out.type_name);
                 _ = &mapped_type;
-                var var_name: [*c]const u8 = _kai_str_concat("asm_ret_", int_to_str(i));
+                var var_name: [*c]const u8 = __kai_std_str_concat_alloc("asm_ret_", int_to_str(i));
                 _ = &var_name;
-                ArrayList_Str_push(&decls, _kai_str_concat(_kai_str_concat(_kai_str_concat(mapped_type, " "), var_name), ";"));
-                ArrayList_Str_push(&out_ops, _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("[", out.name), "] \""), out.constraint), "\" ("), var_name), ")"));
+                ArrayList_Str_push(&decls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(mapped_type, " "), var_name), ";"));
+                ArrayList_Str_push(&out_ops, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("[", out.name), "] \""), out.constraint), "\" ("), var_name), ")"));
             } else if (out.expr_idx >= @as(c_longlong, 0)) {
                 var val_str: [*c]const u8 = Codegen_gen_expr(self, out.expr_idx);
                 _ = &val_str;
-                ArrayList_Str_push(&out_ops, _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("[", out.name), "] \""), out.constraint), "\" ("), val_str), ")"));
+                ArrayList_Str_push(&out_ops, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("[", out.name), "] \""), out.constraint), "\" ("), val_str), ")"));
             }
             i = i + @as(c_longlong, 1);
         }
@@ -12361,7 +12792,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             _ = &inp;
             var val_str: [*c]const u8 = Codegen_gen_expr(self, inp.expr_idx);
             _ = &val_str;
-            ArrayList_Str_push(&in_ops, _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("[", inp.name), "] \""), inp.constraint), "\" ("), val_str), ")"));
+            ArrayList_Str_push(&in_ops, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("[", inp.name), "] \""), inp.constraint), "\" ("), val_str), ")"));
             j = j + @as(c_longlong, 1);
         }
         var clobs: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
@@ -12369,7 +12800,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         var k: i64 = 0;
         _ = &k;
         while (k < ArrayList_Str_length(&expr.asm_clobbers)) {
-            ArrayList_Str_push(&clobs, _kai_str_concat(_kai_str_concat("\"", ArrayList_Str_get(&expr.asm_clobbers, k)), "\""));
+            ArrayList_Str_push(&clobs, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("\"", ArrayList_Str_get(&expr.asm_clobbers, k)), "\""));
             k = k + @as(c_longlong, 1);
         }
         var volatile_prefix: [*c]const u8 = "";
@@ -12388,40 +12819,40 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             }).*;
             _ = &c;
             if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
-                escaped_asm = _kai_str_concat(escaped_asm, "\\n\\t");
+                escaped_asm = __kai_std_str_concat_alloc(escaped_asm, "\\n\\t");
             } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 34))))))))) {
-                escaped_asm = _kai_str_concat(escaped_asm, "\\\"");
+                escaped_asm = __kai_std_str_concat_alloc(escaped_asm, "\\\"");
             } else {
-                escaped_asm = _kai_str_concat(escaped_asm, char_to_str(c));
+                escaped_asm = __kai_std_str_concat_alloc(escaped_asm, char_to_str(c));
             }
             c_idx = c_idx + @as(c_longlong, 1);
         }
-        var asm_stmt: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("__asm__ ", volatile_prefix), " (\""), escaped_asm), "\"");
+        var asm_stmt: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__asm__ ", volatile_prefix), " (\""), escaped_asm), "\"");
         _ = &asm_stmt;
         if (((ArrayList_Str_length(&out_ops) > @as(c_longlong, 0)) or (ArrayList_Str_length(&in_ops) > @as(c_longlong, 0))) or (ArrayList_Str_length(&clobs) > @as(c_longlong, 0))) {
-            asm_stmt = _kai_str_concat(_kai_str_concat(asm_stmt, " : "), str_array_join(out_ops, ", "));
+            asm_stmt = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(asm_stmt, " : "), str_array_join(out_ops, ", "));
         }
         if ((ArrayList_Str_length(&in_ops) > @as(c_longlong, 0)) or (ArrayList_Str_length(&clobs) > @as(c_longlong, 0))) {
-            asm_stmt = _kai_str_concat(_kai_str_concat(asm_stmt, " : "), str_array_join(in_ops, ", "));
+            asm_stmt = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(asm_stmt, " : "), str_array_join(in_ops, ", "));
         }
         if (ArrayList_Str_length(&clobs) > @as(c_longlong, 0)) {
-            asm_stmt = _kai_str_concat(_kai_str_concat(asm_stmt, " : "), str_array_join(clobs, ", "));
+            asm_stmt = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(asm_stmt, " : "), str_array_join(clobs, ", "));
         }
-        asm_stmt = _kai_str_concat(asm_stmt, ");");
+        asm_stmt = __kai_std_str_concat_alloc(asm_stmt, ");");
         var res: [*c]const u8 = "({\n";
         _ = &res;
         var d_idx: i64 = 0;
         _ = &d_idx;
         while (d_idx < ArrayList_Str_length(&decls)) {
-            res = _kai_str_concat(_kai_str_concat(_kai_str_concat(res, "    "), ArrayList_Str_get(&decls, d_idx)), "\n");
+            res = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res, "    "), ArrayList_Str_get(&decls, d_idx)), "\n");
             d_idx = d_idx + @as(c_longlong, 1);
         }
-        res = _kai_str_concat(_kai_str_concat(_kai_str_concat(res, "    "), asm_stmt), "\n");
+        res = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res, "    "), asm_stmt), "\n");
         if (ArrayList_AsmOutput_length(&expr.asm_outputs) == @as(c_longlong, 1)) {
             var out0: AsmOutput = ArrayList_AsmOutput_get(&expr.asm_outputs, @as(c_longlong, 0));
             _ = &out0;
             if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(out0.type_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                res = _kai_str_concat(res, "    asm_ret_0;\n");
+                res = __kai_std_str_concat_alloc(res, "    asm_ret_0;\n");
             }
         } else if (ArrayList_AsmOutput_length(&expr.asm_outputs) > @as(c_longlong, 1)) {
             var types: ArrayList_Str = ArrayList_Str_init(self.*.allocator);
@@ -12440,7 +12871,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 ti = ti + @as(c_longlong, 1);
             }
             if (all_typed) {
-                var tuple_type: [*c]const u8 = _kai_str_concat(_kai_str_concat("(", str_array_join(types, ", ")), ")");
+                var tuple_type: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", str_array_join(types, ", ")), ")");
                 _ = &tuple_type;
                 var mapped_tuple: [*c]const u8 = Codegen_map_type(self, tuple_type);
                 _ = &mapped_tuple;
@@ -12449,13 +12880,13 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 var vi: i64 = 0;
                 _ = &vi;
                 while (vi < ArrayList_AsmOutput_length(&expr.asm_outputs)) {
-                    ArrayList_Str_push(&vals, _kai_str_concat("asm_ret_", int_to_str(vi)));
+                    ArrayList_Str_push(&vals, __kai_std_str_concat_alloc("asm_ret_", int_to_str(vi)));
                     vi = vi + @as(c_longlong, 1);
                 }
-                res = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(res, "    ("), mapped_tuple), "){ "), str_array_join(vals, ", ")), " };\n");
+                res = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res, "    ("), mapped_tuple), "){ "), str_array_join(vals, ", ")), " };\n");
             }
         }
-        res = _kai_str_concat(res, "})");
+        res = __kai_std_str_concat_alloc(res, "})");
         return res;
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_struct_init))) {
@@ -12464,9 +12895,9 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         if (is_enum) {
             var dot_pos: i64 = Codegen_str_find(self, expr.struct_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 46))))));
             _ = &dot_pos;
-            var enum_part: [*c]const u8 = substring(expr.struct_name, @as(c_longlong, 0), dot_pos);
+            var enum_part: [*c]const u8 = __kai_str_sub(expr.struct_name, @as(c_longlong, 0), dot_pos);
             _ = &enum_part;
-            var variant_name: [*c]const u8 = substring(expr.struct_name, dot_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(expr.struct_name)))));
+            var variant_name: [*c]const u8 = __kai_str_sub(expr.struct_name, dot_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(expr.struct_name)))));
             _ = &variant_name;
             var enum_name: [*c]const u8 = Codegen_map_type(self, enum_part);
             _ = &enum_name;
@@ -12478,17 +12909,17 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 var f: FieldInit = ArrayList_FieldInit_get(&expr.struct_fields, i);
                 _ = &f;
                 if (i > @as(c_longlong, 0)) {
-                    fields_str = _kai_str_concat(fields_str, ", ");
+                    fields_str = __kai_std_str_concat_alloc(fields_str, ", ");
                 }
-                fields_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(fields_str, "."), f.name), " = "), Codegen_gen_expr(self, f.value));
+                fields_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fields_str, "."), f.name), " = "), Codegen_gen_expr(self, f.value));
                 i = i + @as(c_longlong, 1);
             }
             var payload_str: [*c]const u8 = "";
             _ = &payload_str;
             if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fields_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                payload_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(", .payload = { .", variant_name), " = { "), fields_str), " } }");
+                payload_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(", .payload = { .", variant_name), " = { "), fields_str), " } }");
             }
-            return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", enum_name), "){ .tag = "), enum_name), "_"), variant_name), "_TAG"), payload_str), " }");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", enum_name), "){ .tag = "), enum_name), "_"), variant_name), "_TAG"), payload_str), " }");
         } else {
             var struct_name: [*c]const u8 = Codegen_map_type(self, expr.struct_name);
             _ = &struct_name;
@@ -12500,7 +12931,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 var f: FieldInit = ArrayList_FieldInit_get(&expr.struct_fields, i);
                 _ = &f;
                 if (i > @as(c_longlong, 0)) {
-                    fields_str = _kai_str_concat(fields_str, ", ");
+                    fields_str = __kai_std_str_concat_alloc(fields_str, ", ");
                 }
                 var field_type: [*c]const u8 = "";
                 _ = &field_type;
@@ -12523,10 +12954,10 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                     }
                     si = si + @as(c_longlong, 1);
                 }
-                fields_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(fields_str, "."), f.name), " = "), Codegen_gen_expr_with_expected_type(self, f.value, field_type));
+                fields_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fields_str, "."), f.name), " = "), Codegen_gen_expr_with_expected_type(self, f.value, field_type));
                 i = i + @as(c_longlong, 1);
             }
-            return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", struct_name), "){ "), fields_str), " }");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", struct_name), "){ "), fields_str), " }");
         }
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_method_call))) {
@@ -12549,12 +12980,12 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             }).*;
             _ = &c;
             if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
-                clean_type = _kai_str_concat(clean_type, char_to_str(c));
+                clean_type = __kai_std_str_concat_alloc(clean_type, char_to_str(c));
             }
             i = i + @as(c_longlong, 1);
         }
-        if (strcmp(substring(clean_type, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0)) {
-            clean_type = substring(clean_type, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
+        if (strcmp(__kai_str_sub(clean_type, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0)) {
+            clean_type = __kai_str_sub(clean_type, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(clean_type)))));
         }
         clean_type = Codegen_map_type(self, clean_type);
         var is_constructor: bool = @as(c_int, 0) != 0;
@@ -12569,7 +13000,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 clean_type = Codegen_map_type(self, rec_type);
             }
         }
-        var func_name: [*c]const u8 = _kai_str_concat(_kai_str_concat(clean_type, "_"), method_name);
+        var func_name: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(clean_type, "_"), method_name);
         _ = &func_name;
         if (type_map_find(&self.*.func_types, func_name) < @as(c_longlong, 0)) {
             _ = printf("error[E0023]: type '%s' has no method '%s'\n", rec_type, method_name);
@@ -12594,9 +13025,9 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
                 if (is_complex) {
                     var tmp_type: [*c]const u8 = Codegen_map_type(self, rec_inferred);
                     _ = &tmp_type;
-                    args_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("({ ", tmp_type), " __tmp_recv = "), rec_val), "; &__tmp_recv; })");
+                    args_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("({ ", tmp_type), " __tmp_recv = "), rec_val), "; &__tmp_recv; })");
                 } else {
-                    args_str = _kai_str_concat(_kai_str_concat("&(", rec_val), ")");
+                    args_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("&(", rec_val), ")");
                 }
             }
         }
@@ -12604,13 +13035,13 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         _ = &ai;
         while (ai < ArrayList_Int_length(&expr.meth_args)) {
             if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(args_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                args_str = _kai_str_concat(args_str, ", ");
+                args_str = __kai_std_str_concat_alloc(args_str, ", ");
             }
-            var p_key: [*c]const u8 = _kai_str_concat(_kai_str_concat(func_name, "_param_"), int_to_str(ai + @as(c_longlong, 1)));
+            var p_key: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(func_name, "_param_"), int_to_str(ai + @as(c_longlong, 1)));
             _ = &p_key;
             var expected_type: [*c]const u8 = type_map_get(&self.*.func_param_types, p_key);
             _ = &expected_type;
-            args_str = _kai_str_concat(args_str, Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&expr.meth_args, ai), expected_type));
+            args_str = __kai_std_str_concat_alloc(args_str, Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&expr.meth_args, ai), expected_type));
             ai = ai + @as(c_longlong, 1);
         }
         if ((strcmp(method_name, "init") == @as(c_int, 0)) and !is_constructor) {
@@ -12619,11 +13050,11 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             var rec_inferred: [*c]const u8 = Codegen_get_expr_type(self, receiver_idx);
             _ = &rec_inferred;
             if ((@as(c_int, @bitCast(@as(c_uint, rec_inferred[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, rec_inferred[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38)))))))))) {
-                return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("*(", rec_val), ") = "), func_name), "("), args_str), ")");
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("*(", rec_val), ") = "), func_name), "("), args_str), ")");
             }
-            return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(rec_val, " = "), func_name), "("), args_str), ")");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(rec_val, " = "), func_name), "("), args_str), ")");
         }
-        return _kai_str_concat(_kai_str_concat(_kai_str_concat(func_name, "("), args_str), ")");
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(func_name, "("), args_str), ")");
     }
     if (expr.kind == @as(c_uint, @bitCast(ExprKind_ek_catch))) {
         var inner: [*c]const u8 = Codegen_gen_expr(self, expr.catch_expr);
@@ -12631,7 +13062,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         var inner_ty: [*c]const u8 = Codegen_get_expr_type(self, expr.catch_expr);
         _ = &inner_ty;
         if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(inner_ty)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, inner_ty[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 63)))))))))) {
-            var val_type: [*c]const u8 = substring(inner_ty, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
+            var val_type: [*c]const u8 = __kai_str_sub(inner_ty, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(inner_ty)))));
             _ = &val_type;
             var val_ctype: [*c]const u8 = Codegen_map_type(self, val_type);
             _ = &val_ctype;
@@ -12675,22 +13106,22 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
             var catch_code: [*c]const u8 = "({ ";
             _ = &catch_code;
             if (Codegen_is_pointer_type(self, val_type)) {
-                catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, val_ctype), " _kai_opt = ("), inner), "); ");
-                catch_code = _kai_str_concat(_kai_str_concat(catch_code, val_ctype), " _kai_cv; ");
-                catch_code = _kai_str_concat(catch_code, "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } ");
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_opt = ("), inner), "); ");
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_cv; ");
+                catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } ");
                 if (fallback_is_stmt2) {
-                    catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
+                    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
                 } else {
-                    catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
+                    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
                 }
             } else {
-                catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, cond_ctype), " _kai_opt = ("), inner), "); ");
-                catch_code = _kai_str_concat(_kai_str_concat(catch_code, val_ctype), " _kai_cv; ");
-                catch_code = _kai_str_concat(catch_code, "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } ");
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, cond_ctype), " _kai_opt = ("), inner), "); ");
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_cv; ");
+                catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } ");
                 if (fallback_is_stmt2) {
-                    catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
+                    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
                 } else {
-                    catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
+                    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
                 }
             }
             return catch_code;
@@ -12700,7 +13131,7 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         if (excl_pos < @as(c_longlong, 0)) {
             return inner;
         }
-        var val_type: [*c]const u8 = substring(inner_ty, @as(c_longlong, 0), excl_pos);
+        var val_type: [*c]const u8 = __kai_str_sub(inner_ty, @as(c_longlong, 0), excl_pos);
         _ = &val_type;
         var result_ctype: [*c]const u8 = Codegen_map_type(self, inner_ty);
         _ = &result_ctype;
@@ -12741,26 +13172,26 @@ pub export fn Codegen_gen_expr(arg_self: [*c]Codegen, arg_expr_idx: i64) [*c]con
         } else {
             fallback_code = "0";
         }
-        var catch_code: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("({ ", result_ctype), " _kai_cr = ("), inner), "); ");
+        var catch_code: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("({ ", result_ctype), " _kai_cr = ("), inner), "); ");
         _ = &catch_code;
         if (strcmp(val_type, "Void") == @as(c_int, 0)) {
-            catch_code = _kai_str_concat(catch_code, "if (_kai_cr.tag != 0) { ");
+            catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_cr.tag != 0) { ");
             if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.catch_var)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
             }
-            catch_code = _kai_str_concat(_kai_str_concat(catch_code, fallback_code), " } 0; })");
+            catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, fallback_code), " } 0; })");
         } else {
-            catch_code = _kai_str_concat(_kai_str_concat(catch_code, val_ctype), " _kai_cv; ");
-            catch_code = _kai_str_concat(catch_code, "if (_kai_cr.tag != 0) { ");
+            catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_cv; ");
+            catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_cr.tag != 0) { ");
             if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.catch_var)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
             }
             if (fallback_is_stmt) {
-                catch_code = _kai_str_concat(_kai_str_concat(catch_code, fallback_code), " __builtin_unreachable(); ");
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, fallback_code), " __builtin_unreachable(); ");
             } else {
-                catch_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(catch_code, "_kai_cv = ("), fallback_code), "); ");
+                catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "_kai_cv = ("), fallback_code), "); ");
             }
-            catch_code = _kai_str_concat(catch_code, "} else { _kai_cv = _kai_cr.value; } _kai_cv; })");
+            catch_code = __kai_std_str_concat_alloc(catch_code, "} else { _kai_cv = _kai_cr.value; } _kai_cv; })");
         }
         return catch_code;
     }
@@ -12814,7 +13245,7 @@ pub export fn Codegen_is_standard_c_func(arg_self: [*c]Codegen, arg_name: [*c]co
     var l: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(name))));
     _ = &l;
     if (l >= @as(c_longlong, 4)) {
-        var sub4: [*c]const u8 = substring(name, @as(c_longlong, 0), @as(c_longlong, 4));
+        var sub4: [*c]const u8 = __kai_str_sub(name, @as(c_longlong, 0), @as(c_longlong, 4));
         _ = &sub4;
         var is_llvm: bool = @as(c_int, 0) != 0;
         _ = &is_llvm;
@@ -12828,7 +13259,7 @@ pub export fn Codegen_is_standard_c_func(arg_self: [*c]Codegen, arg_name: [*c]co
         }
     }
     if (l >= @as(c_longlong, 8)) {
-        var sub8: [*c]const u8 = substring(name, @as(c_longlong, 0), @as(c_longlong, 8));
+        var sub8: [*c]const u8 = __kai_str_sub(name, @as(c_longlong, 0), @as(c_longlong, 8));
         _ = &sub8;
         var is_kai_llvm: bool = @as(c_int, 0) != 0;
         _ = &is_kai_llvm;
@@ -12901,6 +13332,9 @@ pub export fn Codegen_is_standard_c_func(arg_self: [*c]Codegen, arg_name: [*c]co
     if (strcmp(name, "rewind") == @as(c_int, 0)) {
         return @as(c_int, 1) != 0;
     }
+    if (strcmp(name, "atoll") == @as(c_int, 0)) {
+        return @as(c_int, 1) != 0;
+    }
     if (strcmp(name, "strcmp") == @as(c_int, 0)) {
         return @as(c_int, 1) != 0;
     }
@@ -12942,7 +13376,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             var s: [*c]const u8 = Codegen_gen_stmt(self, ArrayList_Int_get(&stmt.block_stmts, i));
             _ = &s;
             if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                block_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(block_str, "    "), s), "\n");
+                block_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(block_str, "    "), s), "\n");
             }
             i = i + @as(c_longlong, 1);
         }
@@ -12956,7 +13390,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             var s: [*c]const u8 = Codegen_gen_stmt(self, def_node.defer_body);
             _ = &s;
             if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(s)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                block_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(block_str, "    "), s), "\n");
+                block_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(block_str, "    "), s), "\n");
             }
         }
         var di: i64 = 0;
@@ -12964,10 +13398,10 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         while (di < ArrayList_DropVarEntry_length(&stmt.block_drop_vars)) {
             var entry: DropVarEntry = ArrayList_DropVarEntry_get(&stmt.block_drop_vars, di);
             _ = &entry;
-            block_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(block_str, "    "), entry.base_type), "_drop(&"), entry.name), ");\n");
+            block_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(block_str, "    "), entry.base_type), "_drop(&"), entry.name), ");\n");
             di = di + @as(c_longlong, 1);
         }
-        block_str = _kai_str_concat(block_str, "}");
+        block_str = __kai_std_str_concat_alloc(block_str, "}");
         _ = ArrayList_Int_pop(&self.*.block_stack);
         return block_str;
     }
@@ -12986,12 +13420,12 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         var init_val: [*c]const u8 = Codegen_gen_expr_with_expected_type(self, stmt.vardecl_value, var_type_name);
         _ = &init_val;
         if (strcmp(name, "_") == @as(c_int, 0)) {
-            return _kai_str_concat(_kai_str_concat("(void)(", init_val), ");");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(void)(", init_val), ");");
         }
         var var_type: [*c]const u8 = Codegen_map_type(self, var_type_name);
         _ = &var_type;
         type_map_put(&self.*.var_types, name, var_type_name);
-        return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(var_type, " "), name), " = "), init_val), ";");
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(var_type, " "), name), " = "), init_val), ";");
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_assignment))) {
         var lhs: [*c]const u8 = Codegen_gen_expr(self, stmt.assign_target);
@@ -13005,7 +13439,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.assign_op)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             op = stmt.assign_op;
         }
-        return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(lhs, " "), op), " "), rhs), ";");
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(lhs, " "), op), " "), rhs), ";");
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_func_decl))) {
         if (ArrayList_Str_length(&stmt.func_type_params) > @as(c_longlong, 0)) {
@@ -13024,9 +13458,9 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             var p: Param = ArrayList_Param_get(&stmt.func_params, i);
             _ = &p;
             if (i > @as(c_longlong, 0)) {
-                params_str = _kai_str_concat(params_str, ", ");
+                params_str = __kai_std_str_concat_alloc(params_str, ", ");
             }
-            params_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
+            params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
             i = i + @as(c_longlong, 1);
         }
         if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
@@ -13061,10 +13495,10 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         var impl_str: [*c]const u8 = "";
         _ = &impl_str;
         if (strcmp(name, "main") == @as(c_int, 0)) {
-            impl_str = _kai_str_concat("int main(int argc, char** argv) ", body_str);
+            impl_str = __kai_std_str_concat_alloc("int main(int argc, char** argv) ", body_str);
         } else {
-            proto = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), name), "("), params_str), ");\n");
-            impl_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), name), "("), params_str), ") "), body_str), "\n");
+            proto = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), name), "("), params_str), ");\n");
+            impl_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), name), "("), params_str), ") "), body_str), "\n");
         }
         if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(proto)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             _ = StringBuilder_append(&self.*.func_decls, proto);
@@ -13082,18 +13516,18 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         }
         var name: [*c]const u8 = Codegen_map_type(self, stmt.struct_name);
         _ = &name;
-        var struct_str: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("typedef struct ", name), " "), name), ";\n");
+        var struct_str: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", name), " "), name), ";\n");
         _ = &struct_str;
-        struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(struct_str, "struct "), name), " {\n");
+        struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "struct "), name), " {\n");
         var i: i64 = 0;
         _ = &i;
         while (i < ArrayList_StructField_length(&stmt.struct_fields)) {
             var f: StructField = ArrayList_StructField_get(&stmt.struct_fields, i);
             _ = &f;
-            struct_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(struct_str, "    "), Codegen_map_type(self, f.ftype)), " "), f.name), ";\n");
+            struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "    "), Codegen_map_type(self, f.ftype)), " "), f.name), ";\n");
             i = i + @as(c_longlong, 1);
         }
-        struct_str = _kai_str_concat(struct_str, "};\n");
+        struct_str = __kai_std_str_concat_alloc(struct_str, "};\n");
         _ = StringBuilder_append(&self.*.struct_decls, struct_str);
         var ti: i64 = 0;
         _ = &ti;
@@ -13114,12 +13548,12 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             var m_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, ArrayList_Int_get(&stmt.trait_methods, mi));
             _ = &m_node;
             if (mi > @as(c_longlong, 0)) {
-                method_names = _kai_str_concat(method_names, ", ");
+                method_names = __kai_std_str_concat_alloc(method_names, ", ");
             }
-            method_names = _kai_str_concat(method_names, m_node.func_name);
+            method_names = __kai_std_str_concat_alloc(method_names, m_node.func_name);
             mi = mi + @as(c_longlong, 1);
         }
-        var comment: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("/* trait ", stmt.trait_name), ": "), method_names), " */\n");
+        var comment: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("/* trait ", stmt.trait_name), ": "), method_names), " */\n");
         _ = &comment;
         _ = StringBuilder_append(&self.*.struct_decls, comment);
         return "";
@@ -13135,10 +13569,10 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         while (j < ArrayList_Str_length(&stmt.error_variants)) {
             var vname: [*c]const u8 = ArrayList_Str_get(&stmt.error_variants, j);
             _ = &vname;
-            enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "    "), name), "_"), vname), " = "), int_to_str(j + @as(c_longlong, 1))), ",\n");
+            enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "    "), name), "_"), vname), " = "), int_to_str(j + @as(c_longlong, 1))), ",\n");
             j = j + @as(c_longlong, 1);
         }
-        enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "} "), name), ";\n");
+        enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "} "), name), ";\n");
         _ = StringBuilder_append(&self.*.struct_decls, enum_str);
         return "";
     }
@@ -13171,12 +13605,12 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             while (j < ArrayList_Variant_length(&stmt.enum_variants)) {
                 var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, j);
                 _ = &v;
-                enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "    "), name), "_"), v.vname), ",\n");
+                enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "    "), name), "_"), v.vname), ",\n");
                 j = j + @as(c_longlong, 1);
             }
-            enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "} "), name), ";\n");
+            enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "} "), name), ";\n");
         } else {
-            var tags_name: [*c]const u8 = _kai_str_concat(name, "_tags");
+            var tags_name: [*c]const u8 = __kai_std_str_concat_alloc(name, "_tags");
             _ = &tags_name;
             enum_str = "typedef enum {\n";
             var j: i64 = 0;
@@ -13184,35 +13618,35 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             while (j < ArrayList_Variant_length(&stmt.enum_variants)) {
                 var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, j);
                 _ = &v;
-                enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "    "), name), "_"), v.vname), "_TAG,\n");
+                enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "    "), name), "_"), v.vname), "_TAG,\n");
                 j = j + @as(c_longlong, 1);
             }
-            enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "} "), tags_name), ";\n");
-            enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "typedef struct "), name), " "), name), ";\n");
-            enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "struct "), name), " {\n");
-            enum_str = _kai_str_concat(enum_str, "    uint8_t tag;\n");
-            enum_str = _kai_str_concat(enum_str, "    union {\n");
+            enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "} "), tags_name), ";\n");
+            enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "typedef struct "), name), " "), name), ";\n");
+            enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "struct "), name), " {\n");
+            enum_str = __kai_std_str_concat_alloc(enum_str, "    uint8_t tag;\n");
+            enum_str = __kai_std_str_concat_alloc(enum_str, "    union {\n");
             var k: i64 = 0;
             _ = &k;
             while (k < ArrayList_Variant_length(&stmt.enum_variants)) {
                 var v: Variant = ArrayList_Variant_get(&stmt.enum_variants, k);
                 _ = &v;
                 if (ArrayList_Param_length(&v.params) > @as(c_longlong, 0)) {
-                    enum_str = _kai_str_concat(enum_str, "        struct {\n");
+                    enum_str = __kai_std_str_concat_alloc(enum_str, "        struct {\n");
                     var p_idx: i64 = 0;
                     _ = &p_idx;
                     while (p_idx < ArrayList_Param_length(&v.params)) {
                         var p: Param = ArrayList_Param_get(&v.params, p_idx);
                         _ = &p;
-                        enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "            "), Codegen_map_type(self, p.ptype)), " "), p.name), ";\n");
+                        enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "            "), Codegen_map_type(self, p.ptype)), " "), p.name), ";\n");
                         p_idx = p_idx + @as(c_longlong, 1);
                     }
-                    enum_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(enum_str, "        } "), v.vname), ";\n");
+                    enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "        } "), v.vname), ";\n");
                 }
                 k = k + @as(c_longlong, 1);
             }
-            enum_str = _kai_str_concat(enum_str, "    } payload;\n");
-            enum_str = _kai_str_concat(enum_str, "};\n");
+            enum_str = __kai_std_str_concat_alloc(enum_str, "    } payload;\n");
+            enum_str = __kai_std_str_concat_alloc(enum_str, "};\n");
         }
         _ = StringBuilder_append(&self.*.struct_decls, enum_str);
         return "";
@@ -13237,7 +13671,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             _ = &method_node;
             var method_name: [*c]const u8 = method_node.func_name;
             _ = &method_name;
-            var is_init: bool = (((strcmp(method_name, "init") == @as(c_int, 0)) or (strcmp(method_node.func_return_type, struct_name) == @as(c_int, 0))) or (strcmp(method_node.func_return_type, _kai_str_concat("*", struct_name)) == @as(c_int, 0))) or (strcmp(method_node.func_return_type, _kai_str_concat("&", struct_name)) == @as(c_int, 0));
+            var is_init: bool = (((strcmp(method_name, "init") == @as(c_int, 0)) or (strcmp(method_node.func_return_type, struct_name) == @as(c_int, 0))) or (strcmp(method_node.func_return_type, __kai_std_str_concat_alloc("*", struct_name)) == @as(c_int, 0))) or (strcmp(method_node.func_return_type, __kai_std_str_concat_alloc("&", struct_name)) == @as(c_int, 0));
             _ = &is_init;
             var ret_type: [*c]const u8 = "";
             _ = &ret_type;
@@ -13249,7 +13683,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             var params_str: [*c]const u8 = "";
             _ = &params_str;
             if (!is_init) {
-                params_str = _kai_str_concat(mapped_struct_name, "* self");
+                params_str = __kai_std_str_concat_alloc(mapped_struct_name, "* self");
             }
             var p_idx: i64 = 0;
             _ = &p_idx;
@@ -13258,16 +13692,16 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 _ = &p;
                 if (strcmp(p.name, "self") != @as(c_int, 0)) {
                     if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                        params_str = _kai_str_concat(params_str, ", ");
+                        params_str = __kai_std_str_concat_alloc(params_str, ", ");
                     }
-                    params_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
+                    params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
                 }
                 p_idx = p_idx + @as(c_longlong, 1);
             }
             if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 params_str = "void";
             }
-            var mangled_fn_name: [*c]const u8 = _kai_str_concat(_kai_str_concat(mapped_struct_name, "_"), method_name);
+            var mangled_fn_name: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(mapped_struct_name, "_"), method_name);
             _ = &mangled_fn_name;
             var old_fn: [*c]const u8 = self.*.cur_func_name;
             _ = &old_fn;
@@ -13287,7 +13721,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             if (is_init) {
                 type_map_put(&self.*.var_types, "self", struct_name);
             } else {
-                type_map_put(&self.*.var_types, "self", _kai_str_concat("*", struct_name));
+                type_map_put(&self.*.var_types, "self", __kai_std_str_concat_alloc("*", struct_name));
             }
             var p_reg: i64 = 0;
             _ = &p_reg;
@@ -13307,9 +13741,9 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             if (is_init) {
                 body_str = Codegen_add_init_return(self, body_str, mapped_struct_name);
             }
-            var proto: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), mangled_fn_name), "("), params_str), ");\n");
+            var proto: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), mangled_fn_name), "("), params_str), ");\n");
             _ = &proto;
-            var impl_str: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(ret_type, " "), mangled_fn_name), "("), params_str), ") "), body_str), "\n");
+            var impl_str: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), mangled_fn_name), "("), params_str), ") "), body_str), "\n");
             _ = &impl_str;
             _ = StringBuilder_append(&self.*.func_decls, proto);
             _ = StringBuilder_append(&self.*.output, impl_str);
@@ -13328,9 +13762,9 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         if (((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(cond_val)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))) and (@as(c_int, @bitCast(@as(c_uint, cond_val[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 40)))))))))) and (@as(c_int, @bitCast(@as(c_uint, cond_val[@as(usize, @intCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(cond_val)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 41)))))))))) {
             cond_str = cond_val;
         } else {
-            cond_str = _kai_str_concat(_kai_str_concat("(", cond_val), ")");
+            cond_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", cond_val), ")");
         }
-        var if_str: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat("if ", cond_str), " "), Codegen_gen_stmt(self, stmt.if_then));
+        var if_str: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if ", cond_str), " "), Codegen_gen_stmt(self, stmt.if_then));
         _ = &if_str;
         if (stmt.if_else >= @as(c_longlong, 0)) {
             var else_node: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt.if_else);
@@ -13341,12 +13775,12 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 var single_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, single_stmt_idx);
                 _ = &single_stmt;
                 if (single_stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_if))) {
-                    if_str = _kai_str_concat(_kai_str_concat(if_str, " else "), Codegen_gen_stmt(self, single_stmt_idx));
+                    if_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_str, " else "), Codegen_gen_stmt(self, single_stmt_idx));
                 } else {
-                    if_str = _kai_str_concat(_kai_str_concat(if_str, " else "), Codegen_gen_stmt(self, stmt.if_else));
+                    if_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_str, " else "), Codegen_gen_stmt(self, stmt.if_else));
                 }
             } else {
-                if_str = _kai_str_concat(_kai_str_concat(if_str, " else "), Codegen_gen_stmt(self, stmt.if_else));
+                if_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_str, " else "), Codegen_gen_stmt(self, stmt.if_else));
             }
         }
         return if_str;
@@ -13356,7 +13790,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         _ = &cond_val;
         var cond_type: [*c]const u8 = Codegen_get_expr_type(self, stmt.iflet_expr);
         _ = &cond_type;
-        var unwrapped_type: [*c]const u8 = substring(cond_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(cond_type)))));
+        var unwrapped_type: [*c]const u8 = __kai_str_sub(cond_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(cond_type)))));
         _ = &unwrapped_type;
         var unwrapped_ctype: [*c]const u8 = Codegen_map_type(self, unwrapped_type);
         _ = &unwrapped_ctype;
@@ -13378,12 +13812,12 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 var single_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, single_stmt_idx);
                 _ = &single_stmt;
                 if (single_stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_if_let))) {
-                    else_str = _kai_str_concat(" else ", Codegen_gen_stmt(self, single_stmt_idx));
+                    else_str = __kai_std_str_concat_alloc(" else ", Codegen_gen_stmt(self, single_stmt_idx));
                 } else {
-                    else_str = _kai_str_concat(" else ", Codegen_gen_stmt(self, stmt.iflet_else));
+                    else_str = __kai_std_str_concat_alloc(" else ", Codegen_gen_stmt(self, stmt.iflet_else));
                 }
             } else {
-                else_str = _kai_str_concat(" else ", Codegen_gen_stmt(self, stmt.iflet_else));
+                else_str = __kai_std_str_concat_alloc(" else ", Codegen_gen_stmt(self, stmt.iflet_else));
             }
         }
         while (ArrayList_StrMapEntry_length(&self.*.var_types) > old_var_len) {
@@ -13392,18 +13826,18 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         var if_code: [*c]const u8 = "";
         _ = &if_code;
         if (Codegen_is_pointer_type(self, unwrapped_type)) {
-            if_code = _kai_str_concat(_kai_str_concat("if ((", cond_val), ") != NULL) {\n");
-            if_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(if_code, "    "), unwrapped_ctype), " "), stmt.iflet_var), " = "), cond_val), ";\n");
-            if_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(if_code, "    "), then_str), "\n");
-            if_code = _kai_str_concat(_kai_str_concat(if_code, "}"), else_str);
+            if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if ((", cond_val), ") != NULL) {\n");
+            if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_code, "    "), unwrapped_ctype), " "), stmt.iflet_var), " = "), cond_val), ";\n");
+            if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_code, "    "), then_str), "\n");
+            if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_code, "}"), else_str);
         } else {
             if_code = "{\n";
-            if_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(if_code, "    "), cond_ctype), " _kai_opt = "), cond_val), ";\n");
-            if_code = _kai_str_concat(if_code, "    if (_kai_opt.has_value) {\n");
-            if_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(if_code, "        "), unwrapped_ctype), " "), stmt.iflet_var), " = _kai_opt.value;\n");
-            if_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(if_code, "        "), then_str), "\n");
-            if_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(if_code, "    }"), else_str), "\n");
-            if_code = _kai_str_concat(if_code, "}");
+            if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_code, "    "), cond_ctype), " _kai_opt = "), cond_val), ";\n");
+            if_code = __kai_std_str_concat_alloc(if_code, "    if (_kai_opt.has_value) {\n");
+            if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_code, "        "), unwrapped_ctype), " "), stmt.iflet_var), " = _kai_opt.value;\n");
+            if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_code, "        "), then_str), "\n");
+            if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_code, "    }"), else_str), "\n");
+            if_code = __kai_std_str_concat_alloc(if_code, "}");
         }
         return if_code;
     }
@@ -13415,7 +13849,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         if (((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(cond_val)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))) and (@as(c_int, @bitCast(@as(c_uint, cond_val[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 40)))))))))) and (@as(c_int, @bitCast(@as(c_uint, cond_val[@as(usize, @intCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(cond_val)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 41)))))))))) {
             cond_str = cond_val;
         } else {
-            cond_str = _kai_str_concat(_kai_str_concat("(", cond_val), ")");
+            cond_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", cond_val), ")");
         }
         if (stmt.while_body >= @as(c_longlong, 0)) {
             var body_stmt: StmtNode = ArrayList_StmtNode_get(self.*.stmt_pool, stmt.while_body);
@@ -13423,7 +13857,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             body_stmt.block_is_loop_body = @as(c_int, 1) != 0;
             ArrayList_StmtNode_set(self.*.stmt_pool, stmt.while_body, body_stmt);
         }
-        return _kai_str_concat(_kai_str_concat(_kai_str_concat("while ", cond_str), " "), Codegen_gen_stmt(self, stmt.while_body));
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("while ", cond_str), " "), Codegen_gen_stmt(self, stmt.while_body));
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_for))) {
         var iter_var: [*c]const u8 = stmt.for_var;
@@ -13448,10 +13882,10 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             cmp_asc = "<=";
             cmp_desc = ">=";
         }
-        var for_str: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("for (int64_t ", iter_var), " = "), start), "; ");
+        var for_str: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("for (int64_t ", iter_var), " = "), start), "; ");
         _ = &for_str;
-        for_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(for_str, "("), start), " <= "), end), ") ? ("), iter_var), " "), cmp_asc), " "), end), ") : ("), iter_var), " "), cmp_desc), " "), end), "); ");
-        for_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(for_str, "("), start), " <= "), end), ") ? ++"), iter_var), " : --"), iter_var), ") "), body);
+        for_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(for_str, "("), start), " <= "), end), ") ? ("), iter_var), " "), cmp_asc), " "), end), ") : ("), iter_var), " "), cmp_desc), " "), end), "); ");
+        for_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(for_str, "("), start), " <= "), end), ") ? ++"), iter_var), " : --"), iter_var), ") "), body);
         return for_str;
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_return))) {
@@ -13490,7 +13924,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             while (di < ArrayList_DropVarEntry_length(&b_node.block_drop_vars)) {
                 var entry: DropVarEntry = ArrayList_DropVarEntry_get(&b_node.block_drop_vars, di);
                 _ = &entry;
-                ArrayList_Str_push(&drop_calls, _kai_str_concat(_kai_str_concat(_kai_str_concat(entry.base_type, "_drop(&"), entry.name), ");"));
+                ArrayList_Str_push(&drop_calls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(entry.base_type, "_drop(&"), entry.name), ");"));
                 di = di + @as(c_longlong, 1);
             }
             bi = bi - @as(c_longlong, 1);
@@ -13502,9 +13936,9 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 if (ret_excl_pos >= @as(c_longlong, 0)) {
                     var result_ctype: [*c]const u8 = Codegen_map_type(self, self.*.cur_return_type);
                     _ = &result_ctype;
-                    var val_payload_type: [*c]const u8 = substring(self.*.cur_return_type, @as(c_longlong, 0), ret_excl_pos);
+                    var val_payload_type: [*c]const u8 = __kai_str_sub(self.*.cur_return_type, @as(c_longlong, 0), ret_excl_pos);
                     _ = &val_payload_type;
-                    var err_type: [*c]const u8 = substring(self.*.cur_return_type, ret_excl_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(self.*.cur_return_type)))));
+                    var err_type: [*c]const u8 = __kai_str_sub(self.*.cur_return_type, ret_excl_pos + @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(self.*.cur_return_type)))));
                     _ = &err_type;
                     var ret_node: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, stmt.return_value);
                     _ = &ret_node;
@@ -13526,17 +13960,17 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                     var expr_excl_pos: i64 = Codegen_str_find(self, expr_ty, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
                     _ = &expr_excl_pos;
                     if (expr_excl_pos >= @as(c_longlong, 0)) {
-                        return _kai_str_concat(_kai_str_concat("return ", val_str), ";");
+                        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return ", val_str), ";");
                     }
                     if (is_error_variant) {
-                        return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("return (", result_ctype), "){ .tag = "), val_str), " };");
+                        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return (", result_ctype), "){ .tag = "), val_str), " };");
                     }
                     if (strcmp(val_payload_type, "Void") == @as(c_int, 0)) {
-                        return _kai_str_concat(_kai_str_concat("return (", result_ctype), "){ .tag = 0 };");
+                        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return (", result_ctype), "){ .tag = 0 };");
                     }
-                    return _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("return (", result_ctype), "){ .tag = 0, .value = "), val_str), " };");
+                    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return (", result_ctype), "){ .tag = 0, .value = "), val_str), " };");
                 }
-                return _kai_str_concat(_kai_str_concat("return ", Codegen_gen_expr_with_expected_type(self, stmt.return_value, self.*.cur_return_type)), ";");
+                return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return ", Codegen_gen_expr_with_expected_type(self, stmt.return_value, self.*.cur_return_type)), ";");
             }
             return "return;";
         }
@@ -13546,22 +13980,22 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             var val_type: [*c]const u8 = Codegen_get_expr_type(self, stmt.return_value);
             _ = &val_type;
             if ((strcmp(val_type, "Void") == @as(c_int, 0)) or (strcmp(val_type, "NoneType") == @as(c_int, 0))) {
-                var res: [*c]const u8 = _kai_str_concat(val_str, "; ");
+                var res: [*c]const u8 = __kai_std_str_concat_alloc(val_str, "; ");
                 _ = &res;
                 var ci: i64 = 0;
                 _ = &ci;
                 while (ci < ArrayList_Str_length(&drop_calls)) {
-                    res = _kai_str_concat(_kai_str_concat(res, ArrayList_Str_get(&drop_calls, ci)), " ");
+                    res = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res, ArrayList_Str_get(&drop_calls, ci)), " ");
                     ci = ci + @as(c_longlong, 1);
                 }
-                return _kai_str_concat(res, "return;");
+                return __kai_std_str_concat_alloc(res, "return;");
             }
             var ret_excl_pos: i64 = Codegen_str_find(self, self.*.cur_return_type, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 33))))));
             _ = &ret_excl_pos;
             var mapped_type: [*c]const u8 = Codegen_map_type(self, self.*.cur_return_type);
             _ = &mapped_type;
             if (ret_excl_pos >= @as(c_longlong, 0)) {
-                var val_payload_type: [*c]const u8 = substring(self.*.cur_return_type, @as(c_longlong, 0), ret_excl_pos);
+                var val_payload_type: [*c]const u8 = __kai_str_sub(self.*.cur_return_type, @as(c_longlong, 0), ret_excl_pos);
                 _ = &val_payload_type;
                 var ret_node: ExprNode = ArrayList_ExprNode_get(self.*.expr_pool, stmt.return_value);
                 _ = &ret_node;
@@ -13587,36 +14021,36 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 if (expr_excl_pos >= @as(c_longlong, 0)) {
                     ret_expr = raw_val;
                 } else if (is_error_variant) {
-                    ret_expr = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", mapped_type), "){ .tag = "), raw_val), " }");
+                    ret_expr = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_type), "){ .tag = "), raw_val), " }");
                 } else if (strcmp(val_payload_type, "Void") == @as(c_int, 0)) {
-                    ret_expr = _kai_str_concat(_kai_str_concat("(", mapped_type), "){ .tag = 0 }");
+                    ret_expr = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_type), "){ .tag = 0 }");
                 } else {
-                    ret_expr = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("(", mapped_type), "){ .tag = 0, .value = "), raw_val), " }");
+                    ret_expr = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_type), "){ .tag = 0, .value = "), raw_val), " }");
                 }
                 var res_str: [*c]const u8 = "{\n";
                 _ = &res_str;
-                res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), mapped_type), " __ret_val = "), ret_expr), ";\n");
+                res_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res_str, "    "), mapped_type), " __ret_val = "), ret_expr), ";\n");
                 var ci: i64 = 0;
                 _ = &ci;
                 while (ci < ArrayList_Str_length(&drop_calls)) {
-                    res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), ArrayList_Str_get(&drop_calls, ci)), "\n");
+                    res_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res_str, "    "), ArrayList_Str_get(&drop_calls, ci)), "\n");
                     ci = ci + @as(c_longlong, 1);
                 }
-                res_str = _kai_str_concat(res_str, "    return __ret_val;\n");
-                res_str = _kai_str_concat(res_str, "}");
+                res_str = __kai_std_str_concat_alloc(res_str, "    return __ret_val;\n");
+                res_str = __kai_std_str_concat_alloc(res_str, "}");
                 return res_str;
             }
             var res_str: [*c]const u8 = "{\n";
             _ = &res_str;
-            res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), mapped_type), " __ret_val = "), val_str), ";\n");
+            res_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res_str, "    "), mapped_type), " __ret_val = "), val_str), ";\n");
             var ci: i64 = 0;
             _ = &ci;
             while (ci < ArrayList_Str_length(&drop_calls)) {
-                res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), ArrayList_Str_get(&drop_calls, ci)), "\n");
+                res_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res_str, "    "), ArrayList_Str_get(&drop_calls, ci)), "\n");
                 ci = ci + @as(c_longlong, 1);
             }
-            res_str = _kai_str_concat(res_str, "    return __ret_val;\n");
-            res_str = _kai_str_concat(res_str, "}");
+            res_str = __kai_std_str_concat_alloc(res_str, "    return __ret_val;\n");
+            res_str = __kai_std_str_concat_alloc(res_str, "}");
             return res_str;
         } else {
             var res_str: [*c]const u8 = "{\n";
@@ -13624,16 +14058,16 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             var ci: i64 = 0;
             _ = &ci;
             while (ci < ArrayList_Str_length(&drop_calls)) {
-                res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), ArrayList_Str_get(&drop_calls, ci)), "\n");
+                res_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res_str, "    "), ArrayList_Str_get(&drop_calls, ci)), "\n");
                 ci = ci + @as(c_longlong, 1);
             }
-            res_str = _kai_str_concat(res_str, "    return;\n");
-            res_str = _kai_str_concat(res_str, "}");
+            res_str = __kai_std_str_concat_alloc(res_str, "    return;\n");
+            res_str = __kai_std_str_concat_alloc(res_str, "}");
             return res_str;
         }
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_expr))) {
-        return _kai_str_concat(Codegen_gen_expr(self, stmt.expr_stmt), ";");
+        return __kai_std_str_concat_alloc(Codegen_gen_expr(self, stmt.expr_stmt), ";");
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_print))) {
         var arg: i64 = stmt.print_value;
@@ -13643,18 +14077,18 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         var arg_type: [*c]const u8 = Codegen_get_expr_type(self, arg);
         _ = &arg_type;
         if (strcmp(arg_type, "Int") == @as(c_int, 0)) {
-            return _kai_str_concat(_kai_str_concat("printf(\"%lld\\n\", (long long)(", val), "));");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%lld\\n\", (long long)(", val), "));");
         }
         if (strcmp(arg_type, "Float") == @as(c_int, 0)) {
-            return _kai_str_concat(_kai_str_concat("printf(\"%f\\n\", (double)(", val), "));");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%f\\n\", (double)(", val), "));");
         }
         if (strcmp(arg_type, "Char") == @as(c_int, 0)) {
-            return _kai_str_concat(_kai_str_concat("printf(\"%c\\n\", (char)(", val), "));");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%c\\n\", (char)(", val), "));");
         }
         if (strcmp(arg_type, "Bool") == @as(c_int, 0)) {
-            return _kai_str_concat(_kai_str_concat("printf(\"%s\\n\", (", val), ") ? \"true\" : \"false\");");
+            return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%s\\n\", (", val), ") ? \"true\" : \"false\");");
         }
-        return _kai_str_concat(_kai_str_concat("printf(\"%s\\n\", ", val), ");");
+        return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%s\\n\", ", val), ");");
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_unsafe))) {
         return Codegen_gen_stmt(self, stmt.unsafe_body);
@@ -13678,15 +14112,15 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             var p: Param = ArrayList_Param_get(&stmt.extern_params, i);
             _ = &p;
             if (i > @as(c_longlong, 0)) {
-                params_str = _kai_str_concat(params_str, ", ");
+                params_str = __kai_std_str_concat_alloc(params_str, ", ");
             }
-            params_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
+            params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
             i = i + @as(c_longlong, 1);
         }
         if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_str)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
             params_str = "void";
         }
-        var proto: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("extern ", ret_type), " "), name), "("), params_str), ");\n");
+        var proto: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("extern ", ret_type), " "), name), "("), params_str), ");\n");
         _ = &proto;
         _ = StringBuilder_append(&self.*.func_decls, proto);
         return "";
@@ -13708,9 +14142,9 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         _ = &pi;
         while (pi < ArrayList_Str_length(&path)) {
             if (pi > @as(c_longlong, 0)) {
-                module_key = _kai_str_concat(module_key, ".");
+                module_key = __kai_std_str_concat_alloc(module_key, ".");
             }
-            module_key = _kai_str_concat(module_key, ArrayList_Str_get(&path, pi));
+            module_key = __kai_std_str_concat_alloc(module_key, ArrayList_Str_get(&path, pi));
             pi = pi + @as(c_longlong, 1);
         }
         if (strcmp(module_key, "") == @as(c_int, 0)) {
@@ -13731,12 +14165,12 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             _ = &i;
             while (i < ArrayList_Str_length(&path)) {
                 if (i > @as(c_longlong, 0)) {
-                    path_str = _kai_str_concat(path_str, "/");
+                    path_str = __kai_std_str_concat_alloc(path_str, "/");
                 }
-                path_str = _kai_str_concat(path_str, ArrayList_Str_get(&path, i));
+                path_str = __kai_std_str_concat_alloc(path_str, ArrayList_Str_get(&path, i));
                 i = i + @as(c_longlong, 1);
             }
-            var rel_path: [*c]const u8 = _kai_str_concat(path_str, ".kai");
+            var rel_path: [*c]const u8 = __kai_std_str_concat_alloc(path_str, ".kai");
             _ = &rel_path;
             var s1: [*c]const u8 = blk: {
                 var _kai_cr: Result_Str_IoError = read_to_string(self.*.allocator, rel_path);
@@ -13763,11 +14197,11 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                     if (get_exe_dir(buf, @as(c_longlong, 1024)) == @as(c_longlong, 0)) {
                         var exe_dir: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast(buf)));
                         _ = &exe_dir;
-                        var full_path: [*c]const u8 = _kai_str_concat(_kai_str_concat(exe_dir, "/"), rel_path);
+                        var full_path: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/"), rel_path);
                         _ = &full_path;
-                        var parent_path: [*c]const u8 = _kai_str_concat(_kai_str_concat(exe_dir, "/../"), rel_path);
+                        var parent_path: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../"), rel_path);
                         _ = &parent_path;
-                        var lib_path: [*c]const u8 = _kai_str_concat(_kai_str_concat(exe_dir, "/../lib/kai/"), rel_path);
+                        var lib_path: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../lib/kai/"), rel_path);
                         _ = &lib_path;
                         KaiAllocator_free(self.*.allocator, buf);
                         var s2: [*c]const u8 = blk: {
@@ -13835,7 +14269,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 }
             }
         } else if (ArrayList_Str_length(&path) > @as(c_longlong, 0)) {
-            var file_path: [*c]const u8 = _kai_str_concat(_kai_str_concat("src/", module_key), ".kai");
+            var file_path: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("src/", module_key), ".kai");
             _ = &file_path;
             var s: [*c]const u8 = blk: {
                 var _kai_cr: Result_Str_IoError = read_to_string(self.*.allocator, file_path);
@@ -13858,13 +14292,13 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             }
         }
         if (has_source) {
-            var lexer: Lexer = Lexer_init(self.*.allocator, source);
+            var lexer: Lexer = Lexer_init(self.*.allocator, source, "");
             _ = &lexer;
             Lexer_lex(&lexer);
             if (lexer.has_error) {
                 return "";
             }
-            var parser: Parser = Parser_init_with_pools(self.*.allocator, lexer.tokens, self.*.expr_pool, self.*.stmt_pool, self.*.pattern_pool);
+            var parser: Parser = Parser_init_with_pools(self.*.allocator, "", lexer.tokens, self.*.expr_pool, self.*.stmt_pool, self.*.pattern_pool);
             _ = &parser;
             var program_idx: i64 = Parser_parse_program(&parser);
             _ = &program_idx;
@@ -13888,11 +14322,11 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         var ci: i64 = 0;
         _ = &ci;
         while (ci < ArrayList_Str_length(&drop_calls)) {
-            res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), ArrayList_Str_get(&drop_calls, ci)), "\n");
+            res_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res_str, "    "), ArrayList_Str_get(&drop_calls, ci)), "\n");
             ci = ci + @as(c_longlong, 1);
         }
-        res_str = _kai_str_concat(res_str, "    break;\n");
-        res_str = _kai_str_concat(res_str, "}");
+        res_str = __kai_std_str_concat_alloc(res_str, "    break;\n");
+        res_str = __kai_std_str_concat_alloc(res_str, "}");
         return res_str;
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_continue))) {
@@ -13906,11 +14340,11 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
         var ci: i64 = 0;
         _ = &ci;
         while (ci < ArrayList_Str_length(&drop_calls)) {
-            res_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(res_str, "    "), ArrayList_Str_get(&drop_calls, ci)), "\n");
+            res_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res_str, "    "), ArrayList_Str_get(&drop_calls, ci)), "\n");
             ci = ci + @as(c_longlong, 1);
         }
-        res_str = _kai_str_concat(res_str, "    continue;\n");
-        res_str = _kai_str_concat(res_str, "}");
+        res_str = __kai_std_str_concat_alloc(res_str, "    continue;\n");
+        res_str = __kai_std_str_concat_alloc(res_str, "}");
         return res_str;
     }
     if (stmt.kind == @as(c_uint, @bitCast(StmtKind_sk_match))) {
@@ -13961,7 +14395,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                 } else if (@as(c_int, @bitCast(@as(c_uint, pat_node.lit_value.tag))) == TokenValue_tv_str_TAG) {
                     var v: [*c]const u8 = pat_node.lit_value.payload.tv_str.v;
                     _ = &v;
-                    lit_str = _kai_str_concat(_kai_str_concat("\"", Codegen_escape_string(self, v)), "\"");
+                    lit_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("\"", Codegen_escape_string(self, v)), "\"");
                 } else if (@as(c_int, @bitCast(@as(c_uint, pat_node.lit_value.tag))) == TokenValue_tv_bool_TAG) {
                     var v: bool = pat_node.lit_value.payload.tv_bool.v;
                     _ = &v;
@@ -13984,27 +14418,27 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                     } else if (@as(c_int, @bitCast(@as(c_uint, v))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 39))))))))) {
                         lit_str = "'\\''";
                     } else {
-                        lit_str = _kai_str_concat(_kai_str_concat("'", char_to_str(v)), "'");
+                        lit_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("'", char_to_str(v)), "'");
                     }
                 } else {
                     lit_str = "0";
                 }
-                cond = _kai_str_concat(_kai_str_concat(expr_val, " == "), lit_str);
+                cond = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(expr_val, " == "), lit_str);
             } else if (pat_node.kind == @as(c_uint, @bitCast(PatternKind_pk_variant))) {
                 var var_name: [*c]const u8 = pat_node.variant_name;
                 _ = &var_name;
                 var base_type: [*c]const u8 = mapped_expr_type;
                 _ = &base_type;
                 if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1)))))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
-                    base_type = substring(base_type, @as(c_longlong, 0), @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))));
+                    base_type = __kai_str_sub(base_type, @as(c_longlong, 0), @as(i64, @bitCast(@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) -% @as(c_ulonglong, @bitCast(@as(c_longlong, 1))))));
                 }
                 if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and (@as(c_int, @bitCast(@as(c_uint, base_type[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42)))))))))) {
-                    base_type = substring(base_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
+                    base_type = __kai_str_sub(base_type, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_type)))));
                 }
                 if (Codegen_enum_has_payload(self, expr_type)) {
-                    cond = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(expr_val, op), "tag == "), base_type), "_"), var_name), "_TAG");
+                    cond = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(expr_val, op), "tag == "), base_type), "_"), var_name), "_TAG");
                 } else {
-                    cond = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(expr_val, " == "), base_type), "_"), var_name);
+                    cond = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(expr_val, " == "), base_type), "_"), var_name);
                 }
                 if (ArrayList_Str_length(&pat_node.bindings) > @as(c_longlong, 0)) {
                     var bind_name: [*c]const u8 = ArrayList_Str_get(&pat_node.bindings, @as(c_longlong, 0));
@@ -14048,7 +14482,7 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
                         }
                         var mapped_bind_type: [*c]const u8 = Codegen_map_type(self, bind_type);
                         _ = &mapped_bind_type;
-                        bindings_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("    ", mapped_bind_type), " "), bind_name), " = "), expr_val), op), "payload."), var_name), "."), field_name), ";\n");
+                        bindings_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", mapped_bind_type), " "), bind_name), " = "), expr_val), op), "payload."), var_name), "."), field_name), ";\n");
                     }
                 }
             } else if (pat_node.kind == @as(c_uint, @bitCast(PatternKind_pk_else))) {
@@ -14057,20 +14491,20 @@ pub export fn Codegen_gen_stmt(arg_self: [*c]Codegen, arg_stmt_idx: i64) [*c]con
             var prefix: [*c]const u8 = "";
             _ = &prefix;
             if (case_idx == @as(c_longlong, 0)) {
-                prefix = _kai_str_concat(_kai_str_concat("if (", cond), ")");
+                prefix = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", cond), ")");
             } else if (strcmp(cond, "true") == @as(c_int, 0)) {
                 prefix = "else";
             } else {
-                prefix = _kai_str_concat(_kai_str_concat("else if (", cond), ")");
+                prefix = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("else if (", cond), ")");
             }
             var full_block: [*c]const u8 = block_str;
             _ = &full_block;
             if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(bindings_str)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 var body_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(block_str))));
                 _ = &body_len;
-                full_block = _kai_str_concat(_kai_str_concat("{\n", bindings_str), substring(block_str, @as(c_longlong, 1), body_len));
+                full_block = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("{\n", bindings_str), __kai_str_sub(block_str, @as(c_longlong, 1), body_len));
             }
-            match_str = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(match_str, prefix), " "), full_block), " ");
+            match_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(match_str, prefix), " "), full_block), " ");
             case_idx = case_idx + @as(c_longlong, 1);
         }
         return match_str;
@@ -14087,16 +14521,16 @@ pub export fn Codegen_clean_enum_name(arg_self: [*c]Codegen, arg_type_name: [*c]
     if (Codegen_str_contains(self, type_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))))) {
         var lt_pos: i64 = Codegen_str_find(self, type_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 60))))));
         _ = &lt_pos;
-        base_name = substring(type_name, @as(c_longlong, 0), lt_pos);
+        base_name = __kai_str_sub(type_name, @as(c_longlong, 0), lt_pos);
     }
-    if (strcmp(substring(base_name, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0)) {
-        base_name = substring(base_name, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_name)))));
+    if (strcmp(__kai_str_sub(base_name, @as(c_longlong, 0), @as(c_longlong, 4)), "mut ") == @as(c_int, 0)) {
+        base_name = __kai_str_sub(base_name, @as(c_longlong, 4), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_name)))));
     }
     var done: bool = @as(c_int, 0) != 0;
     _ = &done;
     while (!done) {
         if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(base_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) and ((@as(c_int, @bitCast(@as(c_uint, base_name[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 42))))))))) or (@as(c_int, @bitCast(@as(c_uint, base_name[@as(usize, @intCast(@as(c_longlong, 0)))]))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
-            base_name = substring(base_name, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_name)))));
+            base_name = __kai_str_sub(base_name, @as(c_longlong, 1), @as(i64, @bitCast(@as(c_ulonglong, strlen(base_name)))));
         } else {
             done = @as(c_int, 1) != 0;
         }
@@ -14112,7 +14546,7 @@ pub export fn Codegen_clean_enum_name(arg_self: [*c]Codegen, arg_type_name: [*c]
             const tmp = l - @as(c_longlong, 1);
             if (tmp >= 0) break :blk base_name + @as(usize, @intCast(tmp)) else break :blk base_name - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
         }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 38))))))))))) {
-            base_name = substring(base_name, @as(c_longlong, 0), l - @as(c_longlong, 1));
+            base_name = __kai_str_sub(base_name, @as(c_longlong, 0), l - @as(c_longlong, 1));
         } else {
             done = @as(c_int, 1) != 0;
         }
@@ -14121,7 +14555,7 @@ pub export fn Codegen_clean_enum_name(arg_self: [*c]Codegen, arg_type_name: [*c]
         if (Codegen_str_contains(self, base_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 95))))))) {
             var underscore_pos: i64 = Codegen_str_find(self, base_name, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 95))))));
             _ = &underscore_pos;
-            var fallback_name: [*c]const u8 = substring(base_name, @as(c_longlong, 0), underscore_pos);
+            var fallback_name: [*c]const u8 = __kai_str_sub(base_name, @as(c_longlong, 0), underscore_pos);
             _ = &fallback_name;
             if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(type_map_get(&self.*.enum_decls, fallback_name))))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
                 return fallback_name;
@@ -14186,17 +14620,17 @@ pub export fn Codegen_escape_string(arg_self: [*c]Codegen, arg_s: [*c]const u8) 
         }).*;
         _ = &c;
         if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
-            res = _kai_str_concat(res, "\\n");
+            res = __kai_std_str_concat_alloc(res, "\\n");
         } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 13))))))))) {
-            res = _kai_str_concat(res, "\\r");
+            res = __kai_std_str_concat_alloc(res, "\\r");
         } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9))))))))) {
-            res = _kai_str_concat(res, "\\t");
+            res = __kai_std_str_concat_alloc(res, "\\t");
         } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 92))))))))) {
-            res = _kai_str_concat(res, "\\\\");
+            res = __kai_std_str_concat_alloc(res, "\\\\");
         } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 34))))))))) {
-            res = _kai_str_concat(res, "\\\"");
+            res = __kai_std_str_concat_alloc(res, "\\\"");
         } else {
-            res = _kai_str_concat(res, char_to_str(c));
+            res = __kai_std_str_concat_alloc(res, char_to_str(c));
         }
         i = i + @as(c_longlong, 1);
     }
@@ -14242,7 +14676,7 @@ pub export fn Codegen__collect_loop_drops(arg_self: [*c]Codegen) ArrayList_Str {
         while (di < ArrayList_DropVarEntry_length(&b_node.block_drop_vars)) {
             var entry: DropVarEntry = ArrayList_DropVarEntry_get(&b_node.block_drop_vars, di);
             _ = &entry;
-            ArrayList_Str_push(&drop_calls, _kai_str_concat(_kai_str_concat(_kai_str_concat(entry.base_type, "_drop(&"), entry.name), ");"));
+            ArrayList_Str_push(&drop_calls, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(entry.base_type, "_drop(&"), entry.name), ");"));
             di = di + @as(c_longlong, 1);
         }
         if (b_node.block_is_loop_body) {
@@ -14262,55 +14696,95 @@ pub export fn Codegen_generate(arg_self: [*c]Codegen, arg_top_stmt_idx: i64) [*c
     _ = &body;
     var final_code: [*c]const u8 = "";
     _ = &final_code;
-    final_code = _kai_str_concat(final_code, "#include <stdint.h>\n");
-    final_code = _kai_str_concat(final_code, "#include <stdbool.h>\n");
-    final_code = _kai_str_concat(final_code, "#include <stdio.h>\n");
-    final_code = _kai_str_concat(final_code, "#include <stdlib.h>\n");
-    final_code = _kai_str_concat(final_code, "#include <string.h>\n");
-    final_code = _kai_str_concat(final_code, "#ifndef NO_GET_EXE_DIR\n");
-    final_code = _kai_str_concat(final_code, "#if defined(_WIN32)\n");
-    final_code = _kai_str_concat(final_code, "#include <windows.h>\n");
-    final_code = _kai_str_concat(final_code, "#else\n");
-    final_code = _kai_str_concat(final_code, "#ifndef _GNU_SOURCE\n");
-    final_code = _kai_str_concat(final_code, "#define _GNU_SOURCE\n");
-    final_code = _kai_str_concat(final_code, "#endif\n");
-    final_code = _kai_str_concat(final_code, "#include <dlfcn.h>\n");
-    final_code = _kai_str_concat(final_code, "#include <limits.h>\n");
-    final_code = _kai_str_concat(final_code, "#endif\n\n");
-    final_code = _kai_str_concat(final_code, "int64_t get_exe_dir(char* out_buf, int64_t max_len) {\n");
-    final_code = _kai_str_concat(final_code, "#if defined(_WIN32)\n");
-    final_code = _kai_str_concat(final_code, "    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);\n");
-    final_code = _kai_str_concat(final_code, "    if (len == 0 || len >= max_len) return -1;\n");
-    final_code = _kai_str_concat(final_code, "    for (int i = len - 1; i >= 0; i--) {\n");
-    final_code = _kai_str_concat(final_code, "        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {\n");
-    final_code = _kai_str_concat(final_code, "            out_buf[i] = '\\0';\n");
-    final_code = _kai_str_concat(final_code, "            break;\n");
-    final_code = _kai_str_concat(final_code, "        }\n");
-    final_code = _kai_str_concat(final_code, "    }\n");
-    final_code = _kai_str_concat(final_code, "    return 0;\n");
-    final_code = _kai_str_concat(final_code, "#else\n");
-    final_code = _kai_str_concat(final_code, "    Dl_info info;\n");
-    final_code = _kai_str_concat(final_code, "    char dummy = 0;\n");
-    final_code = _kai_str_concat(final_code, "    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {\n");
-    final_code = _kai_str_concat(final_code, "        char real_path[PATH_MAX];\n");
-    final_code = _kai_str_concat(final_code, "        if (realpath(info.dli_fname, real_path) != NULL) {\n");
-    final_code = _kai_str_concat(final_code, "            char* last_slash = strrchr(real_path, '/');\n");
-    final_code = _kai_str_concat(final_code, "            if (last_slash != NULL) {\n");
-    final_code = _kai_str_concat(final_code, "                *last_slash = '\\0';\n");
-    final_code = _kai_str_concat(final_code, "                int i = 0;\n");
-    final_code = _kai_str_concat(final_code, "                while (i < max_len - 1 && real_path[i] != '\\0') {\n");
-    final_code = _kai_str_concat(final_code, "                    out_buf[i] = real_path[i];\n");
-    final_code = _kai_str_concat(final_code, "                    i++;\n");
-    final_code = _kai_str_concat(final_code, "                }\n");
-    final_code = _kai_str_concat(final_code, "                out_buf[i] = '\\0';\n");
-    final_code = _kai_str_concat(final_code, "                return 0;\n");
-    final_code = _kai_str_concat(final_code, "            }\n");
-    final_code = _kai_str_concat(final_code, "        }\n");
-    final_code = _kai_str_concat(final_code, "    }\n");
-    final_code = _kai_str_concat(final_code, "    return -1;\n");
-    final_code = _kai_str_concat(final_code, "#endif\n");
-    final_code = _kai_str_concat(final_code, "}\n");
-    final_code = _kai_str_concat(final_code, "#endif\n\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#include <stdint.h>\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#include <stdbool.h>\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#include <stdio.h>\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#include <stdlib.h>\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#include <string.h>\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#ifndef MAP_FAILED\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#define MAP_FAILED ((void*)-1)\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#ifndef MAP_PRIVATE\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#define MAP_PRIVATE 2\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#ifndef MAP_ANONYMOUS\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#ifdef __APPLE__\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#define MAP_ANONYMOUS 0x1000\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#else\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#define MAP_ANONYMOUS 0x20\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "extern int munmap(void* addr, unsigned long long length);\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#ifndef NO_GET_EXE_DIR\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#if defined(_WIN32)\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#include <windows.h>\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#else\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#ifndef _GNU_SOURCE\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#define _GNU_SOURCE\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#include <dlfcn.h>\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#include <limits.h>\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "int64_t get_exe_dir(char* out_buf, int64_t max_len) {\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#if defined(_WIN32)\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    if (len == 0 || len >= max_len) return -1;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    for (int i = len - 1; i >= 0; i--) {\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "            out_buf[i] = '\\0';\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "            break;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "        }\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    }\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    return 0;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#else\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    Dl_info info;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    char dummy = 0;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "        char real_path[PATH_MAX];\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "        if (realpath(info.dli_fname, real_path) != NULL) {\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "            char* last_slash = strrchr(real_path, '/');\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "            if (last_slash != NULL) {\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "                *last_slash = '\\0';\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "                int i = 0;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "                while (i < max_len - 1 && real_path[i] != '\\0') {\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "                    out_buf[i] = real_path[i];\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "                    i++;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "                }\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "                out_buf[i] = '\\0';\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "                return 0;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "            }\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "        }\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    }\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    return -1;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "}\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "static char* __kai_str_sub(const char* s, int64_t start, int64_t end) {\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    int64_t len = strlen(s);\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    if (end > len) end = len;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    if (start < 0) start = 0;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    if (start >= end) {\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "        char* empty = malloc(1);\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "        if (empty) empty[0] = '\\0';\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "        return empty;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    }\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    int64_t sub_len = end - start;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    char* buf = malloc(sub_len + 1);\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    if (buf) {\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "        memcpy(buf, s + start, sub_len);\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "        buf[sub_len] = '\\0';\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    }\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    return buf;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "}\n\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t elem_size) {\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    int64_t count = end - start;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    if (count <= 0) return NULL;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    size_t total = (size_t)count * (size_t)elem_size;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    void* buf = malloc(total);\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    return buf;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "}\n\n");
     var ci: i64 = 0;
     _ = &ci;
     var has_cimports: bool = @as(c_int, 0) != 0;
@@ -14337,7 +14811,7 @@ pub export fn Codegen_generate(arg_self: [*c]Codegen, arg_top_stmt_idx: i64) [*c
         }
         if (!is_baseline) {
             if (!has_cimports) {
-                final_code = _kai_str_concat(final_code, "/* C FFI Imports */\n");
+                final_code = __kai_std_str_concat_alloc(final_code, "/* C FFI Imports */\n");
                 has_cimports = @as(c_int, 1) != 0;
             }
             var has_slash: bool = @as(c_int, 0) != 0;
@@ -14361,112 +14835,27 @@ pub export fn Codegen_generate(arg_self: [*c]Codegen, arg_top_stmt_idx: i64) [*c
                 }
             }
             if (!has_slash and !dot_start) {
-                final_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(final_code, "#include <"), hdr), ">\n");
+                final_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(final_code, "#include <"), hdr), ">\n");
             } else {
-                final_code = _kai_str_concat(_kai_str_concat(_kai_str_concat(final_code, "#include \""), hdr), "\"\n");
+                final_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(final_code, "#include \""), hdr), "\"\n");
             }
         }
         ci = ci + @as(c_longlong, 1);
     }
-    final_code = _kai_str_concat(final_code, "static __thread void* _kai_current_allocator = NULL;\n\n");
-    final_code = _kai_str_concat(final_code, "static inline void _kai_set_current_allocator(void* allocator) {\n");
-    final_code = _kai_str_concat(final_code, "    _kai_current_allocator = allocator;\n");
-    final_code = _kai_str_concat(final_code, "}\n\n");
-    final_code = _kai_str_concat(final_code, "extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);\n");
-    final_code = _kai_str_concat(final_code, "extern int munmap(void* addr, unsigned long long length);\n\n");
-    final_code = _kai_str_concat(final_code, "static inline char* _kai_mmap(char* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {\n");
-    final_code = _kai_str_concat(final_code, "    return (char*)mmap(addr, (unsigned long long)length, prot, flags, fd, offset);\n");
-    final_code = _kai_str_concat(final_code, "}\n\n");
-    final_code = _kai_str_concat(final_code, "static inline int64_t _kai_munmap(char* addr, int64_t length) {\n");
-    final_code = _kai_str_concat(final_code, "    return munmap(addr, (unsigned long long)length);\n");
-    final_code = _kai_str_concat(final_code, "}\n\n");
-    var has_str: bool = (strlist_find(&self.*.loaded_modules, "std.lib.str") >= @as(c_longlong, 0)) or (strlist_find(&self.*.loaded_modules, "std.zero_ported.str") >= @as(c_longlong, 0));
-    _ = &has_str;
-    if (!has_str) {
-        final_code = _kai_str_concat(final_code, "static inline char* _kai_str_concat(const char* l, const char* r) {\n");
-        final_code = _kai_str_concat(final_code, "    unsigned long long l1 = 0;\n");
-        final_code = _kai_str_concat(final_code, "    while (l[l1] != '\\0') { l1++; }\n");
-        final_code = _kai_str_concat(final_code, "    unsigned long long l2 = 0;\n");
-        final_code = _kai_str_concat(final_code, "    while (r[l2] != '\\0') { l2++; }\n");
-        final_code = _kai_str_concat(final_code, "    if (l1 > 1000000ULL || l2 > 1000000ULL - l1) { return NULL; }\n");
-        final_code = _kai_str_concat(final_code, "    unsigned long long total = l1 + l2 + 1ULL;\n");
-        final_code = _kai_str_concat(final_code, "    char* buf = malloc(total);\n");
-        final_code = _kai_str_concat(final_code, "    if (buf) {\n");
-        final_code = _kai_str_concat(final_code, "        unsigned long long i = 0;\n");
-        final_code = _kai_str_concat(final_code, "        while (i < l1) {\n");
-        final_code = _kai_str_concat(final_code, "            buf[i] = l[i];\n");
-        final_code = _kai_str_concat(final_code, "            i++;\n");
-        final_code = _kai_str_concat(final_code, "        }\n");
-        final_code = _kai_str_concat(final_code, "        unsigned long long j = 0;\n");
-        final_code = _kai_str_concat(final_code, "        while (j < l2) {\n");
-        final_code = _kai_str_concat(final_code, "            buf[l1 + j] = r[j];\n");
-        final_code = _kai_str_concat(final_code, "            j++;\n");
-        final_code = _kai_str_concat(final_code, "        }\n");
-        final_code = _kai_str_concat(final_code, "        buf[l1 + l2] = '\\0';\n");
-        final_code = _kai_str_concat(final_code, "    }\n");
-        final_code = _kai_str_concat(final_code, "    return buf;\n");
-        final_code = _kai_str_concat(final_code, "}\n\n");
-    }
-    final_code = _kai_str_concat(_kai_str_concat(final_code, StringBuilder_to_str(&self.*.struct_decls)), "\n");
-    final_code = _kai_str_concat(_kai_str_concat(final_code, StringBuilder_to_str(&self.*.func_decls)), "\n");
-    final_code = _kai_str_concat(final_code, StringBuilder_to_str(&self.*.output));
+    final_code = __kai_std_str_concat_alloc(final_code, "static __thread void* _kai_current_allocator = NULL;\n\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "static inline void _kai_set_current_allocator(void* allocator) {\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    _kai_current_allocator = allocator;\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "}\n\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "static inline char* _kai_mmap(char* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    return (char*)mmap(addr, length, prot, MAP_PRIVATE | MAP_ANONYMOUS, fd, offset);\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "}\n\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "static inline int64_t _kai_munmap(char* addr, int64_t length) {\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "    return munmap(addr, length);\n");
+    final_code = __kai_std_str_concat_alloc(final_code, "}\n\n");
+    final_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(final_code, StringBuilder_to_str(&self.*.struct_decls)), "\n");
+    final_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(final_code, StringBuilder_to_str(&self.*.func_decls)), "\n");
+    final_code = __kai_std_str_concat_alloc(final_code, StringBuilder_to_str(&self.*.output));
     return final_code;
-}
-pub export fn fs_exists(arg_path: [*c]const u8) bool {
-    var path = arg_path;
-    _ = &path;
-    {
-        return kai_fs_exists(path);
-    }
-}
-pub export fn fs_is_dir(arg_path: [*c]const u8) bool {
-    var path = arg_path;
-    _ = &path;
-    {
-        return kai_fs_is_dir(path);
-    }
-}
-pub export fn fs_mkdir(arg_path: [*c]const u8) bool {
-    var path = arg_path;
-    _ = &path;
-    {
-        return kai_fs_mkdir(path);
-    }
-}
-pub export fn fs_remove(arg_path: [*c]const u8) bool {
-    var path = arg_path;
-    _ = &path;
-    {
-        return kai_fs_remove(path);
-    }
-}
-pub export fn fs_opendir(arg_path: [*c]const u8) Dir {
-    var path = arg_path;
-    _ = &path;
-    {
-        return Dir{
-            .handle = kai_fs_opendir(path),
-        };
-    }
-}
-pub export fn fs_readdir(arg_dir: Dir) [*c]const u8 {
-    var dir = arg_dir;
-    _ = &dir;
-    {
-        var name_ptr: [*c]u8 = kai_fs_readdir(dir.handle);
-        _ = &name_ptr;
-        if (name_ptr == @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
-            return "";
-        }
-        return @as([*c]const u8, @ptrCast(@alignCast(name_ptr)));
-    }
-}
-pub export fn fs_closedir(arg_dir: Dir) void {
-    var dir = arg_dir;
-    _ = &dir;
-    {
-        kai_fs_closedir(dir.handle);
-    }
 }
 pub export fn get_error_info(arg_code: [*c]const u8) ErrorInfo {
     var code = arg_code;
@@ -14670,6 +15059,62 @@ pub export fn get_error_info(arg_code: [*c]const u8) ErrorInfo {
         .fix = "Refer to the Kai language documentation for more information.",
     };
 }
+pub export fn fs_exists(arg_path: [*c]const u8) bool {
+    var path = arg_path;
+    _ = &path;
+    {
+        return kai_fs_exists(path);
+    }
+}
+pub export fn fs_is_dir(arg_path: [*c]const u8) bool {
+    var path = arg_path;
+    _ = &path;
+    {
+        return kai_fs_is_dir(path);
+    }
+}
+pub export fn fs_mkdir(arg_path: [*c]const u8) bool {
+    var path = arg_path;
+    _ = &path;
+    {
+        return kai_fs_mkdir(path);
+    }
+}
+pub export fn fs_remove(arg_path: [*c]const u8) bool {
+    var path = arg_path;
+    _ = &path;
+    {
+        return kai_fs_remove(path);
+    }
+}
+pub export fn fs_opendir(arg_path: [*c]const u8) Dir {
+    var path = arg_path;
+    _ = &path;
+    {
+        return Dir{
+            .handle = kai_fs_opendir(path),
+        };
+    }
+}
+pub export fn fs_readdir(arg_dir: Dir) [*c]const u8 {
+    var dir = arg_dir;
+    _ = &dir;
+    {
+        var name_ptr: [*c]u8 = kai_fs_readdir(dir.handle);
+        _ = &name_ptr;
+        if (name_ptr == @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0)))))) {
+            return "";
+        }
+        return @as([*c]const u8, @ptrCast(@alignCast(name_ptr)));
+    }
+}
+pub export fn fs_closedir(arg_dir: Dir) void {
+    var dir = arg_dir;
+    _ = &dir;
+    {
+        kai_fs_closedir(dir.handle);
+    }
+}
 pub export fn find_last(arg_path: [*c]const u8, arg_c: u8) i64 {
     var path = arg_path;
     _ = &path;
@@ -14744,18 +15189,16 @@ pub export fn str_replace(arg_s: [*c]const u8, arg_old: [*c]const u8, arg_new_va
             j = j + @as(c_longlong, 1);
         }
         if (matched) {
-            result = _kai_str_concat(result, new_val);
+            result = __kai_std_str_concat_alloc(result, new_val);
             i = i + old_len;
         } else {
-            result = _kai_str_concat(result, substring(s, i, i + @as(c_longlong, 1)));
+            result = __kai_std_str_concat_alloc(result, substring(s, i, i + @as(c_longlong, 1)));
             i = i + @as(c_longlong, 1);
         }
     }
     return result;
 }
-pub export fn get_base_name(arg_allocator: [*c]KaiAllocator, arg_path: [*c]const u8) [*c]const u8 {
-    var allocator = arg_allocator;
-    _ = &allocator;
+pub export fn get_base_name(arg_path: [*c]const u8) [*c]const u8 {
     var path = arg_path;
     _ = &path;
     var last_slash: i64 = -@as(c_longlong, 1);
@@ -14790,6 +15233,750 @@ pub export fn get_base_name(arg_allocator: [*c]KaiAllocator, arg_path: [*c]const
         end = dot_pos;
     }
     return substring(path, start, end);
+}
+pub export fn __kai_std_ascii_is_digit(arg_byte: u8) bool {
+    var byte = arg_byte;
+    _ = &byte;
+    return (@as(c_int, @bitCast(@as(c_uint, byte))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 48))))))))) and (@as(c_int, @bitCast(@as(c_uint, byte))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 57)))))))));
+}
+pub export fn __kai_std_ascii_is_lower(arg_byte: u8) bool {
+    var byte = arg_byte;
+    _ = &byte;
+    return (@as(c_int, @bitCast(@as(c_uint, byte))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 97))))))))) and (@as(c_int, @bitCast(@as(c_uint, byte))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 122)))))))));
+}
+pub export fn __kai_std_ascii_is_upper(arg_byte: u8) bool {
+    var byte = arg_byte;
+    _ = &byte;
+    return (@as(c_int, @bitCast(@as(c_uint, byte))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 65))))))))) and (@as(c_int, @bitCast(@as(c_uint, byte))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 90)))))))));
+}
+pub export fn __kai_std_ascii_is_alpha(arg_byte: u8) bool {
+    var byte = arg_byte;
+    _ = &byte;
+    return (@as(c_int, @intFromBool(__kai_std_ascii_is_lower(byte))) != 0) or (@as(c_int, @intFromBool(__kai_std_ascii_is_upper(byte))) != 0);
+}
+pub export fn __kai_std_ascii_is_alnum(arg_byte: u8) bool {
+    var byte = arg_byte;
+    _ = &byte;
+    return (@as(c_int, @intFromBool(__kai_std_ascii_is_alpha(byte))) != 0) or (@as(c_int, @intFromBool(__kai_std_ascii_is_digit(byte))) != 0);
+}
+pub export fn __kai_std_ascii_is_whitespace(arg_byte: u8) bool {
+    var byte = arg_byte;
+    _ = &byte;
+    return (((@as(c_int, @bitCast(@as(c_uint, byte))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) or (@as(c_int, @bitCast(@as(c_uint, byte))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) or (@as(c_int, @bitCast(@as(c_uint, byte))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10)))))))))) or (@as(c_int, @bitCast(@as(c_uint, byte))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 13)))))))));
+}
+pub export fn __kai_std_ascii_is_hex_digit(arg_byte: u8) bool {
+    var byte = arg_byte;
+    _ = &byte;
+    return ((@as(c_int, @intFromBool(__kai_std_ascii_is_digit(byte))) != 0) or ((@as(c_int, @bitCast(@as(c_uint, byte))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 65))))))))) and (@as(c_int, @bitCast(@as(c_uint, byte))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 70))))))))))) or ((@as(c_int, @bitCast(@as(c_uint, byte))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 97))))))))) and (@as(c_int, @bitCast(@as(c_uint, byte))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 102))))))))));
+}
+pub export fn __kai_std_ascii_to_lower(arg_byte: u8) u8 {
+    var byte = arg_byte;
+    _ = &byte;
+    if (__kai_std_ascii_is_upper(byte)) {
+        return @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, @bitCast(@as(c_uint, byte))) + @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))))));
+    }
+    return byte;
+}
+pub export fn __kai_std_ascii_to_upper(arg_byte: u8) u8 {
+    var byte = arg_byte;
+    _ = &byte;
+    if (__kai_std_ascii_is_lower(byte)) {
+        return @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, @bitCast(@as(c_uint, byte))) - @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))))));
+    }
+    return byte;
+}
+pub export fn __kai_std_ascii_digit_value(arg_byte: u8) Optional_Char {
+    var byte = arg_byte;
+    _ = &byte;
+    if (__kai_std_ascii_is_digit(byte)) {
+        return Optional_Char{
+            .has_value = @as(c_int, 1) != 0,
+            .value = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, @bitCast(@as(c_uint, byte))) - @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 48)))))))))))),
+        };
+    }
+    return Optional_Char{
+        .has_value = @as(c_int, 0) != 0,
+        .value = 0,
+    };
+}
+pub export fn __kai_std_ascii_hex_value(arg_byte: u8) Optional_Char {
+    var byte = arg_byte;
+    _ = &byte;
+    if (__kai_std_ascii_is_digit(byte)) {
+        return Optional_Char{
+            .has_value = @as(c_int, 1) != 0,
+            .value = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, @bitCast(@as(c_uint, byte))) - @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 48)))))))))))),
+        };
+    }
+    if ((@as(c_int, @bitCast(@as(c_uint, byte))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 65))))))))) and (@as(c_int, @bitCast(@as(c_uint, byte))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 70)))))))))) {
+        return Optional_Char{
+            .has_value = @as(c_int, 1) != 0,
+            .value = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, @bitCast(@as(c_uint, byte))) - @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 55)))))))))))),
+        };
+    }
+    if ((@as(c_int, @bitCast(@as(c_uint, byte))) >= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 97))))))))) and (@as(c_int, @bitCast(@as(c_uint, byte))) <= @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 102)))))))))) {
+        return Optional_Char{
+            .has_value = @as(c_int, 1) != 0,
+            .value = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, @bitCast(@as(c_uint, byte))) - @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 87)))))))))))),
+        };
+    }
+    return Optional_Char{
+        .has_value = @as(c_int, 0) != 0,
+        .value = 0,
+    };
+}
+pub export fn diag_clamp_offset(arg_bytes: [*c]const u8, arg_offset: i64) i64 {
+    var bytes = arg_bytes;
+    _ = &bytes;
+    var offset = arg_offset;
+    _ = &offset;
+    if (@as(c_ulonglong, @bitCast(offset)) > @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(bytes))))) {
+        return @as(i64, @bitCast(@as(c_ulonglong, strlen(bytes))));
+    }
+    return offset;
+}
+pub export fn diag_line_start(arg_bytes: [*c]const u8, arg_offset: i64) i64 {
+    var bytes = arg_bytes;
+    _ = &bytes;
+    var offset = arg_offset;
+    _ = &offset;
+    var cursor: i64 = diag_clamp_offset(bytes, offset);
+    _ = &cursor;
+    var start: i64 = cursor;
+    _ = &start;
+    while ((start > @as(c_longlong, 0)) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+        const tmp = start - @as(c_longlong, 1);
+        if (tmp >= 0) break :blk bytes + @as(usize, @intCast(tmp)) else break :blk bytes - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+    }).*))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10)))))))))) {
+        start = start - @as(c_longlong, 1);
+    }
+    return start;
+}
+pub export fn diag_line_end(arg_bytes: [*c]const u8, arg_offset: i64) i64 {
+    var bytes = arg_bytes;
+    _ = &bytes;
+    var offset = arg_offset;
+    _ = &offset;
+    var end: i64 = diag_clamp_offset(bytes, offset);
+    _ = &end;
+    while ((@as(c_ulonglong, @bitCast(end)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(bytes))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+        const tmp = end;
+        if (tmp >= 0) break :blk bytes + @as(usize, @intCast(tmp)) else break :blk bytes - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+    }).*))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10)))))))))) {
+        end = end + @as(c_longlong, 1);
+    }
+    if ((end > @as(c_longlong, 0)) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+        const tmp = end - @as(c_longlong, 1);
+        if (tmp >= 0) break :blk bytes + @as(usize, @intCast(tmp)) else break :blk bytes - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 13)))))))))) {
+        return end - @as(c_longlong, 1);
+    }
+    return end;
+}
+pub export fn diag_line(arg_bytes: [*c]const u8, arg_offset: i64) i64 {
+    var bytes = arg_bytes;
+    _ = &bytes;
+    var offset = arg_offset;
+    _ = &offset;
+    var cursor: i64 = diag_clamp_offset(bytes, offset);
+    _ = &cursor;
+    var line: i64 = 1;
+    _ = &line;
+    var index_1: i64 = 0;
+    _ = &index_1;
+    while (index_1 < cursor) {
+        if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+            const tmp = index_1;
+            if (tmp >= 0) break :blk bytes + @as(usize, @intCast(tmp)) else break :blk bytes - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
+            line = line + @as(c_longlong, 1);
+        }
+        index_1 = index_1 + @as(c_longlong, 1);
+    }
+    return line;
+}
+pub export fn diag_column(arg_bytes: [*c]const u8, arg_offset: i64) i64 {
+    var bytes = arg_bytes;
+    _ = &bytes;
+    var offset = arg_offset;
+    _ = &offset;
+    var cursor: i64 = diag_clamp_offset(bytes, offset);
+    _ = &cursor;
+    var start: i64 = diag_line_start(bytes, cursor);
+    _ = &start;
+    return (cursor - start) + @as(c_longlong, 1);
+}
+pub export fn diag_line_text(arg_bytes: [*c]const u8, arg_offset: i64) [*c]const u8 {
+    var bytes = arg_bytes;
+    _ = &bytes;
+    var offset = arg_offset;
+    _ = &offset;
+    var start: i64 = diag_line_start(bytes, offset);
+    _ = &start;
+    var end: i64 = diag_line_end(bytes, offset);
+    _ = &end;
+    return substring(bytes, start, end);
+}
+pub export fn diag_range_len(arg_bytes: [*c]const u8, arg_start: i64, arg_end: i64) i64 {
+    var bytes = arg_bytes;
+    _ = &bytes;
+    var start = arg_start;
+    _ = &start;
+    var end = arg_end;
+    _ = &end;
+    var first: i64 = diag_clamp_offset(bytes, start);
+    _ = &first;
+    var last: i64 = diag_clamp_offset(bytes, end);
+    _ = &last;
+    if (last < first) {
+        return 0;
+    }
+    return last - first;
+}
+pub export fn diag_range_text(arg_bytes: [*c]const u8, arg_start: i64, arg_end: i64) [*c]const u8 {
+    var bytes = arg_bytes;
+    _ = &bytes;
+    var start = arg_start;
+    _ = &start;
+    var end = arg_end;
+    _ = &end;
+    var first: i64 = diag_clamp_offset(bytes, start);
+    _ = &first;
+    var last: i64 = diag_clamp_offset(bytes, end);
+    _ = &last;
+    if (last < first) {
+        return substring(bytes, first, first);
+    }
+    return substring(bytes, first, last);
+}
+pub export fn diag_write_span(arg_buffer: [*c]u8, arg_offset: i64, arg_bytes: [*c]const u8) Optional_Int {
+    var buffer = arg_buffer;
+    _ = &buffer;
+    var offset = arg_offset;
+    _ = &offset;
+    var bytes = arg_bytes;
+    _ = &bytes;
+    if (offset > @as(c_longlong, 1000000)) {
+        return Optional_Int{
+            .has_value = @as(c_int, 0) != 0,
+            .value = @import("std").mem.zeroes(i64),
+        };
+    }
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(bytes)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 1000000) - offset))) {
+        return Optional_Int{
+            .has_value = @as(c_int, 0) != 0,
+            .value = @import("std").mem.zeroes(i64),
+        };
+    }
+    var index_1: i64 = 0;
+    _ = &index_1;
+    while (@as(c_ulonglong, @bitCast(index_1)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(bytes))))) {
+        (blk: {
+            const tmp = offset + index_1;
+            if (tmp >= 0) break :blk buffer + @as(usize, @intCast(tmp)) else break :blk buffer - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).* = (blk: {
+            const tmp = index_1;
+            if (tmp >= 0) break :blk bytes + @as(usize, @intCast(tmp)) else break :blk bytes - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*;
+        index_1 = index_1 + @as(c_longlong, 1);
+    }
+    return Optional_Int{
+        .has_value = @as(c_int, 1) != 0,
+        .value = @as(i64, @bitCast(@as(c_ulonglong, @bitCast(offset)) +% @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(bytes)))))),
+    };
+}
+pub export fn diag_write_usize(arg_buffer: [*c]u8, arg_offset: i64, arg_value: i64) Optional_Int {
+    var buffer = arg_buffer;
+    _ = &buffer;
+    var offset = arg_offset;
+    _ = &offset;
+    var value = arg_value;
+    _ = &value;
+    if (offset > @as(c_longlong, 1000000)) {
+        return Optional_Int{
+            .has_value = @as(c_int, 0) != 0,
+            .value = @import("std").mem.zeroes(i64),
+        };
+    }
+    var digits: i64 = 1;
+    _ = &digits;
+    var scan: i64 = value;
+    _ = &scan;
+    while (scan >= @as(c_longlong, 10)) {
+        digits = digits + @as(c_longlong, 1);
+        scan = @divTrunc(scan, @as(c_longlong, 10));
+    }
+    if ((offset + digits) > @as(c_longlong, 1000000)) {
+        return Optional_Int{
+            .has_value = @as(c_int, 0) != 0,
+            .value = @import("std").mem.zeroes(i64),
+        };
+    }
+    var cursor: i64 = offset + digits;
+    _ = &cursor;
+    var current: i64 = value;
+    _ = &current;
+    while (cursor > offset) {
+        cursor = cursor - @as(c_longlong, 1);
+        var digit: u8 = @as(u8, @bitCast(@as(i8, @truncate(@import("std").zig.c_translation.signedRemainder(current, @as(c_longlong, 10))))));
+        _ = &digit;
+        (blk: {
+            const tmp = cursor;
+            if (tmp >= 0) break :blk buffer + @as(usize, @intCast(tmp)) else break :blk buffer - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).* = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 48)))))))) + @as(c_int, @bitCast(@as(c_uint, digit)))))));
+        current = @divTrunc(current, @as(c_longlong, 10));
+    }
+    return Optional_Int{
+        .has_value = @as(c_int, 1) != 0,
+        .value = offset + digits,
+    };
+}
+pub export fn diag_format_location(arg_buffer: [*c]u8, arg_path: [*c]const u8, arg_line: i64, arg_column: i64) [*c]const u8 {
+    var buffer = arg_buffer;
+    _ = &buffer;
+    var path = arg_path;
+    _ = &path;
+    var line = arg_line;
+    _ = &line;
+    var column = arg_column;
+    _ = &column;
+    var offset: i64 = 0;
+    _ = &offset;
+    var wrote_path: Optional_Int = diag_write_span(buffer, offset, path);
+    _ = &wrote_path;
+    if (!wrote_path.has_value) {
+        return null;
+    }
+    offset = blk: {
+        var _kai_opt: Optional_Int = wrote_path;
+        _ = &_kai_opt;
+        var _kai_cv: i64 = undefined;
+        _ = &_kai_cv;
+        if (_kai_opt.has_value) {
+            _kai_cv = _kai_opt.value;
+        } else {
+            _kai_cv = @as(c_longlong, 0);
+        }
+        break :blk _kai_cv;
+    };
+    var first_colon: Optional_Int = diag_write_span(buffer, offset, ":");
+    _ = &first_colon;
+    if (!first_colon.has_value) {
+        return null;
+    }
+    offset = blk: {
+        var _kai_opt: Optional_Int = first_colon;
+        _ = &_kai_opt;
+        var _kai_cv: i64 = undefined;
+        _ = &_kai_cv;
+        if (_kai_opt.has_value) {
+            _kai_cv = _kai_opt.value;
+        } else {
+            _kai_cv = @as(c_longlong, 0);
+        }
+        break :blk _kai_cv;
+    };
+    var wrote_line: Optional_Int = diag_write_usize(buffer, offset, line);
+    _ = &wrote_line;
+    if (!wrote_line.has_value) {
+        return null;
+    }
+    offset = blk: {
+        var _kai_opt: Optional_Int = wrote_line;
+        _ = &_kai_opt;
+        var _kai_cv: i64 = undefined;
+        _ = &_kai_cv;
+        if (_kai_opt.has_value) {
+            _kai_cv = _kai_opt.value;
+        } else {
+            _kai_cv = @as(c_longlong, 0);
+        }
+        break :blk _kai_cv;
+    };
+    var second_colon: Optional_Int = diag_write_span(buffer, offset, ":");
+    _ = &second_colon;
+    if (!second_colon.has_value) {
+        return null;
+    }
+    offset = blk: {
+        var _kai_opt: Optional_Int = second_colon;
+        _ = &_kai_opt;
+        var _kai_cv: i64 = undefined;
+        _ = &_kai_cv;
+        if (_kai_opt.has_value) {
+            _kai_cv = _kai_opt.value;
+        } else {
+            _kai_cv = @as(c_longlong, 0);
+        }
+        break :blk _kai_cv;
+    };
+    var wrote_column: Optional_Int = diag_write_usize(buffer, offset, column);
+    _ = &wrote_column;
+    if (wrote_column.has_value) {
+        return substring(buffer, @as(c_longlong, 0), blk: {
+            var _kai_opt: Optional_Int = wrote_column;
+            _ = &_kai_opt;
+            var _kai_cv: i64 = undefined;
+            _ = &_kai_cv;
+            if (_kai_opt.has_value) {
+                _kai_cv = _kai_opt.value;
+            } else {
+                _kai_cv = @as(c_longlong, 0);
+            }
+            break :blk _kai_cv;
+        });
+    }
+    return null;
+}
+pub export fn diag_format_offset_location(arg_buffer: [*c]u8, arg_path: [*c]const u8, arg_bytes: [*c]const u8, arg_offset: i64) [*c]const u8 {
+    var buffer = arg_buffer;
+    _ = &buffer;
+    var path = arg_path;
+    _ = &path;
+    var bytes = arg_bytes;
+    _ = &bytes;
+    var offset = arg_offset;
+    _ = &offset;
+    return diag_format_location(buffer, path, diag_line(bytes, offset), diag_column(bytes, offset));
+}
+pub export fn diag_fix_safety(arg_code: [*c]const u8) [*c]const u8 {
+    var code = arg_code;
+    _ = &code;
+    if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(code, "E0008")))) == @as(c_longlong, 0)) {
+        return "behavior-preserving";
+    }
+    if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(code, "E0020")))) == @as(c_longlong, 0)) {
+        return "requires-human-review";
+    }
+    return "requires-human-review";
+}
+pub export fn diag_repair_id(arg_code: [*c]const u8) [*c]const u8 {
+    var code = arg_code;
+    _ = &code;
+    if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(code, "E0008")))) == @as(c_longlong, 0)) {
+        return "make-binding-mutable";
+    }
+    if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(code, "E0020")))) == @as(c_longlong, 0)) {
+        return "declare-missing-symbol";
+    }
+    return "manual-review";
+}
+pub export fn diag_repair_summary(arg_code: [*c]const u8) [*c]const u8 {
+    var code = arg_code;
+    _ = &code;
+    if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(code, "E0008")))) == @as(c_longlong, 0)) {
+        return "Change the root binding to `var` before passing it to a mutable API.";
+    }
+    if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(code, "E0020")))) == @as(c_longlong, 0)) {
+        return "Declare the referenced function, import the module that provides it, or correct the identifier spelling.";
+    }
+    return "Inspect the diagnostic fields and choose a repair manually.";
+}
+pub export fn diagnostic_can_apply_edits(arg_code: [*c]const u8) bool {
+    var code = arg_code;
+    _ = &code;
+    if ((@as(c_longlong, @bitCast(@as(c_longlong, strcmp(code, "E0008")))) == @as(c_longlong, 0)) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(diag_fix_safety(code), "behavior-preserving")))) == @as(c_longlong, 0))) {
+        return @as(c_int, 1) != 0;
+    }
+    return @as(c_int, 0) != 0;
+}
+pub export fn print_json_string(arg_s: [*c]const u8) void {
+    var s = arg_s;
+    _ = &s;
+    var len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(s))));
+    _ = &len;
+    var i: i64 = 0;
+    _ = &i;
+    while (i < len) {
+        {
+            var c: u8 = (blk: {
+                const tmp = i;
+                if (tmp >= 0) break :blk s + @as(usize, @intCast(tmp)) else break :blk s - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).*;
+            _ = &c;
+            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 34))))))))) {
+                _ = printf("\\\"");
+            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 92))))))))) {
+                _ = printf("\\\\");
+            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
+                _ = printf("\\n");
+            } else {
+                _ = printf("%c", @as(c_int, @bitCast(@as(c_uint, c))));
+            }
+        }
+        i = i + @as(c_longlong, 1);
+    }
+}
+pub export fn print_diag_json(arg_code: [*c]const u8, arg_message: [*c]const u8, arg_path: [*c]const u8, arg_line: i64, arg_column: i64, arg_len_val: i64, arg_expected: [*c]const u8, arg_actual: [*c]const u8, arg_help: [*c]const u8) void {
+    var code = arg_code;
+    _ = &code;
+    var message = arg_message;
+    _ = &message;
+    var path = arg_path;
+    _ = &path;
+    var line = arg_line;
+    _ = &line;
+    var column = arg_column;
+    _ = &column;
+    var len_val = arg_len_val;
+    _ = &len_val;
+    var expected = arg_expected;
+    _ = &expected;
+    var actual = arg_actual;
+    _ = &actual;
+    var help = arg_help;
+    _ = &help;
+    _ = printf("{\"code\":\"");
+    print_json_string(code);
+    _ = printf("\",\"message\":\"");
+    print_json_string(message);
+    _ = printf("\",\"path\":\"");
+    print_json_string(path);
+    _ = printf("\",\"line\":%lld,\"column\":%lld,\"length\":%lld", line, column, len_val);
+    _ = printf(",\"expected\":\"");
+    print_json_string(expected);
+    _ = printf("\",\"actual\":\"");
+    print_json_string(actual);
+    _ = printf("\",\"help\":\"");
+    print_json_string(help);
+    _ = printf("\",\"fixSafety\":\"");
+    print_json_string(diag_fix_safety(code));
+    _ = printf("\",\"repair\":{\"id\":\"");
+    print_json_string(diag_repair_id(code));
+    _ = printf("\",\"summary\":\"");
+    print_json_string(diag_repair_summary(code));
+    _ = printf("\"}}");
+}
+pub export fn print_fix_json(arg_code: [*c]const u8, arg_applies: bool) void {
+    var code = arg_code;
+    _ = &code;
+    var applies = arg_applies;
+    _ = &applies;
+    _ = printf("{\"id\":\"");
+    print_json_string(diag_repair_id(code));
+    _ = printf("\",\"diagnosticCode\":\"");
+    print_json_string(code);
+    _ = printf("\",\"safety\":\"");
+    print_json_string(diag_fix_safety(code));
+    _ = printf("\",\"summary\":\"");
+    print_json_string(diag_repair_summary(code));
+    if (applies) {
+        _ = printf("\",\"appliesEdits\":true}");
+    } else {
+        _ = printf("\",\"appliesEdits\":false}");
+    }
+}
+pub export fn print_plan(arg_path: [*c]const u8, arg_json_mode: bool, arg_codes: [*c]ArrayList_Str, arg_messages: [*c]ArrayList_Str, arg_dlines: [*c]ArrayList_Int, arg_dcolumns: [*c]ArrayList_Int, arg_dlengths: [*c]ArrayList_Int, arg_expected: [*c]ArrayList_Str, arg_actual: [*c]ArrayList_Str, arg_helpv: [*c]ArrayList_Str) void {
+    var path = arg_path;
+    _ = &path;
+    var json_mode = arg_json_mode;
+    _ = &json_mode;
+    var codes = arg_codes;
+    _ = &codes;
+    var messages = arg_messages;
+    _ = &messages;
+    var dlines = arg_dlines;
+    _ = &dlines;
+    var dcolumns = arg_dcolumns;
+    _ = &dcolumns;
+    var dlengths = arg_dlengths;
+    _ = &dlengths;
+    var expected = arg_expected;
+    _ = &expected;
+    var actual = arg_actual;
+    _ = &actual;
+    var helpv = arg_helpv;
+    _ = &helpv;
+    var count: i64 = ArrayList_Str_length(codes);
+    _ = &count;
+    if (!json_mode) {
+        if (count == @as(c_longlong, 0)) {
+            _ = printf("No diagnostics found in '%s'\n", path);
+            return;
+        }
+        _ = printf("Found %lld diagnostic(s) in '%s':\n", count, path);
+        var i: i64 = 0;
+        _ = &i;
+        while (i < count) {
+            var cd: [*c]const u8 = ArrayList_Str_get(codes, i);
+            _ = &cd;
+            _ = printf("%s:%lld:%lld %s: %s\n", path, ArrayList_Int_get(dlines, i), ArrayList_Int_get(dcolumns, i), cd, ArrayList_Str_get(messages, i));
+            _ = printf("  expected: %s\n", ArrayList_Str_get(expected, i));
+            _ = printf("  actual: %s\n", ArrayList_Str_get(actual, i));
+            _ = printf("  help: %s\n", ArrayList_Str_get(helpv, i));
+            _ = printf("  explain: kai explain %s\n", cd);
+            i = i + @as(c_longlong, 1);
+        }
+        return;
+    }
+    var has_diag: bool = count > @as(c_longlong, 0);
+    _ = &has_diag;
+    _ = printf("{\n  \"schemaVersion\": 1,\n  \"ok\": ");
+    if (has_diag) {
+        _ = printf("false");
+    } else {
+        _ = printf("true");
+    }
+    _ = printf(",\n  \"mode\": \"plan\",\n  \"appliesEdits\": false,\n  \"safetyLevels\": [\"format-only\",\"behavior-preserving\",\"api-changing\",\"target-changing\",\"requires-human-review\"],\n  \"input\": \"");
+    print_json_string(path);
+    _ = printf("\",\n  \"selfHostRepairPolicy\": {\"unsupportedFeatureSafety\":\"requires-human-review\",\"compatibilityFallback\":\"removed\",\"directFallback\":\"never-c-bridge\"},\n  \"diagnostics\": [");
+    var @"i2": i64 = 0;
+    _ = &@"i2";
+    while (@"i2" < count) {
+        if (@"i2" > @as(c_longlong, 0)) {
+            _ = printf(",");
+        }
+        _ = printf("\n    ");
+        print_diag_json(ArrayList_Str_get(codes, @"i2"), ArrayList_Str_get(messages, @"i2"), path, ArrayList_Int_get(dlines, @"i2"), ArrayList_Int_get(dcolumns, @"i2"), ArrayList_Int_get(dlengths, @"i2"), ArrayList_Str_get(expected, @"i2"), ArrayList_Str_get(actual, @"i2"), ArrayList_Str_get(helpv, @"i2"));
+        @"i2" = @"i2" + @as(c_longlong, 1);
+    }
+    _ = printf("\n  ],\n  \"fixes\": [");
+    @"i2" = 0;
+    while (@"i2" < count) {
+        if (@"i2" > @as(c_longlong, 0)) {
+            _ = printf(",");
+        }
+        _ = printf("\n    ");
+        var cd: [*c]const u8 = ArrayList_Str_get(codes, @"i2");
+        _ = &cd;
+        print_fix_json(cd, diagnostic_can_apply_edits(cd));
+        @"i2" = @"i2" + @as(c_longlong, 1);
+    }
+    _ = printf("\n  ]\n}\n");
+}
+pub export fn print_patch(arg_path: [*c]const u8, arg_json_mode: bool, arg_apply: bool, arg_applied: bool, arg_codes: [*c]ArrayList_Str, arg_messages: [*c]ArrayList_Str, arg_dlines: [*c]ArrayList_Int, arg_dcolumns: [*c]ArrayList_Int, arg_dlengths: [*c]ArrayList_Int, arg_expected: [*c]ArrayList_Str, arg_actual: [*c]ArrayList_Str, arg_helpv: [*c]ArrayList_Str, arg_patch_lines: [*c]ArrayList_Int, arg_patch_old: [*c]ArrayList_Str, arg_patch_new: [*c]ArrayList_Str, arg_patch_codes: [*c]ArrayList_Str) void {
+    var path = arg_path;
+    _ = &path;
+    var json_mode = arg_json_mode;
+    _ = &json_mode;
+    var apply = arg_apply;
+    _ = &apply;
+    var applied = arg_applied;
+    _ = &applied;
+    var codes = arg_codes;
+    _ = &codes;
+    var messages = arg_messages;
+    _ = &messages;
+    var dlines = arg_dlines;
+    _ = &dlines;
+    var dcolumns = arg_dcolumns;
+    _ = &dcolumns;
+    var dlengths = arg_dlengths;
+    _ = &dlengths;
+    var expected = arg_expected;
+    _ = &expected;
+    var actual = arg_actual;
+    _ = &actual;
+    var helpv = arg_helpv;
+    _ = &helpv;
+    var patch_lines = arg_patch_lines;
+    _ = &patch_lines;
+    var patch_old = arg_patch_old;
+    _ = &patch_old;
+    var patch_new = arg_patch_new;
+    _ = &patch_new;
+    var patch_codes = arg_patch_codes;
+    _ = &patch_codes;
+    var count: i64 = ArrayList_Str_length(codes);
+    _ = &count;
+    var patch_count: i64 = ArrayList_Str_length(patch_codes);
+    _ = &patch_count;
+    if (!json_mode) {
+        if (patch_count > @as(c_longlong, 0)) {
+            _ = printf("Diff for '%s':\n", path);
+            var pi: i64 = 0;
+            _ = &pi;
+            while (pi < patch_count) {
+                var old_line: [*c]const u8 = ArrayList_Str_get(patch_old, pi);
+                _ = &old_line;
+                var new_line: [*c]const u8 = ArrayList_Str_get(patch_new, pi);
+                _ = &new_line;
+                _ = printf("- %s\n+ %s\n", old_line, new_line);
+                pi = pi + @as(c_longlong, 1);
+            }
+        }
+        if (count > patch_count) {
+            _ = printf("(%lld issue(s) without auto-fix \xe2\x80\x94 use kai patch to address them)\n", count - patch_count);
+        }
+        if (apply) {
+            if (applied) {
+                _ = printf("Applied %lld fix(es) to '%s'\n", patch_count, path);
+            } else {
+                _ = printf("No behavior-preserving edits to apply in '%s'\n", path);
+            }
+        }
+        return;
+    }
+    var has_diag: bool = count > @as(c_longlong, 0);
+    _ = &has_diag;
+    var can_apply_total: bool = (count > @as(c_longlong, 0)) and (patch_count > @as(c_longlong, 0));
+    _ = &can_apply_total;
+    _ = printf("{\n  \"schemaVersion\": 1,\n  \"ok\": ");
+    if (has_diag) {
+        _ = printf("false");
+    } else {
+        _ = printf("true");
+    }
+    _ = printf(",\n  \"mode\": \"");
+    if (apply) {
+        _ = printf("apply");
+    } else {
+        _ = printf("patch");
+    }
+    _ = printf("\",\n  \"appliesEdits\": ");
+    if (apply) {
+        _ = printf("true");
+    } else {
+        _ = printf("false");
+    }
+    _ = printf(",\n  \"applied\": ");
+    if (applied) {
+        _ = printf("true");
+    } else {
+        _ = printf("false");
+    }
+    _ = printf(",\n  \"input\": \"");
+    print_json_string(path);
+    _ = printf("\",\n  \"selfHostRepairPolicy\": {\"unsupportedFeatureSafety\":\"requires-human-review\",\"compatibilityFallback\":\"removed\",\"directFallback\":\"never-c-bridge\"}");
+    _ = printf(",\n  \"diagnostics\": [");
+    var @"i2": i64 = 0;
+    _ = &@"i2";
+    while (@"i2" < count) {
+        if (@"i2" > @as(c_longlong, 0)) {
+            _ = printf(",");
+        }
+        _ = printf("\n    ");
+        print_diag_json(ArrayList_Str_get(codes, @"i2"), ArrayList_Str_get(messages, @"i2"), path, ArrayList_Int_get(dlines, @"i2"), ArrayList_Int_get(dcolumns, @"i2"), ArrayList_Int_get(dlengths, @"i2"), ArrayList_Str_get(expected, @"i2"), ArrayList_Str_get(actual, @"i2"), ArrayList_Str_get(helpv, @"i2"));
+        @"i2" = @"i2" + @as(c_longlong, 1);
+    }
+    _ = printf("\n  ],\n  \"fixes\": [");
+    @"i2" = 0;
+    while (@"i2" < count) {
+        if (@"i2" > @as(c_longlong, 0)) {
+            _ = printf(",");
+        }
+        _ = printf("\n    ");
+        var cd: [*c]const u8 = ArrayList_Str_get(codes, @"i2");
+        _ = &cd;
+        print_fix_json(cd, diagnostic_can_apply_edits(cd));
+        @"i2" = @"i2" + @as(c_longlong, 1);
+    }
+    _ = printf("\n  ],\n  \"patches\": [");
+    @"i2" = 0;
+    while (@"i2" < patch_count) {
+        if (@"i2" > @as(c_longlong, 0)) {
+            _ = printf(",");
+        }
+        _ = printf("\n    {\"path\":\"");
+        print_json_string(path);
+        _ = printf("\",\"line\":%lld,\"old\":\"", ArrayList_Int_get(patch_lines, @"i2"));
+        print_json_string(ArrayList_Str_get(patch_old, @"i2"));
+        _ = printf("\",\"new\":\"");
+        print_json_string(ArrayList_Str_get(patch_new, @"i2"));
+        _ = printf("\"}");
+        @"i2" = @"i2" + @as(c_longlong, 1);
+    }
+    _ = printf("\n  ]\n}\n");
 }
 pub export fn ArrayList_Bool_init(arg_allocator: [*c]KaiAllocator) ArrayList_Bool {
     var allocator = arg_allocator;
@@ -14901,6 +16088,1714 @@ pub export fn ArrayList_Bool_deinit(arg_self: [*c]ArrayList_Bool) void {
         KaiAllocator_free(self.*.allocator, @as([*c]u8, @ptrCast(@alignCast(self.*.data))));
     }
 }
+pub export fn run_fix(arg_fix_mode: [*c]const u8, arg_fix_file: [*c]const u8, arg_json: bool) i64 {
+    var fix_mode = arg_fix_mode;
+    _ = &fix_mode;
+    var fix_file = arg_fix_file;
+    _ = &fix_file;
+    var json = arg_json;
+    _ = &json;
+    var fix_alloc: KaiAllocator = KaiAllocator{
+        .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .used = @as(c_longlong, 0),
+    };
+    _ = &fix_alloc;
+    fix_alloc = KaiAllocator_init();
+    _kai_set_current_allocator(@as(?*anyopaque, @ptrCast(&fix_alloc)));
+    var src_res: Result_Str_IoError = read_to_string(&fix_alloc, fix_file);
+    _ = &src_res;
+    if (src_res.tag != @as(c_longlong, 0)) {
+        _ = printf("Error: Could not read '%s'\n", fix_file);
+        return 1;
+    }
+    var source: [*c]const u8 = src_res.value;
+    _ = &source;
+    var src_len_val: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(source))));
+    _ = &src_len_val;
+    if (!json) {
+        var fix_lexer: Lexer = Lexer_init(&fix_alloc, source, fix_file);
+        _ = &fix_lexer;
+        Lexer_lex(&fix_lexer);
+        if (!fix_lexer.has_error) {
+            var fix_parser: Parser = Parser_init(&fix_alloc, fix_file, fix_lexer.tokens);
+            _ = &fix_parser;
+            var prog_idx: i64 = Parser_parse_program(&fix_parser);
+            _ = &prog_idx;
+            if (prog_idx >= @as(c_longlong, 0)) {
+                var chk: TypeChecker = TypeChecker_init(&fix_alloc, fix_parser.stmt_pool, fix_parser.expr_pool, fix_parser.pattern_pool, fix_file);
+                _ = &chk;
+                var ttmp: bool = TypeChecker_check_program(&chk, prog_idx);
+                _ = &ttmp;
+                if (ttmp) {} else {}
+            }
+        }
+    }
+    var vars: ArrayList_Str = ArrayList_Str_init(&fix_alloc);
+    _ = &vars;
+    var var_lines: ArrayList_Int = ArrayList_Int_init(&fix_alloc);
+    _ = &var_lines;
+    var var_mut: ArrayList_Bool = ArrayList_Bool_init(&fix_alloc);
+    _ = &var_mut;
+    var var_columns: ArrayList_Int = ArrayList_Int_init(&fix_alloc);
+    _ = &var_columns;
+    var declared_fns: ArrayList_Str = ArrayList_Str_init(&fix_alloc);
+    _ = &declared_fns;
+    var builtins: ArrayList_Str = ArrayList_Str_init(&fix_alloc);
+    _ = &builtins;
+    ArrayList_Str_push(&builtins, "printf");
+    ArrayList_Str_push(&builtins, "system");
+    ArrayList_Str_push(&builtins, "strcmp");
+    ArrayList_Str_push(&builtins, "get_exe_dir");
+    ArrayList_Str_push(&builtins, "_kai_set_current_allocator");
+    ArrayList_Str_push(&builtins, "malloc");
+    ArrayList_Str_push(&builtins, "free");
+    ArrayList_Str_push(&builtins, "realloc");
+    ArrayList_Str_push(&builtins, "memcpy");
+    ArrayList_Str_push(&builtins, "memset");
+    var line_start: i64 = 0;
+    _ = &line_start;
+    var line_num: i64 = 0;
+    _ = &line_num;
+    while (line_start <= src_len_val) {
+        var line_end: i64 = line_start;
+        _ = &line_end;
+        while (line_end < src_len_val) {
+            {
+                if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                    const tmp = line_end;
+                    if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
+                    break;
+                }
+            }
+            line_end = line_end + @as(c_longlong, 1);
+        }
+        if (line_end > src_len_val) {
+            line_end = src_len_val;
+        }
+        var line_len: i64 = line_end - line_start;
+        _ = &line_len;
+        if (line_len > @as(c_longlong, 0)) {
+            var line_text: [*c]const u8 = substring(source, line_start, line_end);
+            _ = &line_text;
+            var di: i64 = 0;
+            _ = &di;
+            while (di < line_len) {
+                {
+                    var c: u8 = (blk: {
+                        const tmp = di;
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*;
+                    _ = &c;
+                    if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
+                        break;
+                    }
+                }
+                di = di + @as(c_longlong, 1);
+            }
+            if ((di + @as(c_longlong, 3)) <= line_len) {
+                {
+                    if (((@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = di;
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 102))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = di + @as(c_longlong, 1);
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 110)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = di + @as(c_longlong, 2);
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32)))))))))) {
+                        var dn_start: i64 = di + @as(c_longlong, 3);
+                        _ = &dn_start;
+                        var dn_end: i64 = dn_start;
+                        _ = &dn_end;
+                        while (dn_end < line_len) {
+                            if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                                const tmp = dn_end;
+                                if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 40))))))))) {
+                                break;
+                            }
+                            dn_end = dn_end + @as(c_longlong, 1);
+                        }
+                        if ((dn_end > dn_start) and (dn_end < line_len)) {
+                            var name_end2: i64 = dn_end - @as(c_longlong, 1);
+                            _ = &name_end2;
+                            while (name_end2 >= dn_start) {
+                                var c2: u8 = (blk: {
+                                    const tmp = name_end2;
+                                    if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                                }).*;
+                                _ = &c2;
+                                if ((@as(c_int, @bitCast(@as(c_uint, c2))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c2))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
+                                    break;
+                                }
+                                name_end2 = name_end2 - @as(c_longlong, 1);
+                            }
+                            var fn_name: [*c]const u8 = substring(line_text, dn_start, name_end2 + @as(c_longlong, 1));
+                            _ = &fn_name;
+                            ArrayList_Str_push(&declared_fns, fn_name);
+                        }
+                    }
+                }
+            }
+            if ((di + @as(c_longlong, 10)) <= line_len) {
+                {
+                    if ((((((((((@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = di;
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 101))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = di + @as(c_longlong, 1);
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 120)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = di + @as(c_longlong, 2);
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 116)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = di + @as(c_longlong, 3);
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 101)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = di + @as(c_longlong, 4);
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 114)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = di + @as(c_longlong, 5);
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 110)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = di + @as(c_longlong, 6);
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = di + @as(c_longlong, 7);
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 102)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = di + @as(c_longlong, 8);
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 110)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = di + @as(c_longlong, 9);
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32)))))))))) {
+                        var dn_start: i64 = di + @as(c_longlong, 10);
+                        _ = &dn_start;
+                        var dn_end: i64 = dn_start;
+                        _ = &dn_end;
+                        while (dn_end < line_len) {
+                            if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                                const tmp = dn_end;
+                                if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 40))))))))) {
+                                break;
+                            }
+                            dn_end = dn_end + @as(c_longlong, 1);
+                        }
+                        if ((dn_end > dn_start) and (dn_end < line_len)) {
+                            var name_end2: i64 = dn_end - @as(c_longlong, 1);
+                            _ = &name_end2;
+                            while (name_end2 >= dn_start) {
+                                var c2: u8 = (blk: {
+                                    const tmp = name_end2;
+                                    if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                                }).*;
+                                _ = &c2;
+                                if ((@as(c_int, @bitCast(@as(c_uint, c2))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c2))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
+                                    break;
+                                }
+                                name_end2 = name_end2 - @as(c_longlong, 1);
+                            }
+                            var fn_name: [*c]const u8 = substring(line_text, dn_start, name_end2 + @as(c_longlong, 1));
+                            _ = &fn_name;
+                            ArrayList_Str_push(&declared_fns, fn_name);
+                        }
+                    }
+                }
+            }
+            var li: i64 = 0;
+            _ = &li;
+            while (li < line_len) {
+                {
+                    var c: u8 = (blk: {
+                        const tmp = li;
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*;
+                    _ = &c;
+                    if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
+                        break;
+                    }
+                }
+                li = li + @as(c_longlong, 1);
+            }
+            if ((li + @as(c_longlong, 4)) <= line_len) {
+                {
+                    if ((((@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = li;
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 108))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = li + @as(c_longlong, 1);
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 101)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = li + @as(c_longlong, 2);
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 116)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                        const tmp = li + @as(c_longlong, 3);
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32)))))))))) {
+                        var vstart: i64 = li + @as(c_longlong, 4);
+                        _ = &vstart;
+                        var vend: i64 = vstart;
+                        _ = &vend;
+                        while (vend < line_len) {
+                            var c: u8 = (blk: {
+                                const tmp = vend;
+                                if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                            }).*;
+                            _ = &c;
+                            if ((((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 61)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
+                                break;
+                            }
+                            vend = vend + @as(c_longlong, 1);
+                        }
+                        if (vend > vstart) {
+                            var vname: [*c]const u8 = substring(line_text, vstart, vend);
+                            _ = &vname;
+                            ArrayList_Str_push(&vars, vname);
+                            ArrayList_Int_push(&var_lines, line_num);
+                            ArrayList_Bool_push(&var_mut, @as(c_int, 0) != 0);
+                            ArrayList_Int_push(&var_columns, li + @as(c_longlong, 1));
+                        }
+                    }
+                }
+            }
+            var ai: i64 = 0;
+            _ = &ai;
+            while (ai < line_len) {
+                {
+                    var c: u8 = (blk: {
+                        const tmp = ai;
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*;
+                    _ = &c;
+                    if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
+                        break;
+                    }
+                }
+                ai = ai + @as(c_longlong, 1);
+            }
+            if (ai < line_len) {
+                var eq_pos: i64 = -@as(c_longlong, 1);
+                _ = &eq_pos;
+                var vi: i64 = ai;
+                _ = &vi;
+                while (vi < line_len) {
+                    {
+                        if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                            const tmp = vi;
+                            if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 61))))))))) {
+                            eq_pos = vi;
+                            break;
+                        }
+                    }
+                    vi = vi + @as(c_longlong, 1);
+                }
+                if (eq_pos > ai) {
+                    var has_let_prefix: bool = @as(c_int, 0) != 0;
+                    _ = &has_let_prefix;
+                    if ((ai + @as(c_longlong, 4)) <= eq_pos) {
+                        var let_prefix: [*c]const u8 = substring(line_text, ai, ai + @as(c_longlong, 4));
+                        _ = &let_prefix;
+                        if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(let_prefix, "let ")))) == @as(c_longlong, 0)) {
+                            has_let_prefix = @as(c_int, 1) != 0;
+                        }
+                    }
+                    if (!has_let_prefix and (eq_pos > @as(c_longlong, 0))) {
+                        var before_eq: i64 = eq_pos - @as(c_longlong, 1);
+                        _ = &before_eq;
+                        while (before_eq >= ai) {
+                            {
+                                var c: u8 = (blk: {
+                                    const tmp = before_eq;
+                                    if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                                }).*;
+                                _ = &c;
+                                if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
+                                    break;
+                                }
+                            }
+                            before_eq = before_eq - @as(c_longlong, 1);
+                        }
+                        var assign_start: i64 = before_eq;
+                        _ = &assign_start;
+                        while (assign_start >= ai) {
+                            {
+                                var c: u8 = (blk: {
+                                    const tmp = assign_start;
+                                    if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                                }).*;
+                                _ = &c;
+                                if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
+                                    break;
+                                }
+                            }
+                            assign_start = assign_start - @as(c_longlong, 1);
+                        }
+                        assign_start = assign_start + @as(c_longlong, 1);
+                        if (assign_start <= before_eq) {
+                            var assign_var: [*c]const u8 = substring(line_text, assign_start, before_eq + @as(c_longlong, 1));
+                            _ = &assign_var;
+                            var vi2: i64 = 0;
+                            _ = &vi2;
+                            while (vi2 < ArrayList_Str_length(&vars)) {
+                                {
+                                    if ((@as(c_longlong, @bitCast(@as(c_longlong, strcmp(assign_var, ArrayList_Str_get(&vars, vi2))))) == @as(c_longlong, 0)) and !ArrayList_Bool_get(&var_mut, vi2)) {
+                                        ArrayList_Bool_set(&var_mut, vi2, @as(c_int, 1) != 0);
+                                    }
+                                }
+                                vi2 = vi2 + @as(c_longlong, 1);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        line_start = line_end + @as(c_longlong, 1);
+        line_num = line_num + @as(c_longlong, 1);
+    }
+    var undef_fns: ArrayList_Str = ArrayList_Str_init(&fix_alloc);
+    _ = &undef_fns;
+    var undef_lines: ArrayList_Int = ArrayList_Int_init(&fix_alloc);
+    _ = &undef_lines;
+    var undef_columns: ArrayList_Int = ArrayList_Int_init(&fix_alloc);
+    _ = &undef_columns;
+    var undef_lengths: ArrayList_Int = ArrayList_Int_init(&fix_alloc);
+    _ = &undef_lengths;
+    line_start = 0;
+    line_num = 0;
+    while (line_start <= src_len_val) {
+        var line_end: i64 = line_start;
+        _ = &line_end;
+        while (line_end < src_len_val) {
+            {
+                if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                    const tmp = line_end;
+                    if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
+                    break;
+                }
+            }
+            line_end = line_end + @as(c_longlong, 1);
+        }
+        if (line_end > src_len_val) {
+            line_end = src_len_val;
+        }
+        var line_len: i64 = line_end - line_start;
+        _ = &line_len;
+        if (line_len > @as(c_longlong, 0)) {
+            var line_text: [*c]const u8 = substring(source, line_start, line_end);
+            _ = &line_text;
+            var ci: i64 = 0;
+            _ = &ci;
+            while (ci < (line_len - @as(c_longlong, 1))) {
+                {
+                    var c: u8 = (blk: {
+                        const tmp = ci;
+                        if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*;
+                    _ = &c;
+                    if ((@as(c_int, @intFromBool(__kai_std_ascii_is_alpha(c))) != 0) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 95)))))))))) {
+                        var name_start: i64 = ci;
+                        _ = &name_start;
+                        var name_end: i64 = ci;
+                        _ = &name_end;
+                        while (name_end < line_len) {
+                            var nc: u8 = (blk: {
+                                const tmp = name_end;
+                                if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                            }).*;
+                            _ = &nc;
+                            if ((@as(c_int, @intFromBool(__kai_std_ascii_is_alnum(nc))) != 0) or (@as(c_int, @bitCast(@as(c_uint, nc))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 95)))))))))) {
+                                name_end = name_end + @as(c_longlong, 1);
+                            } else {
+                                break;
+                            }
+                        }
+                        if (((name_end > name_start) and (name_end < line_len)) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                            const tmp = name_end;
+                            if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 40)))))))))) {
+                            var call_name: [*c]const u8 = substring(line_text, name_start, name_end);
+                            _ = &call_name;
+                            var is_decl: bool = @as(c_int, 0) != 0;
+                            _ = &is_decl;
+                            if (name_start >= @as(c_longlong, 3)) {
+                                var prefix: [*c]const u8 = substring(line_text, name_start - @as(c_longlong, 3), name_start);
+                                _ = &prefix;
+                                if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(prefix, "fn ")))) == @as(c_longlong, 0)) {
+                                    is_decl = @as(c_int, 1) != 0;
+                                }
+                            }
+                            if (!is_decl and (name_start >= @as(c_longlong, 10))) {
+                                var exprefix: [*c]const u8 = substring(line_text, name_start - @as(c_longlong, 10), name_start);
+                                _ = &exprefix;
+                                if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(exprefix, "extern fn ")))) == @as(c_longlong, 0)) {
+                                    is_decl = @as(c_int, 1) != 0;
+                                }
+                            }
+                            if ((!is_decl and (name_start > @as(c_longlong, 0))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                                const tmp = name_start - @as(c_longlong, 1);
+                                if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 46)))))))))) {
+                                is_decl = @as(c_int, 1) != 0;
+                            }
+                            if (!is_decl) {
+                                var known: bool = @as(c_int, 0) != 0;
+                                _ = &known;
+                                var ki: i64 = 0;
+                                _ = &ki;
+                                while (ki < ArrayList_Str_length(&declared_fns)) {
+                                    {
+                                        if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(call_name, ArrayList_Str_get(&declared_fns, ki))))) == @as(c_longlong, 0)) {
+                                            known = @as(c_int, 1) != 0;
+                                            break;
+                                        }
+                                    }
+                                    ki = ki + @as(c_longlong, 1);
+                                }
+                                if (!known) {
+                                    var bi: i64 = 0;
+                                    _ = &bi;
+                                    while (bi < ArrayList_Str_length(&builtins)) {
+                                        {
+                                            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(call_name, ArrayList_Str_get(&builtins, bi))))) == @as(c_longlong, 0)) {
+                                                known = @as(c_int, 1) != 0;
+                                                break;
+                                            }
+                                        }
+                                        bi = bi + @as(c_longlong, 1);
+                                    }
+                                }
+                                if (!known) {
+                                    if (((((((@as(c_longlong, @bitCast(@as(c_longlong, strcmp(call_name, "Int")))) == @as(c_longlong, 0)) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(call_name, "Float")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(call_name, "Bool")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(call_name, "Char")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(call_name, "Str")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(call_name, "Void")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(call_name, "ArrayList")))) == @as(c_longlong, 0))) {
+                                        known = @as(c_int, 1) != 0;
+                                    }
+                                }
+                                if (!known) {
+                                    var already: bool = @as(c_int, 0) != 0;
+                                    _ = &already;
+                                    var ai2: i64 = 0;
+                                    _ = &ai2;
+                                    while (ai2 < ArrayList_Str_length(&undef_fns)) {
+                                        {
+                                            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(call_name, ArrayList_Str_get(&undef_fns, ai2))))) == @as(c_longlong, 0)) {
+                                                already = @as(c_int, 1) != 0;
+                                                break;
+                                            }
+                                        }
+                                        ai2 = ai2 + @as(c_longlong, 1);
+                                    }
+                                    if (!already) {
+                                        ArrayList_Str_push(&undef_fns, call_name);
+                                        ArrayList_Int_push(&undef_lines, line_num);
+                                        ArrayList_Int_push(&undef_columns, name_start + @as(c_longlong, 1));
+                                        ArrayList_Int_push(&undef_lengths, name_end - name_start);
+                                    }
+                                }
+                            }
+                            ci = name_end;
+                        }
+                    }
+                }
+                ci = ci + @as(c_longlong, 1);
+            }
+        }
+        line_start = line_end + @as(c_longlong, 1);
+        line_num = line_num + @as(c_longlong, 1);
+    }
+    var diag_codes: ArrayList_Str = ArrayList_Str_init(&fix_alloc);
+    _ = &diag_codes;
+    var diag_messages: ArrayList_Str = ArrayList_Str_init(&fix_alloc);
+    _ = &diag_messages;
+    var diag_lines: ArrayList_Int = ArrayList_Int_init(&fix_alloc);
+    _ = &diag_lines;
+    var diag_columns: ArrayList_Int = ArrayList_Int_init(&fix_alloc);
+    _ = &diag_columns;
+    var diag_lengths: ArrayList_Int = ArrayList_Int_init(&fix_alloc);
+    _ = &diag_lengths;
+    var diag_expected: ArrayList_Str = ArrayList_Str_init(&fix_alloc);
+    _ = &diag_expected;
+    var diag_actual: ArrayList_Str = ArrayList_Str_init(&fix_alloc);
+    _ = &diag_actual;
+    var diag_help: ArrayList_Str = ArrayList_Str_init(&fix_alloc);
+    _ = &diag_help;
+    var patch_lines_arr: ArrayList_Int = ArrayList_Int_init(&fix_alloc);
+    _ = &patch_lines_arr;
+    var patch_old_arr: ArrayList_Str = ArrayList_Str_init(&fix_alloc);
+    _ = &patch_old_arr;
+    var patch_new_arr: ArrayList_Str = ArrayList_Str_init(&fix_alloc);
+    _ = &patch_new_arr;
+    var patch_codes_arr: ArrayList_Str = ArrayList_Str_init(&fix_alloc);
+    _ = &patch_codes_arr;
+    var vi3: i64 = 0;
+    _ = &vi3;
+    while (vi3 < ArrayList_Str_length(&vars)) {
+        if (ArrayList_Bool_get(&var_mut, vi3)) {
+            var vname: [*c]const u8 = ArrayList_Str_get(&vars, vi3);
+            _ = &vname;
+            var vline: i64 = ArrayList_Int_get(&var_lines, vi3);
+            _ = &vline;
+            var vcol: i64 = ArrayList_Int_get(&var_columns, vi3);
+            _ = &vcol;
+            var einfo: ErrorInfo = get_error_info("E0008");
+            _ = &einfo;
+            ArrayList_Str_push(&diag_codes, "E0008");
+            ArrayList_Str_push(&diag_messages, einfo.title);
+            ArrayList_Int_push(&diag_lines, vline);
+            ArrayList_Int_push(&diag_columns, vcol);
+            ArrayList_Int_push(&diag_lengths, @as(c_longlong, 3));
+            ArrayList_Str_push(&diag_expected, "Declare with 'var' instead of 'let'");
+            ArrayList_Str_push(&diag_actual, vname);
+            ArrayList_Str_push(&diag_help, einfo.fix);
+            var old_line_text: [*c]const u8 = "";
+            _ = &old_line_text;
+            var line_offset: i64 = 0;
+            _ = &line_offset;
+            var line_num2: i64 = 0;
+            _ = &line_num2;
+            while (line_offset < src_len_val) {
+                if (line_num2 == vline) {
+                    old_line_text = diag_line_text(source, line_offset);
+                    line_offset = src_len_val;
+                } else {
+                    line_offset = diag_line_end(source, line_offset) + @as(c_longlong, 1);
+                    if (line_offset > src_len_val) {
+                        line_offset = src_len_val;
+                    }
+                }
+                line_num2 = line_num2 + @as(c_longlong, 1);
+            }
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(old_line_text)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                var new_line_text: [*c]const u8 = str_replace(old_line_text, "let ", "var ");
+                _ = &new_line_text;
+                ArrayList_Int_push(&patch_lines_arr, vline);
+                ArrayList_Str_push(&patch_old_arr, old_line_text);
+                ArrayList_Str_push(&patch_new_arr, new_line_text);
+                ArrayList_Str_push(&patch_codes_arr, "E0008");
+            }
+        }
+        vi3 = vi3 + @as(c_longlong, 1);
+    }
+    var ui: i64 = 0;
+    _ = &ui;
+    while (ui < ArrayList_Str_length(&undef_fns)) {
+        var fn_name: [*c]const u8 = ArrayList_Str_get(&undef_fns, ui);
+        _ = &fn_name;
+        var fn_line: i64 = ArrayList_Int_get(&undef_lines, ui);
+        _ = &fn_line;
+        var fn_col: i64 = ArrayList_Int_get(&undef_columns, ui);
+        _ = &fn_col;
+        var fn_len: i64 = ArrayList_Int_get(&undef_lengths, ui);
+        _ = &fn_len;
+        var einfo: ErrorInfo = get_error_info("E0020");
+        _ = &einfo;
+        ArrayList_Str_push(&diag_codes, "E0020");
+        ArrayList_Str_push(&diag_messages, einfo.title);
+        ArrayList_Int_push(&diag_lines, fn_line);
+        ArrayList_Int_push(&diag_columns, fn_col);
+        ArrayList_Int_push(&diag_lengths, fn_len);
+        ArrayList_Str_push(&diag_expected, "Declare the referenced function, import the module that provides it, or correct the identifier spelling");
+        ArrayList_Str_push(&diag_actual, fn_name);
+        ArrayList_Str_push(&diag_help, einfo.fix);
+        ui = ui + @as(c_longlong, 1);
+    }
+    var total_count: i64 = ArrayList_Str_length(&diag_codes);
+    _ = &total_count;
+    var patch_count: i64 = ArrayList_Str_length(&patch_codes_arr);
+    _ = &patch_count;
+    var can_apply: bool = patch_count > @as(c_longlong, 0);
+    _ = &can_apply;
+    if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(fix_mode, "plan")))) == @as(c_longlong, 0)) {
+        print_plan(fix_file, json, &diag_codes, &diag_messages, &diag_lines, &diag_columns, &diag_lengths, &diag_expected, &diag_actual, &diag_help);
+        return 0;
+    }
+    if ((@as(c_longlong, @bitCast(@as(c_longlong, strcmp(fix_mode, "patch")))) == @as(c_longlong, 0)) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(fix_mode, "apply")))) == @as(c_longlong, 0))) {
+        var is_apply: bool = @as(c_longlong, @bitCast(@as(c_longlong, strcmp(fix_mode, "apply")))) == @as(c_longlong, 0);
+        _ = &is_apply;
+        var applied: bool = @as(c_int, 0) != 0;
+        _ = &applied;
+        if ((@as(c_int, @intFromBool(is_apply)) != 0) and (@as(c_int, @intFromBool(can_apply)) != 0)) {
+            var modified_source: [*c]const u8 = "";
+            _ = &modified_source;
+            var offset: i64 = 0;
+            _ = &offset;
+            var line_num3: i64 = 0;
+            _ = &line_num3;
+            while (offset < src_len_val) {
+                var line_text: [*c]const u8 = diag_line_text(source, offset);
+                _ = &line_text;
+                var line_end: i64 = diag_line_end(source, offset);
+                _ = &line_end;
+                var found_patch: bool = @as(c_int, 0) != 0;
+                _ = &found_patch;
+                var pi: i64 = 0;
+                _ = &pi;
+                while (pi < patch_count) {
+                    if (ArrayList_Int_get(&patch_lines_arr, pi) == line_num3) {
+                        found_patch = @as(c_int, 1) != 0;
+                        modified_source = __kai_std_str_concat_alloc(modified_source, ArrayList_Str_get(&patch_new_arr, pi));
+                    }
+                    pi = pi + @as(c_longlong, 1);
+                }
+                if (!found_patch) {
+                    modified_source = __kai_std_str_concat_alloc(modified_source, line_text);
+                }
+                offset = line_end + @as(c_longlong, 1);
+                if (offset > src_len_val) {
+                    break;
+                }
+                modified_source = __kai_std_str_concat_alloc(modified_source, "\n");
+                line_num3 = line_num3 + @as(c_longlong, 1);
+            }
+            var write_res: Result_Bool_IoError = write_string(fix_file, modified_source);
+            _ = &write_res;
+            if (write_res.tag == @as(c_longlong, 0)) {
+                applied = @as(c_int, 1) != 0;
+            }
+        }
+        print_patch(fix_file, json, is_apply, applied, &diag_codes, &diag_messages, &diag_lines, &diag_columns, &diag_lengths, &diag_expected, &diag_actual, &diag_help, &patch_lines_arr, &patch_old_arr, &patch_new_arr, &patch_codes_arr);
+        if (((@as(c_int, @intFromBool(is_apply)) != 0) and (@as(c_int, @intFromBool(can_apply)) != 0)) and !applied) {
+            return 1;
+        }
+        return 0;
+    }
+    _ = printf("Error: fix requires a mode (--plan, --patch, or --apply)\n");
+    return 1;
+}
+pub export fn run_patch(arg_argc: i64, arg_argv: [*c][*c]u8) i64 {
+    var argc = arg_argc;
+    _ = &argc;
+    var argv = arg_argv;
+    _ = &argv;
+    if (argc < @as(c_longlong, 4)) {
+        _ = printf("Usage: kai patch <file> --op <operation> [args...]\n");
+        _ = printf("Operations:\n");
+        _ = printf("  addMain                    Append a main function\n");
+        _ = printf("  addFn <name>               Append a function stub\n");
+        _ = printf("  addParam <fn> <name> <type> Add a parameter to a function\n");
+        _ = printf("  upsertFunction <name> <ret> Update or create a function\n");
+        _ = printf("  appendStmt <text>          Append a statement\n");
+        _ = printf("  replaceText --old <t> --new <t>  Global text replacement\n");
+        _ = printf("  setConst <name> <value>    Change a const value\n");
+        return 1;
+    }
+    var allocator: KaiAllocator = KaiAllocator{
+        .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .used = @as(c_longlong, 0),
+    };
+    _ = &allocator;
+    allocator = KaiAllocator_init();
+    _kai_set_current_allocator(@as(?*anyopaque, @ptrCast(&allocator)));
+    var patch_file: [*c]const u8 = "";
+    _ = &patch_file;
+    var operation: [*c]const u8 = "";
+    _ = &operation;
+    var op_arg1: [*c]const u8 = "";
+    _ = &op_arg1;
+    var op_arg2: [*c]const u8 = "";
+    _ = &op_arg2;
+    var json: bool = @as(c_int, 0) != 0;
+    _ = &json;
+    var i: i64 = 2;
+    _ = &i;
+    while (i < argc) {
+        var arg: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
+            const tmp = i;
+            if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*)));
+        _ = &arg;
+        {
+            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--json")))) == @as(c_longlong, 0)) {
+                json = @as(c_int, 1) != 0;
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--op")))) == @as(c_longlong, 0)) {
+                if ((i + @as(c_longlong, 1)) < argc) {
+                    i = i + @as(c_longlong, 1);
+                    operation = @as([*c]const u8, @ptrCast(@alignCast((blk: {
+                        const tmp = i;
+                        if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*)));
+                }
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--old")))) == @as(c_longlong, 0)) {
+                if ((i + @as(c_longlong, 1)) < argc) {
+                    i = i + @as(c_longlong, 1);
+                    op_arg1 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
+                        const tmp = i;
+                        if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*)));
+                }
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--new")))) == @as(c_longlong, 0)) {
+                if ((i + @as(c_longlong, 1)) < argc) {
+                    i = i + @as(c_longlong, 1);
+                    op_arg2 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
+                        const tmp = i;
+                        if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*)));
+                }
+            } else if (strcmp(patch_file, "") == @as(c_int, 0)) {
+                patch_file = arg;
+            }
+        }
+        i = i + @as(c_longlong, 1);
+    }
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(patch_file)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+        _ = printf("Error: No input file specified\n");
+        return 1;
+    }
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(operation)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+        _ = printf("Error: No operation specified (use --op)\n");
+        return 1;
+    }
+    var source_res: Result_Str_IoError = read_to_string(&allocator, patch_file);
+    _ = &source_res;
+    if (source_res.tag != @as(c_longlong, 0)) {
+        _ = printf("Error: Could not read '%s'\n", patch_file);
+        return 1;
+    }
+    var source: [*c]const u8 = source_res.value;
+    _ = &source;
+    var modified: [*c]const u8 = "";
+    _ = &modified;
+    var op_name: [*c]const u8 = operation;
+    _ = &op_name;
+    {
+        if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(op_name, "addMain")))) == @as(c_longlong, 0)) {
+            modified = __kai_std_str_concat_alloc(source, "\nfn main() Int {\n    printf(\"hello\\n\")\n    return 0\n}\n");
+        } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(op_name, "addFn")))) == @as(c_longlong, 0)) {
+            var fn_name: [*c]const u8 = op_arg1;
+            _ = &fn_name;
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fn_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                var j: i64 = 3;
+                _ = &j;
+                while (j < argc) {
+                    {
+                        var a: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
+                            const tmp = j;
+                            if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*)));
+                        _ = &a;
+                        var is_flag: bool = (((@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--op")))) == @as(c_longlong, 0)) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--json")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--old")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--new")))) == @as(c_longlong, 0));
+                        _ = &is_flag;
+                        if (((((!is_flag and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, patch_file)))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "addMain")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "addFn")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "setConst")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "replaceText")))) != @as(c_longlong, 0))) {
+                            if (strcmp(fn_name, "") == @as(c_int, 0)) {
+                                fn_name = a;
+                            }
+                        }
+                    }
+                    j = j + @as(c_longlong, 1);
+                }
+            }
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fn_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                _ = printf("Error: addFn requires a function name\n");
+                _ = printf("Usage: kai patch <file> --op addFn <name>\n");
+                return 1;
+            }
+            modified = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(source, "\nfn "), fn_name), "() Void {\n\n}\n");
+        } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(op_name, "setConst")))) == @as(c_longlong, 0)) {
+            var const_name: [*c]const u8 = op_arg1;
+            _ = &const_name;
+            var const_val: [*c]const u8 = op_arg2;
+            _ = &const_val;
+            if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(const_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) or (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(const_val)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) {
+                var j: i64 = 3;
+                _ = &j;
+                while (j < argc) {
+                    {
+                        var a: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
+                            const tmp = j;
+                            if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*)));
+                        _ = &a;
+                        var is_flag: bool = (((@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--op")))) == @as(c_longlong, 0)) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--json")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--old")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--new")))) == @as(c_longlong, 0));
+                        _ = &is_flag;
+                        if (((((!is_flag and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, patch_file)))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "setConst")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "addMain")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "addFn")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "replaceText")))) != @as(c_longlong, 0))) {
+                            if (strcmp(const_name, "") == @as(c_int, 0)) {
+                                const_name = a;
+                            } else if (strcmp(const_val, "") == @as(c_int, 0)) {
+                                const_val = a;
+                            }
+                        }
+                    }
+                    j = j + @as(c_longlong, 1);
+                }
+            }
+            if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(const_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) or (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(const_val)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) {
+                _ = printf("Error: setConst requires <name> and <value>\n");
+                _ = printf("Usage: kai patch <file> --op setConst <name> <value>\n");
+                return 1;
+            }
+            var pattern: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("const ", const_name), " = ");
+            _ = &pattern;
+            var pattern_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(pattern))));
+            _ = &pattern_len;
+            var src_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(source))));
+            _ = &src_len;
+            var found_const: bool = @as(c_int, 0) != 0;
+            _ = &found_const;
+            var pos_c: i64 = 0;
+            _ = &pos_c;
+            while (pos_c <= (src_len - pattern_len)) {
+                var matched_c: bool = @as(c_int, 1) != 0;
+                _ = &matched_c;
+                var j2: i64 = 0;
+                _ = &j2;
+                while (j2 < pattern_len) {
+                    {
+                        if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                            const tmp = pos_c + j2;
+                            if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*))) != @as(c_int, @bitCast(@as(c_uint, (blk: {
+                            const tmp = j2;
+                            if (tmp >= 0) break :blk pattern + @as(usize, @intCast(tmp)) else break :blk pattern - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*)))) {
+                            matched_c = @as(c_int, 0) != 0;
+                            break;
+                        }
+                    }
+                    j2 = j2 + @as(c_longlong, 1);
+                }
+                if (matched_c) {
+                    var end: i64 = pos_c + pattern_len;
+                    _ = &end;
+                    while (end < src_len) {
+                        {
+                            var c: u8 = (blk: {
+                                const tmp = end;
+                                if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                            }).*;
+                            _ = &c;
+                            if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 59)))))))))) {
+                                break;
+                            }
+                        }
+                        end = end + @as(c_longlong, 1);
+                    }
+                    var before: [*c]const u8 = substring(source, @as(c_longlong, 0), pos_c + pattern_len);
+                    _ = &before;
+                    var after: [*c]const u8 = substring(source, end, src_len);
+                    _ = &after;
+                    modified = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(before, const_val), after);
+                    found_const = @as(c_int, 1) != 0;
+                    break;
+                }
+                pos_c = pos_c + @as(c_longlong, 1);
+            }
+            if (!found_const) {
+                _ = printf("Error: const '%s' not found in '%s'\n", const_name, patch_file);
+                return 1;
+            }
+        } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(op_name, "replaceText")))) == @as(c_longlong, 0)) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(op_arg1)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                _ = printf("Error: replaceText requires --old <text>\n");
+                return 1;
+            }
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(op_arg2)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                _ = printf("Error: replaceText requires --new <text>\n");
+                return 1;
+            }
+            modified = str_replace(source, op_arg1, op_arg2);
+        } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(op_name, "addParam")))) == @as(c_longlong, 0)) {
+            var fn_name: [*c]const u8 = op_arg1;
+            _ = &fn_name;
+            var param_name: [*c]const u8 = op_arg2;
+            _ = &param_name;
+            var param_type: [*c]const u8 = "";
+            _ = &param_type;
+            if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fn_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) or (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(param_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) {
+                var j: i64 = 3;
+                _ = &j;
+                while (j < argc) {
+                    {
+                        var a: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
+                            const tmp = j;
+                            if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*)));
+                        _ = &a;
+                        var is_flag: bool = (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--op")))) == @as(c_longlong, 0)) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--json")))) == @as(c_longlong, 0));
+                        _ = &is_flag;
+                        if ((!is_flag and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, patch_file)))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "addParam")))) != @as(c_longlong, 0))) {
+                            if (strcmp(fn_name, "") == @as(c_int, 0)) {
+                                fn_name = a;
+                            } else if (strcmp(param_name, "") == @as(c_int, 0)) {
+                                param_name = a;
+                            } else if (strcmp(param_type, "") == @as(c_int, 0)) {
+                                param_type = a;
+                            }
+                        }
+                    }
+                    j = j + @as(c_longlong, 1);
+                }
+            } else {
+                var j: i64 = 3;
+                _ = &j;
+                while (j < argc) {
+                    {
+                        var a: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
+                            const tmp = j;
+                            if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*)));
+                        _ = &a;
+                        var is_flag: bool = (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--op")))) == @as(c_longlong, 0)) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--json")))) == @as(c_longlong, 0));
+                        _ = &is_flag;
+                        if ((((!is_flag and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, patch_file)))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "addParam")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, fn_name)))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, param_name)))) != @as(c_longlong, 0))) {
+                            if (strcmp(param_type, "") == @as(c_int, 0)) {
+                                param_type = a;
+                            }
+                        }
+                    }
+                    j = j + @as(c_longlong, 1);
+                }
+            }
+            if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fn_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) or (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(param_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) {
+                _ = printf("Error: addParam requires <fn_name> <param_name> [param_type]\n");
+                _ = printf("Usage: kai patch <file> --op addParam <fn> <name> <type>\n");
+                return 1;
+            }
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(param_type)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                param_type = "Int";
+            }
+            var search: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("fn ", fn_name), "(");
+            _ = &search;
+            var search_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(search))));
+            _ = &search_len;
+            var src_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(source))));
+            _ = &src_len;
+            var found_fn: bool = @as(c_int, 0) != 0;
+            _ = &found_fn;
+            var pos: i64 = 0;
+            _ = &pos;
+            while (pos <= (src_len - search_len)) {
+                var m: bool = @as(c_int, 1) != 0;
+                _ = &m;
+                var j2: i64 = 0;
+                _ = &j2;
+                while (j2 < search_len) {
+                    {
+                        if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                            const tmp = pos + j2;
+                            if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*))) != @as(c_int, @bitCast(@as(c_uint, (blk: {
+                            const tmp = j2;
+                            if (tmp >= 0) break :blk search + @as(usize, @intCast(tmp)) else break :blk search - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*)))) {
+                            m = @as(c_int, 0) != 0;
+                            break;
+                        }
+                    }
+                    j2 = j2 + @as(c_longlong, 1);
+                }
+                if (m) {
+                    var paren_end: i64 = pos + search_len;
+                    _ = &paren_end;
+                    var depth: i64 = 1;
+                    _ = &depth;
+                    while ((paren_end < src_len) and (depth > @as(c_longlong, 0))) {
+                        {
+                            var c: u8 = (blk: {
+                                const tmp = paren_end;
+                                if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                            }).*;
+                            _ = &c;
+                            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 40))))))))) {
+                                depth = depth + @as(c_longlong, 1);
+                            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 41))))))))) {
+                                depth = depth - @as(c_longlong, 1);
+                            }
+                        }
+                        paren_end = paren_end + @as(c_longlong, 1);
+                    }
+                    var insert_pos: i64 = paren_end - @as(c_longlong, 1);
+                    _ = &insert_pos;
+                    var prefix: [*c]const u8 = substring(source, @as(c_longlong, 0), insert_pos);
+                    _ = &prefix;
+                    var suffix: [*c]const u8 = substring(source, insert_pos, src_len);
+                    _ = &suffix;
+                    var params_section: [*c]const u8 = substring(source, pos + search_len, paren_end - @as(c_longlong, 1));
+                    _ = &params_section;
+                    var has_params: bool = @as(c_int, 0) != 0;
+                    _ = &has_params;
+                    var pi: i64 = 0;
+                    _ = &pi;
+                    while (@as(c_ulonglong, @bitCast(pi)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(params_section))))) {
+                        var c: u8 = (blk: {
+                            const tmp = pi;
+                            if (tmp >= 0) break :blk params_section + @as(usize, @intCast(tmp)) else break :blk params_section - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*;
+                        _ = &c;
+                        if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
+                            has_params = @as(c_int, 1) != 0;
+                            break;
+                        }
+                        pi = pi + @as(c_longlong, 1);
+                    }
+                    if (has_params) {
+                        modified = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(prefix, ", "), param_name), ": "), param_type), suffix);
+                    } else {
+                        modified = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(prefix, param_name), ": "), param_type), suffix);
+                    }
+                    found_fn = @as(c_int, 1) != 0;
+                    break;
+                }
+                pos = pos + @as(c_longlong, 1);
+            }
+            if (!found_fn) {
+                _ = printf("Error: function '%s' not found in '%s'\n", fn_name, patch_file);
+                return 1;
+            }
+        } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(op_name, "upsertFunction")))) == @as(c_longlong, 0)) {
+            var fn_name: [*c]const u8 = op_arg1;
+            _ = &fn_name;
+            var ret_type: [*c]const u8 = op_arg2;
+            _ = &ret_type;
+            if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fn_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) or (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(ret_type)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) {
+                var j: i64 = 3;
+                _ = &j;
+                while (j < argc) {
+                    {
+                        var a: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
+                            const tmp = j;
+                            if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*)));
+                        _ = &a;
+                        var is_flag: bool = (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--op")))) == @as(c_longlong, 0)) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--json")))) == @as(c_longlong, 0));
+                        _ = &is_flag;
+                        if ((!is_flag and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, patch_file)))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "upsertFunction")))) != @as(c_longlong, 0))) {
+                            if (strcmp(fn_name, "") == @as(c_int, 0)) {
+                                fn_name = a;
+                            } else if (strcmp(ret_type, "") == @as(c_int, 0)) {
+                                ret_type = a;
+                            }
+                        }
+                    }
+                    j = j + @as(c_longlong, 1);
+                }
+            }
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fn_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                _ = printf("Error: upsertFunction requires <name> [return_type]\n");
+                _ = printf("Usage: kai patch <file> --op upsertFunction <name> <return_type>\n");
+                return 1;
+            }
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(ret_type)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                ret_type = "Void";
+            }
+            var search: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("fn ", fn_name), "(");
+            _ = &search;
+            var search_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(search))));
+            _ = &search_len;
+            var src_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(source))));
+            _ = &src_len;
+            var found_fn: bool = @as(c_int, 0) != 0;
+            _ = &found_fn;
+            var pos: i64 = 0;
+            _ = &pos;
+            while (pos <= (src_len - search_len)) {
+                var m: bool = @as(c_int, 1) != 0;
+                _ = &m;
+                var j2: i64 = 0;
+                _ = &j2;
+                while (j2 < search_len) {
+                    {
+                        if (@as(c_int, @bitCast(@as(c_uint, (blk: {
+                            const tmp = pos + j2;
+                            if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*))) != @as(c_int, @bitCast(@as(c_uint, (blk: {
+                            const tmp = j2;
+                            if (tmp >= 0) break :blk search + @as(usize, @intCast(tmp)) else break :blk search - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*)))) {
+                            m = @as(c_int, 0) != 0;
+                            break;
+                        }
+                    }
+                    j2 = j2 + @as(c_longlong, 1);
+                }
+                if (m) {
+                    var paren_end: i64 = pos + search_len;
+                    _ = &paren_end;
+                    var depth: i64 = 1;
+                    _ = &depth;
+                    while ((paren_end < src_len) and (depth > @as(c_longlong, 0))) {
+                        {
+                            var c: u8 = (blk: {
+                                const tmp = paren_end;
+                                if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                            }).*;
+                            _ = &c;
+                            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 40))))))))) {
+                                depth = depth + @as(c_longlong, 1);
+                            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 41))))))))) {
+                                depth = depth - @as(c_longlong, 1);
+                            }
+                        }
+                        paren_end = paren_end + @as(c_longlong, 1);
+                    }
+                    var ret_start: i64 = paren_end;
+                    _ = &ret_start;
+                    while (ret_start < src_len) {
+                        {
+                            var c: u8 = (blk: {
+                                const tmp = ret_start;
+                                if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                            }).*;
+                            _ = &c;
+                            if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
+                                break;
+                            }
+                        }
+                        ret_start = ret_start + @as(c_longlong, 1);
+                    }
+                    var ret_end: i64 = ret_start;
+                    _ = &ret_end;
+                    while (ret_end < src_len) {
+                        {
+                            var c: u8 = (blk: {
+                                const tmp = ret_end;
+                                if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                            }).*;
+                            _ = &c;
+                            if ((((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 123)))))))))) {
+                                break;
+                            }
+                        }
+                        ret_end = ret_end + @as(c_longlong, 1);
+                    }
+                    if (ret_end > ret_start) {
+                        var before: [*c]const u8 = substring(source, @as(c_longlong, 0), ret_start);
+                        _ = &before;
+                        var after: [*c]const u8 = substring(source, ret_end, src_len);
+                        _ = &after;
+                        modified = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(before, ret_type), after);
+                    } else {
+                        modified = source;
+                    }
+                    found_fn = @as(c_int, 1) != 0;
+                    break;
+                }
+                pos = pos + @as(c_longlong, 1);
+            }
+            if (!found_fn) {
+                modified = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(source, "\nfn "), fn_name), "() "), ret_type), " {\n\n}\n");
+            }
+        } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(op_name, "appendStmt")))) == @as(c_longlong, 0)) {
+            var stmt_text: [*c]const u8 = op_arg1;
+            _ = &stmt_text;
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt_text)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                var j: i64 = 3;
+                _ = &j;
+                while (j < argc) {
+                    {
+                        var a: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
+                            const tmp = j;
+                            if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                        }).*)));
+                        _ = &a;
+                        var is_flag: bool = (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--op")))) == @as(c_longlong, 0)) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--json")))) == @as(c_longlong, 0));
+                        _ = &is_flag;
+                        if ((!is_flag and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, patch_file)))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "appendStmt")))) != @as(c_longlong, 0))) {
+                            if (strcmp(stmt_text, "") == @as(c_int, 0)) {
+                                stmt_text = a;
+                            }
+                        }
+                    }
+                    j = j + @as(c_longlong, 1);
+                }
+            }
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt_text)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                _ = printf("Error: appendStmt requires <text>\n");
+                return 1;
+            }
+            modified = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(source, "\n"), stmt_text), "\n");
+        } else {
+            _ = printf("Error: Unknown operation '%s'\n", op_name);
+            _ = printf("Supported: addMain, addFn, addParam, upsertFunction, appendStmt, setConst, replaceText\n");
+            return 1;
+        }
+    }
+    var write_res: Result_Bool_IoError = write_string(patch_file, modified);
+    _ = &write_res;
+    if (write_res.tag != @as(c_longlong, 0)) {
+        _ = printf("Error: Could not write '%s'\n", patch_file);
+        return 1;
+    }
+    if (json) {
+        _ = printf("{\"result\":\"patched\",\"file\":\"%s\",\"operation\":\"%s\"}\n", patch_file, op_name);
+    }
+    return 0;
+}
+pub export fn run_graph(arg_argc: i64, arg_argv: [*c][*c]u8) i64 {
+    var argc = arg_argc;
+    _ = &argc;
+    var argv = arg_argv;
+    _ = &argv;
+    if (argc < @as(c_longlong, 3)) {
+        _ = printf("Usage: kai graph (export|query) <file> [options]\n");
+        _ = printf("  export <file>    Export AST as JSON\n");
+        _ = printf("  query <file>     Query program structure\n");
+        return 1;
+    }
+    var graph_sub: [*c]const u8 = "";
+    _ = &graph_sub;
+    {
+        graph_sub = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(usize, @intCast(@as(c_longlong, 2)))])));
+    }
+    var graph_file: [*c]const u8 = "";
+    _ = &graph_file;
+    var graph_fn: [*c]const u8 = "";
+    _ = &graph_fn;
+    var graph_json: bool = @as(c_int, 0) != 0;
+    _ = &graph_json;
+    var @"i3": i64 = 3;
+    _ = &@"i3";
+    while (@"i3" < argc) {
+        {
+            var a: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
+                const tmp = @"i3";
+                if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+            }).*)));
+            _ = &a;
+            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--json")))) == @as(c_longlong, 0)) {
+                graph_json = @as(c_int, 1) != 0;
+            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--fn")))) == @as(c_longlong, 0)) {
+                if ((@"i3" + @as(c_longlong, 1)) < argc) {
+                    @"i3" = @"i3" + @as(c_longlong, 1);
+                    graph_fn = @as([*c]const u8, @ptrCast(@alignCast((blk: {
+                        const tmp = @"i3";
+                        if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*)));
+                }
+            } else if (strcmp(graph_file, "") == @as(c_int, 0)) {
+                graph_file = a;
+            }
+        }
+        @"i3" = @"i3" + @as(c_longlong, 1);
+    }
+    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(graph_file)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+        _ = printf("Error: No input file specified\n");
+        return 1;
+    }
+    var graph_alloc: KaiAllocator = KaiAllocator{
+        .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .used = @as(c_longlong, 0),
+    };
+    _ = &graph_alloc;
+    graph_alloc = KaiAllocator_init();
+    _kai_set_current_allocator(@as(?*anyopaque, @ptrCast(&graph_alloc)));
+    var src_res2: Result_Str_IoError = read_to_string(&graph_alloc, graph_file);
+    _ = &src_res2;
+    if (src_res2.tag != @as(c_longlong, 0)) {
+        _ = printf("Error: Could not read '%s'\n", graph_file);
+        return 1;
+    }
+    var graph_source: [*c]const u8 = src_res2.value;
+    _ = &graph_source;
+    var graph_lexer: Lexer = Lexer_init(&graph_alloc, graph_source, graph_file);
+    _ = &graph_lexer;
+    Lexer_lex(&graph_lexer);
+    if (graph_lexer.has_error) {
+        _ = printf("Error: Lexer error in '%s'\n", graph_file);
+        return 1;
+    }
+    var graph_parser: Parser = Parser_init(&graph_alloc, graph_file, graph_lexer.tokens);
+    _ = &graph_parser;
+    var graph_program_idx: i64 = Parser_parse_program(&graph_parser);
+    _ = &graph_program_idx;
+    if (graph_program_idx < @as(c_longlong, 0)) {
+        _ = printf("Error: Parse error in '%s'\n", graph_file);
+        return 1;
+    }
+    {
+        if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(graph_sub, "export")))) == @as(c_longlong, 0)) {
+            _ = printf("{\"file\":\"%s\",\"stmts\":[\n", graph_file);
+            var si: i64 = 0;
+            _ = &si;
+            var stmt_count: i64 = ArrayList_StmtNode_length(graph_parser.stmt_pool);
+            _ = &stmt_count;
+            while (si < stmt_count) {
+                var stmt: StmtNode = ArrayList_StmtNode_get(graph_parser.stmt_pool, si);
+                _ = &stmt;
+                if (si > @as(c_longlong, 0)) {
+                    _ = printf(",\n");
+                }
+                _ = printf("{\"id\":%lld,\"kind\":", si);
+                var sk: StmtKind = stmt.kind;
+                _ = &sk;
+                if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 0)) {
+                    _ = printf("\"none\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 1)) {
+                    _ = printf("\"block\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 2)) {
+                    _ = printf("\"var_decl\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 3)) {
+                    _ = printf("\"assignment\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 4)) {
+                    _ = printf("\"func_decl\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 5)) {
+                    _ = printf("\"struct_decl\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 6)) {
+                    _ = printf("\"impl_block\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 7)) {
+                    _ = printf("\"trait_decl\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 8)) {
+                    _ = printf("\"enum_decl\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 9)) {
+                    _ = printf("\"if\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 10)) {
+                    _ = printf("\"if_let\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 11)) {
+                    _ = printf("\"while\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 12)) {
+                    _ = printf("\"for\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 13)) {
+                    _ = printf("\"return\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 14)) {
+                    _ = printf("\"print\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 15)) {
+                    _ = printf("\"expr\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 16)) {
+                    _ = printf("\"defer\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 17)) {
+                    _ = printf("\"unsafe\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 18)) {
+                    _ = printf("\"extern\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 19)) {
+                    _ = printf("\"import\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 20)) {
+                    _ = printf("\"cimport\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 21)) {
+                    _ = printf("\"match\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 22)) {
+                    _ = printf("\"error_decl\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 23)) {
+                    _ = printf("\"break\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 24)) {
+                    _ = printf("\"continue\"");
+                } else {
+                    _ = printf("\"unknown\"");
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.func_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    _ = printf(",\"name\":\"%s\"", stmt.func_name);
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.struct_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    _ = printf(",\"name\":\"%s\"", stmt.struct_name);
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.enum_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    _ = printf(",\"name\":\"%s\"", stmt.enum_name);
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.vardecl_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    _ = printf(",\"var\":\"%s\"", stmt.vardecl_name);
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.vardecl_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    _ = printf(",\"type\":\"%s\"", stmt.vardecl_type);
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.func_return_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    _ = printf(",\"return_type\":\"%s\"", stmt.func_return_type);
+                }
+                _ = printf("}");
+                si = si + @as(c_longlong, 1);
+            }
+            _ = printf("],\n\"exprs\":[\n");
+            var ei: i64 = 0;
+            _ = &ei;
+            var expr_count: i64 = ArrayList_ExprNode_length(graph_parser.expr_pool);
+            _ = &expr_count;
+            while (ei < expr_count) {
+                var expr: ExprNode = ArrayList_ExprNode_get(graph_parser.expr_pool, ei);
+                _ = &expr;
+                if (ei > @as(c_longlong, 0)) {
+                    _ = printf(",\n");
+                }
+                _ = printf("{\"id\":%lld,\"kind\":", ei);
+                var ek: ExprKind = expr.kind;
+                _ = &ek;
+                if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 0)) {
+                    _ = printf("\"none\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 1)) {
+                    _ = printf("\"literal\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 2)) {
+                    _ = printf("\"str_interp\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 3)) {
+                    _ = printf("\"identifier\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 4)) {
+                    _ = printf("\"binary_op\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 5)) {
+                    _ = printf("\"unary_op\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 6)) {
+                    _ = printf("\"func_call\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 7)) {
+                    _ = printf("\"struct_init\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 8)) {
+                    _ = printf("\"field_access\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 9)) {
+                    _ = printf("\"method_call\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 10)) {
+                    _ = printf("\"index\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 11)) {
+                    _ = printf("\"check\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 12)) {
+                    _ = printf("\"slice\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 13)) {
+                    _ = printf("\"range\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 14)) {
+                    _ = printf("\"array\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 15)) {
+                    _ = printf("\"tuple\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 16)) {
+                    _ = printf("\"borrow\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 17)) {
+                    _ = printf("\"deref\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 18)) {
+                    _ = printf("\"try\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 19)) {
+                    _ = printf("\"catch\"");
+                } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 20)) {
+                    _ = printf("\"asm\"");
+                } else {
+                    _ = printf("\"unknown\"");
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.ident_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    _ = printf(",\"name\":\"%s\"", expr.ident_name);
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.func_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    _ = printf(",\"func\":\"%s\"", expr.func_name);
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.struct_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    _ = printf(",\"struct\":\"%s\"", expr.struct_name);
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    _ = printf(",\"type\":\"%s\"", expr.inferred_type);
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.binop_op)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    _ = printf(",\"op\":\"%s\"", expr.binop_op);
+                }
+                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.unop_op)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                    _ = printf(",\"op\":\"%s\"", expr.unop_op);
+                }
+                _ = printf("}");
+                ei = ei + @as(c_longlong, 1);
+            }
+            _ = printf("]}\n");
+        } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(graph_sub, "query")))) == @as(c_longlong, 0)) {
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(graph_fn)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                var found: bool = @as(c_int, 0) != 0;
+                _ = &found;
+                var si2: i64 = 0;
+                _ = &si2;
+                var stmt_count2: i64 = ArrayList_StmtNode_length(graph_parser.stmt_pool);
+                _ = &stmt_count2;
+                while (si2 < stmt_count2) {
+                    var stmt2: StmtNode = ArrayList_StmtNode_get(graph_parser.stmt_pool, si2);
+                    _ = &stmt2;
+                    if ((@as(c_longlong, @bitCast(@as(c_ulonglong, stmt2.kind))) == @as(c_longlong, 4)) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(stmt2.func_name, graph_fn)))) == @as(c_longlong, 0))) {
+                        _ = printf("function: %s\n", stmt2.func_name);
+                        _ = printf("  return: %s\n", stmt2.func_return_type);
+                        _ = printf("  params: ");
+                        var param_count: i64 = ArrayList_Param_length(&stmt2.func_params);
+                        _ = &param_count;
+                        var pi: i64 = 0;
+                        _ = &pi;
+                        while (pi < param_count) {
+                            var p: Param = ArrayList_Param_get(&stmt2.func_params, pi);
+                            _ = &p;
+                            _ = printf("%s: %s", p.name, p.ptype);
+                            pi = pi + @as(c_longlong, 1);
+                            if (pi < param_count) {
+                                _ = printf(", ");
+                            }
+                        }
+                        _ = printf("\n");
+                        found = @as(c_int, 1) != 0;
+                    }
+                    si2 = si2 + @as(c_longlong, 1);
+                }
+                if (!found) {
+                    _ = printf("function '%s' not found\n", graph_fn);
+                }
+            } else {
+                var root: StmtNode = ArrayList_StmtNode_get(graph_parser.stmt_pool, graph_program_idx);
+                _ = &root;
+                _ = printf("file: %s\n", graph_file);
+                var si3: i64 = 0;
+                _ = &si3;
+                while (si3 < ArrayList_Int_length(&root.block_stmts)) {
+                    var idx: i64 = ArrayList_Int_get(&root.block_stmts, si3);
+                    _ = &idx;
+                    var stmt3: StmtNode = ArrayList_StmtNode_get(graph_parser.stmt_pool, idx);
+                    _ = &stmt3;
+                    if (@as(c_longlong, @bitCast(@as(c_ulonglong, stmt3.kind))) == @as(c_longlong, 4)) {
+                        _ = printf("  fn %s(%s) %s\n", stmt3.func_name, "", stmt3.func_return_type);
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, stmt3.kind))) == @as(c_longlong, 5)) {
+                        _ = printf("  struct %s\n", stmt3.struct_name);
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, stmt3.kind))) == @as(c_longlong, 8)) {
+                        _ = printf("  enum %s\n", stmt3.enum_name);
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, stmt3.kind))) == @as(c_longlong, 22)) {
+                        _ = printf("  error %s\n", stmt3.error_name);
+                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, stmt3.kind))) == @as(c_longlong, 2)) {
+                        _ = printf("  var %s: %s\n", stmt3.vardecl_name, stmt3.vardecl_type);
+                    }
+                    si3 = si3 + @as(c_longlong, 1);
+                }
+            }
+        } else {
+            _ = printf("Error: Unknown graph subcommand '%s'\n", graph_sub);
+            _ = printf("Supported: export, query\n");
+            return 1;
+        }
+    }
+    return 0;
+}
+pub export fn run_init(arg_argc: i64, arg_argv: [*c][*c]u8) i64 {
+    var argc = arg_argc;
+    _ = &argc;
+    var argv = arg_argv;
+    _ = &argv;
+    var project_path: [*c]const u8 = ".";
+    _ = &project_path;
+    var template: [*c]const u8 = "cli";
+    _ = &template;
+    var i: i64 = 2;
+    _ = &i;
+    while (i < argc) {
+        var arg: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
+            const tmp = i;
+            if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+        }).*)));
+        _ = &arg;
+        {
+            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--template")))) == @as(c_longlong, 0)) {
+                if ((i + @as(c_longlong, 1)) < argc) {
+                    i = i + @as(c_longlong, 1);
+                    template = @as([*c]const u8, @ptrCast(@alignCast((blk: {
+                        const tmp = i;
+                        if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
+                    }).*)));
+                } else {
+                    _ = printf("Error: --template requires an argument (cli|lib)\n");
+                    return 1;
+                }
+            } else if (strcmp(project_path, ".") == @as(c_int, 0)) {
+                project_path = arg;
+            }
+        }
+        i = i + @as(c_longlong, 1);
+    }
+    var src_dir: [*c]const u8 = __kai_std_str_concat_alloc(project_path, "/src");
+    _ = &src_dir;
+    if (!mkdir_p(src_dir)) {
+        _ = printf("Error: Could not create directory '%s'\n", src_dir);
+        return 1;
+    }
+    if (strcmp(template, "lib") == @as(c_int, 0)) {
+        var main_content: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("// ", project_path), "\n// Library entry point\n\n");
+        _ = &main_content;
+        var write_res: Result_Bool_IoError = write_string(__kai_std_str_concat_alloc(src_dir, "/lib.kai"), main_content);
+        _ = &write_res;
+        if (write_res.tag != @as(c_longlong, 0)) {
+            _ = printf("Error: Could not write lib.kai\n");
+            return 1;
+        }
+    } else {
+        var main_content: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("// ", project_path), "\n// Imports\nimport std.io.print\n\n// Entry point\n\nfn main() Int {\n    printf(\"Hello! from "), project_path), "\\n\")\n    return 0\n}\n");
+        _ = &main_content;
+        var write_res: Result_Bool_IoError = write_string(__kai_std_str_concat_alloc(src_dir, "/main.kai"), main_content);
+        _ = &write_res;
+        if (write_res.tag != @as(c_longlong, 0)) {
+            _ = printf("Error: Could not write main.kai\n");
+            return 1;
+        }
+    }
+    _ = printf("Created Kai project at '%s' (template: %s)\n", project_path, template);
+    return 0;
+}
+pub export fn run_skills(arg_argc: i64, arg_argv: [*c][*c]u8) i64 {
+    var argc = arg_argc;
+    _ = &argc;
+    var argv = arg_argv;
+    _ = &argv;
+    var allocator: KaiAllocator = KaiAllocator{
+        .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
+        .used = @as(c_longlong, 0),
+    };
+    _ = &allocator;
+    allocator = KaiAllocator_init();
+    _kai_set_current_allocator(@as(?*anyopaque, @ptrCast(&allocator)));
+    var exe_dir: [*c]const u8 = "";
+    _ = &exe_dir;
+    {
+        var buf: [*c]u8 = KaiAllocator_alloc(&allocator, @as(c_longlong, 1024), @as(c_longlong, 1));
+        _ = &buf;
+        if (get_exe_dir(buf, @as(c_longlong, 1024)) == @as(c_longlong, 0)) {
+            exe_dir = @as([*c]const u8, @ptrCast(@alignCast(buf)));
+        }
+    }
+    if (argc < @as(c_longlong, 3)) {
+        _ = printf("Available skills:\n");
+        _ = printf("  agent       - Agent workflow guide\n");
+        _ = printf("  diagnostics - Diagnostic reference for AI agents\n");
+        _ = printf("\nUse 'kai skills get <topic>' to load a skill.\n");
+        return 0;
+    }
+    var sub: [*c]const u8 = "";
+    _ = &sub;
+    {
+        sub = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(usize, @intCast(@as(c_longlong, 2)))])));
+    }
+    var is_get: bool = @as(c_int, 0) != 0;
+    _ = &is_get;
+    {
+        if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(sub, "get")))) == @as(c_longlong, 0)) {
+            is_get = @as(c_int, 1) != 0;
+        }
+    }
+    if (is_get) {
+        if (argc < @as(c_longlong, 4)) {
+            _ = printf("Usage: kai skills get <topic>\n");
+            return 1;
+        }
+        var topic: [*c]const u8 = "";
+        _ = &topic;
+        {
+            topic = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(usize, @intCast(@as(c_longlong, 3)))])));
+        }
+        var skill_path: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/skill-data/"), topic), ".md");
+        _ = &skill_path;
+        var res: Result_Str_IoError = read_to_string(&allocator, skill_path);
+        _ = &res;
+        if (res.tag != @as(c_longlong, 0)) {
+            _ = printf("skill not found: '%s'\n", topic);
+            _ = printf("Available: agent, diagnostics\n");
+            return 1;
+        }
+        var content: [*c]const u8 = res.value;
+        _ = &content;
+        _ = printf("%s\n", content);
+        return 0;
+    }
+    _ = printf("Usage: kai skills get <topic>\n");
+    return 1;
+}
+pub export fn run_explain(arg_argc: i64, arg_argv: [*c][*c]u8) i64 {
+    var argc = arg_argc;
+    _ = &argc;
+    var argv = arg_argv;
+    _ = &argv;
+    if (argc < @as(c_longlong, 3)) {
+        _ = printf("Usage: kai explain <error-code>\n");
+        return 1;
+    }
+    var code: [*c]const u8 = "";
+    _ = &code;
+    {
+        code = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(usize, @intCast(@as(c_longlong, 2)))])));
+    }
+    var info: ErrorInfo = get_error_info(code);
+    _ = &info;
+    _ = printf("error[%s]: %s\n", code, info.title);
+    _ = printf("  %s\n", info.description);
+    _ = printf("  Suggested fix: %s\n", info.fix);
+    return 0;
+}
 pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     var argc = arg_argc;
     _ = &argc;
@@ -14930,432 +17825,29 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     {
         first_arg = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(usize, @intCast(@as(c_longlong, 1)))])));
     }
-    var is_explain: bool = @as(c_int, 0) != 0;
-    _ = &is_explain;
     {
         if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(first_arg, "explain")))) == @as(c_longlong, 0)) {
-            is_explain = @as(c_int, 1) != 0;
+            return @as(c_int, @bitCast(@as(c_int, @truncate(run_explain(@as(i64, @bitCast(@as(c_longlong, argc))), argv)))));
         }
-    }
-    if (is_explain) {
-        if (@as(c_longlong, @bitCast(@as(c_longlong, argc))) < @as(c_longlong, 3)) {
-            _ = printf("Usage: kai explain <error-code>\n");
-            return 1;
-        }
-        var code: [*c]const u8 = "";
-        _ = &code;
-        {
-            code = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(usize, @intCast(@as(c_longlong, 2)))])));
-        }
-        var info: ErrorInfo = get_error_info(code);
-        _ = &info;
-        _ = printf("error[%s]: %s\n", code, info.title);
-        _ = printf("  %s\n", info.description);
-        _ = printf("  Suggested fix: %s\n", info.fix);
-        return 0;
-    }
-    var is_skills: bool = @as(c_int, 0) != 0;
-    _ = &is_skills;
-    {
         if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(first_arg, "skills")))) == @as(c_longlong, 0)) {
-            is_skills = @as(c_int, 1) != 0;
+            return @as(c_int, @bitCast(@as(c_int, @truncate(run_skills(@as(i64, @bitCast(@as(c_longlong, argc))), argv)))));
         }
-    }
-    if (is_skills) {
-        var allocator: KaiAllocator = KaiAllocator{
-            .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
-            .used = @as(c_longlong, 0),
-        };
-        _ = &allocator;
-        allocator = KaiAllocator_init();
-        _kai_set_current_allocator(@as(?*anyopaque, @ptrCast(&allocator)));
-        var exe_dir: [*c]const u8 = "";
-        _ = &exe_dir;
-        {
-            var buf: [*c]u8 = KaiAllocator_alloc(&allocator, @as(c_longlong, 1024), @as(c_longlong, 1));
-            _ = &buf;
-            if (get_exe_dir(buf, @as(c_longlong, 1024)) == @as(c_longlong, 0)) {
-                exe_dir = @as([*c]const u8, @ptrCast(@alignCast(buf)));
-            }
-        }
-        if (@as(c_longlong, @bitCast(@as(c_longlong, argc))) < @as(c_longlong, 3)) {
-            _ = printf("Available skills:\n");
-            _ = printf("  agent       - Agent workflow guide\n");
-            _ = printf("  diagnostics - Diagnostic reference for AI agents\n");
-            _ = printf("\nUse 'kai skills get <topic>' to load a skill.\n");
-            return 0;
-        }
-        var sub: [*c]const u8 = "";
-        _ = &sub;
-        {
-            sub = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(usize, @intCast(@as(c_longlong, 2)))])));
-        }
-        var is_get: bool = @as(c_int, 0) != 0;
-        _ = &is_get;
-        {
-            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(sub, "get")))) == @as(c_longlong, 0)) {
-                is_get = @as(c_int, 1) != 0;
-            }
-        }
-        if (is_get) {
-            if (@as(c_longlong, @bitCast(@as(c_longlong, argc))) < @as(c_longlong, 4)) {
-                _ = printf("Usage: kai skills get <topic>\n");
-                return 1;
-            }
-            var topic: [*c]const u8 = "";
-            _ = &topic;
-            {
-                topic = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(usize, @intCast(@as(c_longlong, 3)))])));
-            }
-            var skill_path: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(exe_dir, "/skill-data/"), topic), ".md");
-            _ = &skill_path;
-            var res: Result_Str_IoError = read_to_string(&allocator, skill_path);
-            _ = &res;
-            if (res.tag != @as(c_longlong, 0)) {
-                _ = printf("skill not found: '%s'\n", topic);
-                _ = printf("Available: agent, diagnostics\n");
-                return 1;
-            }
-            var content: [*c]const u8 = res.value;
-            _ = &content;
-            _ = printf("%s\n", content);
-            return 0;
-        }
-        _ = printf("Usage: kai skills get <topic>\n");
-        return 1;
-    }
-    var is_init: bool = @as(c_int, 0) != 0;
-    _ = &is_init;
-    {
         if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(first_arg, "init")))) == @as(c_longlong, 0)) {
-            is_init = @as(c_int, 1) != 0;
+            return @as(c_int, @bitCast(@as(c_int, @truncate(run_init(@as(i64, @bitCast(@as(c_longlong, argc))), argv)))));
         }
-    }
-    if (is_init) {
-        var project_path: [*c]const u8 = ".";
-        _ = &project_path;
-        var template: [*c]const u8 = "cli";
-        _ = &template;
-        var i: i64 = 2;
-        _ = &i;
-        while (i < @as(i64, @bitCast(@as(c_longlong, argc)))) {
-            var arg: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
-                const tmp = i;
-                if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).*)));
-            _ = &arg;
-            {
-                if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--template")))) == @as(c_longlong, 0)) {
-                    if ((i + @as(c_longlong, 1)) < @as(c_longlong, @bitCast(@as(c_longlong, argc)))) {
-                        i = i + @as(c_longlong, 1);
-                        template = @as([*c]const u8, @ptrCast(@alignCast((blk: {
-                            const tmp = i;
-                            if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                        }).*)));
-                    } else {
-                        _ = printf("Error: --template requires an argument (cli|lib)\n");
-                        return 1;
-                    }
-                } else if (strcmp(project_path, ".") == @as(c_int, 0)) {
-                    project_path = arg;
-                }
-            }
-            i = i + @as(c_longlong, 1);
-        }
-        var src_dir: [*c]const u8 = _kai_str_concat(project_path, "/src");
-        _ = &src_dir;
-        if (!mkdir_p(src_dir)) {
-            _ = printf("Error: Could not create directory '%s'\n", src_dir);
-            return 1;
-        }
-        if (strcmp(template, "lib") == @as(c_int, 0)) {
-            var main_content: [*c]const u8 = _kai_str_concat(_kai_str_concat("// ", project_path), "\n// Library entry point\n\n");
-            _ = &main_content;
-            var write_res: Result_Bool_IoError = write_string(_kai_str_concat(src_dir, "/lib.kai"), main_content);
-            _ = &write_res;
-            if (write_res.tag != @as(c_longlong, 0)) {
-                _ = printf("Error: Could not write lib.kai\n");
-                return 1;
-            }
-        } else {
-            var main_content: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("// ", project_path), "\n// Imports\nimport std.io.print\n\n// Entry point\n\nfn main() Int {\n    printf(\"Hello! from "), project_path), "\\n\")\n    return 0\n}\n");
-            _ = &main_content;
-            var write_res: Result_Bool_IoError = write_string(_kai_str_concat(src_dir, "/main.kai"), main_content);
-            _ = &write_res;
-            if (write_res.tag != @as(c_longlong, 0)) {
-                _ = printf("Error: Could not write main.kai\n");
-                return 1;
-            }
-        }
-        _ = printf("Created Kai project at '%s' (template: %s)\n", project_path, template);
-        return 0;
-    }
-    var is_patch: bool = @as(c_int, 0) != 0;
-    _ = &is_patch;
-    {
         if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(first_arg, "patch")))) == @as(c_longlong, 0)) {
-            is_patch = @as(c_int, 1) != 0;
+            return @as(c_int, @bitCast(@as(c_int, @truncate(run_patch(@as(i64, @bitCast(@as(c_longlong, argc))), argv)))));
         }
-    }
-    if (is_patch) {
-        if (@as(c_longlong, @bitCast(@as(c_longlong, argc))) < @as(c_longlong, 4)) {
-            _ = printf("Usage: kai patch <file> --op <operation> [args...]\n");
-            _ = printf("Operations:\n");
-            _ = printf("  addMain                    Append a main function\n");
-            _ = printf("  addFn <name>               Append a function stub\n");
-            _ = printf("  replaceText --old <t> --new <t>  Global text replacement\n");
-            _ = printf("  setConst <name> <value>    Change a const value\n");
-            return 1;
-        }
-        var allocator: KaiAllocator = KaiAllocator{
-            .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
-            .used = @as(c_longlong, 0),
-        };
-        _ = &allocator;
-        allocator = KaiAllocator_init();
-        _kai_set_current_allocator(@as(?*anyopaque, @ptrCast(&allocator)));
-        var patch_file: [*c]const u8 = "";
-        _ = &patch_file;
-        var operation: [*c]const u8 = "";
-        _ = &operation;
-        var op_arg1: [*c]const u8 = "";
-        _ = &op_arg1;
-        var op_arg2: [*c]const u8 = "";
-        _ = &op_arg2;
-        var json: bool = @as(c_int, 0) != 0;
-        _ = &json;
-        var i: i64 = 2;
-        _ = &i;
-        while (i < @as(i64, @bitCast(@as(c_longlong, argc)))) {
-            var arg: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
-                const tmp = i;
-                if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).*)));
-            _ = &arg;
-            {
-                if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--json")))) == @as(c_longlong, 0)) {
-                    json = @as(c_int, 1) != 0;
-                } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--op")))) == @as(c_longlong, 0)) {
-                    if ((i + @as(c_longlong, 1)) < @as(c_longlong, @bitCast(@as(c_longlong, argc)))) {
-                        i = i + @as(c_longlong, 1);
-                        operation = @as([*c]const u8, @ptrCast(@alignCast((blk: {
-                            const tmp = i;
-                            if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                        }).*)));
-                    }
-                } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--old")))) == @as(c_longlong, 0)) {
-                    if ((i + @as(c_longlong, 1)) < @as(c_longlong, @bitCast(@as(c_longlong, argc)))) {
-                        i = i + @as(c_longlong, 1);
-                        op_arg1 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
-                            const tmp = i;
-                            if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                        }).*)));
-                    }
-                } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(arg, "--new")))) == @as(c_longlong, 0)) {
-                    if ((i + @as(c_longlong, 1)) < @as(c_longlong, @bitCast(@as(c_longlong, argc)))) {
-                        i = i + @as(c_longlong, 1);
-                        op_arg2 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
-                            const tmp = i;
-                            if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                        }).*)));
-                    }
-                } else if (strcmp(patch_file, "") == @as(c_int, 0)) {
-                    patch_file = arg;
-                }
-            }
-            i = i + @as(c_longlong, 1);
-        }
-        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(patch_file)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-            _ = printf("Error: No input file specified\n");
-            return 1;
-        }
-        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(operation)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-            _ = printf("Error: No operation specified (use --op)\n");
-            return 1;
-        }
-        var source_res: Result_Str_IoError = read_to_string(&allocator, patch_file);
-        _ = &source_res;
-        if (source_res.tag != @as(c_longlong, 0)) {
-            _ = printf("Error: Could not read '%s'\n", patch_file);
-            return 1;
-        }
-        var source: [*c]const u8 = source_res.value;
-        _ = &source;
-        var modified: [*c]const u8 = "";
-        _ = &modified;
-        var op_name: [*c]const u8 = operation;
-        _ = &op_name;
-        {
-            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(op_name, "addMain")))) == @as(c_longlong, 0)) {
-                modified = _kai_str_concat(source, "\nfn main() Int {\n    printf(\"hello\\n\")\n    return 0\n}\n");
-            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(op_name, "addFn")))) == @as(c_longlong, 0)) {
-                var fn_name: [*c]const u8 = op_arg1;
-                _ = &fn_name;
-                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fn_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                    var j: i64 = 3;
-                    _ = &j;
-                    while (j < @as(i64, @bitCast(@as(c_longlong, argc)))) {
-                        {
-                            var a: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
-                                const tmp = j;
-                                if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                            }).*)));
-                            _ = &a;
-                            var is_flag: bool = (((@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--op")))) == @as(c_longlong, 0)) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--json")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--old")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--new")))) == @as(c_longlong, 0));
-                            _ = &is_flag;
-                            if (((((!is_flag and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, patch_file)))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "addMain")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "addFn")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "setConst")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "replaceText")))) != @as(c_longlong, 0))) {
-                                if (strcmp(fn_name, "") == @as(c_int, 0)) {
-                                    fn_name = a;
-                                }
-                            }
-                        }
-                        j = j + @as(c_longlong, 1);
-                    }
-                }
-                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fn_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                    _ = printf("Error: addFn requires a function name\n");
-                    _ = printf("Usage: kai patch <file> --op addFn <name>\n");
-                    return 1;
-                }
-                modified = _kai_str_concat(_kai_str_concat(_kai_str_concat(source, "\nfn "), fn_name), "() Void {\n\n}\n");
-            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(op_name, "setConst")))) == @as(c_longlong, 0)) {
-                var const_name: [*c]const u8 = op_arg1;
-                _ = &const_name;
-                var const_val: [*c]const u8 = op_arg2;
-                _ = &const_val;
-                if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(const_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) or (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(const_val)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) {
-                    var j: i64 = 3;
-                    _ = &j;
-                    while (j < @as(i64, @bitCast(@as(c_longlong, argc)))) {
-                        {
-                            var a: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
-                                const tmp = j;
-                                if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                            }).*)));
-                            _ = &a;
-                            var is_flag: bool = (((@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--op")))) == @as(c_longlong, 0)) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--json")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--old")))) == @as(c_longlong, 0))) or (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--new")))) == @as(c_longlong, 0));
-                            _ = &is_flag;
-                            if (((((!is_flag and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, patch_file)))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "setConst")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "addMain")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "addFn")))) != @as(c_longlong, 0))) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "replaceText")))) != @as(c_longlong, 0))) {
-                                if (strcmp(const_name, "") == @as(c_int, 0)) {
-                                    const_name = a;
-                                } else if (strcmp(const_val, "") == @as(c_int, 0)) {
-                                    const_val = a;
-                                }
-                            }
-                        }
-                        j = j + @as(c_longlong, 1);
-                    }
-                }
-                if ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(const_name)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) or (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(const_val)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0))))) {
-                    _ = printf("Error: setConst requires <name> and <value>\n");
-                    _ = printf("Usage: kai patch <file> --op setConst <name> <value>\n");
-                    return 1;
-                }
-                var pattern: [*c]const u8 = _kai_str_concat(_kai_str_concat("const ", const_name), " = ");
-                _ = &pattern;
-                var pattern_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(pattern))));
-                _ = &pattern_len;
-                var src_len: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(source))));
-                _ = &src_len;
-                var found_const: bool = @as(c_int, 0) != 0;
-                _ = &found_const;
-                var pos_c: i64 = 0;
-                _ = &pos_c;
-                while (pos_c <= (src_len - pattern_len)) {
-                    var matched_c: bool = @as(c_int, 1) != 0;
-                    _ = &matched_c;
-                    var j2: i64 = 0;
-                    _ = &j2;
-                    while (j2 < pattern_len) {
-                        {
-                            if (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                                const tmp = pos_c + j2;
-                                if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                            }).*))) != @as(c_int, @bitCast(@as(c_uint, (blk: {
-                                const tmp = j2;
-                                if (tmp >= 0) break :blk pattern + @as(usize, @intCast(tmp)) else break :blk pattern - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                            }).*)))) {
-                                matched_c = @as(c_int, 0) != 0;
-                                break;
-                            }
-                        }
-                        j2 = j2 + @as(c_longlong, 1);
-                    }
-                    if (matched_c) {
-                        var end: i64 = pos_c + pattern_len;
-                        _ = &end;
-                        while (end < src_len) {
-                            {
-                                var c: u8 = (blk: {
-                                    const tmp = end;
-                                    if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                                }).*;
-                                _ = &c;
-                                if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 59)))))))))) {
-                                    break;
-                                }
-                            }
-                            end = end + @as(c_longlong, 1);
-                        }
-                        var before: [*c]const u8 = substring(source, @as(c_longlong, 0), pos_c + pattern_len);
-                        _ = &before;
-                        var after: [*c]const u8 = substring(source, end, src_len);
-                        _ = &after;
-                        modified = _kai_str_concat(_kai_str_concat(before, const_val), after);
-                        found_const = @as(c_int, 1) != 0;
-                        break;
-                    }
-                    pos_c = pos_c + @as(c_longlong, 1);
-                }
-                if (!found_const) {
-                    _ = printf("Error: const '%s' not found in '%s'\n", const_name, patch_file);
-                    return 1;
-                }
-            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(op_name, "replaceText")))) == @as(c_longlong, 0)) {
-                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(op_arg1)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                    _ = printf("Error: replaceText requires --old <text>\n");
-                    return 1;
-                }
-                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(op_arg2)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                    _ = printf("Error: replaceText requires --new <text>\n");
-                    return 1;
-                }
-                modified = str_replace(source, op_arg1, op_arg2);
-            } else {
-                _ = printf("Error: Unknown operation '%s'\n", op_name);
-                _ = printf("Supported: addMain, addFn, setConst, replaceText\n");
-                return 1;
-            }
-        }
-        var write_res: Result_Bool_IoError = write_string(patch_file, modified);
-        _ = &write_res;
-        if (write_res.tag != @as(c_longlong, 0)) {
-            _ = printf("Error: Could not write '%s'\n", patch_file);
-            return 1;
-        }
-        if (json) {
-            _ = printf("{\"result\":\"patched\",\"file\":\"%s\",\"operation\":\"%s\"}\n", patch_file, op_name);
-        }
-        return 0;
-    }
-    var is_fix: bool = @as(c_int, 0) != 0;
-    _ = &is_fix;
-    {
         if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(first_arg, "fix")))) == @as(c_longlong, 0)) {
-            is_fix = @as(c_int, 1) != 0;
-        }
-    }
-    if (is_fix) {
-        var fix_mode: [*c]const u8 = "plan";
-        _ = &fix_mode;
-        var fix_file: [*c]const u8 = "";
-        _ = &fix_file;
-        var json: bool = @as(c_int, 0) != 0;
-        _ = &json;
-        var @"i2": i64 = 2;
-        _ = &@"i2";
-        while (@"i2" < @as(i64, @bitCast(@as(c_longlong, argc)))) {
-            {
+            var fix_mode: [*c]const u8 = "plan";
+            _ = &fix_mode;
+            var fix_file: [*c]const u8 = "";
+            _ = &fix_file;
+            var json: bool = @as(c_int, 0) != 0;
+            _ = &json;
+            var @"i2": i64 = 2;
+            _ = &@"i2";
+            while (@"i2" < @as(i64, @bitCast(@as(c_longlong, argc)))) {
                 var a: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
                     const tmp = @"i2";
                     if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -15372,754 +17864,17 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
                 } else if (strcmp(fix_file, "") == @as(c_int, 0)) {
                     fix_file = a;
                 }
+                @"i2" = @"i2" + @as(c_longlong, 1);
             }
-            @"i2" = @"i2" + @as(c_longlong, 1);
-        }
-        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fix_file)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-            _ = printf("Usage: kai fix (--plan|--patch|--apply) [--json] <file>\n");
-            return 1;
-        }
-        var fix_alloc: KaiAllocator = KaiAllocator{
-            .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
-            .used = @as(c_longlong, 0),
-        };
-        _ = &fix_alloc;
-        fix_alloc = KaiAllocator_init();
-        _kai_set_current_allocator(@as(?*anyopaque, @ptrCast(&fix_alloc)));
-        var src_res: Result_Str_IoError = read_to_string(&fix_alloc, fix_file);
-        _ = &src_res;
-        if (src_res.tag != @as(c_longlong, 0)) {
-            _ = printf("Error: Could not read '%s'\n", fix_file);
-            return 1;
-        }
-        var source: [*c]const u8 = src_res.value;
-        _ = &source;
-        var src_len_val: i64 = @as(i64, @bitCast(@as(c_ulonglong, strlen(source))));
-        _ = &src_len_val;
-        var vars: ArrayList_Str = ArrayList_Str_init(&fix_alloc);
-        _ = &vars;
-        var var_lines: ArrayList_Int = ArrayList_Int_init(&fix_alloc);
-        _ = &var_lines;
-        var var_mut: ArrayList_Bool = ArrayList_Bool_init(&fix_alloc);
-        _ = &var_mut;
-        var line_start: i64 = 0;
-        _ = &line_start;
-        var line_num: i64 = 0;
-        _ = &line_num;
-        while (line_start <= src_len_val) {
-            var line_end: i64 = line_start;
-            _ = &line_end;
-            while (line_end < src_len_val) {
-                {
-                    if (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                        const tmp = line_end;
-                        if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
-                        break;
-                    }
-                }
-                line_end = line_end + @as(c_longlong, 1);
-            }
-            if (line_end > src_len_val) {
-                line_end = src_len_val;
-            }
-            var line_len: i64 = line_end - line_start;
-            _ = &line_len;
-            if (line_len > @as(c_longlong, 0)) {
-                var line: [*c]const u8 = substring(source, line_start, line_end);
-                _ = &line;
-                var li: i64 = 0;
-                _ = &li;
-                while (li < line_len) {
-                    {
-                        var c: u8 = (blk: {
-                            const tmp = li;
-                            if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                        }).*;
-                        _ = &c;
-                        if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
-                            break;
-                        }
-                    }
-                    li = li + @as(c_longlong, 1);
-                }
-                if ((li + @as(c_longlong, 4)) <= line_len) {
-                    {
-                        if ((((@as(c_int, @bitCast(@as(c_uint, (blk: {
-                            const tmp = li;
-                            if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 108))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                            const tmp = li + @as(c_longlong, 1);
-                            if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 101)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                            const tmp = li + @as(c_longlong, 2);
-                            if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 116)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                            const tmp = li + @as(c_longlong, 3);
-                            if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                        }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32)))))))))) {
-                            var vstart: i64 = li + @as(c_longlong, 4);
-                            _ = &vstart;
-                            var vend: i64 = vstart;
-                            _ = &vend;
-                            while (vend < line_len) {
-                                {
-                                    var c: u8 = (blk: {
-                                        const tmp = vend;
-                                        if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                                    }).*;
-                                    _ = &c;
-                                    if ((((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 61)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 58)))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
-                                        break;
-                                    }
-                                }
-                                vend = vend + @as(c_longlong, 1);
-                            }
-                            if (vend > vstart) {
-                                var vname: [*c]const u8 = substring(line, vstart, vend);
-                                _ = &vname;
-                                ArrayList_Str_push(&vars, vname);
-                                ArrayList_Int_push(&var_lines, line_num);
-                                ArrayList_Bool_push(&var_mut, @as(c_int, 0) != 0);
-                            }
-                        }
-                    }
-                }
-                var ai: i64 = 0;
-                _ = &ai;
-                while (ai < line_len) {
-                    {
-                        var c: u8 = (blk: {
-                            const tmp = ai;
-                            if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                        }).*;
-                        _ = &c;
-                        if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
-                            break;
-                        }
-                    }
-                    ai = ai + @as(c_longlong, 1);
-                }
-                if (ai < line_len) {
-                    var eq_pos: i64 = -@as(c_longlong, 1);
-                    _ = &eq_pos;
-                    var vi: i64 = ai;
-                    _ = &vi;
-                    while (vi < line_len) {
-                        {
-                            if (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                                const tmp = vi;
-                                if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                            }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 61))))))))) {
-                                eq_pos = vi;
-                                break;
-                            }
-                        }
-                        vi = vi + @as(c_longlong, 1);
-                    }
-                    if (eq_pos > ai) {
-                        var has_let_prefix: bool = @as(c_int, 0) != 0;
-                        _ = &has_let_prefix;
-                        {
-                            if ((ai + @as(c_longlong, 4)) <= eq_pos) {
-                                if ((((@as(c_int, @bitCast(@as(c_uint, (blk: {
-                                    const tmp = ai;
-                                    if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 108))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                                    const tmp = ai + @as(c_longlong, 1);
-                                    if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 101)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                                    const tmp = ai + @as(c_longlong, 2);
-                                    if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 116)))))))))) and (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                                    const tmp = ai + @as(c_longlong, 3);
-                                    if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                                }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32)))))))))) {
-                                    has_let_prefix = @as(c_int, 1) != 0;
-                                }
-                            }
-                        }
-                        if (!has_let_prefix and (eq_pos > @as(c_longlong, 0))) {
-                            var before_eq: i64 = eq_pos - @as(c_longlong, 1);
-                            _ = &before_eq;
-                            while (before_eq >= ai) {
-                                {
-                                    var c: u8 = (blk: {
-                                        const tmp = before_eq;
-                                        if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                                    }).*;
-                                    _ = &c;
-                                    if ((@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) and (@as(c_int, @bitCast(@as(c_uint, c))) != @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
-                                        break;
-                                    }
-                                }
-                                before_eq = before_eq - @as(c_longlong, 1);
-                            }
-                            var assign_start: i64 = before_eq;
-                            _ = &assign_start;
-                            while (assign_start >= ai) {
-                                {
-                                    var c: u8 = (blk: {
-                                        const tmp = assign_start;
-                                        if (tmp >= 0) break :blk line + @as(usize, @intCast(tmp)) else break :blk line - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                                    }).*;
-                                    _ = &c;
-                                    if ((@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 32))))))))) or (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 9)))))))))) {
-                                        break;
-                                    }
-                                }
-                                assign_start = assign_start - @as(c_longlong, 1);
-                            }
-                            assign_start = assign_start + @as(c_longlong, 1);
-                            if (assign_start <= before_eq) {
-                                var assign_var: [*c]const u8 = substring(line, assign_start, before_eq + @as(c_longlong, 1));
-                                _ = &assign_var;
-                                var vi2: i64 = 0;
-                                _ = &vi2;
-                                while (vi2 < ArrayList_Str_length(&vars)) {
-                                    {
-                                        if ((@as(c_longlong, @bitCast(@as(c_longlong, strcmp(assign_var, ArrayList_Str_get(&vars, vi2))))) == @as(c_longlong, 0)) and !ArrayList_Bool_get(&var_mut, vi2)) {
-                                            ArrayList_Bool_set(&var_mut, vi2, @as(c_int, 1) != 0);
-                                        }
-                                    }
-                                    vi2 = vi2 + @as(c_longlong, 1);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            line_start = line_end + @as(c_longlong, 1);
-            line_num = line_num + @as(c_longlong, 1);
-        }
-        var fix_count: i64 = 0;
-        _ = &fix_count;
-        var fix_text: [*c]const u8 = "";
-        _ = &fix_text;
-        if (json) {
-            fix_text = _kai_str_concat(_kai_str_concat("{\"file\":\"", fix_file), "\",\"fixes\":[");
-        }
-        var vi3: i64 = 0;
-        _ = &vi3;
-        while (vi3 < ArrayList_Str_length(&vars)) {
-            if (ArrayList_Bool_get(&var_mut, vi3)) {
-                fix_count = fix_count + @as(c_longlong, 1);
-                var vname_val: [*c]const u8 = ArrayList_Str_get(&vars, vi3);
-                _ = &vname_val;
-                var vline: i64 = ArrayList_Int_get(&var_lines, vi3);
-                _ = &vline;
-                if (json) {
-                    if (fix_count > @as(c_longlong, 1)) {
-                        fix_text = _kai_str_concat(fix_text, ",");
-                    }
-                    fix_text = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(fix_text, "{\"name\":\""), vname_val), "\",\"line\":"), vname_val), ",\"fix\":\"let->var\",\"safety\":\"behavior-preserving\"}");
-                }
-            }
-            vi3 = vi3 + @as(c_longlong, 1);
-        }
-        if (json) {
-            fix_text = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(fix_text, "],\"mode\":\""), fix_mode), "\",\"count\":"), fix_text), "}");
-            fix_text = _kai_str_concat(_kai_str_concat("{\"file\":\"", fix_file), "\",\"fixes\":[");
-            var count_added: i64 = 0;
-            _ = &count_added;
-            var vi4: i64 = 0;
-            _ = &vi4;
-            while (vi4 < ArrayList_Str_length(&vars)) {
-                if (ArrayList_Bool_get(&var_mut, vi4)) {
-                    if (count_added > @as(c_longlong, 0)) {
-                        fix_text = _kai_str_concat(fix_text, ",");
-                    }
-                    var vname_val: [*c]const u8 = ArrayList_Str_get(&vars, vi4);
-                    _ = &vname_val;
-                    fix_text = _kai_str_concat(_kai_str_concat(fix_text, "{\"name\":\""), vname_val);
-                    fix_text = _kai_str_concat(fix_text, "\",\"fix\":\"let->var\",\"safety\":\"behavior-preserving\"}");
-                    count_added = count_added + @as(c_longlong, 1);
-                }
-                vi4 = vi4 + @as(c_longlong, 1);
-            }
-            fix_text = _kai_str_concat(_kai_str_concat(_kai_str_concat(fix_text, "],\"total\":"), fix_text), "}");
-            fix_text = "";
-        }
-        if (fix_count == @as(c_longlong, 0)) {
-            if (json) {
-                _ = printf("{\"file\":\"%s\",\"fixes\":[],\"total\":0}\n", fix_file);
-            } else {
-                _ = printf("No auto-fixable issues found in '%s'\n", fix_file);
-            }
-            return 0;
-        }
-        if ((strcmp(fix_mode, "plan") == @as(c_int, 0)) or (strcmp(fix_mode, "plan") == @as(c_int, 0))) {
-            if (!json) {
-                _ = printf("Found %lld auto-fixable issue(s) in '%s':\n", fix_count, fix_file);
-                var vi5: i64 = 0;
-                _ = &vi5;
-                while (vi5 < ArrayList_Str_length(&vars)) {
-                    if (ArrayList_Bool_get(&var_mut, vi5)) {
-                        _ = printf("  [behavior-preserving] variable '%s': change 'let' to 'var' (E0008)\n", ArrayList_Str_get(&vars, vi5));
-                    }
-                    vi5 = vi5 + @as(c_longlong, 1);
-                }
-                _ = printf("\nApply with: kai fix --apply '%s'\n", fix_file);
-            } else {
-                _ = printf("{\"file\":\"%s\",\"fixes\":[", fix_file);
-                var first_fix: bool = @as(c_int, 1) != 0;
-                _ = &first_fix;
-                var vi6: i64 = 0;
-                _ = &vi6;
-                while (vi6 < ArrayList_Str_length(&vars)) {
-                    if (ArrayList_Bool_get(&var_mut, vi6)) {
-                        if (!first_fix) {
-                            _ = printf(",");
-                        }
-                        _ = printf("{\"name\":\"%s\",\"fix\":\"let->var\",\"safety\":\"behavior-preserving\"}", ArrayList_Str_get(&vars, vi6));
-                        first_fix = @as(c_int, 0) != 0;
-                    }
-                    vi6 = vi6 + @as(c_longlong, 1);
-                }
-                _ = printf("],\"total\":%lld}\n", fix_count);
-            }
-            return 0;
-        }
-        var modified_source: [*c]const u8 = "";
-        _ = &modified_source;
-        var line_start2: i64 = 0;
-        _ = &line_start2;
-        var line_num2: i64 = 0;
-        _ = &line_num2;
-        while (line_start2 <= src_len_val) {
-            var line_end2: i64 = line_start2;
-            _ = &line_end2;
-            while (line_end2 < src_len_val) {
-                {
-                    if (@as(c_int, @bitCast(@as(c_uint, (blk: {
-                        const tmp = line_end2;
-                        if (tmp >= 0) break :blk source + @as(usize, @intCast(tmp)) else break :blk source - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                    }).*))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
-                        break;
-                    }
-                }
-                line_end2 = line_end2 + @as(c_longlong, 1);
-            }
-            if (line_end2 > src_len_val) {
-                line_end2 = src_len_val;
-            }
-            var current_line_num: i64 = line_num2;
-            _ = &current_line_num;
-            var apply_fix_to_line: bool = @as(c_int, 0) != 0;
-            _ = &apply_fix_to_line;
-            var vi8: i64 = 0;
-            _ = &vi8;
-            while (vi8 < ArrayList_Str_length(&vars)) {
-                if ((ArrayList_Int_get(&var_lines, vi8) == current_line_num) and (@as(c_int, @intFromBool(ArrayList_Bool_get(&var_mut, vi8))) != 0)) {
-                    apply_fix_to_line = @as(c_int, 1) != 0;
-                }
-                vi8 = vi8 + @as(c_longlong, 1);
-            }
-            if (apply_fix_to_line) {
-                var line_text: [*c]const u8 = substring(source, line_start2, line_end2);
-                _ = &line_text;
-                var fixed_line_text: [*c]const u8 = str_replace(line_text, "let ", "var ");
-                _ = &fixed_line_text;
-                modified_source = _kai_str_concat(modified_source, fixed_line_text);
-                if ((strcmp(fix_mode, "patch") == @as(c_int, 0)) and (@as(c_int, @intFromBool(json)) != 0)) {
-                    _ = printf("{\"patch\":true,\"file\":\"%s\",\"line\":%lld,\"old\":\"", fix_file, current_line_num);
-                    var li2: i64 = 0;
-                    _ = &li2;
-                    while (@as(c_ulonglong, @bitCast(li2)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(line_text))))) {
-                        {
-                            var c: u8 = (blk: {
-                                const tmp = li2;
-                                if (tmp >= 0) break :blk line_text + @as(usize, @intCast(tmp)) else break :blk line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                            }).*;
-                            _ = &c;
-                            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 34))))))))) {
-                                _ = printf("\\\"");
-                            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 92))))))))) {
-                                _ = printf("\\\\");
-                            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
-                                _ = printf("\\n");
-                            } else {
-                                _ = printf("%c", @as(c_int, @bitCast(@as(c_uint, c))));
-                            }
-                        }
-                        li2 = li2 + @as(c_longlong, 1);
-                    }
-                    _ = printf("\",\"new\":\"");
-                    var li3: i64 = 0;
-                    _ = &li3;
-                    while (@as(c_ulonglong, @bitCast(li3)) < @as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fixed_line_text))))) {
-                        {
-                            var c: u8 = (blk: {
-                                const tmp = li3;
-                                if (tmp >= 0) break :blk fixed_line_text + @as(usize, @intCast(tmp)) else break :blk fixed_line_text - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                            }).*;
-                            _ = &c;
-                            if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 34))))))))) {
-                                _ = printf("\\\"");
-                            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 92))))))))) {
-                                _ = printf("\\\\");
-                            } else if (@as(c_int, @bitCast(@as(c_uint, c))) == @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(@as(i8, @truncate(@as(c_longlong, 10))))))))) {
-                                _ = printf("\\n");
-                            } else {
-                                _ = printf("%c", @as(c_int, @bitCast(@as(c_uint, c))));
-                            }
-                        }
-                        li3 = li3 + @as(c_longlong, 1);
-                    }
-                    _ = printf("\"}\n");
-                }
-            } else {
-                modified_source = _kai_str_concat(modified_source, substring(source, line_start2, line_end2));
-            }
-            var is_last_line: bool = line_end2 >= src_len_val;
-            _ = &is_last_line;
-            if (!is_last_line) {
-                modified_source = _kai_str_concat(modified_source, "\n");
-            }
-            line_start2 = line_end2 + @as(c_longlong, 1);
-            line_num2 = line_num2 + @as(c_longlong, 1);
-        }
-        if (strcmp(fix_mode, "apply") == @as(c_int, 0)) {
-            var write_res: Result_Bool_IoError = write_string(fix_file, modified_source);
-            _ = &write_res;
-            if (write_res.tag != @as(c_longlong, 0)) {
-                _ = printf("Error: Could not write '%s'\n", fix_file);
+            if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(fix_file)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
+                _ = printf("Usage: kai fix (--plan|--patch|--apply) [--json] <file>\n");
                 return 1;
             }
-            if (!json) {
-                _ = printf("Applied %lld fix(es) to '%s'\n", fix_count, fix_file);
-            } else {
-                _ = printf("{\"result\":\"applied\",\"file\":\"%s\",\"fixes\":%lld}\n", fix_file, fix_count);
-            }
-        } else if ((strcmp(fix_mode, "patch") == @as(c_int, 0)) and !json) {
-            _ = printf("Would apply %lld fix(es) to '%s'\n", fix_count, fix_file);
-            _ = printf("Use --apply to apply, or --json for machine-readable output\n");
+            return @as(c_int, @bitCast(@as(c_int, @truncate(run_fix(fix_mode, fix_file, json)))));
         }
-        return 0;
-    }
-    var is_graph: bool = @as(c_int, 0) != 0;
-    _ = &is_graph;
-    {
         if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(first_arg, "graph")))) == @as(c_longlong, 0)) {
-            is_graph = @as(c_int, 1) != 0;
+            return @as(c_int, @bitCast(@as(c_int, @truncate(run_graph(@as(i64, @bitCast(@as(c_longlong, argc))), argv)))));
         }
-    }
-    if (is_graph) {
-        if (@as(c_longlong, @bitCast(@as(c_longlong, argc))) < @as(c_longlong, 3)) {
-            _ = printf("Usage: kai graph (export|query) <file> [options]\n");
-            _ = printf("  export <file>    Export AST as JSON\n");
-            _ = printf("  query <file>     Query program structure\n");
-            return 1;
-        }
-        var graph_sub: [*c]const u8 = "";
-        _ = &graph_sub;
-        {
-            graph_sub = @as([*c]const u8, @ptrCast(@alignCast(argv[@as(usize, @intCast(@as(c_longlong, 2)))])));
-        }
-        var graph_file: [*c]const u8 = "";
-        _ = &graph_file;
-        var graph_fn: [*c]const u8 = "";
-        _ = &graph_fn;
-        var graph_json: bool = @as(c_int, 0) != 0;
-        _ = &graph_json;
-        var @"i3": i64 = 3;
-        _ = &@"i3";
-        while (@"i3" < @as(i64, @bitCast(@as(c_longlong, argc)))) {
-            {
-                var a: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast((blk: {
-                    const tmp = @"i3";
-                    if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                }).*)));
-                _ = &a;
-                if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--json")))) == @as(c_longlong, 0)) {
-                    graph_json = @as(c_int, 1) != 0;
-                } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(a, "--fn")))) == @as(c_longlong, 0)) {
-                    if ((@"i3" + @as(c_longlong, 1)) < @as(c_longlong, @bitCast(@as(c_longlong, argc)))) {
-                        @"i3" = @"i3" + @as(c_longlong, 1);
-                        graph_fn = @as([*c]const u8, @ptrCast(@alignCast((blk: {
-                            const tmp = @"i3";
-                            if (tmp >= 0) break :blk argv + @as(usize, @intCast(tmp)) else break :blk argv - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                        }).*)));
-                    }
-                } else if (strcmp(graph_file, "") == @as(c_int, 0)) {
-                    graph_file = a;
-                }
-            }
-            @"i3" = @"i3" + @as(c_longlong, 1);
-        }
-        if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(graph_file)))) == @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-            _ = printf("Error: No input file specified\n");
-            return 1;
-        }
-        var graph_alloc: KaiAllocator = KaiAllocator{
-            .heads = @as([*c]u8, @ptrFromInt(@as(c_ulonglong, @bitCast(@as(c_longlong, 0))))),
-            .used = @as(c_longlong, 0),
-        };
-        _ = &graph_alloc;
-        graph_alloc = KaiAllocator_init();
-        _kai_set_current_allocator(@as(?*anyopaque, @ptrCast(&graph_alloc)));
-        var src_res2: Result_Str_IoError = read_to_string(&graph_alloc, graph_file);
-        _ = &src_res2;
-        if (src_res2.tag != @as(c_longlong, 0)) {
-            _ = printf("Error: Could not read '%s'\n", graph_file);
-            return 1;
-        }
-        var graph_source: [*c]const u8 = src_res2.value;
-        _ = &graph_source;
-        var graph_lexer: Lexer = Lexer_init(&graph_alloc, graph_source);
-        _ = &graph_lexer;
-        Lexer_lex(&graph_lexer);
-        if (graph_lexer.has_error) {
-            _ = printf("Error: Lexer error in '%s'\n", graph_file);
-            return 1;
-        }
-        var graph_parser: Parser = Parser_init(&graph_alloc, graph_lexer.tokens);
-        _ = &graph_parser;
-        var graph_program_idx: i64 = Parser_parse_program(&graph_parser);
-        _ = &graph_program_idx;
-        if (graph_program_idx < @as(c_longlong, 0)) {
-            _ = printf("Error: Parse error in '%s'\n", graph_file);
-            return 1;
-        }
-        {
-            if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(graph_sub, "export")))) == @as(c_longlong, 0)) {
-                _ = printf("{\"file\":\"%s\",\"stmts\":[\n", graph_file);
-                var si: i64 = 0;
-                _ = &si;
-                var stmt_count: i64 = ArrayList_StmtNode_length(graph_parser.stmt_pool);
-                _ = &stmt_count;
-                while (si < stmt_count) {
-                    var stmt: StmtNode = ArrayList_StmtNode_get(graph_parser.stmt_pool, si);
-                    _ = &stmt;
-                    if (si > @as(c_longlong, 0)) {
-                        _ = printf(",\n");
-                    }
-                    _ = printf("{\"id\":%lld,\"kind\":", si);
-                    var sk: StmtKind = stmt.kind;
-                    _ = &sk;
-                    if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 0)) {
-                        _ = printf("\"none\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 1)) {
-                        _ = printf("\"block\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 2)) {
-                        _ = printf("\"var_decl\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 3)) {
-                        _ = printf("\"assignment\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 4)) {
-                        _ = printf("\"func_decl\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 5)) {
-                        _ = printf("\"struct_decl\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 6)) {
-                        _ = printf("\"impl_block\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 7)) {
-                        _ = printf("\"trait_decl\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 8)) {
-                        _ = printf("\"enum_decl\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 9)) {
-                        _ = printf("\"if\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 10)) {
-                        _ = printf("\"if_let\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 11)) {
-                        _ = printf("\"while\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 12)) {
-                        _ = printf("\"for\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 13)) {
-                        _ = printf("\"return\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 14)) {
-                        _ = printf("\"print\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 15)) {
-                        _ = printf("\"expr\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 16)) {
-                        _ = printf("\"defer\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 17)) {
-                        _ = printf("\"unsafe\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 18)) {
-                        _ = printf("\"extern\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 19)) {
-                        _ = printf("\"import\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 20)) {
-                        _ = printf("\"cimport\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 21)) {
-                        _ = printf("\"match\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 22)) {
-                        _ = printf("\"error_decl\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 23)) {
-                        _ = printf("\"break\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, sk))) == @as(c_longlong, 24)) {
-                        _ = printf("\"continue\"");
-                    } else {
-                        _ = printf("\"unknown\"");
-                    }
-                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.func_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                        _ = printf(",\"name\":\"%s\"", stmt.func_name);
-                    }
-                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.struct_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                        _ = printf(",\"name\":\"%s\"", stmt.struct_name);
-                    }
-                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.enum_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                        _ = printf(",\"name\":\"%s\"", stmt.enum_name);
-                    }
-                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.vardecl_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                        _ = printf(",\"var\":\"%s\"", stmt.vardecl_name);
-                    }
-                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.vardecl_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                        _ = printf(",\"type\":\"%s\"", stmt.vardecl_type);
-                    }
-                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(stmt.func_return_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                        _ = printf(",\"return_type\":\"%s\"", stmt.func_return_type);
-                    }
-                    _ = printf("}");
-                    si = si + @as(c_longlong, 1);
-                }
-                _ = printf("],\n\"exprs\":[\n");
-                var ei: i64 = 0;
-                _ = &ei;
-                var expr_count: i64 = ArrayList_ExprNode_length(graph_parser.expr_pool);
-                _ = &expr_count;
-                while (ei < expr_count) {
-                    var expr: ExprNode = ArrayList_ExprNode_get(graph_parser.expr_pool, ei);
-                    _ = &expr;
-                    if (ei > @as(c_longlong, 0)) {
-                        _ = printf(",\n");
-                    }
-                    _ = printf("{\"id\":%lld,\"kind\":", ei);
-                    var ek: ExprKind = expr.kind;
-                    _ = &ek;
-                    if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 0)) {
-                        _ = printf("\"none\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 1)) {
-                        _ = printf("\"literal\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 2)) {
-                        _ = printf("\"str_interp\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 3)) {
-                        _ = printf("\"identifier\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 4)) {
-                        _ = printf("\"binary_op\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 5)) {
-                        _ = printf("\"unary_op\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 6)) {
-                        _ = printf("\"func_call\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 7)) {
-                        _ = printf("\"struct_init\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 8)) {
-                        _ = printf("\"field_access\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 9)) {
-                        _ = printf("\"method_call\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 10)) {
-                        _ = printf("\"index\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 11)) {
-                        _ = printf("\"check\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 12)) {
-                        _ = printf("\"slice\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 13)) {
-                        _ = printf("\"range\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 14)) {
-                        _ = printf("\"array\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 15)) {
-                        _ = printf("\"tuple\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 16)) {
-                        _ = printf("\"borrow\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 17)) {
-                        _ = printf("\"deref\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 18)) {
-                        _ = printf("\"try\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 19)) {
-                        _ = printf("\"catch\"");
-                    } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, ek))) == @as(c_longlong, 20)) {
-                        _ = printf("\"asm\"");
-                    } else {
-                        _ = printf("\"unknown\"");
-                    }
-                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.ident_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                        _ = printf(",\"name\":\"%s\"", expr.ident_name);
-                    }
-                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.func_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                        _ = printf(",\"func\":\"%s\"", expr.func_name);
-                    }
-                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.struct_name)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                        _ = printf(",\"struct\":\"%s\"", expr.struct_name);
-                    }
-                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.inferred_type)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                        _ = printf(",\"type\":\"%s\"", expr.inferred_type);
-                    }
-                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.binop_op)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                        _ = printf(",\"op\":\"%s\"", expr.binop_op);
-                    }
-                    if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(expr.unop_op)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                        _ = printf(",\"op\":\"%s\"", expr.unop_op);
-                    }
-                    _ = printf("}");
-                    ei = ei + @as(c_longlong, 1);
-                }
-                _ = printf("]}\n");
-            } else if (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(graph_sub, "query")))) == @as(c_longlong, 0)) {
-                if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(graph_fn)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
-                    var found: bool = @as(c_int, 0) != 0;
-                    _ = &found;
-                    var si2: i64 = 0;
-                    _ = &si2;
-                    var stmt_count2: i64 = ArrayList_StmtNode_length(graph_parser.stmt_pool);
-                    _ = &stmt_count2;
-                    while (si2 < stmt_count2) {
-                        var stmt2: StmtNode = ArrayList_StmtNode_get(graph_parser.stmt_pool, si2);
-                        _ = &stmt2;
-                        if ((@as(c_longlong, @bitCast(@as(c_ulonglong, stmt2.kind))) == @as(c_longlong, 4)) and (@as(c_longlong, @bitCast(@as(c_longlong, strcmp(stmt2.func_name, graph_fn)))) == @as(c_longlong, 0))) {
-                            _ = printf("function: %s\n", stmt2.func_name);
-                            _ = printf("  return: %s\n", stmt2.func_return_type);
-                            _ = printf("  params: ");
-                            var param_count: i64 = ArrayList_Param_length(&stmt2.func_params);
-                            _ = &param_count;
-                            var pi: i64 = 0;
-                            _ = &pi;
-                            while (pi < param_count) {
-                                var p: Param = ArrayList_Param_get(&stmt2.func_params, pi);
-                                _ = &p;
-                                _ = printf("%s: %s", p.name, p.ptype);
-                                pi = pi + @as(c_longlong, 1);
-                                if (pi < param_count) {
-                                    _ = printf(", ");
-                                }
-                            }
-                            _ = printf("\n");
-                            found = @as(c_int, 1) != 0;
-                        }
-                        si2 = si2 + @as(c_longlong, 1);
-                    }
-                    if (!found) {
-                        _ = printf("function '%s' not found\n", graph_fn);
-                    }
-                } else {
-                    var root: StmtNode = ArrayList_StmtNode_get(graph_parser.stmt_pool, graph_program_idx);
-                    _ = &root;
-                    _ = printf("file: %s\n", graph_file);
-                    var si3: i64 = 0;
-                    _ = &si3;
-                    while (si3 < ArrayList_Int_length(&root.block_stmts)) {
-                        var idx: i64 = ArrayList_Int_get(&root.block_stmts, si3);
-                        _ = &idx;
-                        var stmt3: StmtNode = ArrayList_StmtNode_get(graph_parser.stmt_pool, idx);
-                        _ = &stmt3;
-                        if (@as(c_longlong, @bitCast(@as(c_ulonglong, stmt3.kind))) == @as(c_longlong, 4)) {
-                            _ = printf("  fn %s(%s) %s\n", stmt3.func_name, "", stmt3.func_return_type);
-                        } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, stmt3.kind))) == @as(c_longlong, 5)) {
-                            _ = printf("  struct %s\n", stmt3.struct_name);
-                        } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, stmt3.kind))) == @as(c_longlong, 8)) {
-                            _ = printf("  enum %s\n", stmt3.enum_name);
-                        } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, stmt3.kind))) == @as(c_longlong, 22)) {
-                            _ = printf("  error %s\n", stmt3.error_name);
-                        } else if (@as(c_longlong, @bitCast(@as(c_ulonglong, stmt3.kind))) == @as(c_longlong, 2)) {
-                            _ = printf("  var %s: %s\n", stmt3.vardecl_name, stmt3.vardecl_type);
-                        }
-                        si3 = si3 + @as(c_longlong, 1);
-                    }
-                }
-            } else {
-                _ = printf("Error: Unknown graph subcommand '%s'\n", graph_sub);
-                _ = printf("Supported: export, query\n");
-                return 1;
-            }
-        }
-        return 0;
     }
     var input_file: [*c]const u8 = "";
     _ = &input_file;
@@ -16217,25 +17972,22 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     _ = &exe_include_flag;
     var exe_dir: [*c]const u8 = "";
     _ = &exe_dir;
-    var runtime_path: [*c]const u8 = "";
-    _ = &runtime_path;
     {
         var buf: [*c]u8 = KaiAllocator_alloc(&allocator, @as(c_longlong, 1024), @as(c_longlong, 1));
         _ = &buf;
         if (get_exe_dir(buf, @as(c_longlong, 1024)) == @as(c_longlong, 0)) {
             exe_dir = @as([*c]const u8, @ptrCast(@alignCast(buf)));
-            exe_include_flag = _kai_str_concat("-I", exe_dir);
-            runtime_path = _kai_str_concat(exe_dir, "/kai_runtime.c");
+            exe_include_flag = __kai_std_str_concat_alloc("-I", exe_dir);
         }
     }
-    var base: [*c]const u8 = get_base_name(&allocator, input_file);
+    var base: [*c]const u8 = get_base_name(input_file);
     _ = &base;
     var bin_name: [*c]const u8 = base;
     _ = &bin_name;
     if (@as(c_ulonglong, @bitCast(@as(c_ulonglong, strlen(output_bin)))) > @as(c_ulonglong, @bitCast(@as(c_longlong, 0)))) {
         bin_name = output_bin;
     }
-    var c_file: [*c]const u8 = _kai_str_concat(base, ".c");
+    var c_file: [*c]const u8 = __kai_std_str_concat_alloc(base, ".c");
     _ = &c_file;
     var source_res: Result_Str_IoError = read_to_string(&allocator, input_file);
     _ = &source_res;
@@ -16247,7 +17999,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     }
     var source: [*c]const u8 = source_res.value;
     _ = &source;
-    var lexer: Lexer = Lexer_init(&allocator, source);
+    var lexer: Lexer = Lexer_init(&allocator, source, input_file);
     _ = &lexer;
     Lexer_lex(&lexer);
     if (lexer.has_error) {
@@ -16256,7 +18008,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
         }
         return 2;
     }
-    var parser: Parser = Parser_init(&allocator, lexer.tokens);
+    var parser: Parser = Parser_init(&allocator, input_file, lexer.tokens);
     _ = &parser;
     var program_idx: i64 = Parser_parse_program(&parser);
     _ = &program_idx;
@@ -16294,7 +18046,7 @@ pub export fn main(arg_argc: c_int, arg_argv: [*c][*c]u8) c_int {
     if (emit_c_only) {
         return 0;
     }
-    var cmd: [*c]const u8 = _kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat(_kai_str_concat("clang ", exe_include_flag), " "), opt_level), " "), c_file), " -o "), bin_name);
+    var cmd: [*c]const u8 = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("clang ", exe_include_flag), " "), opt_level), " "), c_file), " -o "), bin_name);
     _ = &cmd;
     {
         return system(@as([*c]u8, @ptrCast(@constCast(@volatileCast(cmd)))));
@@ -22453,6 +24205,9 @@ pub const __strcat_chk_func = @compileError("unable to translate C expr: expecte
 // /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/secure/_string.h:181:9
 pub const __strncat_chk_func = @compileError("unable to translate C expr: expected ')' instead got '...'");
 // /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/secure/_string.h:187:9
+pub const MAP_FAILED = @import("std").zig.c_translation.cast(?*anyopaque, -@as(c_int, 1));
+pub const MAP_PRIVATE = @as(c_int, 2);
+pub const MAP_ANONYMOUS = @as(c_int, 0x1000);
 pub const KAI_FS_H = "";
 pub const _SYS_STAT_H_ = "";
 pub const _STRUCT_TIMESPEC = struct_timespec;
@@ -23101,4 +24856,3 @@ pub const _telldir = struct__telldir;
 pub const accessx_descriptor = struct_accessx_descriptor;
 pub const fssearchblock = struct_fssearchblock;
 pub const searchstate = struct_searchstate;
-comptime { _ = @import("windows_compat.zig"); }

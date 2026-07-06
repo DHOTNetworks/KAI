@@ -36,6 +36,7 @@ enum TokenType {
     case AS
     case SIZEOF
     case DEFER
+    case ERRDEFER
     case NONE
     case FN
     case TRY

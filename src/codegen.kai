@@ -2050,6 +2050,7 @@ fn is_standard_c_func(self, name: Str) -> Bool {
         if is_kai_llvm { return true }
     }
 
+    if name == "atoll" { return true }
     if name == "malloc" { return true }
     if name == "free" { return true }
     if name == "realloc" { return true }
@@ -2838,12 +2839,12 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
         }
 
         if has_source {
-            var lexer = Lexer(self.allocator, source)
+            var lexer = Lexer(self.allocator, source, "")
             lexer.lex()
             if lexer.has_error {
                 return ""
             }
-            var parser = Parser.init_with_pools(self.allocator, lexer.tokens, self.expr_pool, self.stmt_pool, self.pattern_pool)
+            var parser = Parser.init_with_pools(self.allocator, "", lexer.tokens, self.expr_pool, self.stmt_pool, self.pattern_pool)
             let program_idx = parser.parse_program()
             if program_idx >= 0 {
                 self.build_func_types()
@@ -3275,6 +3276,23 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     final_code = final_code + "static inline int64_t _kai_munmap(char* addr, int64_t length) {\n"
     final_code = final_code + "    return munmap(addr, (unsigned long long)length);\n"
     final_code = final_code + "}\n\n"
+    
+    final_code = final_code + "void __kai_print_int(int64_t v) {\n"
+    final_code = final_code + "    printf(\"%lld\\n\", (long long)(v));\n"
+    final_code = final_code + "}\n\n"
+    
+    final_code = final_code + "void __kai_print_float(double v) {\n"
+    final_code = final_code + "    printf(\"%f\\n\", (double)(v));\n"
+    final_code = final_code + "}\n\n"
+    
+    final_code = final_code + "extern void __kai_panic(const char* msg);\n"
+    final_code = final_code + "#ifndef __KAI_NO_PANIC\n"
+    final_code = final_code + "void __kai_panic(const char* msg) {\n"
+    final_code = final_code + "    fprintf(stderr, \"KAI PANIC: %s\\n\", msg);\n"
+    final_code = final_code + "    fflush(stderr);\n"
+    final_code = final_code + "    abort();\n"
+    final_code = final_code + "}\n"
+    final_code = final_code + "#endif\n\n"
     
     final_code = final_code + self.struct_decls.to_str() + "\n"
     final_code = final_code + self.func_decls.to_str() + "\n"

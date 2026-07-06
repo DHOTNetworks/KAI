@@ -81,7 +81,7 @@ fn print_diag_json(code: Str, message: Str, path: Str, line: Int, column: Int, l
     print_json_string(message)
     printf("\",\"path\":\"")
     print_json_string(path)
-    printf("\",\"line\":%lld,\"column\":%lld,\"length\":%lld", line, column, len_val)
+    printf("\",\"line\":%ld,\"column\":%ld,\"length\":%ld", line, column, len_val)
     printf(",\"expected\":\"")
     print_json_string(expected)
     printf("\",\"actual\":\"")
@@ -132,11 +132,11 @@ fn print_plan(path: Str, json_mode: Bool,
             printf("No diagnostics found in '%s'\n", path)
             return
         }
-        printf("Found %lld diagnostic(s) in '%s':\n", count, path)
+        printf("Found %ld diagnostic(s) in '%s':\n", count, path)
         var i = 0
         while i < count {
             let cd = codes.get(i)
-            printf("%s:%lld:%lld %s: %s\n", path, dlines.get(i), dcolumns.get(i), cd, messages.get(i))
+            printf("%s:%ld:%ld %s: %s\n", path, dlines.get(i), dcolumns.get(i), cd, messages.get(i))
             printf("  expected: %s\n", expected.get(i))
             printf("  actual: %s\n", actual.get(i))
             printf("  help: %s\n", helpv.get(i))
@@ -207,10 +207,10 @@ fn print_patch(path: Str, json_mode: Bool, apply: Bool, applied: Bool,
             }
         }
         if count > patch_count {
-            printf("(%lld issue(s) without auto-fix — use kai patch to address them)\n", count - patch_count)
+            printf("(%ld issue(s) without auto-fix — use kai patch to address them)\n", count - patch_count)
         }
         if apply {
-            if applied { printf("Applied %lld fix(es) to '%s'\n", patch_count, path) }
+            if applied { printf("Applied %ld fix(es) to '%s'\n", patch_count, path) }
             else { printf("No behavior-preserving edits to apply in '%s'\n", path) }
         }
         return
@@ -259,7 +259,7 @@ fn print_patch(path: Str, json_mode: Bool, apply: Bool, applied: Bool,
         if i2 > 0 { printf(",") }
         printf("\n    {\"path\":\"")
         print_json_string(path)
-        printf("\",\"line\":%lld,\"old\":\"", patch_lines.get(i2))
+        printf("\",\"line\":%ld,\"old\":\"", patch_lines.get(i2))
         print_json_string(patch_old.get(i2))
         printf("\",\"new\":\"")
         print_json_string(patch_new.get(i2))
@@ -289,10 +289,10 @@ fn run_fix(fix_mode: Str, fix_file: Str, json: Bool) -> Int {
 
     // Phase 1: Run type checker in text mode for additional diagnostics
     if !json {
-        var fix_lexer = Lexer(&fix_alloc, source)
+        var fix_lexer = Lexer(&fix_alloc, source, fix_file)
         fix_lexer.lex()
         if !fix_lexer.has_error {
-            var fix_parser = Parser(&fix_alloc, fix_lexer.tokens)
+            var fix_parser = Parser(&fix_alloc, fix_file, fix_lexer.tokens)
             let prog_idx = fix_parser.parse_program()
             if prog_idx >= 0 {
                 var chk = TypeChecker(&fix_alloc, fix_parser.stmt_pool, fix_parser.expr_pool, fix_parser.pattern_pool, fix_file)

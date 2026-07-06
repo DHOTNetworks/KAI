@@ -1,0 +1,55 @@
+extern fn printf(fmt: Str) -> Int
+extern fn __kai_print_int(i: Int) -> Void
+
+error FileError {
+    case not_found
+    case permission_denied
+    case io_error
+}
+
+fn may_fail(flag: Bool) -> Int!FileError {
+    if flag {
+        return 42
+    }
+    return FileError.not_found
+}
+
+fn try_propagate(flag: Bool) -> Int!FileError {
+    let x = try may_fail(flag)
+    return x + 1
+}
+
+fn run_tests() -> Int {
+    printf("=== try/catch tests ===\n")
+    
+    // Test 1: try with success (use catch to unwrap)
+    let ok_val = try_propagate(true) catch 0
+    printf("try success: ")
+    __kai_print_int(ok_val)
+    printf("NEWLINE\n")
+    
+    // Test 2: catch with expression fallback on error
+    let caught2 = may_fail(false) catch 100
+    printf("catch expr: ")
+    __kai_print_int(caught2)
+    printf("NEWLINE\n")
+    
+    // Test 3: propagate and catch with expression
+    let result = try_propagate(false) catch -1
+    printf("propagated result: ")
+    __kai_print_int(result)
+    printf("NEWLINE\n")
+    
+    // Test 4: success path through try
+    let success = may_fail(true) catch 0
+    printf("success: ")
+    __kai_print_int(success)
+    printf("NEWLINE\n")
+    
+    printf("=== all try/catch tests passed ===\n")
+    return 0
+}
+
+fn main() -> Void {
+    let r = run_tests()
+}

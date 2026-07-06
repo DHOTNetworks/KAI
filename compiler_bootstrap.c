@@ -3,6 +3,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef MAP_FAILED
+#define MAP_FAILED ((void*)-1)
+#endif
+#ifndef MAP_PRIVATE
+#define MAP_PRIVATE 2
+#endif
+#ifndef MAP_ANONYMOUS
+#ifdef __APPLE__
+#define MAP_ANONYMOUS 0x1000
+#else
+#define MAP_ANONYMOUS 0x20
+#endif
+#endif
+extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);
+extern int munmap(void* addr, unsigned long long length);
 #ifndef NO_GET_EXE_DIR
 #if defined(_WIN32)
 #include <windows.h>
@@ -78,22 +93,37 @@ static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t 
 
 /* C FFI Imports */
 #include "std/fs/fs.h"
+
 static __thread void* _kai_current_allocator = NULL;
 
 static inline void _kai_set_current_allocator(void* allocator) {
     _kai_current_allocator = allocator;
 }
 
-extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);
-extern int munmap(void* addr, unsigned long long length);
+void __kai_print_int(int64_t v) {
+    printf("%lld\n", (long long)(v));
+}
+
+void __kai_print_float(double v) {
+    printf("%f\n", (double)(v));
+}
 
 static inline char* _kai_mmap(char* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {
-    return (char*)mmap(addr, (unsigned long long)length, prot, flags, fd, offset);
+    return (char*)mmap(addr, length, prot, MAP_PRIVATE | MAP_ANONYMOUS, fd, offset);
 }
 
 static inline int64_t _kai_munmap(char* addr, int64_t length) {
-    return munmap(addr, (unsigned long long)length);
+    return munmap(addr, length);
 }
+
+extern void __kai_panic(const char* msg);
+#ifndef __KAI_NO_PANIC
+void __kai_panic(const char* msg) {
+    fprintf(stderr, "KAI PANIC: %s\n", msg);
+    fflush(stderr);
+    abort();
+}
+#endif
 
 /* trait Allocator: alloc, realloc, free, deinit */
 typedef struct CAlloc CAlloc;
@@ -175,6 +205,7 @@ typedef enum {
     TokenType_AS,
     TokenType_SIZEOF,
     TokenType_DEFER,
+    TokenType_ERRDEFER,
     TokenType_NONE,
     TokenType_FN,
     TokenType_TRY,
@@ -283,6 +314,7 @@ typedef struct Lexer Lexer;
 struct Lexer {
     KaiAllocator* allocator;
     const char* source;
+    const char* source_file;
     int64_t source_len;
     int64_t cursor;
     int64_t line;
@@ -422,6 +454,8 @@ struct ArrayList_AsmInput {
 typedef struct ExprNode ExprNode;
 struct ExprNode {
     ExprKind kind;
+    int64_t line;
+    int64_t col;
     const char* inferred_type;
     TokenValue lit_value;
     const char* lit_vkind;
@@ -486,6 +520,7 @@ typedef enum {
     StmtKind_sk_print,
     StmtKind_sk_expr,
     StmtKind_sk_defer,
+    StmtKind_sk_errdefer,
     StmtKind_sk_unsafe,
     StmtKind_sk_extern,
     StmtKind_sk_import,
@@ -526,6 +561,8 @@ struct ArrayList_MatchCase {
 typedef struct StmtNode StmtNode;
 struct StmtNode {
     StmtKind kind;
+    int64_t line;
+    int64_t col;
     ArrayList_Int block_stmts;
     const char* vardecl_name;
     const char* vardecl_type;
@@ -575,6 +612,7 @@ struct StmtNode {
     int64_t print_value;
     int64_t expr_stmt;
     int64_t defer_body;
+    int64_t errdefer_body;
     int64_t unsafe_body;
     const char* extern_name;
     ArrayList_Param extern_params;
@@ -614,6 +652,7 @@ struct ArrayList_PatternNode {
 typedef struct Parser Parser;
 struct Parser {
     KaiAllocator* allocator;
+    const char* source_file;
     ArrayList_Token* tokens;
     int64_t cursor;
     bool pending_gt;
@@ -683,6 +722,26 @@ struct TypeChecker {
     const char* current_func_ret_type;
     const char* source_file;
     bool has_any_import;
+    int64_t loop_depth;
+};
+typedef struct CCodeBuilder CCodeBuilder;
+struct CCodeBuilder {
+    ArrayList_Str output;
+    int64_t indent_level;
+    ArrayList_Int block_stack;
+    int64_t temp_counter;
+    bool in_function;
+    const char* error_label;
+    ArrayList_Str pending_errdefers;
+    ArrayList_Str pending_defers;
+};
+typedef struct CCodeStyle CCodeStyle;
+struct CCodeStyle {
+    int64_t indent_size;
+    const char* brace_style;
+    bool separate_functions;
+    int64_t label_dedent;
+    bool always_braces;
 };
 typedef struct StrMapEntry StrMapEntry;
 struct StrMapEntry {
@@ -705,6 +764,7 @@ struct Codegen {
     StringBuilder output;
     StringBuilder struct_decls;
     StringBuilder func_decls;
+    CCodeBuilder c;
     const char* cur_func_name;
     const char* cur_return_type;
     bool cur_method_is_init;
@@ -723,6 +783,8 @@ struct Codegen {
     ArrayList_Str result_definitions;
     ArrayList_Int defer_stack;
     ArrayList_Int defer_depths;
+    ArrayList_Int errdefer_stack;
+    ArrayList_Int errdefer_depths;
     ArrayList_StrMapEntry func_param_types;
 };
 typedef struct ErrorInfo ErrorInfo;
@@ -815,7 +877,7 @@ void ArrayList_Int_set(ArrayList_Int* self, int64_t index, int64_t item);
 int64_t ArrayList_Int_pop(ArrayList_Int* self);
 int64_t ArrayList_Int_length(ArrayList_Int* self);
 void ArrayList_Int_deinit(ArrayList_Int* self);
-Lexer Lexer_init(KaiAllocator* allocator, const char* source);
+Lexer Lexer_init(KaiAllocator* allocator, const char* source, const char* source_file);
 char Lexer_peek(Lexer* self, int64_t offset);
 char Lexer_advance(Lexer* self);
 void Lexer_emit(Lexer* self, TokenType ttype, TokenValue value);
@@ -829,6 +891,8 @@ void Lexer_lex_string(Lexer* self);
 void Lexer_lex_char(Lexer* self);
 int64_t Lexer_compute_indent(Lexer* self);
 void Lexer_lex(Lexer* self);
+extern void __kai_print_int(int64_t i);
+extern void __kai_print_float(double f);
 void print_separator(void);
 void printi(int64_t i);
 void printff(double f);
@@ -915,8 +979,8 @@ ArrayList_MatchCase empty_matchcase_array(void);
 ArrayList_StrInterpPart empty_strinterp_array(void);
 ArrayList_AsmOutput empty_asmoutput_array(void);
 ArrayList_AsmInput empty_asminput_array(void);
-ExprNode new_expr_node(ExprKind kind);
-StmtNode new_stmt_node(StmtKind kind);
+ExprNode new_expr_node(ExprKind kind, int64_t line, int64_t col);
+StmtNode new_stmt_node(StmtKind kind, int64_t line, int64_t col);
 PatternNode new_pattern_node(PatternKind kind);
 const char* tv_get_str(TokenValue val);
 int64_t token_precedence(TokenType ttype);
@@ -943,8 +1007,8 @@ void ArrayList_PatternNode_set(ArrayList_PatternNode* self, int64_t index, Patte
 PatternNode ArrayList_PatternNode_pop(ArrayList_PatternNode* self);
 int64_t ArrayList_PatternNode_length(ArrayList_PatternNode* self);
 void ArrayList_PatternNode_deinit(ArrayList_PatternNode* self);
-Parser Parser_init_with_pools(KaiAllocator* allocator, ArrayList_Token* tokens, ArrayList_ExprNode* expr_pool, ArrayList_StmtNode* stmt_pool, ArrayList_PatternNode* pattern_pool);
-Parser Parser_init(KaiAllocator* allocator, ArrayList_Token* tokens);
+Parser Parser_init_with_pools(KaiAllocator* allocator, const char* source_file, ArrayList_Token* tokens, ArrayList_ExprNode* expr_pool, ArrayList_StmtNode* stmt_pool, ArrayList_PatternNode* pattern_pool);
+Parser Parser_init(KaiAllocator* allocator, const char* source_file, ArrayList_Token* tokens);
 Token Parser_peek(Parser* self, int64_t offset);
 Token Parser_advance(Parser* self);
 bool Parser_match_token(Parser* self, TokenType ttype);
@@ -992,6 +1056,7 @@ int64_t Parser_st_for(Parser* self, const char* var_name, int64_t start, int64_t
 int64_t Parser_st_return(Parser* self, int64_t value);
 int64_t Parser_st_expr(Parser* self, int64_t expr);
 int64_t Parser_st_defer(Parser* self, int64_t body);
+int64_t Parser_st_errdefer(Parser* self, int64_t body);
 int64_t Parser_st_break(Parser* self);
 int64_t Parser_st_continue(Parser* self);
 int64_t Parser_st_import(Parser* self, ArrayList_Str path, const char* alias);
@@ -1020,6 +1085,7 @@ int64_t Parser_parse_return_stmt(Parser* self);
 int64_t Parser_parse_break_stmt(Parser* self);
 int64_t Parser_parse_continue_stmt(Parser* self);
 int64_t Parser_parse_defer_stmt(Parser* self);
+int64_t Parser_parse_errdefer_stmt(Parser* self);
 int64_t Parser_parse_expr_or_assignment_stmt(Parser* self);
 int64_t Parser_parse_block(Parser* self);
 int64_t Parser_parse_import_stmt(Parser* self);
@@ -1055,6 +1121,7 @@ StructInfo ArrayList_StructInfo_pop(ArrayList_StructInfo* self);
 int64_t ArrayList_StructInfo_length(ArrayList_StructInfo* self);
 void ArrayList_StructInfo_deinit(ArrayList_StructInfo* self);
 TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, const char* source_file);
+void TypeChecker_err(TypeChecker* self, const char* code, const char* msg, int64_t line, int64_t col);
 void TypeChecker_enter_scope(TypeChecker* self);
 void TypeChecker_exit_scope(TypeChecker* self);
 void TypeChecker_define_symbol(TypeChecker* self, const char* name, const char* type_name, bool is_mutable, const char* kind);
@@ -1063,6 +1130,10 @@ void TypeChecker_detect_imports(TypeChecker* self, int64_t top_stmt_idx);
 void TypeChecker_register_struct_info(TypeChecker* self, int64_t top_stmt_idx);
 bool TypeChecker_has_drop_method(TypeChecker* self, const char* type_name);
 void TypeChecker_collect_block_drops(TypeChecker* self, int64_t stmt_idx);
+bool TypeChecker_is_integer_type(TypeChecker* self, const char* type_name);
+bool TypeChecker_is_numeric_type(TypeChecker* self, const char* type_name);
+bool TypeChecker_fits_in_type(TypeChecker* self, int64_t val, const char* type_name);
+bool TypeChecker_is_integer_literal(TypeChecker* self, int64_t expr_idx);
 bool TypeChecker_is_copy_type(TypeChecker* self, const char* type_name);
 PtrRefResult TypeChecker_parse_ptr_ref(TypeChecker* self, const char* type_str);
 bool TypeChecker_types_compatible(TypeChecker* self, const char* target, const char* source);
@@ -1080,6 +1151,150 @@ void TypeChecker_check_method_call(TypeChecker* self, int64_t expr_idx);
 void TypeChecker_check_return_stmt(TypeChecker* self, int64_t stmt_idx);
 void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx);
 void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx);
+CCodeBuilder CCodeBuilder_init(KaiAllocator* allocator);
+void CCodeBuilder_indent(CCodeBuilder* self);
+void CCodeBuilder_dedent(CCodeBuilder* self);
+const char* CCodeBuilder_get_indent(CCodeBuilder* self);
+void CCodeBuilder_emit(CCodeBuilder* self, const char* content);
+void CCodeBuilder_emit_blank(CCodeBuilder* self);
+void CCodeBuilder_emit_comment(CCodeBuilder* self, const char* text);
+void CCodeBuilder_emit_section(CCodeBuilder* self, const char* name);
+void CCodeBuilder_emit_raw(CCodeBuilder* self, const char* code);
+void CCodeBuilder_begin_block(CCodeBuilder* self);
+void CCodeBuilder_begin_inline_block(CCodeBuilder* self);
+void CCodeBuilder_end_block(CCodeBuilder* self);
+void CCodeBuilder_end_block_semi(CCodeBuilder* self);
+void CCodeBuilder_emit_return(CCodeBuilder* self, const char* expr);
+void CCodeBuilder_emit_var_decl(CCodeBuilder* self, const char* type_name, const char* name, const char* init);
+void CCodeBuilder_emit_assign(CCodeBuilder* self, const char* lhs, const char* op, const char* rhs);
+void CCodeBuilder_emit_expr_stmt(CCodeBuilder* self, const char* expr_code);
+void CCodeBuilder_emit_stmt_raw(CCodeBuilder* self, const char* stmt);
+void CCodeBuilder_emit_if(CCodeBuilder* self, const char* cond);
+void CCodeBuilder_emit_else(CCodeBuilder* self);
+void CCodeBuilder_emit_else_if(CCodeBuilder* self, const char* cond);
+void CCodeBuilder_emit_while(CCodeBuilder* self, const char* cond);
+void CCodeBuilder_emit_for(CCodeBuilder* self, const char* init, const char* cond, const char* update);
+void CCodeBuilder_emit_do(CCodeBuilder* self);
+void CCodeBuilder_emit_do_while(CCodeBuilder* self, const char* cond);
+void CCodeBuilder_emit_break(CCodeBuilder* self);
+void CCodeBuilder_emit_continue(CCodeBuilder* self);
+void CCodeBuilder_emit_switch(CCodeBuilder* self, const char* expr);
+void CCodeBuilder_emit_case(CCodeBuilder* self, const char* value);
+void CCodeBuilder_emit_default(CCodeBuilder* self);
+void CCodeBuilder_emit_goto(CCodeBuilder* self, const char* label);
+void CCodeBuilder_emit_label(CCodeBuilder* self, const char* label);
+void CCodeBuilder_emit_func_proto(CCodeBuilder* self, const char* ret_type, const char* name, const char* params);
+void CCodeBuilder_begin_func_def(CCodeBuilder* self, const char* ret_type, const char* name, const char* params);
+void CCodeBuilder_begin_error_fn(CCodeBuilder* self);
+void CCodeBuilder_push_errdefer(CCodeBuilder* self, const char* body);
+void CCodeBuilder_push_defer(CCodeBuilder* self, const char* body);
+void CCodeBuilder_emit_cleanup_section(CCodeBuilder* self, const char* return_expr);
+void CCodeBuilder_clear_pending(CCodeBuilder* self);
+const char* CCodeBuilder_make_compound_literal(CCodeBuilder* self, const char* type_name, const char* fields);
+const char* CCodeBuilder_make_result_success(CCodeBuilder* self, const char* result_type, const char* value);
+const char* CCodeBuilder_make_result_error(CCodeBuilder* self, const char* result_type, const char* tag);
+const char* CCodeBuilder_make_func_call(CCodeBuilder* self, const char* name, const char* args);
+const char* CCodeBuilder_make_field_access(CCodeBuilder* self, const char* expr, const char* field);
+const char* CCodeBuilder_make_ternary(CCodeBuilder* self, const char* cond, const char* then_val, const char* else_val);
+const char* CCodeBuilder_make_cast(CCodeBuilder* self, const char* type_name, const char* expr);
+const char* CCodeBuilder_make_binop(CCodeBuilder* self, const char* left, const char* op, const char* right);
+const char* CCodeBuilder_make_unop(CCodeBuilder* self, const char* op, const char* expr);
+const char* CCodeBuilder_make_index(CCodeBuilder* self, const char* base, const char* index);
+const char* CCodeBuilder_make_addr_of(CCodeBuilder* self, const char* expr);
+const char* CCodeBuilder_make_deref(CCodeBuilder* self, const char* expr);
+const char* CCodeBuilder_make_optional_some(CCodeBuilder* self, const char* opt_type, const char* value);
+const char* CCodeBuilder_make_zero_init(CCodeBuilder* self, const char* type_name);
+const char* CCodeBuilder_make_string_literal(CCodeBuilder* self, const char* s);
+void CCodeBuilder_emit_if_goto(CCodeBuilder* self, const char* cond, const char* label);
+void CCodeBuilder_emit_if_not_goto(CCodeBuilder* self, const char* cond, const char* label);
+void CCodeBuilder_emit_if_block(CCodeBuilder* self, const char* cond, const char* body);
+void CCodeBuilder_emit_tag_not_zero_goto(CCodeBuilder* self, const char* var_name, const char* label);
+void CCodeBuilder_emit_tag_is_zero_goto(CCodeBuilder* self, const char* var_name, const char* label);
+void CCodeBuilder_emit_null_goto(CCodeBuilder* self, const char* expr, const char* label);
+void CCodeBuilder_emit_has_value_goto(CCodeBuilder* self, const char* var_name, const char* label);
+void CCodeBuilder_emit_var_try(CCodeBuilder* self, const char* var_type, const char* var_name, const char* init_expr, const char* cleanup_body, const char* cleanup_label);
+const char* CCodeBuilder_emit_temp_var(CCodeBuilder* self, const char* var_type, const char* init);
+const char* CCodeBuilder_emit_temp_var_uninit(CCodeBuilder* self, const char* var_type);
+int64_t CCodeBuilder_scope_depth(CCodeBuilder* self);
+void CCodeBuilder_emit_include_angle(CCodeBuilder* self, const char* header);
+void CCodeBuilder_emit_include_quote(CCodeBuilder* self, const char* header);
+void CCodeBuilder_emit_define(CCodeBuilder* self, const char* name, const char* value);
+void CCodeBuilder_emit_ifdef(CCodeBuilder* self, const char* name);
+void CCodeBuilder_emit_ifndef(CCodeBuilder* self, const char* name);
+void CCodeBuilder_emit_else_preproc(CCodeBuilder* self);
+void CCodeBuilder_emit_endif(CCodeBuilder* self);
+void CCodeBuilder_emit_if_preproc(CCodeBuilder* self, const char* expr);
+void CCodeBuilder_emit_pragma(CCodeBuilder* self, const char* directive);
+void CCodeBuilder_emit_typedef(CCodeBuilder* self, const char* existing_type, const char* alias);
+void CCodeBuilder_emit_extern(CCodeBuilder* self, const char* type_name, const char* name);
+void CCodeBuilder_emit_static(CCodeBuilder* self, const char* type_name, const char* name, const char* init);
+void CCodeBuilder_emit_thread_local(CCodeBuilder* self, const char* type_name, const char* name, const char* init);
+void CCodeBuilder_begin_struct(CCodeBuilder* self, const char* name);
+void CCodeBuilder_emit_field(CCodeBuilder* self, const char* field_type, const char* field_name);
+void CCodeBuilder_begin_enum(CCodeBuilder* self, const char* name);
+void CCodeBuilder_emit_enum_variant(CCodeBuilder* self, const char* variant_name, const char* value);
+void CCodeBuilder_end_enum(CCodeBuilder* self, const char* name);
+void CCodeBuilder_emit_panic(CCodeBuilder* self, const char* msg);
+void CCodeBuilder_emit_bounds_check(CCodeBuilder* self, const char* index, const char* length, const char* var_name);
+void CCodeBuilder_emit_null_panic(CCodeBuilder* self, const char* expr, const char* context);
+void CCodeBuilder_emit_div_zero_check(CCodeBuilder* self, const char* divisor, const char* context);
+void CCodeBuilder_emit_assert(CCodeBuilder* self, const char* cond, const char* msg);
+void CCodeBuilder_emit_unreachable(CCodeBuilder* self);
+void CCodeBuilder_emit_discard(CCodeBuilder* self, const char* expr);
+void CCodeBuilder_emit_if_else(CCodeBuilder* self, const char* cond, const char* then_body, const char* else_body);
+void CCodeBuilder_emit_struct_typedef(CCodeBuilder* self, const char* type_name, const char* fields_str);
+void CCodeBuilder_emit_result_typedef(CCodeBuilder* self, const char* result_type, const char* value_type);
+void CCodeBuilder_emit_drop_proto(CCodeBuilder* self, const char* type_name);
+void CCodeBuilder_emit_drop_call(CCodeBuilder* self, const char* type_name, const char* var_name);
+const char* CCodeBuilder_emit_result_try(CCodeBuilder* self, const char* result_type, const char* init_expr, const char* cleanup_body, const char* err_var);
+const char* CCodeBuilder_emit_result_try_fn(CCodeBuilder* self, const char* result_type, const char* init_expr, const char* cleanup_body);
+void CCodeBuilder_emit_result_return_ok(CCodeBuilder* self, const char* result_type, const char* value);
+void CCodeBuilder_emit_result_return_err(CCodeBuilder* self, const char* result_type);
+void CCodeBuilder_emit_error_setup(CCodeBuilder* self);
+void CCodeBuilder_emit_error_cleanup(CCodeBuilder* self, const char* result_type);
+bool CCodeBuilder_is_in_function(CCodeBuilder* self);
+int64_t CCodeBuilder_current_indent(CCodeBuilder* self);
+int64_t CCodeBuilder_block_depth(CCodeBuilder* self);
+int64_t CCodeBuilder_temp_count(CCodeBuilder* self);
+int64_t CCodeBuilder_errdefer_count(CCodeBuilder* self);
+int64_t CCodeBuilder_defer_count(CCodeBuilder* self);
+void CCodeBuilder_assert_in_block(CCodeBuilder* self);
+void CCodeBuilder_assert_in_function(CCodeBuilder* self);
+int64_t CCodeBuilder_validate_closed(CCodeBuilder* self, bool report);
+void CCodeBuilder_reset(CCodeBuilder* self);
+void CCodeBuilder_drain_pending(CCodeBuilder* self);
+void CCodeBuilder_set_style(CCodeBuilder* self, CCodeStyle* style);
+void CCodeBuilder_begin_block_style(CCodeBuilder* self, const char* style);
+void CCodeBuilder_emit_if_style(CCodeBuilder* self, const char* cond, const char* style);
+void CCodeBuilder_emit_line_directive(CCodeBuilder* self, const char* file, int64_t line);
+void CCodeBuilder_emit_source_location(CCodeBuilder* self, const char* file, int64_t line, int64_t col);
+void CCodeBuilder_emit_source_location_if(CCodeBuilder* self, const char* file, int64_t line, int64_t col, bool force);
+void CCodeBuilder_emit_section_marker(CCodeBuilder* self, const char* label);
+void CCodeBuilder_emit_inline(CCodeBuilder* self);
+const char* CCodeBuilder_make_const(CCodeBuilder* self, const char* type_name);
+const char* CCodeBuilder_make_volatile(CCodeBuilder* self, const char* type_name);
+const char* CCodeBuilder_make_restrict_ptr(CCodeBuilder* self, const char* ptr_type);
+void CCodeBuilder_emit_alignas(CCodeBuilder* self, const char* alignment);
+void CCodeBuilder_emit_noreturn(CCodeBuilder* self);
+void CCodeBuilder_emit_static_qualifier(CCodeBuilder* self);
+void CCodeBuilder_emit_extern_qualifier(CCodeBuilder* self);
+const char* CCodeBuilder_make_func_attr(CCodeBuilder* self, const char* attr);
+const char* CCodeBuilder_make_format_attr(CCodeBuilder* self, int64_t format_arg, int64_t dots_arg);
+void CCodeBuilder_begin_header_guard(CCodeBuilder* self, const char* guard);
+void CCodeBuilder_end_header_guard(CCodeBuilder* self);
+void CCodeBuilder_begin_extern_c(CCodeBuilder* self);
+void CCodeBuilder_end_extern_c(CCodeBuilder* self);
+void CCodeBuilder_emit_forward_func(CCodeBuilder* self, const char* ret_type, const char* name, const char* params);
+void CCodeBuilder_emit_forward_struct(CCodeBuilder* self, const char* name);
+void CCodeBuilder_emit_forward_enum(CCodeBuilder* self, const char* name);
+void CCodeBuilder_emit_static_assert(CCodeBuilder* self, const char* cond, const char* msg);
+void CCodeBuilder_begin_disabled(CCodeBuilder* self);
+void CCodeBuilder_end_disabled(CCodeBuilder* self);
+void CCodeBuilder__emit_multiline_body(CCodeBuilder* self, const char* body);
+const char* CCodeBuilder_fresh_temp(CCodeBuilder* self, const char* prefix);
+const char* CCodeBuilder_get_output(CCodeBuilder* self);
+const char* CCodeBuilder_get_output_nl(CCodeBuilder* self);
+int64_t CCodeBuilder_line_count(CCodeBuilder* self);
 extern int64_t get_exe_dir(char* buf, int64_t max_len);
 extern char* strstr(const char* haystack, const char* needle);
 const char* __kai_std_str_concat_alloc(const char* left, const char* right);
@@ -1122,6 +1337,7 @@ bool Codegen_is_enum_type(Codegen* self, const char* type_name);
 bool Codegen_enum_has_payload(Codegen* self, const char* enum_name);
 const char* Codegen_escape_string(Codegen* self, const char* s);
 ArrayList_Str Codegen__collect_loop_drops(Codegen* self);
+ArrayList_Str Codegen__collect_error_cleanup(Codegen* self);
 const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx);
 ErrorInfo get_error_info(const char* code);
 extern bool kai_fs_exists(const char* path);
@@ -1142,7 +1358,6 @@ int64_t find_last(const char* path, char c);
 bool mkdir_p(const char* path);
 const char* str_replace(const char* s, const char* old, const char* new_val);
 const char* get_base_name(const char* path);
-extern int64_t atoll(const char* s);
 bool __kai_std_ascii_is_digit(char byte);
 bool __kai_std_ascii_is_lower(char byte);
 bool __kai_std_ascii_is_upper(char byte);
@@ -1154,7 +1369,6 @@ char __kai_std_ascii_to_lower(char byte);
 char __kai_std_ascii_to_upper(char byte);
 Optional_Char __kai_std_ascii_digit_value(char byte);
 Optional_Char __kai_std_ascii_hex_value(char byte);
-extern int64_t atoll(const char* s);
 int64_t diag_clamp_offset(const char* bytes, int64_t offset);
 int64_t diag_line_start(const char* bytes, int64_t offset);
 int64_t diag_line_end(const char* bytes, int64_t offset);
@@ -1677,6 +1891,8 @@ TokenType keyword_type(const char* ident) {
     return TokenType_SIZEOF;
 } else if (strcmp(ident, "defer") == 0) {
     return TokenType_DEFER;
+} else if (strcmp(ident, "errdefer") == 0) {
+    return TokenType_ERRDEFER;
 } else if (strcmp(ident, "none") == 0) {
     return TokenType_NONE;
 } else if (strcmp(ident, "try") == 0) {
@@ -1830,7 +2046,7 @@ void ArrayList_Int_deinit(ArrayList_Int* self) {
     KaiAllocator_free(self->allocator, (char*)(self->data));
 }
 }
-Lexer Lexer_init(KaiAllocator* allocator, const char* source) {
+Lexer Lexer_init(KaiAllocator* allocator, const char* source, const char* source_file) {
     Lexer self = (Lexer){0};
     self.allocator = allocator;
     self.source = source;
@@ -1840,6 +2056,7 @@ Lexer Lexer_init(KaiAllocator* allocator, const char* source) {
     self.paren_depth = 0LL;
     self.brace_depth = 0LL;
     self.has_error = false;
+    self.source_file = source_file;
     {
     self.tokens = (ArrayList_Token*)(KaiAllocator_alloc(allocator, sizeof(ArrayList_Token), 1LL));
     self.indent_stack = (ArrayList_Int*)(KaiAllocator_alloc(allocator, sizeof(ArrayList_Int), 1LL));
@@ -1877,7 +2094,7 @@ void Lexer_emit(Lexer* self, TokenType ttype, TokenValue value) {
     ArrayList_Token_push(self->tokens, (Token){ .tok_type = ttype, .value = value, .line = self->line, .column = self->column });
 }
 void Lexer_lex_error(Lexer* self, const char* msg) {
-    printf("error[E0100]: %s at line %lld, column %lld\n", msg, self->line, self->column);
+    printf("%s:%ld:%ld: error[E0100]: %s\n", self->source_file, self->line, self->column, msg);
     self->has_error = true;
 }
 void Lexer_skip_line_comment(Lexer* self) {
@@ -2262,7 +2479,7 @@ void Lexer_lex(Lexer* self) {
     Lexer_emit(self, TokenType_DOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "." } } });
 } else {
     (void)(Lexer_advance(self));
-    printf("error[E0100]: unexpected character '%c' at line %lld, column %lld\n", c, self->line, self->column);
+    printf("%s:%ld:%ld: error[E0100]: unexpected character '%c'\n", self->source_file, self->line, self->column, c);
     self->has_error = true;
 }
 }
@@ -2277,10 +2494,10 @@ void print_separator(void) {
     printf("---\n");
 }
 void printi(int64_t i) {
-    printf("%lld\n", i);
+    __kai_print_int(i);
 }
 void printff(double f) {
-    printf("%f\n", f);
+    __kai_print_float(f);
 }
 void prints(const char* s) {
     printf("%s\n", s);
@@ -2931,12 +3148,12 @@ ArrayList_AsmOutput empty_asmoutput_array(void) {
 ArrayList_AsmInput empty_asminput_array(void) {
     return (ArrayList_AsmInput){ .data = (AsmInput*)(unsigned long long)(0LL), .len = 0LL, .cap = 0LL, .allocator = (KaiAllocator*)(unsigned long long)(0LL) };
 }
-ExprNode new_expr_node(ExprKind kind) {
-    ExprNode node = (ExprNode){ .kind = kind, .inferred_type = "", .lit_value = (TokenValue){ .tag = TokenValue_tv_none_TAG }, .lit_vkind = "", .interp_parts = empty_strinterp_array(), .ident_name = "", .ident_type_args = empty_str_array(), .binop_op = "", .binop_left = (-1LL), .binop_right = (-1LL), .unop_op = "", .unop_operand = (-1LL), .func_name = "", .func_args = empty_int_array(), .func_type_args = empty_str_array(), .struct_name = "", .struct_fields = empty_fieldinit_array(), .field_expr = (-1LL), .field_name = "", .meth_expr = (-1LL), .meth_name = "", .meth_args = empty_int_array(), .idx_expr = (-1LL), .idx_index = (-1LL), .check_expr = (-1LL), .slice_expr = (-1LL), .slice_lower = (-1LL), .slice_upper = (-1LL), .slice_inclusive = false, .range_start = (-1LL), .range_end = (-1LL), .range_inclusive = false, .arr_elements = empty_int_array(), .tup_elements = empty_int_array(), .borrow_expr = (-1LL), .borrow_mut = false, .deref_expr = (-1LL), .try_expr = (-1LL), .catch_expr = (-1LL), .catch_var = "", .catch_fallback = (-1LL), .asm_code = "", .asm_is_volatile = false, .asm_outputs = empty_asmoutput_array(), .asm_inputs = empty_asminput_array(), .asm_clobbers = empty_str_array() };
+ExprNode new_expr_node(ExprKind kind, int64_t line, int64_t col) {
+    ExprNode node = (ExprNode){ .kind = kind, .line = line, .col = col, .inferred_type = "", .lit_value = (TokenValue){ .tag = TokenValue_tv_none_TAG }, .lit_vkind = "", .interp_parts = empty_strinterp_array(), .ident_name = "", .ident_type_args = empty_str_array(), .binop_op = "", .binop_left = (-1LL), .binop_right = (-1LL), .unop_op = "", .unop_operand = (-1LL), .func_name = "", .func_args = empty_int_array(), .func_type_args = empty_str_array(), .struct_name = "", .struct_fields = empty_fieldinit_array(), .field_expr = (-1LL), .field_name = "", .meth_expr = (-1LL), .meth_name = "", .meth_args = empty_int_array(), .idx_expr = (-1LL), .idx_index = (-1LL), .check_expr = (-1LL), .slice_expr = (-1LL), .slice_lower = (-1LL), .slice_upper = (-1LL), .slice_inclusive = false, .range_start = (-1LL), .range_end = (-1LL), .range_inclusive = false, .arr_elements = empty_int_array(), .tup_elements = empty_int_array(), .borrow_expr = (-1LL), .borrow_mut = false, .deref_expr = (-1LL), .try_expr = (-1LL), .catch_expr = (-1LL), .catch_var = "", .catch_fallback = (-1LL), .asm_code = "", .asm_is_volatile = false, .asm_outputs = empty_asmoutput_array(), .asm_inputs = empty_asminput_array(), .asm_clobbers = empty_str_array() };
     return node;
 }
-StmtNode new_stmt_node(StmtKind kind) {
-    StmtNode node = (StmtNode){ .kind = kind, .block_stmts = empty_int_array(), .vardecl_name = "", .vardecl_type = "", .vardecl_value = (-1LL), .vardecl_mut = false, .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .func_name = "", .func_params = empty_param_array(), .func_return_type = "", .func_body = (-1LL), .func_capability = "", .func_type_params = empty_str_array(), .func_public = false, .struct_name = "", .struct_fields = empty_structfield_array(), .struct_type_params = empty_str_array(), .struct_methods = empty_int_array(), .struct_trait_impls = empty_int_array(), .struct_public = false, .impl_struct_name = "", .impl_trait_name = "", .impl_methods = empty_int_array(), .trait_name = "", .trait_methods = empty_int_array(), .trait_public = false, .enum_name = "", .enum_variants = empty_variant_array(), .enum_type_params = empty_str_array(), .enum_public = false, .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .iflet_var = "", .iflet_expr = (-1LL), .iflet_then = (-1LL), .iflet_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_var = "", .for_start = (-1LL), .for_end = (-1LL), .for_inclusive = false, .for_body = (-1LL), .return_value = (-1LL), .print_value = (-1LL), .expr_stmt = (-1LL), .defer_body = (-1LL), .unsafe_body = (-1LL), .extern_name = "", .extern_params = empty_param_array(), .extern_return = "", .import_path = empty_str_array(), .import_alias = "", .cimport_header = "", .cimport_alias = "", .block_drop_vars = empty_dropvarentry_array(), .block_is_loop_body = false, .match_expr = (-1LL), .match_cases = empty_matchcase_array(), .error_name = "", .error_variants = empty_str_array() };
+StmtNode new_stmt_node(StmtKind kind, int64_t line, int64_t col) {
+    StmtNode node = (StmtNode){ .kind = kind, .line = line, .col = col, .block_stmts = empty_int_array(), .vardecl_name = "", .vardecl_type = "", .vardecl_value = (-1LL), .vardecl_mut = false, .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .func_name = "", .func_params = empty_param_array(), .func_return_type = "", .func_body = (-1LL), .func_capability = "", .func_type_params = empty_str_array(), .func_public = false, .struct_name = "", .struct_fields = empty_structfield_array(), .struct_type_params = empty_str_array(), .struct_methods = empty_int_array(), .struct_trait_impls = empty_int_array(), .struct_public = false, .impl_struct_name = "", .impl_trait_name = "", .impl_methods = empty_int_array(), .trait_name = "", .trait_methods = empty_int_array(), .trait_public = false, .enum_name = "", .enum_variants = empty_variant_array(), .enum_type_params = empty_str_array(), .enum_public = false, .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .iflet_var = "", .iflet_expr = (-1LL), .iflet_then = (-1LL), .iflet_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_var = "", .for_start = (-1LL), .for_end = (-1LL), .for_inclusive = false, .for_body = (-1LL), .return_value = (-1LL), .print_value = (-1LL), .expr_stmt = (-1LL), .defer_body = (-1LL), .errdefer_body = (-1LL), .unsafe_body = (-1LL), .extern_name = "", .extern_params = empty_param_array(), .extern_return = "", .import_path = empty_str_array(), .import_alias = "", .cimport_header = "", .cimport_alias = "", .block_drop_vars = empty_dropvarentry_array(), .block_is_loop_body = false, .match_expr = (-1LL), .match_cases = empty_matchcase_array(), .error_name = "", .error_variants = empty_str_array() };
     return node;
 }
 PatternNode new_pattern_node(PatternKind kind) {
@@ -3236,9 +3453,10 @@ void ArrayList_PatternNode_deinit(ArrayList_PatternNode* self) {
     KaiAllocator_free(self->allocator, (char*)(self->data));
 }
 }
-Parser Parser_init_with_pools(KaiAllocator* allocator, ArrayList_Token* tokens, ArrayList_ExprNode* expr_pool, ArrayList_StmtNode* stmt_pool, ArrayList_PatternNode* pattern_pool) {
+Parser Parser_init_with_pools(KaiAllocator* allocator, const char* source_file, ArrayList_Token* tokens, ArrayList_ExprNode* expr_pool, ArrayList_StmtNode* stmt_pool, ArrayList_PatternNode* pattern_pool) {
     Parser self = (Parser){0};
     self.allocator = allocator;
+    self.source_file = source_file;
     self.tokens = tokens;
     self.cursor = 0LL;
     self.pending_gt = false;
@@ -3249,9 +3467,10 @@ Parser Parser_init_with_pools(KaiAllocator* allocator, ArrayList_Token* tokens, 
     self.pattern_pool = pattern_pool;
     return self;
 }
-Parser Parser_init(KaiAllocator* allocator, ArrayList_Token* tokens) {
+Parser Parser_init(KaiAllocator* allocator, const char* source_file, ArrayList_Token* tokens) {
     Parser self = (Parser){0};
     self.allocator = allocator;
+    self.source_file = source_file;
     self.tokens = tokens;
     self.cursor = 0LL;
     self.pending_gt = false;
@@ -3315,7 +3534,7 @@ Token Parser_expect(Parser* self, TokenType ttype) {
     return Parser_advance(self);
 }
     {
-    printf("error[E0101]: expected token type %lld but found %lld at line %lld, column %lld\n", ((int64_t)(ttype)), ((int64_t)(tok.tok_type)), tok.line, tok.column);
+    printf("%s:%ld:%ld: error[E0101]: expected token type %ld but found %ld\n", self->source_file, tok.line, tok.column, ((int64_t)(ttype)), ((int64_t)(tok.tok_type)));
     exit(1LL);
 }
     return tok;
@@ -3370,27 +3589,27 @@ bool Parser_is_generic_instantiation(Parser* self) {
     return false;
 }
 int64_t Parser_ex_literal(Parser* self, TokenValue val, const char* vkind) {
-    ExprNode node = new_expr_node(ExprKind_ek_literal);
+    ExprNode node = new_expr_node(ExprKind_ek_literal, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.lit_value = val;
     node.lit_vkind = vkind;
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_ident(Parser* self, const char* name) {
-    ExprNode node = new_expr_node(ExprKind_ek_identifier);
+    ExprNode node = new_expr_node(ExprKind_ek_identifier, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.ident_name = name;
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_ident_with(Parser* self, const char* name, ArrayList_Str targs) {
-    ExprNode node = new_expr_node(ExprKind_ek_identifier);
+    ExprNode node = new_expr_node(ExprKind_ek_identifier, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.ident_name = name;
     node.ident_type_args = targs;
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_binop(Parser* self, const char* op, int64_t left, int64_t right) {
-    ExprNode node = new_expr_node(ExprKind_ek_binary_op);
+    ExprNode node = new_expr_node(ExprKind_ek_binary_op, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.binop_op = op;
     node.binop_left = left;
     node.binop_right = right;
@@ -3398,21 +3617,21 @@ int64_t Parser_ex_binop(Parser* self, const char* op, int64_t left, int64_t righ
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_unop(Parser* self, const char* op, int64_t operand) {
-    ExprNode node = new_expr_node(ExprKind_ek_unary_op);
+    ExprNode node = new_expr_node(ExprKind_ek_unary_op, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.unop_op = op;
     node.unop_operand = operand;
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_call(Parser* self, const char* name, ArrayList_Int args) {
-    ExprNode node = new_expr_node(ExprKind_ek_func_call);
+    ExprNode node = new_expr_node(ExprKind_ek_func_call, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.func_name = name;
     node.func_args = args;
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_call_with(Parser* self, const char* name, ArrayList_Int args, ArrayList_Str targs) {
-    ExprNode node = new_expr_node(ExprKind_ek_func_call);
+    ExprNode node = new_expr_node(ExprKind_ek_func_call, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.func_name = name;
     node.func_args = args;
     node.func_type_args = targs;
@@ -3420,21 +3639,21 @@ int64_t Parser_ex_call_with(Parser* self, const char* name, ArrayList_Int args, 
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_struct_init(Parser* self, const char* name, ArrayList_FieldInit fields) {
-    ExprNode node = new_expr_node(ExprKind_ek_struct_init);
+    ExprNode node = new_expr_node(ExprKind_ek_struct_init, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.struct_name = name;
     node.struct_fields = fields;
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_field(Parser* self, int64_t expr, const char* field) {
-    ExprNode node = new_expr_node(ExprKind_ek_field_access);
+    ExprNode node = new_expr_node(ExprKind_ek_field_access, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.field_expr = expr;
     node.field_name = field;
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_method(Parser* self, int64_t expr, const char* method, ArrayList_Int args) {
-    ExprNode node = new_expr_node(ExprKind_ek_method_call);
+    ExprNode node = new_expr_node(ExprKind_ek_method_call, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.meth_expr = expr;
     node.meth_name = method;
     node.meth_args = args;
@@ -3442,20 +3661,20 @@ int64_t Parser_ex_method(Parser* self, int64_t expr, const char* method, ArrayLi
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_index(Parser* self, int64_t expr, int64_t idx) {
-    ExprNode node = new_expr_node(ExprKind_ek_index);
+    ExprNode node = new_expr_node(ExprKind_ek_index, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.idx_expr = expr;
     node.idx_index = idx;
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_check(Parser* self, int64_t expr) {
-    ExprNode node = new_expr_node(ExprKind_ek_check);
+    ExprNode node = new_expr_node(ExprKind_ek_check, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.check_expr = expr;
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_slice(Parser* self, int64_t expr, int64_t lower, int64_t upper, bool is_inclusive) {
-    ExprNode node = new_expr_node(ExprKind_ek_slice);
+    ExprNode node = new_expr_node(ExprKind_ek_slice, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.slice_expr = expr;
     node.slice_lower = lower;
     node.slice_upper = upper;
@@ -3464,7 +3683,7 @@ int64_t Parser_ex_slice(Parser* self, int64_t expr, int64_t lower, int64_t upper
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_range(Parser* self, int64_t start, int64_t end, bool is_inclusive) {
-    ExprNode node = new_expr_node(ExprKind_ek_range);
+    ExprNode node = new_expr_node(ExprKind_ek_range, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.range_start = start;
     node.range_end = end;
     node.range_inclusive = is_inclusive;
@@ -3472,38 +3691,38 @@ int64_t Parser_ex_range(Parser* self, int64_t start, int64_t end, bool is_inclus
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_array(Parser* self, ArrayList_Int elements) {
-    ExprNode node = new_expr_node(ExprKind_ek_array);
+    ExprNode node = new_expr_node(ExprKind_ek_array, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.arr_elements = elements;
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_tuple(Parser* self, ArrayList_Int elements) {
-    ExprNode node = new_expr_node(ExprKind_ek_tuple);
+    ExprNode node = new_expr_node(ExprKind_ek_tuple, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.tup_elements = elements;
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_borrow(Parser* self, int64_t expr, bool is_mut) {
-    ExprNode node = new_expr_node(ExprKind_ek_borrow);
+    ExprNode node = new_expr_node(ExprKind_ek_borrow, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.borrow_expr = expr;
     node.borrow_mut = is_mut;
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_deref(Parser* self, int64_t expr) {
-    ExprNode node = new_expr_node(ExprKind_ek_deref);
+    ExprNode node = new_expr_node(ExprKind_ek_deref, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.deref_expr = expr;
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_try(Parser* self, int64_t expr) {
-    ExprNode node = new_expr_node(ExprKind_ek_try);
+    ExprNode node = new_expr_node(ExprKind_ek_try, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.try_expr = expr;
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_catch(Parser* self, int64_t expr, const char* var_name, int64_t fallback) {
-    ExprNode node = new_expr_node(ExprKind_ek_catch);
+    ExprNode node = new_expr_node(ExprKind_ek_catch, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.catch_expr = expr;
     node.catch_var = var_name;
     node.catch_fallback = fallback;
@@ -3511,7 +3730,7 @@ int64_t Parser_ex_catch(Parser* self, int64_t expr, const char* var_name, int64_
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_ex_asm(Parser* self, const char* code, bool is_volatile, ArrayList_AsmOutput outputs, ArrayList_AsmInput inputs, ArrayList_Str clobbers) {
-    ExprNode node = new_expr_node(ExprKind_ek_asm);
+    ExprNode node = new_expr_node(ExprKind_ek_asm, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.asm_code = code;
     node.asm_is_volatile = is_volatile;
     node.asm_outputs = outputs;
@@ -3521,20 +3740,20 @@ int64_t Parser_ex_asm(Parser* self, const char* code, bool is_volatile, ArrayLis
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
 int64_t Parser_st_block(Parser* self, ArrayList_Int stmts) {
-    StmtNode node = new_stmt_node(StmtKind_sk_block);
+    StmtNode node = new_stmt_node(StmtKind_sk_block, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.block_stmts = stmts;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_error(Parser* self, const char* name, ArrayList_Str variants) {
-    StmtNode node = new_stmt_node(StmtKind_sk_error_decl);
+    StmtNode node = new_stmt_node(StmtKind_sk_error_decl, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.error_name = name;
     node.error_variants = variants;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_var_decl(Parser* self, const char* name, const char* type_ann, int64_t value, bool is_mut) {
-    StmtNode node = new_stmt_node(StmtKind_sk_var_decl);
+    StmtNode node = new_stmt_node(StmtKind_sk_var_decl, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.vardecl_name = name;
     node.vardecl_type = type_ann;
     node.vardecl_value = value;
@@ -3543,7 +3762,7 @@ int64_t Parser_st_var_decl(Parser* self, const char* name, const char* type_ann,
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_assign(Parser* self, int64_t target, int64_t value, const char* op) {
-    StmtNode node = new_stmt_node(StmtKind_sk_assignment);
+    StmtNode node = new_stmt_node(StmtKind_sk_assignment, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.assign_target = target;
     node.assign_value = value;
     node.assign_op = op;
@@ -3551,7 +3770,7 @@ int64_t Parser_st_assign(Parser* self, int64_t target, int64_t value, const char
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_func(Parser* self, const char* name, ArrayList_Param params, const char* ret_type, int64_t body, const char* cap, ArrayList_Str tp) {
-    StmtNode node = new_stmt_node(StmtKind_sk_func_decl);
+    StmtNode node = new_stmt_node(StmtKind_sk_func_decl, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.func_name = name;
     node.func_params = params;
     node.func_return_type = ret_type;
@@ -3562,7 +3781,7 @@ int64_t Parser_st_func(Parser* self, const char* name, ArrayList_Param params, c
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_struct(Parser* self, const char* name, ArrayList_StructField fields, ArrayList_Str tp, ArrayList_Int methods, ArrayList_Int impls) {
-    StmtNode node = new_stmt_node(StmtKind_sk_struct_decl);
+    StmtNode node = new_stmt_node(StmtKind_sk_struct_decl, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.struct_name = name;
     node.struct_fields = fields;
     node.struct_type_params = tp;
@@ -3572,7 +3791,7 @@ int64_t Parser_st_struct(Parser* self, const char* name, ArrayList_StructField f
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_impl(Parser* self, const char* struct_name, const char* trait_name, ArrayList_Int methods) {
-    StmtNode node = new_stmt_node(StmtKind_sk_impl_block);
+    StmtNode node = new_stmt_node(StmtKind_sk_impl_block, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.impl_struct_name = struct_name;
     node.impl_trait_name = trait_name;
     node.impl_methods = methods;
@@ -3580,14 +3799,14 @@ int64_t Parser_st_impl(Parser* self, const char* struct_name, const char* trait_
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_trait(Parser* self, const char* name, ArrayList_Int methods) {
-    StmtNode node = new_stmt_node(StmtKind_sk_trait_decl);
+    StmtNode node = new_stmt_node(StmtKind_sk_trait_decl, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.trait_name = name;
     node.trait_methods = methods;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_enum(Parser* self, const char* name, ArrayList_Variant variants, ArrayList_Str tp) {
-    StmtNode node = new_stmt_node(StmtKind_sk_enum_decl);
+    StmtNode node = new_stmt_node(StmtKind_sk_enum_decl, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.enum_name = name;
     node.enum_variants = variants;
     node.enum_type_params = tp;
@@ -3595,20 +3814,20 @@ int64_t Parser_st_enum(Parser* self, const char* name, ArrayList_Variant variant
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_match(Parser* self, int64_t expr, ArrayList_MatchCase cases) {
-    StmtNode node = new_stmt_node(StmtKind_sk_match);
+    StmtNode node = new_stmt_node(StmtKind_sk_match, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.match_expr = expr;
     node.match_cases = cases;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_unsafe(Parser* self, int64_t body) {
-    StmtNode node = new_stmt_node(StmtKind_sk_unsafe);
+    StmtNode node = new_stmt_node(StmtKind_sk_unsafe, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.unsafe_body = body;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_extern(Parser* self, const char* name, ArrayList_Param params, const char* ret) {
-    StmtNode node = new_stmt_node(StmtKind_sk_extern);
+    StmtNode node = new_stmt_node(StmtKind_sk_extern, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.extern_name = name;
     node.extern_params = params;
     node.extern_return = ret;
@@ -3616,7 +3835,7 @@ int64_t Parser_st_extern(Parser* self, const char* name, ArrayList_Param params,
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_if(Parser* self, int64_t cond, int64_t then_b, int64_t else_b) {
-    StmtNode node = new_stmt_node(StmtKind_sk_if);
+    StmtNode node = new_stmt_node(StmtKind_sk_if, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.if_cond = cond;
     node.if_then = then_b;
     node.if_else = else_b;
@@ -3624,7 +3843,7 @@ int64_t Parser_st_if(Parser* self, int64_t cond, int64_t then_b, int64_t else_b)
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_if_let(Parser* self, const char* vname, int64_t expr, int64_t then_b, int64_t else_b) {
-    StmtNode node = new_stmt_node(StmtKind_sk_if_let);
+    StmtNode node = new_stmt_node(StmtKind_sk_if_let, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.iflet_var = vname;
     node.iflet_expr = expr;
     node.iflet_then = then_b;
@@ -3633,14 +3852,14 @@ int64_t Parser_st_if_let(Parser* self, const char* vname, int64_t expr, int64_t 
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_while(Parser* self, int64_t cond, int64_t body) {
-    StmtNode node = new_stmt_node(StmtKind_sk_while);
+    StmtNode node = new_stmt_node(StmtKind_sk_while, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.while_cond = cond;
     node.while_body = body;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_for(Parser* self, const char* var_name, int64_t start, int64_t end, bool inc, int64_t body) {
-    StmtNode node = new_stmt_node(StmtKind_sk_for);
+    StmtNode node = new_stmt_node(StmtKind_sk_for, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.for_var = var_name;
     node.for_start = start;
     node.for_end = end;
@@ -3650,42 +3869,48 @@ int64_t Parser_st_for(Parser* self, const char* var_name, int64_t start, int64_t
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_return(Parser* self, int64_t value) {
-    StmtNode node = new_stmt_node(StmtKind_sk_return);
+    StmtNode node = new_stmt_node(StmtKind_sk_return, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.return_value = value;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_expr(Parser* self, int64_t expr) {
-    StmtNode node = new_stmt_node(StmtKind_sk_expr);
+    StmtNode node = new_stmt_node(StmtKind_sk_expr, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.expr_stmt = expr;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_defer(Parser* self, int64_t body) {
-    StmtNode node = new_stmt_node(StmtKind_sk_defer);
+    StmtNode node = new_stmt_node(StmtKind_sk_defer, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.defer_body = body;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
+int64_t Parser_st_errdefer(Parser* self, int64_t body) {
+    StmtNode node = new_stmt_node(StmtKind_sk_errdefer, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    node.errdefer_body = body;
+    ArrayList_StmtNode_push(self->stmt_pool, node);
+    return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
+}
 int64_t Parser_st_break(Parser* self) {
-    StmtNode node = new_stmt_node(StmtKind_sk_break);
+    StmtNode node = new_stmt_node(StmtKind_sk_break, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_continue(Parser* self) {
-    StmtNode node = new_stmt_node(StmtKind_sk_continue);
+    StmtNode node = new_stmt_node(StmtKind_sk_continue, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_import(Parser* self, ArrayList_Str path, const char* alias) {
-    StmtNode node = new_stmt_node(StmtKind_sk_import);
+    StmtNode node = new_stmt_node(StmtKind_sk_import, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.import_path = path;
     node.import_alias = alias;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_cimport(Parser* self, const char* header, const char* alias) {
-    StmtNode node = new_stmt_node(StmtKind_sk_cimport);
+    StmtNode node = new_stmt_node(StmtKind_sk_cimport, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     node.cimport_header = header;
     node.cimport_alias = alias;
     ArrayList_StmtNode_push(self->stmt_pool, node);
@@ -3760,6 +3985,8 @@ int64_t Parser_parse_statement(Parser* self) {
     return Parser_parse_return_stmt(self);
 } else if (tok.tok_type == TokenType_DEFER) {
     return Parser_parse_defer_stmt(self);
+} else if (tok.tok_type == TokenType_ERRDEFER) {
+    return Parser_parse_errdefer_stmt(self);
 } else if (tok.tok_type == TokenType_BREAK) {
     return Parser_parse_break_stmt(self);
 } else if (tok.tok_type == TokenType_CONTINUE) {
@@ -4133,7 +4360,7 @@ int64_t Parser_parse_pattern(Parser* self) {
     return Parser_add_pattern(self, node);
 } else {
     {
-    printf("error[E0101]: unexpected token in pattern at line %lld, column %lld\n", tok.line, tok.column);
+    printf("%s:%ld:%ld: error[E0101]: unexpected token in pattern\n", self->source_file, tok.line, tok.column);
     exit(1LL);
 }
     return (-1LL);
@@ -4241,7 +4468,7 @@ int64_t Parser_parse_for_stmt(Parser* self) {
     is_inclusive = expr_node.range_inclusive;
 } else {
     {
-    printf("error[E0101]: invalid expression in for loop at line %lld, column %lld\n", Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
+    printf("%s:%ld:%ld: error[E0101]: invalid expression in for loop\n", self->source_file, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     exit(1LL);
 }
 }
@@ -4281,6 +4508,19 @@ int64_t Parser_parse_defer_stmt(Parser* self) {
 }
     return Parser_st_defer(self, body);
 }
+int64_t Parser_parse_errdefer_stmt(Parser* self) {
+    (void)(Parser_advance(self));
+    int64_t body = (-1LL);
+    if ((Parser_peek(self, 0LL).tok_type == TokenType_NEWLINE) || (Parser_peek(self, 0LL).tok_type == TokenType_LBRACE)) {
+    if (Parser_peek(self, 0LL).tok_type == TokenType_NEWLINE) {
+    Parser_expect_end_of_statement(self);
+}
+    body = Parser_parse_block(self);
+} else {
+    body = Parser_parse_statement(self);
+}
+    return Parser_st_errdefer(self, body);
+}
 int64_t Parser_parse_expr_or_assignment_stmt(Parser* self) {
     int64_t expr = Parser_parse_expression(self, 0LL);
     Token next = Parser_peek(self, 0LL);
@@ -4307,7 +4547,7 @@ int64_t Parser_parse_block(Parser* self) {
 }
     if (Parser_peek(self, 0LL).tok_type == TokenType_EOF) {
     {
-    printf("error[E0101]: expected '}' but reached end of file\n");
+    printf("%s:0:0: error[E0101]: expected '}' but reached end of file\n", self->source_file);
     exit(1LL);
 }
 }
@@ -4671,7 +4911,7 @@ int64_t Parser_parse_primary(Parser* self) {
     (void)(Parser_expect(self, TokenType_RPAREN));
     return Parser_ex_call_with(self, ident, args, type_args);
 }
-    ExprNode id_node = new_expr_node(ExprKind_ek_identifier);
+    ExprNode id_node = new_expr_node(ExprKind_ek_identifier, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
     id_node.ident_name = ident;
     id_node.ident_type_args = id_type_args;
     ArrayList_ExprNode_push(self->expr_pool, id_node);
@@ -4771,7 +5011,7 @@ int64_t Parser_parse_primary(Parser* self) {
     return first;
 } else {
     {
-    printf("error[E0101]: unexpected token at line %lld, column %lld (token type: %lld)\n", tok.line, tok.column, ((int64_t)(tok.tok_type)));
+    printf("%s:%ld:%ld: error[E0101]: unexpected token (type: %ld)\n", self->source_file, tok.line, tok.column, ((int64_t)(tok.tok_type)));
     exit(1LL);
 }
     return (-1LL);
@@ -5038,7 +5278,12 @@ TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_p
     self.current_func_ret_type = "";
     self.source_file = source_file;
     self.has_any_import = false;
+    self.loop_depth = 0LL;
     return self;
+}
+void TypeChecker_err(TypeChecker* self, const char* code, const char* msg, int64_t line, int64_t col) {
+    printf("%s:%ld:%ld: error[%s]: %s\n", self->source_file, line, col, code, msg);
+    self->has_error = true;
 }
 void TypeChecker_enter_scope(TypeChecker* self) {
     SymbolTable new_table = (SymbolTable){ .entries = ArrayList_Symbol_init(self->allocator), .parent_idx = self->current_table_idx, .allocator = self->allocator };
@@ -5145,8 +5390,90 @@ void TypeChecker_collect_block_drops(TypeChecker* self, int64_t stmt_idx) {
     block_stmt.block_drop_vars = drop_vars;
     ArrayList_StmtNode_set(self->stmt_pool, stmt_idx, block_stmt);
 }
-bool TypeChecker_is_copy_type(TypeChecker* self, const char* type_name) {
+bool TypeChecker_is_integer_type(TypeChecker* self, const char* type_name) {
     if (strcmp(type_name, "Int") == 0) {
+    return true;
+}
+    if (strcmp(type_name, "i8") == 0) {
+    return true;
+}
+    if (strcmp(type_name, "i16") == 0) {
+    return true;
+}
+    if (strcmp(type_name, "i32") == 0) {
+    return true;
+}
+    if (strcmp(type_name, "i64") == 0) {
+    return true;
+}
+    if (strcmp(type_name, "u8") == 0) {
+    return true;
+}
+    if (strcmp(type_name, "u16") == 0) {
+    return true;
+}
+    if (strcmp(type_name, "u32") == 0) {
+    return true;
+}
+    if (strcmp(type_name, "u64") == 0) {
+    return true;
+}
+    if (strcmp(type_name, "usize") == 0) {
+    return true;
+}
+    if (strcmp(type_name, "isize") == 0) {
+    return true;
+}
+    return false;
+}
+bool TypeChecker_is_numeric_type(TypeChecker* self, const char* type_name) {
+    if (TypeChecker_is_integer_type(self, type_name)) {
+    return true;
+}
+    if (strcmp(type_name, "Float") == 0) {
+    return true;
+}
+    return false;
+}
+bool TypeChecker_fits_in_type(TypeChecker* self, int64_t val, const char* type_name) {
+    if (strcmp(type_name, "i8") == 0) {
+    return ((val >= (-128LL)) && (val <= 127LL));
+}
+    if (strcmp(type_name, "i16") == 0) {
+    return ((val >= (-32768LL)) && (val <= 32767LL));
+}
+    if (strcmp(type_name, "i32") == 0) {
+    return ((val >= (-2147483648LL)) && (val <= 2147483647LL));
+}
+    if (strcmp(type_name, "u8") == 0) {
+    return ((val >= 0LL) && (val <= 255LL));
+}
+    if (strcmp(type_name, "u16") == 0) {
+    return ((val >= 0LL) && (val <= 65535LL));
+}
+    if (strcmp(type_name, "u32") == 0) {
+    return ((val >= 0LL) && (val <= 4294967295LL));
+}
+    if (strcmp(type_name, "u64") == 0) {
+    return (val >= 0LL);
+}
+    if (((strcmp(type_name, "Int") == 0) || (strcmp(type_name, "i64") == 0)) || (strcmp(type_name, "isize") == 0)) {
+    return true;
+}
+    if (strcmp(type_name, "usize") == 0) {
+    return (val >= 0LL);
+}
+    return true;
+}
+bool TypeChecker_is_integer_literal(TypeChecker* self, int64_t expr_idx) {
+    if (expr_idx < 0LL) {
+    return false;
+}
+    ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
+    return ((expr.kind == ExprKind_ek_literal) && (strcmp(expr.lit_vkind, "INT") == 0));
+}
+bool TypeChecker_is_copy_type(TypeChecker* self, const char* type_name) {
+    if (TypeChecker_is_integer_type(self, type_name)) {
     return true;
 }
     if (strcmp(type_name, "Float") == 0) {
@@ -5213,6 +5540,15 @@ bool TypeChecker_types_compatible(TypeChecker* self, const char* target, const c
 }
     if (strcmp(t, s) == 0) {
     return true;
+}
+    if (TypeChecker_is_integer_type(self, t) && TypeChecker_is_integer_type(self, s)) {
+    if ((strcmp(t, "Int") == 0) && (strcmp(s, "i64") == 0)) {
+    return true;
+}
+    if ((strcmp(t, "i64") == 0) && (strcmp(s, "Int") == 0)) {
+    return true;
+}
+    return false;
 }
     if (((strcmp(t, "Str") == 0) && (strcmp(s, "*Char") == 0)) || ((strcmp(t, "*Char") == 0) && (strcmp(s, "Str") == 0))) {
     return true;
@@ -5638,11 +5974,11 @@ void TypeChecker_check_identifier(TypeChecker* self, int64_t expr_idx) {
     Symbol sym = SymbolTable_lookup_symbol(&(table), name, &(self->symbol_tables));
     if (strlen(sym.name) > 0LL) {
     if (sym.moved) {
-    printf("error[E0009]: use of moved value: '%s'\n", name);
+    printf("%s:%ld:%ld: error[E0009]: use of moved value: '%s'\n", self->source_file, expr.line, expr.col, name);
     self->has_error = true;
 }
 } else if ((!TypeChecker_is_enum_or_error_type(self, name)) && (!self->has_any_import)) {
-    printf("error[E0019]: undefined identifier: '%s'\n", name);
+    printf("%s:%ld:%ld: error[E0019]: undefined identifier: '%s'\n", self->source_file, expr.line, expr.col, name);
     self->has_error = true;
 }
 }
@@ -5650,7 +5986,7 @@ void TypeChecker_check_field_access(TypeChecker* self, int64_t expr_idx) {
     ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
     const char* recv_type = TypeChecker_get_expr_type(self, expr.field_expr);
     if ((strlen(recv_type) > 0LL) && ((recv_type)[0LL] == ((char)(63LL)))) {
-    printf("error[E0011]: cannot access field '%s' on optional type '%s'. unwrap it first\n", expr.field_name, recv_type);
+    printf("%s:%ld:%ld: error[E0011]: cannot access field '%s' on optional type '%s'. unwrap it first\n", self->source_file, expr.line, expr.col, expr.field_name, recv_type);
     self->has_error = true;
 }
 }
@@ -5658,7 +5994,7 @@ void TypeChecker_check_method_call(TypeChecker* self, int64_t expr_idx) {
     ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
     const char* recv_type = TypeChecker_get_expr_type(self, expr.meth_expr);
     if ((strlen(recv_type) > 0LL) && ((recv_type)[0LL] == ((char)(63LL)))) {
-    printf("error[E0012]: cannot call method '%s' on optional type '%s'. unwrap it first\n", expr.meth_name, recv_type);
+    printf("%s:%ld:%ld: error[E0012]: cannot call method '%s' on optional type '%s'. unwrap it first\n", self->source_file, expr.line, expr.col, expr.meth_name, recv_type);
     self->has_error = true;
 }
 }
@@ -5674,7 +6010,7 @@ void TypeChecker_check_return_stmt(TypeChecker* self, int64_t stmt_idx) {
     SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
     Symbol sym = SymbolTable_lookup_symbol(&(table), name, &(self->symbol_tables));
     if ((strcmp(sym.kind, "var") == 0) || (strcmp(sym.kind, "param") == 0)) {
-    printf("error[E0010]: cannot return reference to local variable '%s'\n", name);
+    printf("%s:%ld:%ld: error[E0010]: cannot return reference to local variable '%s'\n", self->source_file, stmt.line, stmt.col, name);
     self->has_error = true;
 }
 }
@@ -5686,7 +6022,7 @@ void TypeChecker_check_return_stmt(TypeChecker* self, int64_t stmt_idx) {
     const char* expected_ret = self->current_func_ret_type;
     if ((strlen(expected_ret) > 0LL) && (strcmp(expected_ret, "<infer>") != 0)) {
     if (!TypeChecker_types_compatible(self, expected_ret, val_type)) {
-    printf("error[E0007]: return type mismatch: expected '%s', got '%s'\n", expected_ret, val_type);
+    printf("%s:%ld:%ld: error[E0007]: return type mismatch: expected '%s', got '%s'\n", self->source_file, stmt.line, stmt.col, expected_ret, val_type);
     self->has_error = true;
 }
 }
@@ -5713,8 +6049,19 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     const char* var_type = stmt.vardecl_type;
     if (strlen(var_type) == 0LL) {
     var_type = val_type;
+} else if (TypeChecker_is_integer_type(self, var_type) && TypeChecker_is_integer_literal(self, stmt.vardecl_value)) {
+    ExprNode val_expr = ArrayList_ExprNode_get(self->expr_pool, stmt.vardecl_value);
+    if (val_expr.lit_value.tag == TokenValue_tv_int_TAG) {
+    int64_t v = val_expr.lit_value.payload.tv_int.v;
+
+    if (!TypeChecker_fits_in_type(self, v, var_type)) {
+    printf("%s:%ld:%ld: error[E0030]: integer literal %ld does not fit in type '%s'\n", self->source_file, stmt.line, stmt.col, v, var_type);
+    self->has_error = true;
+}
+} else {
+} 
 } else if (!TypeChecker_types_compatible(self, var_type, val_type)) {
-    printf("error[E0001]: type mismatch in declaration of '%s': expected '%s', got '%s'\n", stmt.vardecl_name, var_type, val_type);
+    printf("%s:%ld:%ld: error[E0001]: type mismatch in declaration of '%s': expected '%s', got '%s'\n", self->source_file, stmt.line, stmt.col, stmt.vardecl_name, var_type, val_type);
     self->has_error = true;
 }
     TypeChecker_define_symbol(self, stmt.vardecl_name, var_type, stmt.vardecl_mut, "var");
@@ -5732,13 +6079,24 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
     Symbol sym = SymbolTable_lookup_symbol(&(table), target_expr.ident_name, &(self->symbol_tables));
     if ((strlen(sym.name) > 0LL) && (!sym.is_mutable)) {
-    printf("error[E0008]: cannot assign to immutable variable '%s'\n", target_expr.ident_name);
+    printf("%s:%ld:%ld: error[E0008]: cannot assign to immutable variable '%s'\n", self->source_file, target_expr.line, target_expr.col, target_expr.ident_name);
     self->has_error = true;
 }
 }
 }
     const char* val_type = TypeChecker_get_expr_type(self, stmt.assign_value);
-    if (!TypeChecker_types_compatible(self, target_type, val_type)) {
+    if (TypeChecker_is_integer_type(self, target_type) && TypeChecker_is_integer_literal(self, stmt.assign_value)) {
+    ExprNode val_expr = ArrayList_ExprNode_get(self->expr_pool, stmt.assign_value);
+    if (val_expr.lit_value.tag == TokenValue_tv_int_TAG) {
+    int64_t v = val_expr.lit_value.payload.tv_int.v;
+
+    if (!TypeChecker_fits_in_type(self, v, target_type)) {
+    printf("%s:%ld:%ld: error[E0030]: integer literal %ld does not fit in type '%s'\n", self->source_file, stmt.line, stmt.col, v, target_type);
+    self->has_error = true;
+}
+} else {
+} 
+} else if (!TypeChecker_types_compatible(self, target_type, val_type)) {
     const char* target_name = "<non-ident>";
     if (stmt.assign_target >= 0LL) {
     ExprNode target_expr = ArrayList_ExprNode_get(self->expr_pool, stmt.assign_target);
@@ -5746,7 +6104,7 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     target_name = target_expr.ident_name;
 }
 }
-    printf("error[E0002]: type mismatch in assignment to '%s': expected '%s', got '%s'\n", target_name, target_type, val_type);
+    printf("%s:%ld:%ld: error[E0002]: type mismatch in assignment to '%s': expected '%s', got '%s'\n", self->source_file, stmt.line, stmt.col, target_name, target_type, val_type);
     self->has_error = true;
 }
     TypeChecker_mark_expr_moved(self, stmt.assign_value);
@@ -5776,6 +6134,10 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
 }
     if (stmt.kind == StmtKind_sk_if) {
     TypeChecker_check_expr(self, stmt.if_cond);
+    const char* cond_type = TypeChecker_get_expr_type(self, stmt.if_cond);
+    if ((strcmp(cond_type, "Bool") != 0) && (strcmp(cond_type, "Void") != 0)) {
+    TypeChecker_err(self, "E0024", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if condition must be Bool, got '", cond_type), "'"), stmt.line, stmt.col);
+}
     TypeChecker_check_stmt(self, stmt.if_then);
     TypeChecker_check_stmt(self, stmt.if_else);
     return;
@@ -5796,12 +6158,19 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
 }
     if (stmt.kind == StmtKind_sk_while) {
     TypeChecker_check_expr(self, stmt.while_cond);
+    const char* cond_type = TypeChecker_get_expr_type(self, stmt.while_cond);
+    if ((strcmp(cond_type, "Bool") != 0) && (strcmp(cond_type, "Void") != 0)) {
+    TypeChecker_err(self, "E0024", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("while condition must be Bool, got '", cond_type), "'"), stmt.line, stmt.col);
+}
+    self->loop_depth = (self->loop_depth + 1LL);
     TypeChecker_check_stmt(self, stmt.while_body);
+    self->loop_depth = (self->loop_depth - 1LL);
     return;
 }
     if (stmt.kind == StmtKind_sk_for) {
     TypeChecker_check_expr(self, stmt.for_start);
     TypeChecker_check_expr(self, stmt.for_end);
+    self->loop_depth = (self->loop_depth + 1LL);
     TypeChecker_enter_scope(self);
     const char* iter_type = TypeChecker_get_expr_type(self, stmt.for_start);
     if ((strlen(iter_type) == 0LL) || (strcmp(iter_type, "Void") == 0)) {
@@ -5810,6 +6179,7 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     TypeChecker_define_symbol(self, stmt.for_var, iter_type, false, "var");
     TypeChecker_check_stmt(self, stmt.for_body);
     TypeChecker_exit_scope(self);
+    self->loop_depth = (self->loop_depth - 1LL);
     return;
 }
     if (stmt.kind == StmtKind_sk_return) {
@@ -5887,6 +6257,30 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     if (stmt.kind == StmtKind_sk_error_decl) {
     return;
 }
+    if (stmt.kind == StmtKind_sk_break) {
+    if (self->loop_depth <= 0LL) {
+    TypeChecker_err(self, "E0029", "'break' outside of loop", stmt.line, stmt.col);
+}
+    return;
+}
+    if (stmt.kind == StmtKind_sk_continue) {
+    if (self->loop_depth <= 0LL) {
+    TypeChecker_err(self, "E0029", "'continue' outside of loop", stmt.line, stmt.col);
+}
+    return;
+}
+    if (stmt.kind == StmtKind_sk_defer) {
+    TypeChecker_check_stmt(self, stmt.defer_body);
+    return;
+}
+    if (stmt.kind == StmtKind_sk_errdefer) {
+    TypeChecker_check_stmt(self, stmt.errdefer_body);
+    return;
+}
+    if (stmt.kind == StmtKind_sk_print) {
+    TypeChecker_check_expr(self, stmt.print_value);
+    return;
+}
 }
 void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (expr_idx < 0LL) {
@@ -5900,10 +6294,61 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (expr.kind == ExprKind_ek_binary_op) {
     TypeChecker_check_expr(self, expr.binop_left);
     TypeChecker_check_expr(self, expr.binop_right);
+    const char* left_type = TypeChecker_get_expr_type(self, expr.binop_left);
+    const char* right_type = TypeChecker_get_expr_type(self, expr.binop_right);
+    const char* op = expr.binop_op;
+    if (strcmp(op, "+") == 0) {
+    if (((!TypeChecker_is_numeric_type(self, left_type)) && (strcmp(left_type, "Str") != 0)) && (strcmp(left_type, "Void") != 0)) {
+    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '+' must be numeric or Str, got '", left_type), "'"), expr.line, expr.col);
+}
+    if (((!TypeChecker_is_numeric_type(self, right_type)) && (strcmp(right_type, "Str") != 0)) && (strcmp(right_type, "Void") != 0)) {
+    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '+' must be numeric or Str, got '", right_type), "'"), expr.line, expr.col);
+}
+} else if ((((strcmp(op, "-") == 0) || (strcmp(op, "*") == 0)) || (strcmp(op, "/") == 0)) || (strcmp(op, "%") == 0)) {
+    if ((!TypeChecker_is_numeric_type(self, left_type)) && (strcmp(left_type, "Void") != 0)) {
+    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '", op), "' must be numeric, got '"), left_type), "'"), expr.line, expr.col);
+}
+    if ((!TypeChecker_is_numeric_type(self, right_type)) && (strcmp(right_type, "Void") != 0)) {
+    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '", op), "' must be numeric, got '"), right_type), "'"), expr.line, expr.col);
+}
+} else if ((strcmp(op, "&&") == 0) || (strcmp(op, "||") == 0)) {
+    if ((strcmp(left_type, "Bool") != 0) && (strcmp(left_type, "Void") != 0)) {
+    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '", op), "' must be Bool, got '"), left_type), "'"), expr.line, expr.col);
+}
+    if ((strcmp(right_type, "Bool") != 0) && (strcmp(right_type, "Void") != 0)) {
+    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '", op), "' must be Bool, got '"), right_type), "'"), expr.line, expr.col);
+}
+} else if (((((strcmp(op, "|") == 0) || (strcmp(op, "^") == 0)) || (strcmp(op, "&") == 0)) || (strcmp(op, "<<") == 0)) || (strcmp(op, ">>") == 0)) {
+    if ((!TypeChecker_is_integer_type(self, left_type)) && (strcmp(left_type, "Void") != 0)) {
+    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '", op), "' must be an integer type, got '"), left_type), "'"), expr.line, expr.col);
+}
+    if ((!TypeChecker_is_integer_type(self, right_type)) && (strcmp(right_type, "Void") != 0)) {
+    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '", op), "' must be an integer type, got '"), right_type), "'"), expr.line, expr.col);
+}
+} else if ((((((strcmp(op, "==") == 0) || (strcmp(op, "!=") == 0)) || (strcmp(op, "<") == 0)) || (strcmp(op, ">") == 0)) || (strcmp(op, "<=") == 0)) || (strcmp(op, ">=") == 0)) {
+    if (((strcmp(left_type, "Void") != 0) && (strcmp(right_type, "Void") != 0)) && (!TypeChecker_types_compatible(self, left_type, right_type))) {
+    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("type mismatch in comparison: '", left_type), "' and '"), right_type), "' are not compatible"), expr.line, expr.col);
+}
+}
     return;
 }
     if (expr.kind == ExprKind_ek_unary_op) {
     TypeChecker_check_expr(self, expr.unop_operand);
+    const char* operand_type = TypeChecker_get_expr_type(self, expr.unop_operand);
+    const char* binop = expr.unop_op;
+    if (strcmp(binop, "!") == 0) {
+    if ((strcmp(operand_type, "Bool") != 0) && (strcmp(operand_type, "Void") != 0)) {
+    TypeChecker_err(self, "E0026", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("operand of '!' must be Bool, got '", operand_type), "'"), expr.line, expr.col);
+}
+} else if (strcmp(binop, "-") == 0) {
+    if ((!TypeChecker_is_numeric_type(self, operand_type)) && (strcmp(operand_type, "Void") != 0)) {
+    TypeChecker_err(self, "E0026", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("operand of negation must be numeric, got '", operand_type), "'"), expr.line, expr.col);
+}
+} else if (strcmp(binop, "~") == 0) {
+    if ((!TypeChecker_is_integer_type(self, operand_type)) && (strcmp(operand_type, "Void") != 0)) {
+    TypeChecker_err(self, "E0026", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("operand of '~' must be an integer type, got '", operand_type), "'"), expr.line, expr.col);
+}
+}
     return;
 }
     if (expr.kind == ExprKind_ek_func_call) {
@@ -5929,7 +6374,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     type_params = empty_str_array();
 }
     if (ArrayList_Param_length(&(params)) != ArrayList_Int_length(&(expr.func_args))) {
-    printf("error[E0005]: argument count mismatch for function '%s': expected %lld, got %lld\n", name, ArrayList_Param_length(&(params)), ArrayList_Int_length(&(expr.func_args)));
+    printf("%s:%ld:%ld: error[E0005]: argument count mismatch for function '%s': expected %ld, got %ld\n", self->source_file, expr.line, expr.col, name, ArrayList_Param_length(&(params)), ArrayList_Int_length(&(expr.func_args)));
     self->has_error = true;
 } else {
     if (ArrayList_Str_length(&(type_params)) > 0LL) {
@@ -5943,14 +6388,14 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     const char* ptype = param.ptype;
     bool is_generic_param = (((strlen(ptype) == 1LL) && ((ptype)[0LL] >= ((char)(65LL)))) && ((ptype)[0LL] <= ((char)(90LL))));
     if ((!is_generic_param) && (!TypeChecker_types_compatible(self, ptype, arg_type))) {
-    printf("error[E0003]: argument type mismatch for function '%s', parameter '%s': expected '%s', got '%s'\n", name, param.name, ptype, arg_type);
+    printf("%s:%ld:%ld: error[E0003]: argument type mismatch for function '%s', parameter '%s': expected '%s', got '%s'\n", self->source_file, expr.line, expr.col, name, param.name, ptype, arg_type);
     self->has_error = true;
 }
     arg_i = (arg_i + 1LL);
 }
 }
 } else if (!self->has_any_import) {
-    printf("error[E0020]: undefined function: '%s'\n", name);
+    printf("%s:%ld:%ld: error[E0020]: undefined function: '%s'\n", self->source_file, expr.line, expr.col, name);
     self->has_error = true;
 }
     return;
@@ -5976,7 +6421,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (meth_idx >= 0LL) {
     StmtNode decl = ArrayList_StmtNode_get(self->stmt_pool, meth_idx);
     if (ArrayList_Param_length(&(decl.func_params)) != (ArrayList_Int_length(&(expr.meth_args)) + 1LL)) {
-    printf("error[E0006]: argument count mismatch for method '%s': expected %lld, got %lld\n", meth_name, (ArrayList_Param_length(&(decl.func_params)) - 1LL), ArrayList_Int_length(&(expr.meth_args)));
+    printf("%s:%ld:%ld: error[E0006]: argument count mismatch for method '%s': expected %lld, got %ld\n", self->source_file, expr.line, expr.col, meth_name, (ArrayList_Param_length(&(decl.func_params)) - 1LL), ArrayList_Int_length(&(expr.meth_args)));
     self->has_error = true;
 } else {
     int64_t arg_i = 0LL;
@@ -5985,20 +6430,33 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     Param param = ArrayList_Param_get(&(decl.func_params), (arg_i + 1LL));
     const char* arg_type = TypeChecker_get_expr_type(self, arg);
     if (!TypeChecker_types_compatible(self, param.ptype, arg_type)) {
-    printf("error[E0003]: argument type mismatch for method '%s', parameter '%s': expected '%s', got '%s'\n", meth_name, param.name, param.ptype, arg_type);
+    printf("%s:%ld:%ld: error[E0003]: argument type mismatch for method '%s', parameter '%s': expected '%s', got '%s'\n", self->source_file, expr.line, expr.col, meth_name, param.name, param.ptype, arg_type);
     self->has_error = true;
 }
     arg_i = (arg_i + 1LL);
 }
 }
 } else if (!self->has_any_import) {
-    printf("error[E0022]: undefined method: '%s' for type '%s'\n", meth_name, recv_type);
+    printf("%s:%ld:%ld: error[E0022]: undefined method: '%s' for type '%s'\n", self->source_file, expr.line, expr.col, meth_name, recv_type);
     self->has_error = true;
 }
     return;
 }
     if (expr.kind == ExprKind_ek_index) {
     TypeChecker_check_expr(self, expr.idx_expr);
+    TypeChecker_check_expr(self, expr.idx_index);
+    const char* index_type = TypeChecker_get_expr_type(self, expr.idx_index);
+    if ((strcmp(index_type, "Int") != 0) && (strcmp(index_type, "Void") != 0)) {
+    TypeChecker_err(self, "E0027", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("index must be Int, got '", index_type), "'"), expr.line, expr.col);
+}
+    const char* base_type = TypeChecker_get_expr_type(self, expr.idx_expr);
+    if ((strcmp(base_type, "Str") != 0) && (strcmp(base_type, "Void") != 0)) {
+    if ((strlen(base_type) == 0LL) || (((base_type)[0LL] != ((char)(42LL))) && ((base_type)[0LL] != ((char)(38LL))))) {
+    if (!((strlen(base_type) >= 2LL) && (strcmp(__kai_str_sub(base_type, 0LL, 2LL), "[]") == 0))) {
+    TypeChecker_err(self, "E0028", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("type '", base_type), "' is not indexable"), expr.line, expr.col);
+}
+}
+}
     return;
 }
     if (expr.kind == ExprKind_ek_slice) {
@@ -6036,7 +6494,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     int64_t struct_idx = TypeChecker_find_struct_decl(self, struct_name);
     if (struct_idx < 0LL) {
     if (!self->has_any_import) {
-    printf("error[E0021]: undefined struct: '%s'\n", struct_name);
+    printf("%s:%ld:%ld: error[E0021]: undefined struct: '%s'\n", self->source_file, expr.line, expr.col, struct_name);
     self->has_error = true;
 }
     return;
@@ -6053,14 +6511,14 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     found = true;
     const char* val_type = TypeChecker_get_expr_type(self, f.value);
     if (!TypeChecker_types_compatible(self, df.ftype, val_type)) {
-    printf("error[E0004]: type mismatch in initializer for field '%s' of struct '%s': expected '%s', got '%s'\n", f.name, struct_name, df.ftype, val_type);
+    printf("%s:%ld:%ld: error[E0004]: type mismatch in initializer for field '%s' of struct '%s': expected '%s', got '%s'\n", self->source_file, expr.line, expr.col, f.name, struct_name, df.ftype, val_type);
     self->has_error = true;
 }
 }
     dfi = (dfi + 1LL);
 }
     if (!found) {
-    printf("error[E0013]: field '%s' does not exist in struct '%s'\n", f.name, struct_name);
+    printf("%s:%ld:%ld: error[E0013]: field '%s' does not exist in struct '%s'\n", self->source_file, expr.line, expr.col, f.name, struct_name);
     self->has_error = true;
 }
     fi = (fi + 1LL);
@@ -6082,7 +6540,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1LL);
 }
     if (excl_pos < 0LL) {
-    printf("error[E0014]: cannot use 'try' on non-error-union type '%s'\n", inner_ty);
+    printf("%s:%ld:%ld: error[E0014]: cannot use 'try' on non-error-union type '%s'\n", self->source_file, expr.line, expr.col, inner_ty);
     self->has_error = true;
 } else {
     const char* error_set = substring(inner_ty, (excl_pos + 1LL), strlen(inner_ty));
@@ -6096,12 +6554,12 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1LL);
 }
     if (func_excl < 0LL) {
-    printf("error[E0015]: cannot use 'try' in a function that returns non-error-union type '%s'\n", expected_ret);
+    printf("%s:%ld:%ld: error[E0015]: cannot use 'try' in a function that returns non-error-union type '%s'\n", self->source_file, expr.line, expr.col, expected_ret);
     self->has_error = true;
 } else {
     const char* func_err = substring(expected_ret, (func_excl + 1LL), strlen(expected_ret));
     if (!TypeChecker_types_compatible(self, func_err, error_set)) {
-    printf("error[E0016]: error set '%s' of try expression is not compatible with function error set '%s'\n", error_set, func_err);
+    printf("%s:%ld:%ld: error[E0016]: error set '%s' of try expression is not compatible with function error set '%s'\n", self->source_file, expr.line, expr.col, error_set, func_err);
     self->has_error = true;
 }
 }
@@ -6130,7 +6588,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     TypeChecker_exit_scope(self);
     const char* fallback_yields = TypeChecker_get_block_yield_type(self, expr.catch_fallback);
     if (!TypeChecker_types_compatible(self, val_type, fallback_yields)) {
-    printf("error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", fallback_yields, val_type);
+    printf("%s:%ld:%ld: error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", self->source_file, expr.line, expr.col, fallback_yields, val_type);
     self->has_error = true;
 }
     return;
@@ -6144,7 +6602,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1LL);
 }
     if (excl_pos < 0LL) {
-    printf("error[E0017]: cannot use 'catch' on non-error-union type '%s'\n", inner_ty);
+    printf("%s:%ld:%ld: error[E0017]: cannot use 'catch' on non-error-union type '%s'\n", self->source_file, expr.line, expr.col, inner_ty);
     self->has_error = true;
 } else {
     const char* val_type = substring(inner_ty, 0LL, excl_pos);
@@ -6157,12 +6615,725 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     TypeChecker_exit_scope(self);
     const char* fallback_yields = TypeChecker_get_block_yield_type(self, expr.catch_fallback);
     if (!TypeChecker_types_compatible(self, val_type, fallback_yields)) {
-    printf("error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", fallback_yields, val_type);
+    printf("%s:%ld:%ld: error[E0018]: catch fallback type '%s' is not compatible with expected type '%s'\n", self->source_file, expr.line, expr.col, fallback_yields, val_type);
     self->has_error = true;
 }
 }
     return;
 }
+}
+CCodeBuilder CCodeBuilder_init(KaiAllocator* allocator) {
+    CCodeBuilder self = (CCodeBuilder){0};
+    self.output = ArrayList_Str_init(allocator);
+    self.indent_level = 0LL;
+    self.block_stack = ArrayList_Int_init(allocator);
+    self.temp_counter = 0LL;
+    self.in_function = false;
+    self.error_label = "_kai_cleanup";
+    self.pending_errdefers = ArrayList_Str_init(allocator);
+    self.pending_defers = ArrayList_Str_init(allocator);
+    return self;
+}
+void CCodeBuilder_indent(CCodeBuilder* self) {
+    self->indent_level = (self->indent_level + 1LL);
+}
+void CCodeBuilder_dedent(CCodeBuilder* self) {
+    if (self->indent_level > 0LL) {
+    self->indent_level = (self->indent_level - 1LL);
+}
+}
+const char* CCodeBuilder_get_indent(CCodeBuilder* self) {
+    const char* result = "";
+    int64_t i = 0LL;
+    while (i < self->indent_level) {
+    result = __kai_std_str_concat_alloc(result, "    ");
+    i = (i + 1LL);
+}
+    return result;
+}
+void CCodeBuilder_emit(CCodeBuilder* self, const char* content) {
+    const char* line = __kai_std_str_concat_alloc(CCodeBuilder_get_indent(self), content);
+    ArrayList_Str_push(&(self->output), line);
+}
+void CCodeBuilder_emit_blank(CCodeBuilder* self) {
+    ArrayList_Str_push(&(self->output), "");
+}
+void CCodeBuilder_emit_comment(CCodeBuilder* self, const char* text) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc("// ", text));
+}
+void CCodeBuilder_emit_section(CCodeBuilder* self, const char* name) {
+    CCodeBuilder_emit_blank(self);
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("//=== ", name), " ===//"));
+    CCodeBuilder_emit_blank(self);
+}
+void CCodeBuilder_emit_raw(CCodeBuilder* self, const char* code) {
+    ArrayList_Str_push(&(self->output), code);
+}
+void CCodeBuilder_begin_block(CCodeBuilder* self) {
+    CCodeBuilder_emit(self, "{");
+    CCodeBuilder_indent(self);
+    ArrayList_Int_push(&(self->block_stack), self->indent_level);
+}
+void CCodeBuilder_begin_inline_block(CCodeBuilder* self) {
+    int64_t last_idx = (ArrayList_Str_length(&(self->output)) - 1LL);
+    if (last_idx >= 0LL) {
+    const char* last = ArrayList_Str_get(&(self->output), last_idx);
+    ArrayList_Str_set(&(self->output), last_idx, __kai_std_str_concat_alloc(last, " {"));
+} else {
+    CCodeBuilder_emit(self, "{");
+}
+    CCodeBuilder_indent(self);
+    ArrayList_Int_push(&(self->block_stack), self->indent_level);
+}
+void CCodeBuilder_end_block(CCodeBuilder* self) {
+    if (ArrayList_Int_length(&(self->block_stack)) == 0LL) {
+    CCodeBuilder_emit_comment(self, "WARNING: end_block() called with no open blocks");
+    return;
+}
+    CCodeBuilder_dedent(self);
+    CCodeBuilder_emit(self, "}");
+    (void)(ArrayList_Int_pop(&(self->block_stack)));
+}
+void CCodeBuilder_end_block_semi(CCodeBuilder* self) {
+    if (ArrayList_Int_length(&(self->block_stack)) == 0LL) {
+    CCodeBuilder_emit_comment(self, "WARNING: end_block_semi() called with no open blocks");
+    return;
+}
+    CCodeBuilder_dedent(self);
+    CCodeBuilder_emit(self, "};");
+    (void)(ArrayList_Int_pop(&(self->block_stack)));
+}
+void CCodeBuilder_emit_return(CCodeBuilder* self, const char* expr) {
+    if (strlen(expr) == 0LL) {
+    CCodeBuilder_emit(self, "return;");
+} else {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return ", expr), ";"));
+}
+}
+void CCodeBuilder_emit_var_decl(CCodeBuilder* self, const char* type_name, const char* name, const char* init) {
+    if (strlen(init) == 0LL) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(type_name, " "), name), ";"));
+} else {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(type_name, " "), name), " = "), init), ";"));
+}
+}
+void CCodeBuilder_emit_assign(CCodeBuilder* self, const char* lhs, const char* op, const char* rhs) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(lhs, " "), op), " "), rhs), ";"));
+}
+void CCodeBuilder_emit_expr_stmt(CCodeBuilder* self, const char* expr_code) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(expr_code, ";"));
+}
+void CCodeBuilder_emit_stmt_raw(CCodeBuilder* self, const char* stmt) {
+    ArrayList_Str_push(&(self->output), __kai_std_str_concat_alloc(CCodeBuilder_get_indent(self), stmt));
+}
+void CCodeBuilder_emit_if(CCodeBuilder* self, const char* cond) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", cond), ")"));
+}
+void CCodeBuilder_emit_else(CCodeBuilder* self) {
+    if (ArrayList_Int_length(&(self->block_stack)) == 0LL) {
+    CCodeBuilder_emit_comment(self, "WARNING: emit_else() with no preceding if block");
+    return;
+}
+    CCodeBuilder_dedent(self);
+    CCodeBuilder_emit(self, "else");
+    ArrayList_Int_push(&(self->block_stack), self->indent_level);
+}
+void CCodeBuilder_emit_else_if(CCodeBuilder* self, const char* cond) {
+    if (ArrayList_Int_length(&(self->block_stack)) == 0LL) {
+    CCodeBuilder_emit_comment(self, "WARNING: emit_else_if() with no preceding if block");
+    return;
+}
+    CCodeBuilder_dedent(self);
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("else if (", cond), ")"));
+    ArrayList_Int_push(&(self->block_stack), self->indent_level);
+}
+void CCodeBuilder_emit_while(CCodeBuilder* self, const char* cond) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("while (", cond), ")"));
+}
+void CCodeBuilder_emit_for(CCodeBuilder* self, const char* init, const char* cond, const char* update) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("for (", init), "; "), cond), "; "), update), ")"));
+}
+void CCodeBuilder_emit_do(CCodeBuilder* self) {
+    CCodeBuilder_emit(self, "do");
+}
+void CCodeBuilder_emit_do_while(CCodeBuilder* self, const char* cond) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("while (", cond), ");"));
+}
+void CCodeBuilder_emit_break(CCodeBuilder* self) {
+    CCodeBuilder_emit(self, "break;");
+}
+void CCodeBuilder_emit_continue(CCodeBuilder* self) {
+    CCodeBuilder_emit(self, "continue;");
+}
+void CCodeBuilder_emit_switch(CCodeBuilder* self, const char* expr) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("switch (", expr), ")"));
+}
+void CCodeBuilder_emit_case(CCodeBuilder* self, const char* value) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("case ", value), ":"));
+}
+void CCodeBuilder_emit_default(CCodeBuilder* self) {
+    CCodeBuilder_emit(self, "default:");
+}
+void CCodeBuilder_emit_goto(CCodeBuilder* self, const char* label) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("goto ", label), ";"));
+}
+void CCodeBuilder_emit_label(CCodeBuilder* self, const char* label) {
+    int64_t saved = self->indent_level;
+    if (saved > 0LL) {
+    self->indent_level = (saved - 1LL);
+}
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(label, ":"));
+    self->indent_level = saved;
+}
+void CCodeBuilder_emit_func_proto(CCodeBuilder* self, const char* ret_type, const char* name, const char* params) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), name), "("), params), ");"));
+}
+void CCodeBuilder_begin_func_def(CCodeBuilder* self, const char* ret_type, const char* name, const char* params) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), name), "("), params), ")"));
+}
+void CCodeBuilder_begin_error_fn(CCodeBuilder* self) {
+    self->in_function = true;
+}
+void CCodeBuilder_push_errdefer(CCodeBuilder* self, const char* body) {
+    ArrayList_Str_push(&(self->pending_errdefers), body);
+}
+void CCodeBuilder_push_defer(CCodeBuilder* self, const char* body) {
+    ArrayList_Str_push(&(self->pending_defers), body);
+}
+void CCodeBuilder_emit_cleanup_section(CCodeBuilder* self, const char* return_expr) {
+    if (!self->in_function) {
+    return;
+}
+    CCodeBuilder_emit_label(self, self->error_label);
+    CCodeBuilder_indent(self);
+    int64_t ei = (ArrayList_Str_length(&(self->pending_errdefers)) - 1LL);
+    while (ei >= 0LL) {
+    const char* body = ArrayList_Str_get(&(self->pending_errdefers), ei);
+    if (strlen(body) > 0LL) {
+    CCodeBuilder_emit(self, body);
+}
+    ei = (ei - 1LL);
+}
+    int64_t di = (ArrayList_Str_length(&(self->pending_defers)) - 1LL);
+    while (di >= 0LL) {
+    const char* body = ArrayList_Str_get(&(self->pending_defers), di);
+    if (strlen(body) > 0LL) {
+    CCodeBuilder_emit(self, body);
+}
+    di = (di - 1LL);
+}
+    if (strlen(return_expr) > 0LL) {
+    CCodeBuilder_emit_return(self, return_expr);
+}
+    CCodeBuilder_dedent(self);
+    self->in_function = false;
+}
+void CCodeBuilder_clear_pending(CCodeBuilder* self) {
+    self->pending_errdefers = ArrayList_Str_init(self->output.allocator);
+    self->pending_defers = ArrayList_Str_init(self->output.allocator);
+}
+const char* CCodeBuilder_make_compound_literal(CCodeBuilder* self, const char* type_name, const char* fields) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", type_name), "){ "), fields), " }");
+}
+const char* CCodeBuilder_make_result_success(CCodeBuilder* self, const char* result_type, const char* value) {
+    if (strlen(value) == 0LL) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", result_type), "){ .tag = 0 }");
+}
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", result_type), "){ .tag = 0, .value = "), value), " }");
+}
+const char* CCodeBuilder_make_result_error(CCodeBuilder* self, const char* result_type, const char* tag) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", result_type), "){ .tag = "), tag), " }");
+}
+const char* CCodeBuilder_make_func_call(CCodeBuilder* self, const char* name, const char* args) {
+    if (strlen(args) == 0LL) {
+    return __kai_std_str_concat_alloc(name, "()");
+}
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(name, "("), args), ")");
+}
+const char* CCodeBuilder_make_field_access(CCodeBuilder* self, const char* expr, const char* field) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(expr, "."), field);
+}
+const char* CCodeBuilder_make_ternary(CCodeBuilder* self, const char* cond, const char* then_val, const char* else_val) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", cond), ") ? ("), then_val), ") : ("), else_val), ")");
+}
+const char* CCodeBuilder_make_cast(CCodeBuilder* self, const char* type_name, const char* expr) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", type_name), ")("), expr), ")");
+}
+const char* CCodeBuilder_make_binop(CCodeBuilder* self, const char* left, const char* op, const char* right) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", left), ") "), op), " ("), right), ")");
+}
+const char* CCodeBuilder_make_unop(CCodeBuilder* self, const char* op, const char* expr) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(op, "("), expr), ")");
+}
+const char* CCodeBuilder_make_index(CCodeBuilder* self, const char* base, const char* index) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", base), ")["), index), "]");
+}
+const char* CCodeBuilder_make_addr_of(CCodeBuilder* self, const char* expr) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(&(", expr), "))");
+}
+const char* CCodeBuilder_make_deref(CCodeBuilder* self, const char* expr) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(*(", expr), "))");
+}
+const char* CCodeBuilder_make_optional_some(CCodeBuilder* self, const char* opt_type, const char* value) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", opt_type), "){ .has_value = true, .value = "), value), " }");
+}
+const char* CCodeBuilder_make_zero_init(CCodeBuilder* self, const char* type_name) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", type_name), "){0}");
+}
+const char* CCodeBuilder_make_string_literal(CCodeBuilder* self, const char* s) {
+    const char* result = "\"";
+    int64_t i = 0LL;
+    while (i < strlen(s)) {
+    char c = (s)[i];
+    if (c == ((char)(34LL))) {
+    result = __kai_std_str_concat_alloc(result, "\\\"");
+} else if (c == ((char)(92LL))) {
+    result = __kai_std_str_concat_alloc(result, "\\\\");
+} else if (c == ((char)(10LL))) {
+    result = __kai_std_str_concat_alloc(result, "\\n");
+} else if (c == ((char)(9LL))) {
+    result = __kai_std_str_concat_alloc(result, "\\t");
+} else if (c == ((char)(0LL))) {
+    result = __kai_std_str_concat_alloc(result, "\\0");
+} else {
+    result = __kai_std_str_concat_alloc(result, char_to_str(c));
+}
+    i = (i + 1LL);
+}
+    result = __kai_std_str_concat_alloc(result, "\"");
+    return result;
+}
+void CCodeBuilder_emit_if_goto(CCodeBuilder* self, const char* cond, const char* label) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", cond), ") goto "), label), ";"));
+}
+void CCodeBuilder_emit_if_not_goto(CCodeBuilder* self, const char* cond, const char* label) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (!(", cond), ")) goto "), label), ";"));
+}
+void CCodeBuilder_emit_if_block(CCodeBuilder* self, const char* cond, const char* body) {
+    if (strlen(body) == 0LL) {
+    return;
+}
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", cond), ") {"));
+    CCodeBuilder_indent(self);
+    CCodeBuilder__emit_multiline_body(self, body);
+    CCodeBuilder_dedent(self);
+    CCodeBuilder_emit(self, "}");
+}
+void CCodeBuilder_emit_tag_not_zero_goto(CCodeBuilder* self, const char* var_name, const char* label) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", var_name), ".tag != 0) goto "), label), ";"));
+}
+void CCodeBuilder_emit_tag_is_zero_goto(CCodeBuilder* self, const char* var_name, const char* label) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", var_name), ".tag == 0) goto "), label), ";"));
+}
+void CCodeBuilder_emit_null_goto(CCodeBuilder* self, const char* expr, const char* label) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", expr), " == NULL) goto "), label), ";"));
+}
+void CCodeBuilder_emit_has_value_goto(CCodeBuilder* self, const char* var_name, const char* label) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (!", var_name), ".has_value) goto "), label), ";"));
+}
+void CCodeBuilder_emit_var_try(CCodeBuilder* self, const char* var_type, const char* var_name, const char* init_expr, const char* cleanup_body, const char* cleanup_label) {
+    CCodeBuilder_emit_var_decl(self, var_type, var_name, init_expr);
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", var_name), ".tag != 0) {"));
+    CCodeBuilder_indent(self);
+    if (strlen(cleanup_body) > 0LL) {
+    CCodeBuilder__emit_multiline_body(self, cleanup_body);
+}
+    if (strlen(cleanup_label) > 0LL) {
+    CCodeBuilder_emit_goto(self, cleanup_label);
+}
+    CCodeBuilder_dedent(self);
+    CCodeBuilder_emit(self, "}");
+}
+const char* CCodeBuilder_emit_temp_var(CCodeBuilder* self, const char* var_type, const char* init) {
+    const char* name = CCodeBuilder_fresh_temp(self, "_kai_tmp");
+    CCodeBuilder_emit_var_decl(self, var_type, name, init);
+    return name;
+}
+const char* CCodeBuilder_emit_temp_var_uninit(CCodeBuilder* self, const char* var_type) {
+    const char* name = CCodeBuilder_fresh_temp(self, "_kai_tmp");
+    CCodeBuilder_emit_var_decl(self, var_type, name, "");
+    return name;
+}
+int64_t CCodeBuilder_scope_depth(CCodeBuilder* self) {
+    return ArrayList_Int_length(&(self->block_stack));
+}
+void CCodeBuilder_emit_include_angle(CCodeBuilder* self, const char* header) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include <", header), ">"));
+}
+void CCodeBuilder_emit_include_quote(CCodeBuilder* self, const char* header) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include \"", header), "\""));
+}
+void CCodeBuilder_emit_define(CCodeBuilder* self, const char* name, const char* value) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#define ", name), " "), value));
+}
+void CCodeBuilder_emit_ifdef(CCodeBuilder* self, const char* name) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc("#ifdef ", name));
+}
+void CCodeBuilder_emit_ifndef(CCodeBuilder* self, const char* name) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc("#ifndef ", name));
+}
+void CCodeBuilder_emit_else_preproc(CCodeBuilder* self) {
+    CCodeBuilder_emit_raw(self, "#else");
+}
+void CCodeBuilder_emit_endif(CCodeBuilder* self) {
+    CCodeBuilder_emit_raw(self, "#endif");
+}
+void CCodeBuilder_emit_if_preproc(CCodeBuilder* self, const char* expr) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc("#if ", expr));
+}
+void CCodeBuilder_emit_pragma(CCodeBuilder* self, const char* directive) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc("#pragma ", directive));
+}
+void CCodeBuilder_emit_typedef(CCodeBuilder* self, const char* existing_type, const char* alias) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef ", existing_type), " "), alias), ";"));
+}
+void CCodeBuilder_emit_extern(CCodeBuilder* self, const char* type_name, const char* name) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("extern ", type_name), " "), name), ";"));
+}
+void CCodeBuilder_emit_static(CCodeBuilder* self, const char* type_name, const char* name, const char* init) {
+    if (strlen(init) == 0LL) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("static ", type_name), " "), name), ";"));
+} else {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("static ", type_name), " "), name), " = "), init), ";"));
+}
+}
+void CCodeBuilder_emit_thread_local(CCodeBuilder* self, const char* type_name, const char* name, const char* init) {
+    if (strlen(init) == 0LL) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("static __thread ", type_name), " "), name), ";"));
+} else {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("static __thread ", type_name), " "), name), " = "), init), ";"));
+}
+}
+void CCodeBuilder_begin_struct(CCodeBuilder* self, const char* name) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", name), " "), name), ";"));
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", name), " {"));
+    CCodeBuilder_indent(self);
+}
+void CCodeBuilder_emit_field(CCodeBuilder* self, const char* field_type, const char* field_name) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(field_type, " "), field_name), ";"));
+}
+void CCodeBuilder_begin_enum(CCodeBuilder* self, const char* name) {
+    CCodeBuilder_emit_raw(self, "typedef enum {");
+    CCodeBuilder_indent(self);
+}
+void CCodeBuilder_emit_enum_variant(CCodeBuilder* self, const char* variant_name, const char* value) {
+    if (strlen(value) == 0LL) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(variant_name, ","));
+} else {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(variant_name, " = "), value), ","));
+}
+}
+void CCodeBuilder_end_enum(CCodeBuilder* self, const char* name) {
+    CCodeBuilder_dedent(self);
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("} ", name), ";"));
+}
+void CCodeBuilder_emit_panic(CCodeBuilder* self, const char* msg) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_panic(", CCodeBuilder_make_string_literal(self, msg)), ");"));
+}
+void CCodeBuilder_emit_bounds_check(CCodeBuilder* self, const char* index, const char* length, const char* var_name) {
+    const char* msg = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("index out of bounds: ", var_name), "["), index), "] (len="), length), ")");
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", index), " < 0 || "), index), " >= "), length), ") __kai_panic("), CCodeBuilder_make_string_literal(self, msg)), ");"));
+}
+void CCodeBuilder_emit_null_panic(CCodeBuilder* self, const char* expr, const char* context) {
+    const char* msg = "null pointer dereference";
+    if (strlen(context) > 0LL) {
+    msg = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(msg, " in "), context);
+}
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", expr), " == NULL) __kai_panic("), CCodeBuilder_make_string_literal(self, msg)), ");"));
+}
+void CCodeBuilder_emit_div_zero_check(CCodeBuilder* self, const char* divisor, const char* context) {
+    const char* msg = "division by zero";
+    if (strlen(context) > 0LL) {
+    msg = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(msg, " in "), context);
+}
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", divisor), " == 0) __kai_panic("), CCodeBuilder_make_string_literal(self, msg)), ");"));
+}
+void CCodeBuilder_emit_assert(CCodeBuilder* self, const char* cond, const char* msg) {
+    if (strlen(msg) == 0LL) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (!(", cond), ")) __kai_panic("), CCodeBuilder_make_string_literal(self, __kai_std_str_concat_alloc("assertion failed: ", cond))), ");"));
+} else {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (!(", cond), ")) __kai_panic("), CCodeBuilder_make_string_literal(self, msg)), ");"));
+}
+}
+void CCodeBuilder_emit_unreachable(CCodeBuilder* self) {
+    CCodeBuilder_emit(self, "#ifndef __has_builtin");
+    CCodeBuilder_emit(self, "#define __has_builtin(x) 0");
+    CCodeBuilder_emit(self, "#endif");
+    CCodeBuilder_emit(self, "#if __has_builtin(__builtin_unreachable)");
+    CCodeBuilder_emit(self, "__builtin_unreachable();");
+    CCodeBuilder_emit(self, "#else");
+    CCodeBuilder_emit(self, "for(;;);");
+    CCodeBuilder_emit(self, "#endif");
+}
+void CCodeBuilder_emit_discard(CCodeBuilder* self, const char* expr) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(void)(", expr), ");"));
+}
+void CCodeBuilder_emit_if_else(CCodeBuilder* self, const char* cond, const char* then_body, const char* else_body) {
+    if (strlen(then_body) == 0LL) {
+    return;
+}
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", cond), ") {"));
+    CCodeBuilder_indent(self);
+    CCodeBuilder__emit_multiline_body(self, then_body);
+    CCodeBuilder_dedent(self);
+    if (strlen(else_body) > 0LL) {
+    CCodeBuilder_emit(self, "} else {");
+    CCodeBuilder_indent(self);
+    CCodeBuilder__emit_multiline_body(self, else_body);
+    CCodeBuilder_dedent(self);
+}
+    CCodeBuilder_emit(self, "}");
+}
+void CCodeBuilder_emit_struct_typedef(CCodeBuilder* self, const char* type_name, const char* fields_str) {
+    CCodeBuilder_emit_raw(self, "typedef struct {");
+    CCodeBuilder_indent(self);
+    CCodeBuilder__emit_multiline_body(self, fields_str);
+    CCodeBuilder_dedent(self);
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("} ", type_name), ";"));
+}
+void CCodeBuilder_emit_result_typedef(CCodeBuilder* self, const char* result_type, const char* value_type) {
+    CCodeBuilder_emit_raw(self, "typedef struct {");
+    CCodeBuilder_indent(self);
+    CCodeBuilder_emit(self, "int64_t tag;");
+    if (strcmp(value_type, "Void") != 0) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(value_type, " value;"));
+}
+    CCodeBuilder_dedent(self);
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("} ", result_type), ";"));
+}
+void CCodeBuilder_emit_drop_proto(CCodeBuilder* self, const char* type_name) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("void ", type_name), "_drop("), type_name), "* self);"));
+}
+void CCodeBuilder_emit_drop_call(CCodeBuilder* self, const char* type_name, const char* var_name) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(type_name, "_drop(&"), var_name), ");"));
+}
+const char* CCodeBuilder_emit_result_try(CCodeBuilder* self, const char* result_type, const char* init_expr, const char* cleanup_body, const char* err_var) {
+    const char* var_name = CCodeBuilder_fresh_temp(self, "_kai_res");
+    CCodeBuilder_emit_var_decl(self, result_type, var_name, init_expr);
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", var_name), ".tag != 0) {"));
+    CCodeBuilder_indent(self);
+    if (strlen(cleanup_body) > 0LL) {
+    CCodeBuilder__emit_multiline_body(self, cleanup_body);
+}
+    if (strlen(err_var) > 0LL) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(err_var, " = "), var_name), ".tag;"));
+}
+    CCodeBuilder_emit_goto(self, "_kai_cleanup");
+    CCodeBuilder_dedent(self);
+    CCodeBuilder_emit(self, "}");
+    return var_name;
+}
+const char* CCodeBuilder_emit_result_try_fn(CCodeBuilder* self, const char* result_type, const char* init_expr, const char* cleanup_body) {
+    return CCodeBuilder_emit_result_try(self, result_type, init_expr, cleanup_body, "_kai_err");
+}
+void CCodeBuilder_emit_result_return_ok(CCodeBuilder* self, const char* result_type, const char* value) {
+    CCodeBuilder_emit_return(self, CCodeBuilder_make_result_success(self, result_type, value));
+}
+void CCodeBuilder_emit_result_return_err(CCodeBuilder* self, const char* result_type) {
+    CCodeBuilder_emit_return(self, CCodeBuilder_make_result_error(self, result_type, "_kai_err"));
+}
+void CCodeBuilder_emit_error_setup(CCodeBuilder* self) {
+    CCodeBuilder_emit(self, "int64_t _kai_err = 0;");
+    self->in_function = true;
+}
+void CCodeBuilder_emit_error_cleanup(CCodeBuilder* self, const char* result_type) {
+    CCodeBuilder_emit_cleanup_section(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", result_type), "){ .tag = _kai_err }"));
+}
+bool CCodeBuilder_is_in_function(CCodeBuilder* self) {
+    return self->in_function;
+}
+int64_t CCodeBuilder_current_indent(CCodeBuilder* self) {
+    return self->indent_level;
+}
+int64_t CCodeBuilder_block_depth(CCodeBuilder* self) {
+    return ArrayList_Int_length(&(self->block_stack));
+}
+int64_t CCodeBuilder_temp_count(CCodeBuilder* self) {
+    return self->temp_counter;
+}
+int64_t CCodeBuilder_errdefer_count(CCodeBuilder* self) {
+    return ArrayList_Str_length(&(self->pending_errdefers));
+}
+int64_t CCodeBuilder_defer_count(CCodeBuilder* self) {
+    return ArrayList_Str_length(&(self->pending_defers));
+}
+void CCodeBuilder_assert_in_block(CCodeBuilder* self) {
+    if (ArrayList_Int_length(&(self->block_stack)) == 0LL) {
+    CCodeBuilder_emit_comment(self, "WARNING: expected to be inside a block but block_stack is empty");
+}
+}
+void CCodeBuilder_assert_in_function(CCodeBuilder* self) {
+    if (!self->in_function) {
+    CCodeBuilder_emit_comment(self, "WARNING: expected to be inside a function but in_function is false");
+}
+}
+int64_t CCodeBuilder_validate_closed(CCodeBuilder* self, bool report) {
+    int64_t unclosed = ArrayList_Int_length(&(self->block_stack));
+    if (report && (unclosed > 0LL)) {
+    CCodeBuilder_emit_comment(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("WARNING: ", int_to_str(unclosed)), " unclosed block(s) at end of output"));
+}
+    return unclosed;
+}
+void CCodeBuilder_reset(CCodeBuilder* self) {
+    self->output = ArrayList_Str_init(self->output.allocator);
+    self->indent_level = 0LL;
+    self->block_stack = ArrayList_Int_init(self->output.allocator);
+    self->temp_counter = 0LL;
+    self->in_function = false;
+    self->error_label = "_kai_cleanup";
+    self->pending_errdefers = ArrayList_Str_init(self->output.allocator);
+    self->pending_defers = ArrayList_Str_init(self->output.allocator);
+}
+void CCodeBuilder_drain_pending(CCodeBuilder* self) {
+    self->pending_errdefers = ArrayList_Str_init(self->output.allocator);
+    self->pending_defers = ArrayList_Str_init(self->output.allocator);
+}
+void CCodeBuilder_set_style(CCodeBuilder* self, CCodeStyle* style) {
+}
+void CCodeBuilder_begin_block_style(CCodeBuilder* self, const char* style) {
+    if (strcmp(style, "kr") == 0) {
+    CCodeBuilder_begin_inline_block(self);
+} else {
+    CCodeBuilder_begin_block(self);
+}
+}
+void CCodeBuilder_emit_if_style(CCodeBuilder* self, const char* cond, const char* style) {
+    if (strcmp(style, "kr") == 0) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", cond), ") {"));
+    CCodeBuilder_indent(self);
+    ArrayList_Int_push(&(self->block_stack), self->indent_level);
+} else {
+    CCodeBuilder_emit_if(self, cond);
+}
+}
+void CCodeBuilder_emit_line_directive(CCodeBuilder* self, const char* file, int64_t line) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#line ", int_to_str(line)), " \""), file), "\""));
+}
+void CCodeBuilder_emit_source_location(CCodeBuilder* self, const char* file, int64_t line, int64_t col) {
+    CCodeBuilder_emit_comment(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(file, ":"), int_to_str(line)), ":"), int_to_str(col)));
+}
+void CCodeBuilder_emit_source_location_if(CCodeBuilder* self, const char* file, int64_t line, int64_t col, bool force) {
+    if (force) {
+    CCodeBuilder_emit_source_location(self, file, line, col);
+}
+}
+void CCodeBuilder_emit_section_marker(CCodeBuilder* self, const char* label) {
+    CCodeBuilder_emit_blank(self);
+    if (strlen(label) > 0LL) {
+    CCodeBuilder_emit(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("/* ---- ", label), " ---- */"));
+} else {
+    CCodeBuilder_emit(self, "/* ---- */");
+}
+    CCodeBuilder_emit_blank(self);
+}
+void CCodeBuilder_emit_inline(CCodeBuilder* self) {
+}
+const char* CCodeBuilder_make_const(CCodeBuilder* self, const char* type_name) {
+    return __kai_std_str_concat_alloc("const ", type_name);
+}
+const char* CCodeBuilder_make_volatile(CCodeBuilder* self, const char* type_name) {
+    return __kai_std_str_concat_alloc("volatile ", type_name);
+}
+const char* CCodeBuilder_make_restrict_ptr(CCodeBuilder* self, const char* ptr_type) {
+    return __kai_std_str_concat_alloc(ptr_type, " restrict");
+}
+void CCodeBuilder_emit_alignas(CCodeBuilder* self, const char* alignment) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("_Alignas(", alignment), ")"));
+}
+void CCodeBuilder_emit_noreturn(CCodeBuilder* self) {
+    CCodeBuilder_emit_raw(self, "_Noreturn");
+}
+void CCodeBuilder_emit_static_qualifier(CCodeBuilder* self) {
+}
+void CCodeBuilder_emit_extern_qualifier(CCodeBuilder* self) {
+}
+const char* CCodeBuilder_make_func_attr(CCodeBuilder* self, const char* attr) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__attribute__((", attr), "))");
+}
+const char* CCodeBuilder_make_format_attr(CCodeBuilder* self, int64_t format_arg, int64_t dots_arg) {
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__attribute__((format(printf, ", int_to_str(format_arg)), ", "), int_to_str(dots_arg)), ")))");
+}
+void CCodeBuilder_begin_header_guard(CCodeBuilder* self, const char* guard) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc("#ifndef ", guard));
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc("#define ", guard));
+    CCodeBuilder_emit_blank(self);
+}
+void CCodeBuilder_end_header_guard(CCodeBuilder* self) {
+    CCodeBuilder_emit_raw(self, "#endif");
+}
+void CCodeBuilder_begin_extern_c(CCodeBuilder* self) {
+    CCodeBuilder_emit_raw(self, "#ifdef __cplusplus");
+    CCodeBuilder_emit_raw(self, "extern \"C\" {");
+    CCodeBuilder_emit_raw(self, "#endif");
+}
+void CCodeBuilder_end_extern_c(CCodeBuilder* self) {
+    CCodeBuilder_emit_raw(self, "#ifdef __cplusplus");
+    CCodeBuilder_emit_raw(self, "}");
+    CCodeBuilder_emit_raw(self, "#endif");
+}
+void CCodeBuilder_emit_forward_func(CCodeBuilder* self, const char* ret_type, const char* name, const char* params) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), name), "("), params), ");"));
+}
+void CCodeBuilder_emit_forward_struct(CCodeBuilder* self, const char* name) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", name), " "), name), ";"));
+}
+void CCodeBuilder_emit_forward_enum(CCodeBuilder* self, const char* name) {
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef enum ", name), " "), name), ";"));
+}
+void CCodeBuilder_emit_static_assert(CCodeBuilder* self, const char* cond, const char* msg) {
+    const char* escaped = CCodeBuilder_make_string_literal(self, msg);
+    CCodeBuilder_emit_raw(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("_Static_assert(", cond), ", "), escaped), ");"));
+}
+void CCodeBuilder_begin_disabled(CCodeBuilder* self) {
+    CCodeBuilder_emit_raw(self, "#if 0");
+}
+void CCodeBuilder_end_disabled(CCodeBuilder* self) {
+    CCodeBuilder_emit_raw(self, "#endif");
+}
+void CCodeBuilder__emit_multiline_body(CCodeBuilder* self, const char* body) {
+    int64_t line_start = 0LL;
+    int64_t i = 0LL;
+    while (i < strlen(body)) {
+    char c = (body)[i];
+    if ((c == ((char)(10LL))) || (c == ((char)(13LL)))) {
+    if (((c == ((char)(13LL))) && ((i + 1LL) < strlen(body))) && ((body)[(i + 1LL)] == ((char)(10LL)))) {
+    i = (i + 1LL);
+}
+    if (i > line_start) {
+    CCodeBuilder_emit(self, __kai_str_sub(body, line_start, i));
+} else {
+    CCodeBuilder_emit_blank(self);
+}
+    line_start = (i + 1LL);
+}
+    i = (i + 1LL);
+}
+    if (line_start < strlen(body)) {
+    CCodeBuilder_emit(self, __kai_str_sub(body, line_start, strlen(body)));
+}
+}
+const char* CCodeBuilder_fresh_temp(CCodeBuilder* self, const char* prefix) {
+    const char* result = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(prefix, "_"), int_to_str(self->temp_counter));
+    self->temp_counter = (self->temp_counter + 1LL);
+    return result;
+}
+const char* CCodeBuilder_get_output(CCodeBuilder* self) {
+    const char* result = "";
+    int64_t i = 0LL;
+    while (i < ArrayList_Str_length(&(self->output))) {
+    if (i > 0LL) {
+    result = __kai_std_str_concat_alloc(result, "\n");
+}
+    result = __kai_std_str_concat_alloc(result, ArrayList_Str_get(&(self->output), i));
+    i = (i + 1LL);
+}
+    return result;
+}
+const char* CCodeBuilder_get_output_nl(CCodeBuilder* self) {
+    return __kai_std_str_concat_alloc(CCodeBuilder_get_output(self), "\n");
+}
+int64_t CCodeBuilder_line_count(CCodeBuilder* self) {
+    return ArrayList_Str_length(&(self->output));
 }
 const char* __kai_std_str_concat_alloc(const char* left, const char* right) {
     int64_t left_len = strlen(left);
@@ -6322,7 +7493,10 @@ Codegen Codegen_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, Arr
     self.result_definitions = ArrayList_Str_init(allocator);
     self.defer_stack = ArrayList_Int_init(allocator);
     self.defer_depths = ArrayList_Int_init(allocator);
+    self.errdefer_stack = ArrayList_Int_init(allocator);
+    self.errdefer_depths = ArrayList_Int_init(allocator);
     self.func_param_types = ArrayList_StrMapEntry_init(allocator);
+    self.c = CCodeBuilder_init(allocator);
     return self;
 }
 bool Codegen_is_pointer_type(Codegen* self, const char* t) {
@@ -6412,6 +7586,36 @@ const char* Codegen_map_type(Codegen* self, const char* type_name) {
 }
     if (strcmp(resolved_type, "Allocator") == 0) {
     return "KaiAllocator";
+}
+    if (strcmp(resolved_type, "i8") == 0) {
+    return "int8_t";
+}
+    if (strcmp(resolved_type, "i16") == 0) {
+    return "int16_t";
+}
+    if (strcmp(resolved_type, "i32") == 0) {
+    return "int32_t";
+}
+    if (strcmp(resolved_type, "i64") == 0) {
+    return "int64_t";
+}
+    if (strcmp(resolved_type, "u8") == 0) {
+    return "uint8_t";
+}
+    if (strcmp(resolved_type, "u16") == 0) {
+    return "uint16_t";
+}
+    if (strcmp(resolved_type, "u32") == 0) {
+    return "uint32_t";
+}
+    if (strcmp(resolved_type, "u64") == 0) {
+    return "uint64_t";
+}
+    if (strcmp(resolved_type, "usize") == 0) {
+    return "size_t";
+}
+    if (strcmp(resolved_type, "isize") == 0) {
+    return "intptr_t";
 }
     if (strcmp(__kai_str_sub(resolved_type, 0LL, 2LL), "[]") == 0) {
     const char* inner = __kai_str_sub(resolved_type, 2LL, strlen(resolved_type));
@@ -6844,13 +8048,19 @@ void Codegen_monomorphize_func(Codegen* self, int64_t func_stmt_idx, const char*
     ArrayList_Int old_block_stack = self->block_stack;
     ArrayList_Int old_defer_stack = self->defer_stack;
     ArrayList_Int old_defer_depths = self->defer_depths;
+    ArrayList_Int old_errdefer_stack = self->errdefer_stack;
+    ArrayList_Int old_errdefer_depths = self->errdefer_depths;
     self->block_stack = ArrayList_Int_init(self->allocator);
     self->defer_stack = ArrayList_Int_init(self->allocator);
     self->defer_depths = ArrayList_Int_init(self->allocator);
+    self->errdefer_stack = ArrayList_Int_init(self->allocator);
+    self->errdefer_depths = ArrayList_Int_init(self->allocator);
     const char* body_str = Codegen_gen_stmt(self, stmt.func_body);
     self->block_stack = old_block_stack;
     self->defer_stack = old_defer_stack;
     self->defer_depths = old_defer_depths;
+    self->errdefer_stack = old_errdefer_stack;
+    self->errdefer_depths = old_errdefer_depths;
     while (ArrayList_StrMapEntry_length(&(self->var_types)) > old_var_len) {
     (void)(ArrayList_StrMapEntry_pop(&(self->var_types)));
 }
@@ -7369,6 +8579,12 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     const char* ret_ctype = Codegen_map_type(self, self->cur_return_type);
     const char* try_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("({ ", result_ctype), " _kai_res = ("), inner), "); ");
     try_code = __kai_std_str_concat_alloc(try_code, "if (_kai_res.tag != 0) { ");
+    ArrayList_Str cleanup = Codegen__collect_error_cleanup(self);
+    int64_t ci = 0LL;
+    while (ci < ArrayList_Str_length(&(cleanup))) {
+    try_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(try_code, ArrayList_Str_get(&(cleanup), ci)), " ");
+    ci = (ci + 1LL);
+}
     try_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(try_code, ret_ctype), " _kai_err_ret; _kai_err_ret.tag = _kai_res.tag; return _kai_err_ret; } ");
     if (strcmp(val_type, "Void") == 0) {
     try_code = __kai_std_str_concat_alloc(try_code, "0; })");
@@ -8211,6 +9427,9 @@ bool Codegen_is_standard_c_func(Codegen* self, const char* name) {
     if (strcmp(name, "rewind") == 0) {
     return true;
 }
+    if (strcmp(name, "atoll") == 0) {
+    return true;
+}
     if (strcmp(name, "strcmp") == 0) {
     return true;
 }
@@ -8239,6 +9458,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     if (stmt.kind == StmtKind_sk_block) {
     ArrayList_Int_push(&(self->block_stack), stmt_idx);
     ArrayList_Int_push(&(self->defer_depths), ArrayList_Int_length(&(self->defer_stack)));
+    ArrayList_Int_push(&(self->errdefer_depths), ArrayList_Int_length(&(self->errdefer_stack)));
     const char* block_str = "{\n";
     int64_t i = 0LL;
     while (i < ArrayList_Int_length(&(stmt.block_stmts))) {
@@ -8257,6 +9477,10 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     block_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(block_str, "    "), s), "\n");
 }
 }
+    int64_t err_start_idx = ArrayList_Int_pop(&(self->errdefer_depths));
+    while (ArrayList_Int_length(&(self->errdefer_stack)) > err_start_idx) {
+    (void)(ArrayList_Int_pop(&(self->errdefer_stack)));
+}
     int64_t di = 0LL;
     while (di < ArrayList_DropVarEntry_length(&(stmt.block_drop_vars))) {
     DropVarEntry entry = ArrayList_DropVarEntry_get(&(stmt.block_drop_vars), di);
@@ -8269,6 +9493,10 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 }
     if (stmt.kind == StmtKind_sk_defer) {
     ArrayList_Int_push(&(self->defer_stack), stmt_idx);
+    return "";
+}
+    if (stmt.kind == StmtKind_sk_errdefer) {
+    ArrayList_Int_push(&(self->errdefer_stack), stmt_idx);
     return "";
 }
     if (stmt.kind == StmtKind_sk_var_decl) {
@@ -8650,11 +9878,50 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     return for_str;
 }
     if (stmt.kind == StmtKind_sk_return) {
-    ArrayList_Str drop_calls = ArrayList_Str_init(self->allocator);
+    ArrayList_Str defer_calls = ArrayList_Str_init(self->allocator);
+    ArrayList_Str errdefer_calls = ArrayList_Str_init(self->allocator);
+    bool is_error_return = false;
+    if (stmt.return_value >= 0LL) {
+    int64_t ret_excl_pos = Codegen_str_find(self, self->cur_return_type, ((char)(33LL)));
+    if (ret_excl_pos >= 0LL) {
+    ExprNode ret_node = ArrayList_ExprNode_get(self->expr_pool, stmt.return_value);
+    if (ret_node.kind == ExprKind_ek_field_access) {
+    ExprNode base_node = ArrayList_ExprNode_get(self->expr_pool, ret_node.field_expr);
+    if (base_node.kind == ExprKind_ek_identifier) {
+    if (Codegen_is_enum_type(self, base_node.ident_name)) {
+    is_error_return = true;
+}
+}
+} else {
+    const char* expr_ty = Codegen_get_expr_type(self, stmt.return_value);
+    int64_t expr_excl_pos = Codegen_str_find(self, expr_ty, ((char)(33LL)));
+    if (expr_excl_pos >= 0LL) {
+    is_error_return = true;
+}
+}
+}
+}
     int64_t bi = (ArrayList_Int_length(&(self->block_stack)) - 1LL);
     while (bi >= 0LL) {
     int64_t b_idx = ArrayList_Int_get(&(self->block_stack), bi);
     StmtNode b_node = ArrayList_StmtNode_get(self->stmt_pool, b_idx);
+    if (is_error_return) {
+    int64_t err_start = ArrayList_Int_get(&(self->errdefer_depths), bi);
+    int64_t next_err_start = ArrayList_Int_length(&(self->errdefer_stack));
+    if (bi < (ArrayList_Int_length(&(self->block_stack)) - 1LL)) {
+    next_err_start = ArrayList_Int_get(&(self->errdefer_depths), (bi + 1LL));
+}
+    int64_t err_i = (next_err_start - 1LL);
+    while (err_i >= err_start) {
+    int64_t e_idx = ArrayList_Int_get(&(self->errdefer_stack), err_i);
+    StmtNode e_node = ArrayList_StmtNode_get(self->stmt_pool, e_idx);
+    const char* s = Codegen_gen_stmt(self, e_node.errdefer_body);
+    if (strlen(s) > 0LL) {
+    ArrayList_Str_push(&(errdefer_calls), s);
+}
+    err_i = (err_i - 1LL);
+}
+}
     int64_t start_idx = ArrayList_Int_get(&(self->defer_depths), bi);
     int64_t next_start_idx = ArrayList_Int_length(&(self->defer_stack));
     if (bi < (ArrayList_Int_length(&(self->block_stack)) - 1LL)) {
@@ -8666,18 +9933,30 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     StmtNode def_node = ArrayList_StmtNode_get(self->stmt_pool, def_idx);
     const char* s = Codegen_gen_stmt(self, def_node.defer_body);
     if (strlen(s) > 0LL) {
-    ArrayList_Str_push(&(drop_calls), s);
+    ArrayList_Str_push(&(defer_calls), s);
 }
     def_i = (def_i - 1LL);
 }
     int64_t di = 0LL;
     while (di < ArrayList_DropVarEntry_length(&(b_node.block_drop_vars))) {
     DropVarEntry entry = ArrayList_DropVarEntry_get(&(b_node.block_drop_vars), di);
-    ArrayList_Str_push(&(drop_calls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(entry.base_type, "_drop(&"), entry.name), ");"));
+    ArrayList_Str_push(&(defer_calls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(entry.base_type, "_drop(&"), entry.name), ");"));
     di = (di + 1LL);
 }
     bi = (bi - 1LL);
 }
+    ArrayList_Str combined_calls = ArrayList_Str_init(self->allocator);
+    int64_t ei = 0LL;
+    while (ei < ArrayList_Str_length(&(errdefer_calls))) {
+    ArrayList_Str_push(&(combined_calls), ArrayList_Str_get(&(errdefer_calls), ei));
+    ei = (ei + 1LL);
+}
+    int64_t ci = 0LL;
+    while (ci < ArrayList_Str_length(&(defer_calls))) {
+    ArrayList_Str_push(&(combined_calls), ArrayList_Str_get(&(defer_calls), ci));
+    ci = (ci + 1LL);
+}
+    ArrayList_Str drop_calls = combined_calls;
     if (ArrayList_Str_length(&(drop_calls)) == 0LL) {
     if (stmt.return_value >= 0LL) {
     int64_t ret_excl_pos = Codegen_str_find(self, self->cur_return_type, ((char)(33LL)));
@@ -8685,23 +9964,13 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     const char* result_ctype = Codegen_map_type(self, self->cur_return_type);
     const char* val_payload_type = __kai_str_sub(self->cur_return_type, 0LL, ret_excl_pos);
     const char* err_type = __kai_str_sub(self->cur_return_type, (ret_excl_pos + 1LL), strlen(self->cur_return_type));
-    ExprNode ret_node = ArrayList_ExprNode_get(self->expr_pool, stmt.return_value);
-    bool is_error_variant = false;
-    if (ret_node.kind == ExprKind_ek_field_access) {
-    ExprNode base_node = ArrayList_ExprNode_get(self->expr_pool, ret_node.field_expr);
-    if (base_node.kind == ExprKind_ek_identifier) {
-    if (Codegen_is_enum_type(self, base_node.ident_name)) {
-    is_error_variant = true;
-}
-}
-}
     const char* val_str = Codegen_gen_expr(self, stmt.return_value);
     const char* expr_ty = Codegen_get_expr_type(self, stmt.return_value);
     int64_t expr_excl_pos = Codegen_str_find(self, expr_ty, ((char)(33LL)));
     if (expr_excl_pos >= 0LL) {
     return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return ", val_str), ";");
 }
-    if (is_error_variant) {
+    if (is_error_return) {
     return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return (", result_ctype), "){ .tag = "), val_str), " };");
 }
     if (strcmp(val_payload_type, "Void") == 0) {
@@ -8729,23 +9998,13 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     const char* mapped_type = Codegen_map_type(self, self->cur_return_type);
     if (ret_excl_pos >= 0LL) {
     const char* val_payload_type = __kai_str_sub(self->cur_return_type, 0LL, ret_excl_pos);
-    ExprNode ret_node = ArrayList_ExprNode_get(self->expr_pool, stmt.return_value);
-    bool is_error_variant = false;
-    if (ret_node.kind == ExprKind_ek_field_access) {
-    ExprNode base_node = ArrayList_ExprNode_get(self->expr_pool, ret_node.field_expr);
-    if (base_node.kind == ExprKind_ek_identifier) {
-    if (Codegen_is_enum_type(self, base_node.ident_name)) {
-    is_error_variant = true;
-}
-}
-}
     const char* raw_val = Codegen_gen_expr(self, stmt.return_value);
     const char* expr_ty = Codegen_get_expr_type(self, stmt.return_value);
     int64_t expr_excl_pos = Codegen_str_find(self, expr_ty, ((char)(33LL)));
     const char* ret_expr = "";
     if (expr_excl_pos >= 0LL) {
     ret_expr = raw_val;
-} else if (is_error_variant) {
+} else if (is_error_return) {
     ret_expr = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_type), "){ .tag = "), raw_val), " }");
 } else if (strcmp(val_payload_type, "Void") == 0) {
     ret_expr = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_type), "){ .tag = 0 }");
@@ -8793,10 +10052,10 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     const char* val = Codegen_gen_expr(self, arg);
     const char* arg_type = Codegen_get_expr_type(self, arg);
     if (strcmp(arg_type, "Int") == 0) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%lld\\n\", (long long)(", val), "));");
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_print_int(", val), ");");
 }
     if (strcmp(arg_type, "Float") == 0) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%f\\n\", (double)(", val), "));");
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_print_float(", val), ");");
 }
     if (strcmp(arg_type, "Char") == 0) {
     return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%c\\n\", (char)(", val), "));");
@@ -8917,12 +10176,12 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 }
 }
     if (has_source) {
-    Lexer lexer = Lexer_init(self->allocator, source);
+    Lexer lexer = Lexer_init(self->allocator, source, "");
     Lexer_lex(&(lexer));
     if (lexer.has_error) {
     return "";
 }
-    Parser parser = Parser_init_with_pools(self->allocator, lexer.tokens, self->expr_pool, self->stmt_pool, self->pattern_pool);
+    Parser parser = Parser_init_with_pools(self->allocator, "", lexer.tokens, self->expr_pool, self->stmt_pool, self->pattern_pool);
     int64_t program_idx = Parser_parse_program(&(parser));
     if (program_idx >= 0LL) {
     Codegen_build_func_types(self);
@@ -9219,84 +10478,148 @@ ArrayList_Str Codegen__collect_loop_drops(Codegen* self) {
 }
     return drop_calls;
 }
+ArrayList_Str Codegen__collect_error_cleanup(Codegen* self) {
+    ArrayList_Str cleanup = ArrayList_Str_init(self->allocator);
+    int64_t bi = (ArrayList_Int_length(&(self->block_stack)) - 1LL);
+    while (bi >= 0LL) {
+    int64_t b_idx = ArrayList_Int_get(&(self->block_stack), bi);
+    StmtNode b_node = ArrayList_StmtNode_get(self->stmt_pool, b_idx);
+    int64_t def_start = ArrayList_Int_get(&(self->defer_depths), bi);
+    int64_t next_def_start = ArrayList_Int_length(&(self->defer_stack));
+    if (bi < (ArrayList_Int_length(&(self->block_stack)) - 1LL)) {
+    next_def_start = ArrayList_Int_get(&(self->defer_depths), (bi + 1LL));
+}
+    int64_t err_start = ArrayList_Int_get(&(self->errdefer_depths), bi);
+    int64_t next_err_start = ArrayList_Int_length(&(self->errdefer_stack));
+    if (bi < (ArrayList_Int_length(&(self->block_stack)) - 1LL)) {
+    next_err_start = ArrayList_Int_get(&(self->errdefer_depths), (bi + 1LL));
+}
+    int64_t err_i = (next_err_start - 1LL);
+    while (err_i >= err_start) {
+    int64_t e_idx = ArrayList_Int_get(&(self->errdefer_stack), err_i);
+    StmtNode e_node = ArrayList_StmtNode_get(self->stmt_pool, e_idx);
+    const char* s = Codegen_gen_stmt(self, e_node.errdefer_body);
+    if (strlen(s) > 0LL) {
+    ArrayList_Str_push(&(cleanup), s);
+}
+    err_i = (err_i - 1LL);
+}
+    int64_t def_i = (next_def_start - 1LL);
+    while (def_i >= def_start) {
+    int64_t d_idx = ArrayList_Int_get(&(self->defer_stack), def_i);
+    StmtNode d_node = ArrayList_StmtNode_get(self->stmt_pool, d_idx);
+    const char* s = Codegen_gen_stmt(self, d_node.defer_body);
+    if (strlen(s) > 0LL) {
+    ArrayList_Str_push(&(cleanup), s);
+}
+    def_i = (def_i - 1LL);
+}
+    int64_t di = 0LL;
+    while (di < ArrayList_DropVarEntry_length(&(b_node.block_drop_vars))) {
+    DropVarEntry entry = ArrayList_DropVarEntry_get(&(b_node.block_drop_vars), di);
+    ArrayList_Str_push(&(cleanup), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(entry.base_type, "_drop(&"), entry.name), ");"));
+    di = (di + 1LL);
+}
+    bi = (bi - 1LL);
+}
+    return cleanup;
+}
 const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
     Codegen_build_func_types(self);
     const char* body = Codegen_gen_stmt(self, top_stmt_idx);
-    const char* final_code = "";
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <stdint.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <stdbool.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <stdio.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <stdlib.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <string.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#ifndef NO_GET_EXE_DIR\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#if defined(_WIN32)\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <windows.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#else\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#ifndef _GNU_SOURCE\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#define _GNU_SOURCE\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <dlfcn.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#include <limits.h>\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "int64_t get_exe_dir(char* out_buf, int64_t max_len) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#if defined(_WIN32)\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (len == 0 || len >= max_len) return -1;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    for (int i = len - 1; i >= 0; i--) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "            out_buf[i] = '\\0';\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "            break;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    return 0;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#else\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    Dl_info info;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    char dummy = 0;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        char real_path[PATH_MAX];\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        if (realpath(info.dli_fname, real_path) != NULL) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "            char* last_slash = strrchr(real_path, '/');\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "            if (last_slash != NULL) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                *last_slash = '\\0';\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                int i = 0;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                while (i < max_len - 1 && real_path[i] != '\\0') {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                    out_buf[i] = real_path[i];\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                    i++;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                out_buf[i] = '\\0';\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "                return 0;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "            }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    return -1;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "}\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "#endif\n\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "static char* __kai_str_sub(const char* s, int64_t start, int64_t end) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    int64_t len = strlen(s);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (end > len) end = len;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (start < 0) start = 0;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (start >= end) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        char* empty = malloc(1);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        if (empty) empty[0] = '\\0';\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        return empty;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    int64_t sub_len = end - start;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    char* buf = malloc(sub_len + 1);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (buf) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        memcpy(buf, s + start, sub_len);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "        buf[sub_len] = '\\0';\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    }\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    return buf;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "}\n\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t elem_size) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    int64_t count = end - start;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (count <= 0) return NULL;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    size_t total = (size_t)count * (size_t)elem_size;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    void* buf = malloc(total);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    return buf;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "}\n\n");
+    CCodeBuilder_emit_raw(&(self->c), "#include <stdint.h>");
+    CCodeBuilder_emit_raw(&(self->c), "#include <stdbool.h>");
+    CCodeBuilder_emit_raw(&(self->c), "#include <stdio.h>");
+    CCodeBuilder_emit_raw(&(self->c), "#include <stdlib.h>");
+    CCodeBuilder_emit_raw(&(self->c), "#include <string.h>");
+    CCodeBuilder_emit_raw(&(self->c), "#ifndef MAP_FAILED");
+    CCodeBuilder_emit_raw(&(self->c), "#define MAP_FAILED ((void*)-1)");
+    CCodeBuilder_emit_raw(&(self->c), "#endif");
+    CCodeBuilder_emit_raw(&(self->c), "#ifndef MAP_PRIVATE");
+    CCodeBuilder_emit_raw(&(self->c), "#define MAP_PRIVATE 2");
+    CCodeBuilder_emit_raw(&(self->c), "#endif");
+    CCodeBuilder_emit_raw(&(self->c), "#ifndef MAP_ANONYMOUS");
+    CCodeBuilder_emit_raw(&(self->c), "#ifdef __APPLE__");
+    CCodeBuilder_emit_raw(&(self->c), "#define MAP_ANONYMOUS 0x1000");
+    CCodeBuilder_emit_raw(&(self->c), "#else");
+    CCodeBuilder_emit_raw(&(self->c), "#define MAP_ANONYMOUS 0x20");
+    CCodeBuilder_emit_raw(&(self->c), "#endif");
+    CCodeBuilder_emit_raw(&(self->c), "#endif");
+    CCodeBuilder_emit_raw(&(self->c), "extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);");
+    CCodeBuilder_emit_raw(&(self->c), "extern int munmap(void* addr, unsigned long long length);");
+    CCodeBuilder_emit_raw(&(self->c), "#ifndef NO_GET_EXE_DIR");
+    CCodeBuilder_emit_raw(&(self->c), "#if defined(_WIN32)");
+    CCodeBuilder_emit_raw(&(self->c), "#include <windows.h>");
+    CCodeBuilder_emit_raw(&(self->c), "#else");
+    CCodeBuilder_emit_raw(&(self->c), "#ifndef _GNU_SOURCE");
+    CCodeBuilder_emit_raw(&(self->c), "#define _GNU_SOURCE");
+    CCodeBuilder_emit_raw(&(self->c), "#endif");
+    CCodeBuilder_emit_raw(&(self->c), "#include <dlfcn.h>");
+    CCodeBuilder_emit_raw(&(self->c), "#include <limits.h>");
+    CCodeBuilder_emit_raw(&(self->c), "#endif");
+    CCodeBuilder_emit_blank(&(self->c));
+    CCodeBuilder_emit_raw(&(self->c), "int64_t get_exe_dir(char* out_buf, int64_t max_len) {");
+    CCodeBuilder_emit_raw(&(self->c), "#if defined(_WIN32)");
+    CCodeBuilder_emit_raw(&(self->c), "    DWORD len = GetModuleFileNameA(NULL, out_buf, max_len);");
+    CCodeBuilder_emit_raw(&(self->c), "    if (len == 0 || len >= max_len) return -1;");
+    CCodeBuilder_emit_raw(&(self->c), "    for (int i = len - 1; i >= 0; i--) {");
+    CCodeBuilder_emit_raw(&(self->c), "        if (out_buf[i] == '\\\\' || out_buf[i] == '/') {");
+    CCodeBuilder_emit_raw(&(self->c), "            out_buf[i] = '\\0';");
+    CCodeBuilder_emit_raw(&(self->c), "            break;");
+    CCodeBuilder_emit_raw(&(self->c), "        }");
+    CCodeBuilder_emit_raw(&(self->c), "    }");
+    CCodeBuilder_emit_raw(&(self->c), "    return 0;");
+    CCodeBuilder_emit_raw(&(self->c), "#else");
+    CCodeBuilder_emit_raw(&(self->c), "    Dl_info info;");
+    CCodeBuilder_emit_raw(&(self->c), "    char dummy = 0;");
+    CCodeBuilder_emit_raw(&(self->c), "    if (dladdr((void*)&dummy, &info) != 0 && info.dli_fname != NULL) {");
+    CCodeBuilder_emit_raw(&(self->c), "        char real_path[PATH_MAX];");
+    CCodeBuilder_emit_raw(&(self->c), "        if (realpath(info.dli_fname, real_path) != NULL) {");
+    CCodeBuilder_emit_raw(&(self->c), "            char* last_slash = strrchr(real_path, '/');");
+    CCodeBuilder_emit_raw(&(self->c), "            if (last_slash != NULL) {");
+    CCodeBuilder_emit_raw(&(self->c), "                *last_slash = '\\0';");
+    CCodeBuilder_emit_raw(&(self->c), "                int i = 0;");
+    CCodeBuilder_emit_raw(&(self->c), "                while (i < max_len - 1 && real_path[i] != '\\0') {");
+    CCodeBuilder_emit_raw(&(self->c), "                    out_buf[i] = real_path[i];");
+    CCodeBuilder_emit_raw(&(self->c), "                    i++;");
+    CCodeBuilder_emit_raw(&(self->c), "                }");
+    CCodeBuilder_emit_raw(&(self->c), "                out_buf[i] = '\\0';");
+    CCodeBuilder_emit_raw(&(self->c), "                return 0;");
+    CCodeBuilder_emit_raw(&(self->c), "            }");
+    CCodeBuilder_emit_raw(&(self->c), "        }");
+    CCodeBuilder_emit_raw(&(self->c), "    }");
+    CCodeBuilder_emit_raw(&(self->c), "    return -1;");
+    CCodeBuilder_emit_raw(&(self->c), "#endif");
+    CCodeBuilder_emit_raw(&(self->c), "}");
+    CCodeBuilder_emit_raw(&(self->c), "#endif");
+    CCodeBuilder_emit_blank(&(self->c));
+    CCodeBuilder_emit_raw(&(self->c), "static char* __kai_str_sub(const char* s, int64_t start, int64_t end) {");
+    CCodeBuilder_emit_raw(&(self->c), "    int64_t len = strlen(s);");
+    CCodeBuilder_emit_raw(&(self->c), "    if (end > len) end = len;");
+    CCodeBuilder_emit_raw(&(self->c), "    if (start < 0) start = 0;");
+    CCodeBuilder_emit_raw(&(self->c), "    if (start >= end) {");
+    CCodeBuilder_emit_raw(&(self->c), "        char* empty = malloc(1);");
+    CCodeBuilder_emit_raw(&(self->c), "        if (empty) empty[0] = '\\0';");
+    CCodeBuilder_emit_raw(&(self->c), "        return empty;");
+    CCodeBuilder_emit_raw(&(self->c), "    }");
+    CCodeBuilder_emit_raw(&(self->c), "    int64_t sub_len = end - start;");
+    CCodeBuilder_emit_raw(&(self->c), "    char* buf = malloc(sub_len + 1);");
+    CCodeBuilder_emit_raw(&(self->c), "    if (buf) {");
+    CCodeBuilder_emit_raw(&(self->c), "        memcpy(buf, s + start, sub_len);");
+    CCodeBuilder_emit_raw(&(self->c), "        buf[sub_len] = '\\0';");
+    CCodeBuilder_emit_raw(&(self->c), "    }");
+    CCodeBuilder_emit_raw(&(self->c), "    return buf;");
+    CCodeBuilder_emit_raw(&(self->c), "}");
+    CCodeBuilder_emit_blank(&(self->c));
+    CCodeBuilder_emit_raw(&(self->c), "static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t elem_size) {");
+    CCodeBuilder_emit_raw(&(self->c), "    int64_t count = end - start;");
+    CCodeBuilder_emit_raw(&(self->c), "    if (count <= 0) return NULL;");
+    CCodeBuilder_emit_raw(&(self->c), "    size_t total = (size_t)count * (size_t)elem_size;");
+    CCodeBuilder_emit_raw(&(self->c), "    void* buf = malloc(total);");
+    CCodeBuilder_emit_raw(&(self->c), "    if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);");
+    CCodeBuilder_emit_raw(&(self->c), "    return buf;");
+    CCodeBuilder_emit_raw(&(self->c), "}");
+    CCodeBuilder_emit_blank(&(self->c));
     int64_t ci = 0LL;
     bool has_cimports = false;
     while (ci < ArrayList_Str_length(&(self->cimport_headers))) {
@@ -9319,7 +10642,7 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
 }
     if (!is_baseline) {
     if (!has_cimports) {
-    final_code = __kai_std_str_concat_alloc(final_code, "/* C FFI Imports */\n");
+    CCodeBuilder_emit_raw(&(self->c), "/* C FFI Imports */");
     has_cimports = true;
 }
     bool has_slash = false;
@@ -9337,29 +10660,47 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
 }
 }
     if ((!has_slash) && (!dot_start)) {
-    final_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(final_code, "#include <"), hdr), ">\n");
+    CCodeBuilder_emit_raw(&(self->c), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include <", hdr), ">"));
 } else {
-    final_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(final_code, "#include \""), hdr), "\"\n");
+    CCodeBuilder_emit_raw(&(self->c), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include \"", hdr), "\""));
 }
 }
     ci = (ci + 1LL);
 }
-    final_code = __kai_std_str_concat_alloc(final_code, "static __thread void* _kai_current_allocator = NULL;\n\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "static inline void _kai_set_current_allocator(void* allocator) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    _kai_current_allocator = allocator;\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "}\n\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "extern int munmap(void* addr, unsigned long long length);\n\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "static inline char* _kai_mmap(char* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    return (char*)mmap(addr, (unsigned long long)length, prot, flags, fd, offset);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "}\n\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "static inline int64_t _kai_munmap(char* addr, int64_t length) {\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "    return munmap(addr, (unsigned long long)length);\n");
-    final_code = __kai_std_str_concat_alloc(final_code, "}\n\n");
-    final_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(final_code, StringBuilder_to_str(&(self->struct_decls))), "\n");
-    final_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(final_code, StringBuilder_to_str(&(self->func_decls))), "\n");
-    final_code = __kai_std_str_concat_alloc(final_code, StringBuilder_to_str(&(self->output)));
-    return final_code;
+    CCodeBuilder_emit_blank(&(self->c));
+    CCodeBuilder_emit_raw(&(self->c), "static __thread void* _kai_current_allocator = NULL;");
+    CCodeBuilder_emit_blank(&(self->c));
+    CCodeBuilder_emit_raw(&(self->c), "static inline void _kai_set_current_allocator(void* allocator) {");
+    CCodeBuilder_emit_raw(&(self->c), "    _kai_current_allocator = allocator;");
+    CCodeBuilder_emit_raw(&(self->c), "}");
+    CCodeBuilder_emit_blank(&(self->c));
+    CCodeBuilder_emit_raw(&(self->c), "void __kai_print_int(int64_t v) {");
+    CCodeBuilder_emit_raw(&(self->c), "    printf(\"%lld\\n\", (long long)(v));");
+    CCodeBuilder_emit_raw(&(self->c), "}");
+    CCodeBuilder_emit_blank(&(self->c));
+    CCodeBuilder_emit_raw(&(self->c), "void __kai_print_float(double v) {");
+    CCodeBuilder_emit_raw(&(self->c), "    printf(\"%f\\n\", (double)(v));");
+    CCodeBuilder_emit_raw(&(self->c), "}");
+    CCodeBuilder_emit_blank(&(self->c));
+    CCodeBuilder_emit_raw(&(self->c), "static inline char* _kai_mmap(char* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {");
+    CCodeBuilder_emit_raw(&(self->c), "    return (char*)mmap(addr, length, prot, MAP_PRIVATE | MAP_ANONYMOUS, fd, offset);");
+    CCodeBuilder_emit_raw(&(self->c), "}");
+    CCodeBuilder_emit_blank(&(self->c));
+    CCodeBuilder_emit_raw(&(self->c), "static inline int64_t _kai_munmap(char* addr, int64_t length) {");
+    CCodeBuilder_emit_raw(&(self->c), "    return munmap(addr, length);");
+    CCodeBuilder_emit_raw(&(self->c), "}");
+    CCodeBuilder_emit_blank(&(self->c));
+    CCodeBuilder_emit_raw(&(self->c), "extern void __kai_panic(const char* msg);");
+    CCodeBuilder_emit_raw(&(self->c), "#ifndef __KAI_NO_PANIC");
+    CCodeBuilder_emit_raw(&(self->c), "void __kai_panic(const char* msg) {");
+    CCodeBuilder_emit_raw(&(self->c), "    fprintf(stderr, \"KAI PANIC: %s\\n\", msg);");
+    CCodeBuilder_emit_raw(&(self->c), "    fflush(stderr);");
+    CCodeBuilder_emit_raw(&(self->c), "    abort();");
+    CCodeBuilder_emit_raw(&(self->c), "}");
+    CCodeBuilder_emit_raw(&(self->c), "#endif");
+    CCodeBuilder_emit_blank(&(self->c));
+    const char* preamble = CCodeBuilder_get_output_nl(&(self->c));
+    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(preamble, StringBuilder_to_str(&(self->struct_decls))), "\n"), StringBuilder_to_str(&(self->func_decls))), "\n"), StringBuilder_to_str(&(self->output)));
 }
 ErrorInfo get_error_info(const char* code) {
     if (strcmp(code, "E0001") == 0) {
@@ -9792,7 +11133,7 @@ void print_diag_json(const char* code, const char* message, const char* path, in
     print_json_string(message);
     printf("\",\"path\":\"");
     print_json_string(path);
-    printf("\",\"line\":%lld,\"column\":%lld,\"length\":%lld", line, column, len_val);
+    printf("\",\"line\":%ld,\"column\":%ld,\"length\":%ld", line, column, len_val);
     printf(",\"expected\":\"");
     print_json_string(expected);
     printf("\",\"actual\":\"");
@@ -9829,11 +11170,11 @@ void print_plan(const char* path, bool json_mode, ArrayList_Str* codes, ArrayLis
     printf("No diagnostics found in '%s'\n", path);
     return;
 }
-    printf("Found %lld diagnostic(s) in '%s':\n", count, path);
+    printf("Found %ld diagnostic(s) in '%s':\n", count, path);
     int64_t i = 0LL;
     while (i < count) {
     const char* cd = ArrayList_Str_get(codes, i);
-    printf("%s:%lld:%lld %s: %s\n", path, ArrayList_Int_get(dlines, i), ArrayList_Int_get(dcolumns, i), cd, ArrayList_Str_get(messages, i));
+    printf("%s:%ld:%ld %s: %s\n", path, ArrayList_Int_get(dlines, i), ArrayList_Int_get(dcolumns, i), cd, ArrayList_Str_get(messages, i));
     printf("  expected: %s\n", ArrayList_Str_get(expected, i));
     printf("  actual: %s\n", ArrayList_Str_get(actual, i));
     printf("  help: %s\n", ArrayList_Str_get(helpv, i));
@@ -9889,11 +11230,11 @@ void print_patch(const char* path, bool json_mode, bool apply, bool applied, Arr
 }
 }
     if (count > patch_count) {
-    printf("(%lld issue(s) without auto-fix — use kai patch to address them)\n", (count - patch_count));
+    printf("(%ld issue(s) without auto-fix — use kai patch to address them)\n", (count - patch_count));
 }
     if (apply) {
     if (applied) {
-    printf("Applied %lld fix(es) to '%s'\n", patch_count, path);
+    printf("Applied %ld fix(es) to '%s'\n", patch_count, path);
 } else {
     printf("No behavior-preserving edits to apply in '%s'\n", path);
 }
@@ -9958,7 +11299,7 @@ void print_patch(const char* path, bool json_mode, bool apply, bool applied, Arr
 }
     printf("\n    {\"path\":\"");
     print_json_string(path);
-    printf("\",\"line\":%lld,\"old\":\"", ArrayList_Int_get(patch_lines, i2));
+    printf("\",\"line\":%ld,\"old\":\"", ArrayList_Int_get(patch_lines, i2));
     print_json_string(ArrayList_Str_get(patch_old, i2));
     printf("\",\"new\":\"");
     print_json_string(ArrayList_Str_get(patch_new, i2));
@@ -10040,10 +11381,10 @@ int64_t run_fix(const char* fix_mode, const char* fix_file, bool json) {
     const char* source = (const char*)(src_res.value);
     int64_t src_len_val = strlen(source);
     if (!json) {
-    Lexer fix_lexer = Lexer_init(&(fix_alloc), source);
+    Lexer fix_lexer = Lexer_init(&(fix_alloc), source, fix_file);
     Lexer_lex(&(fix_lexer));
     if (!fix_lexer.has_error) {
-    Parser fix_parser = Parser_init(&(fix_alloc), fix_lexer.tokens);
+    Parser fix_parser = Parser_init(&(fix_alloc), fix_file, fix_lexer.tokens);
     int64_t prog_idx = Parser_parse_program(&(fix_parser));
     if (prog_idx >= 0LL) {
     TypeChecker chk = TypeChecker_init(&(fix_alloc), fix_parser.stmt_pool, fix_parser.expr_pool, fix_parser.pattern_pool, fix_file);
@@ -10931,13 +12272,13 @@ int64_t run_graph(int64_t argc, char** argv) {
     return 1LL;
 }
     const char* graph_source = (const char*)(src_res2.value);
-    Lexer graph_lexer = Lexer_init(&(graph_alloc), graph_source);
+    Lexer graph_lexer = Lexer_init(&(graph_alloc), graph_source, graph_file);
     Lexer_lex(&(graph_lexer));
     if (graph_lexer.has_error) {
     printf("Error: Lexer error in '%s'\n", graph_file);
     return 1LL;
 }
-    Parser graph_parser = Parser_init(&(graph_alloc), graph_lexer.tokens);
+    Parser graph_parser = Parser_init(&(graph_alloc), graph_file, graph_lexer.tokens);
     int64_t graph_program_idx = Parser_parse_program(&(graph_parser));
     if (graph_program_idx < 0LL) {
     printf("Error: Parse error in '%s'\n", graph_file);
@@ -10953,7 +12294,7 @@ int64_t run_graph(int64_t argc, char** argv) {
     if (si > 0LL) {
     printf(",\n");
 }
-    printf("{\"id\":%lld,\"kind\":", si);
+    printf("{\"id\":%ld,\"kind\":", si);
     StmtKind sk = stmt.kind;
     if (sk == 0LL) {
     printf("\"none\"");
@@ -11037,7 +12378,7 @@ int64_t run_graph(int64_t argc, char** argv) {
     if (ei > 0LL) {
     printf(",\n");
 }
-    printf("{\"id\":%lld,\"kind\":", ei);
+    printf("{\"id\":%ld,\"kind\":", ei);
     ExprKind ek = expr.kind;
     if (ek == 0LL) {
     printf("\"none\"");
@@ -11436,7 +12777,7 @@ int main(int argc, char** argv) {
     return 4LL;
 }
     const char* source = (const char*)(source_res.value);
-    Lexer lexer = Lexer_init(&(allocator), source);
+    Lexer lexer = Lexer_init(&(allocator), source, input_file);
     Lexer_lex(&(lexer));
     if (lexer.has_error) {
     if (json_mode) {
@@ -11444,7 +12785,7 @@ int main(int argc, char** argv) {
 }
     return 2LL;
 }
-    Parser parser = Parser_init(&(allocator), lexer.tokens);
+    Parser parser = Parser_init(&(allocator), input_file, lexer.tokens);
     int64_t program_idx = Parser_parse_program(&(parser));
     if (program_idx < 0LL) {
     if (json_mode) {

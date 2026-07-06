@@ -1,0 +1,28 @@
+import std.io.print
+
+fn identity<T>(val: T) -> T {
+    return val
+}
+
+fn add<T>(a: T, b: T) -> T {
+    return a + b
+}
+
+fn main() -> Int {
+    let a = identity<i32>(42)
+    let b = identity<i64>(9999999999999)
+    let c = identity<u32>(300)
+    let d = identity<u8>(255)
+    let e = identity<Int>(42)
+
+    printf("i32=%d i64=%ld u32=%u u8=%u Int=%ld\n", a, b, c, d, e)
+    
+    let sum_i32 = add<i32>(100, 200)
+    let sum_i64 = add<i64>(1000000000000, 2000000000000)
+    let sum_u32 = add<u32>(300, 400)
+    let sum_u8 = add<u8>(10, 20)
+    
+    printf("sum_i32=%d sum_i64=%ld sum_u32=%u sum_u8=%u\n", sum_i32, sum_i64, sum_u32, sum_u8)
+    
+    return 0
+}
