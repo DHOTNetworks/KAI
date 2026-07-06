@@ -1,0 +1,7 @@
+extern fn isdigit(c: Char) -> Bool
+extern fn isalpha(c: Char) -> Bool
+extern fn isalnum(c: Char) -> Bool
+extern fn isspace(c: Char) -> Bool
+extern fn toupper(c: Char) -> Char
+extern fn tolower(c: Char) -> Char
+extern fn strlen(s: Str) -> Int

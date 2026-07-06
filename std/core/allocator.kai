@@ -1,0 +1,287 @@
+trait Allocator {
+    fn alloc(self, size: Int, alignment: Int) -> *Char {
+    }
+    fn realloc(self, ptr: *Char, old_size: Int, new_size: Int, alignment: Int) -> *Char {
+    }
+    fn free(self, ptr: *Char) {
+    }
+    fn deinit(self) {
+    }
+}
+
+// ============================================================================
+// CAlloc — thin wrapper over system malloc/realloc/free
+// ============================================================================
+
+extern fn malloc(size: Int) -> *Char
+extern fn realloc(ptr: *Char, size: Int) -> *Char
+extern fn free(ptr: *Char)
+
+struct CAlloc {
+    dummy: Int
+    _pad: Int
+}
+
+impl Allocator for CAlloc {
+    fn alloc(self, size: Int, alignment: Int) -> *Char {
+        unsafe { return malloc(size) }
+    }
+    fn realloc(self, ptr: *Char, old_size: Int, new_size: Int, alignment: Int) -> *Char {
+        unsafe { return realloc(ptr, new_size) }
+    }
+    fn free(self, ptr: *Char) {
+        unsafe { free(ptr) }
+    }
+    fn deinit(self) {
+    }
+}
+
+// ============================================================================
+// KaiAllocator — slab-based allocator (8 B to 16 KB via size-class slabs,
+//                 > 16 KB via direct mmap)
+// ============================================================================
+
+extern fn mmap(addr: *Char, length: Int, prot: Int, flags: Int, fd: Int, offset: Int) -> *Char
+extern fn munmap(addr: *Char, length: Int) -> Int
+
+struct SlabHeader {
+    magic: Int
+    obj_size: Int
+    capacity: Int
+    free_cnt: Int
+    free_head: *Char
+    next_bump_idx: Int
+    pad: Int
+    next: *Char
+}
+
+struct FreeBlock {
+    next: *Char
+}
+
+struct KaiAllocator {
+    heads: *Char
+    used: Int
+}
+
+// Constants are inlined (no global let — avoid codegen issues)
+// SLAB_MAGIC = 1262569811, SLAB_SIZE = 65536, SLAB_MASK = -65536
+// PAGE_SIZE = 4096, PAGE_MASK = -4096
+// MMAP_PROT = 3, MMAP_FLAGS = 4098, NUM_CLASSES = 12
+
+fn class_obj_size(idx: Int) -> Int {
+    return 8 << idx
+}
+
+fn class_for(sz: Int) -> Int {
+    if sz <= 8 { return 0 }
+    if sz <= 16 { return 1 }
+    if sz <= 32 { return 2 }
+    if sz <= 64 { return 3 }
+    if sz <= 128 { return 4 }
+    if sz <= 256 { return 5 }
+    if sz <= 512 { return 6 }
+    if sz <= 1024 { return 7 }
+    if sz <= 2048 { return 8 }
+    if sz <= 4096 { return 9 }
+    if sz <= 8192 { return 10 }
+    if sz <= 16384 { return 11 }
+    return -1
+}
+
+fn is_small(sz: Int) -> Bool {
+    return sz <= 16384
+}
+
+fn page_align_up(n: Int) -> Int {
+    return (n + 4095) & (-4096)
+}
+
+impl KaiAllocator {
+    fn init(self) {
+        unsafe {
+            let ptr = mmap(0 as *Char, 4096, 3, 4098, -1, 0)
+            self.heads = ptr
+            self.used = 0
+        }
+    }
+
+    fn get_head(self, idx: Int) -> *Char {
+        unsafe {
+            let arr = self.heads as **Char
+            return arr[idx]
+        }
+    }
+
+    fn set_head(self, idx: Int, head: *Char) {
+        unsafe {
+            let arr = self.heads as **Char
+            arr[idx] = head
+        }
+    }
+
+    fn allocate_slab(self, idx: Int) -> *Char {
+        unsafe {
+            // Overallocate 2x to guarantee 64KB alignment
+            let raw = mmap(0 as *Char, 131072, 3, 4098, -1, 0)
+            if raw as Int == -1 { return 0 as *Char }
+            let aligned_addr = (raw as Int + 65535) & (-65536)
+            let slab = aligned_addr as *Char
+            // Unmap the unused region before the aligned slab
+            let before = aligned_addr - raw as Int
+            if before > 0 {
+                munmap(raw, before)
+            }
+            // Unmap the unused region after the aligned slab
+            let after_start = aligned_addr + 65536
+            let after_len = raw as Int + 131072 - after_start
+            if after_len > 0 {
+                munmap(after_start as *Char, after_len)
+            }
+            let objsz = class_obj_size(idx)
+            var hdr = slab as *SlabHeader
+            hdr.magic = 1262569811
+            hdr.obj_size = objsz
+            hdr.capacity = (65536 - 64) / objsz
+            hdr.free_cnt = 0
+            hdr.free_head = 0 as *Char
+            hdr.next_bump_idx = 0
+            hdr.pad = 0
+            hdr.next = self.get_head(idx)
+            self.set_head(idx, slab)
+            return slab
+        }
+    }
+
+    fn alloc_large(self, size: Int) -> *Char {
+        unsafe {
+            let total = size + 8
+            let page_aligned = page_align_up(total)
+            // Overallocate by 64KB to guarantee 64KB alignment
+            let raw = mmap(0 as *Char, page_aligned + 65536, 3, 4098, -1, 0)
+            if raw as Int == -1 { return 0 as *Char }
+            let aligned_addr = (raw as Int + 65535) & (-65536)
+            let slab = aligned_addr as *Char
+            // Store the original mmap base for free_large
+            (slab as *Int)[0] = raw as Int
+            (slab as *Int)[1] = size
+            self.used = self.used + size
+            return (aligned_addr + 16) as *Char
+        }
+    }
+
+    fn free_large(self, ptr: *Char) {
+        unsafe {
+            let slab_addr = ptr as Int & (-65536)
+            let raw_ptr = (slab_addr as *Char as *Int)[0]
+            let orig_size = (slab_addr as *Char as *Int)[1]
+            // Calculate original mmap size: page_align_up(orig_size + 8) + 65536
+            let mmap_size = page_align_up(orig_size + 8) + 65536
+            self.used = self.used - orig_size
+            munmap(raw_ptr as *Char, mmap_size)
+        }
+    }
+}
+
+impl Allocator for KaiAllocator {
+    fn alloc(self, size: Int, align: Int) -> *Char {
+        if !is_small(size) {
+            return self.alloc_large(size)
+        }
+        let idx = class_for(size)
+        let objsz = class_obj_size(idx)
+        unsafe {
+            var slab = self.get_head(idx)
+            while slab != 0 as *Char {
+                var hdr = slab as *SlabHeader
+                if hdr.free_head != 0 as *Char {
+                    let ptr = hdr.free_head
+                    hdr.free_head = (ptr as *FreeBlock).next
+                    hdr.free_cnt = hdr.free_cnt - 1
+                    self.used = self.used + objsz
+                    return ptr
+                }
+                if hdr.next_bump_idx < hdr.capacity {
+                    let off = 64 + hdr.next_bump_idx * objsz
+                    let ptr = (slab as Int + off) as *Char
+                    hdr.next_bump_idx = hdr.next_bump_idx + 1
+                    self.used = self.used + objsz
+                    return ptr
+                }
+                slab = hdr.next
+            }
+            let ns = self.allocate_slab(idx)
+            if ns == 0 as *Char { return 0 as *Char }
+            var hdr = ns as *SlabHeader
+            hdr.next_bump_idx = 1
+            self.used = self.used + objsz
+            return (ns as Int + 64) as *Char
+        }
+    }
+
+    fn realloc(self, ptr: *Char, old_size: Int, new_size: Int, align: Int) -> *Char {
+        if ptr == 0 as *Char { return self.alloc(new_size, align) }
+        if new_size <= old_size { return ptr }
+        unsafe {
+            let slab_addr = ptr as Int & (-65536)
+            var hdr = (slab_addr as *Char) as *SlabHeader
+            if hdr.magic == 1262569811 {
+                if new_size <= hdr.obj_size { return ptr }
+                let np = self.alloc(new_size, align)
+                if np == 0 as *Char { return 0 as *Char }
+                var i = 0
+                while i < old_size {
+                    np[i] = ptr[i]
+                    i = i + 1
+                }
+                self.free(ptr)
+                return np
+            }
+        }
+        let np = self.alloc(new_size, align)
+        if np == 0 as *Char { return 0 as *Char }
+        unsafe {
+            var i = 0
+            while i < old_size {
+                np[i] = ptr[i]
+                i = i + 1
+            }
+            self.free(ptr)
+        }
+        return np
+    }
+
+    fn free(self, ptr: *Char) {
+        if ptr == 0 as *Char { return }
+        unsafe {
+            let slab_addr = ptr as Int & (-65536)
+            var hdr = (slab_addr as *Char) as *SlabHeader
+            if hdr.magic == 1262569811 {
+                var fb = ptr as *FreeBlock
+                fb.next = hdr.free_head
+                hdr.free_head = ptr
+                hdr.free_cnt = hdr.free_cnt + 1
+            } else {
+                self.free_large(ptr)
+            }
+        }
+    }
+
+    fn deinit(self) {
+        var i = 0
+        while i < 12 {
+            unsafe {
+                var slab = self.get_head(i)
+                while slab != 0 as *Char {
+                    let next = (slab as *SlabHeader).next
+                    munmap(slab, 65536)
+                    slab = next
+                }
+            }
+            i = i + 1
+        }
+        unsafe {
+            munmap(self.heads, page_align_up(96))
+        }
+    }
+}

@@ -1,0 +1,134 @@
+import KaiAllocator from std.core.allocator
+import read_to_string from std.io.file
+import write_string from std.io.file
+import Lexer from lexer
+import Parser from parser
+import TypeChecker from type_checker
+import Codegen from codegen
+import length from std.collections.string
+import substring from std.collections.string
+
+extern fn system(cmd: *Char) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+
+
+fn get_base_name(allocator: *Allocator, path: Str) -> Str {
+    var last_slash = -1
+    var dot_pos = -1
+    var i = 0
+    let l = length(path)
+    while i < l {
+        let c = path[i]
+        if c == Char(47) { // '/' is 47
+            last_slash = i
+        } else if c == Char(46) { // '.' is 46
+            dot_pos = i
+        }
+        i = i + 1
+    }
+    var start = 0
+    if last_slash >= 0 {
+        start = last_slash + 1
+    }
+    var end = l
+    if dot_pos > last_slash {
+        end = dot_pos
+    }
+    return substring(path, start, end)
+}
+
+fn main(argc: Int, argv: **Char) -> Int {
+    if argc < 2 {
+        print("Usage: compiler <input.kai> [-o <output_bin>] [-c]")
+        return 1
+    }
+
+    var input_file = ""
+    var output_bin = ""
+    var emit_c_only = false
+
+    var i = 1
+    while i < argc {
+        let arg = argv[i] as Str
+        var is_c = false
+        var is_o = false
+        unsafe {
+            if strcmp(arg, "-c") == 0 {
+                is_c = true
+            } else if strcmp(arg, "-o") == 0 {
+                is_o = true
+            }
+        }
+        if is_c {
+            emit_c_only = true
+        } else if is_o {
+            if i + 1 < argc {
+                i = i + 1
+                output_bin = argv[i] as Str
+            } else {
+                print("Error: -o requires an argument")
+                return 1
+            }
+        } else {
+            input_file = arg
+        }
+        i = i + 1
+    }
+
+    if length(input_file) == 0 {
+        print("Error: No input file specified")
+        return 1
+    }
+
+    var allocator = KaiAllocator(heads: 0 as *Char, used: 0)
+    allocator.init()
+
+    let base = get_base_name(&allocator, input_file)
+    var bin_name = base
+    if length(output_bin) > 0 {
+        bin_name = output_bin
+    }
+    let c_file = base + ".c"
+
+    let source_res = read_to_string(&allocator, input_file)
+    match source_res {
+        case .ok(source) => {
+            var lexer = Lexer(&allocator, source)
+            lexer.lex()
+            if lexer.has_error {
+                return 2
+            }
+            var parser = Parser(&allocator, lexer.tokens)
+            let program_idx = parser.parse_program()
+            if program_idx < 0 {
+                return 3
+            }
+            var checker = TypeChecker(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
+            let success = checker.check_program(program_idx)
+            if !success {
+                return 4
+            }
+            var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool)
+            let output = gen.generate(program_idx)
+            let write_res = write_string(c_file, output)
+            match write_res {
+                case .ok(_) => {
+                    if emit_c_only {
+                        return 0
+                    }
+                    let cmd = "clang -O1 " + c_file + " -o " + bin_name
+                    unsafe {
+                        return system(cmd as *Char)
+                    }
+                }
+                case .err(_) => {
+                    return 5
+                }
+            }
+        }
+        case .err(err_code) => {
+            return 4
+        }
+    }
+    return 0
+}

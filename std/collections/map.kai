@@ -1,0 +1,116 @@
+import Allocator from std.core.allocator
+import Option from std.core.option
+import length from std.collections.string
+
+extern fn exit(code: Int)
+
+struct MapEntry<V> {
+    key: Str
+    value: V
+    occupied: Bool
+}
+
+struct HashMap<V> {
+    entries: *MapEntry<V>
+    len: Int
+    cap: Int
+    allocator: *Allocator
+}
+
+impl HashMap {
+    fn init(self, allocator: *Allocator) {
+        self.len = 0
+        self.cap = 16
+        self.allocator = allocator
+        unsafe {
+            self.entries = allocator.alloc(self.cap * sizeof(MapEntry<V>), 1) as *MapEntry<V>
+            var i = 0
+            while i < self.cap {
+                self.entries[i].occupied = false
+                i = i + 1
+            }
+        }
+    }
+
+    fn hash(self, key: Str) -> Int {
+        var h = 5381
+        let l = length(key)
+        var i = 0
+        while i < l {
+            h = h * 33 + Int(key[i])
+            i = i + 1
+        }
+        return h
+    }
+
+    fn put(self, key: Str, value: V) {
+        if self.len * 10 >= self.cap * 7 {
+            self.grow()
+        }
+        self.put_no_grow(key, value)
+    }
+
+    fn put_no_grow(self, key: Str, value: V) {
+        let hash_val = self.hash(key)
+        var idx = hash_val % self.cap
+        if idx < 0 {
+            idx = idx + self.cap
+        }
+        while self.entries[idx].occupied && self.entries[idx].key != key {
+            idx = (idx + 1) % self.cap
+        }
+        if self.entries[idx].occupied == false {
+            self.entries[idx].key = key
+            self.entries[idx].occupied = true
+            self.len = self.len + 1
+        }
+        self.entries[idx].value = value
+    }
+
+    fn get(self, key: Str) -> Option<V> {
+        let hash_val = self.hash(key)
+        var idx = hash_val % self.cap
+        if idx < 0 {
+            idx = idx + self.cap
+        }
+        var start = idx
+        var first = true
+        while self.entries[idx].occupied && (first || idx != start) {
+            first = false
+            if self.entries[idx].key == key {
+                return Option<V>.some(value: self.entries[idx].value)
+            }
+            idx = (idx + 1) % self.cap
+        }
+        return Option<V>.empty
+    }
+
+    fn grow(self) {
+        let old_cap = self.cap
+        let old_entries = self.entries
+        self.cap = old_cap * 2
+        self.len = 0
+        unsafe {
+            self.entries = self.allocator.alloc(self.cap * sizeof(MapEntry<V>), 1) as *MapEntry<V>
+            var i = 0
+            while i < self.cap {
+                self.entries[i].occupied = false
+                i = i + 1
+            }
+            i = 0
+            while i < old_cap {
+                if old_entries[i].occupied {
+                    self.put_no_grow(old_entries[i].key, old_entries[i].value)
+                }
+                i = i + 1
+            }
+            self.allocator.free(old_entries as *Char)
+        }
+    }
+
+    fn deinit(self) {
+        unsafe {
+            self.allocator.free(self.entries as *Char)
+        }
+    }
+}

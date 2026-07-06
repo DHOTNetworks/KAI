@@ -1,0 +1,411 @@
+import ArrayList from std.collections.array
+import Allocator from std.core.allocator
+
+import TokenValue from token_defs
+
+struct DropVarEntry {
+    name: Str
+    base_type: Str
+
+}
+struct FieldInit {
+    name: Str
+    value: Int
+
+}
+struct Param {
+    name: Str
+    ptype: Str
+
+}
+struct StructField {
+    name: Str
+    ftype: Str
+
+}
+struct Variant {
+    vname: Str
+    params: ArrayList<Param>
+
+}
+struct MatchCase {
+    pattern: Int
+    body: Int
+
+}
+struct StrInterpPart {
+    kind: Int
+    str_val: Str
+    expr_idx: Int
+
+}
+struct AsmOutput {
+    name: Str
+    constraint: Str
+    type_name: Str
+    expr_idx: Int
+
+}
+struct AsmInput {
+    name: Str
+    constraint: Str
+    expr_idx: Int
+
+}
+enum PatternKind {
+    case pk_variant
+    case pk_literal
+    case pk_else
+
+}
+struct PatternNode {
+    kind: PatternKind
+    variant_name: Str
+    bindings: ArrayList<Str>
+    lit_value: TokenValue
+
+}
+enum ExprKind {
+    case ek_none
+    case ek_literal
+    case ek_str_interp
+    case ek_identifier
+    case ek_binary_op
+    case ek_unary_op
+    case ek_func_call
+    case ek_struct_init
+    case ek_field_access
+    case ek_method_call
+    case ek_index
+    case ek_check
+    case ek_slice
+    case ek_range
+    case ek_array
+    case ek_tuple
+    case ek_borrow
+    case ek_deref
+    case ek_try
+    case ek_catch
+    case ek_asm
+
+}
+struct ExprNode {
+    kind: ExprKind
+    inferred_type: Str
+    lit_value: TokenValue
+    lit_vkind: Str
+    interp_parts: ArrayList<StrInterpPart>
+    ident_name: Str
+    ident_type_args: ArrayList<Str>
+    binop_op: Str
+    binop_left: Int
+    binop_right: Int
+    unop_op: Str
+    unop_operand: Int
+    func_name: Str
+    func_args: ArrayList<Int>
+    func_type_args: ArrayList<Str>
+    struct_name: Str
+    struct_fields: ArrayList<FieldInit>
+    field_expr: Int
+    field_name: Str
+    meth_expr: Int
+    meth_name: Str
+    meth_args: ArrayList<Int>
+    idx_expr: Int
+    idx_index: Int
+    check_expr: Int
+    slice_expr: Int
+    slice_lower: Int
+    slice_upper: Int
+    slice_inclusive: Bool
+    range_start: Int
+    range_end: Int
+    range_inclusive: Bool
+    arr_elements: ArrayList<Int>
+    tup_elements: ArrayList<Int>
+    borrow_expr: Int
+    borrow_mut: Bool
+    deref_expr: Int
+    try_expr: Int
+    catch_expr: Int
+    catch_var: Str
+    catch_fallback: Int
+    asm_code: Str
+    asm_is_volatile: Bool
+    asm_outputs: ArrayList<AsmOutput>
+    asm_inputs: ArrayList<AsmInput>
+    asm_clobbers: ArrayList<Str>
+
+}
+enum StmtKind {
+    case sk_none
+    case sk_block
+    case sk_var_decl
+    case sk_assignment
+    case sk_func_decl
+    case sk_struct_decl
+    case sk_impl_block
+    case sk_trait_decl
+    case sk_enum_decl
+    case sk_if
+    case sk_if_let
+    case sk_while
+    case sk_for
+    case sk_return
+    case sk_print
+    case sk_expr
+    case sk_defer
+    case sk_unsafe
+    case sk_extern
+    case sk_import
+    case sk_cimport
+    case sk_match
+    case sk_error_decl
+    case sk_break
+    case sk_continue
+
+}
+struct StmtNode {
+    kind: StmtKind
+    block_stmts: ArrayList<Int>
+    vardecl_name: Str
+    vardecl_type: Str
+    vardecl_value: Int
+    vardecl_mut: Bool
+    assign_target: Int
+    assign_value: Int
+    assign_op: Str
+    func_name: Str
+    func_params: ArrayList<Param>
+    func_return_type: Str
+    func_body: Int
+    func_capability: Str
+    func_type_params: ArrayList<Str>
+    func_public: Bool
+    struct_name: Str
+    struct_fields: ArrayList<StructField>
+    struct_type_params: ArrayList<Str>
+    struct_methods: ArrayList<Int>
+    struct_trait_impls: ArrayList<Int>
+    struct_public: Bool
+    impl_struct_name: Str
+    impl_trait_name: Str
+    impl_methods: ArrayList<Int>
+    trait_name: Str
+    trait_methods: ArrayList<Int>
+    trait_public: Bool
+    enum_name: Str
+    enum_variants: ArrayList<Variant>
+    enum_type_params: ArrayList<Str>
+    enum_public: Bool
+    if_cond: Int
+    if_then: Int
+    if_else: Int
+    iflet_var: Str
+    iflet_expr: Int
+    iflet_then: Int
+    iflet_else: Int
+    while_cond: Int
+    while_body: Int
+    for_var: Str
+    for_start: Int
+    for_end: Int
+    for_inclusive: Bool
+    for_body: Int
+    return_value: Int
+    print_value: Int
+    expr_stmt: Int
+    defer_body: Int
+    unsafe_body: Int
+    extern_name: Str
+    extern_params: ArrayList<Param>
+    extern_return: Str
+    import_path: ArrayList<Str>
+    import_alias: Str
+    cimport_header: Str
+    cimport_alias: Str
+    block_drop_vars: ArrayList<DropVarEntry>
+    block_is_loop_body: Bool
+    match_expr: Int
+    match_cases: ArrayList<MatchCase>
+    error_name: Str
+    error_variants: ArrayList<Str>
+
+}
+fn empty_dropvarentry_array() -> ArrayList<DropVarEntry> {
+    return ArrayList<DropVarEntry>(data: 0 as *DropVarEntry, len: 0, cap: 0, allocator: 0 as *Allocator)
+
+}
+fn empty_str_array() -> ArrayList<Str> {
+    return ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+
+}
+fn empty_int_array() -> ArrayList<Int> {
+    return ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
+
+}
+fn empty_fieldinit_array() -> ArrayList<FieldInit> {
+    return ArrayList<FieldInit>(data: 0 as *FieldInit, len: 0, cap: 0, allocator: 0 as *Allocator)
+
+}
+fn empty_param_array() -> ArrayList<Param> {
+    return ArrayList<Param>(data: 0 as *Param, len: 0, cap: 0, allocator: 0 as *Allocator)
+
+}
+fn empty_structfield_array() -> ArrayList<StructField> {
+    return ArrayList<StructField>(data: 0 as *StructField, len: 0, cap: 0, allocator: 0 as *Allocator)
+
+}
+fn empty_variant_array() -> ArrayList<Variant> {
+    return ArrayList<Variant>(data: 0 as *Variant, len: 0, cap: 0, allocator: 0 as *Allocator)
+
+}
+fn empty_matchcase_array() -> ArrayList<MatchCase> {
+    return ArrayList<MatchCase>(data: 0 as *MatchCase, len: 0, cap: 0, allocator: 0 as *Allocator)
+
+}
+fn empty_strinterp_array() -> ArrayList<StrInterpPart> {
+    return ArrayList<StrInterpPart>(data: 0 as *StrInterpPart, len: 0, cap: 0, allocator: 0 as *Allocator)
+
+}
+fn empty_asmoutput_array() -> ArrayList<AsmOutput> {
+    return ArrayList<AsmOutput>(data: 0 as *AsmOutput, len: 0, cap: 0, allocator: 0 as *Allocator)
+
+}
+fn empty_asminput_array() -> ArrayList<AsmInput> {
+    return ArrayList<AsmInput>(data: 0 as *AsmInput, len: 0, cap: 0, allocator: 0 as *Allocator)
+
+}
+fn new_expr_node(kind: ExprKind) -> ExprNode {
+    var node = ExprNode(
+        kind: kind,
+        inferred_type: "",
+        lit_value: TokenValue.tv_none,
+        lit_vkind: "",
+        interp_parts: empty_strinterp_array(),
+        ident_name: "",
+        ident_type_args: empty_str_array(),
+        binop_op: "",
+        binop_left: -1,
+        binop_right: -1,
+        unop_op: "",
+        unop_operand: -1,
+        func_name: "",
+        func_args: empty_int_array(),
+        func_type_args: empty_str_array(),
+        struct_name: "",
+        struct_fields: empty_fieldinit_array(),
+        field_expr: -1,
+        field_name: "",
+        meth_expr: -1,
+        meth_name: "",
+        meth_args: empty_int_array(),
+        idx_expr: -1,
+        idx_index: -1,
+        check_expr: -1,
+        slice_expr: -1,
+        slice_lower: -1,
+        slice_upper: -1,
+        slice_inclusive: false,
+        range_start: -1,
+        range_end: -1,
+        range_inclusive: false,
+        arr_elements: empty_int_array(),
+        tup_elements: empty_int_array(),
+        borrow_expr: -1,
+        borrow_mut: false,
+        deref_expr: -1,
+        try_expr: -1,
+        catch_expr: -1,
+        catch_var: "",
+        catch_fallback: -1,
+        asm_code: "",
+        asm_is_volatile: false,
+        asm_outputs: empty_asmoutput_array(),
+        asm_inputs: empty_asminput_array(),
+        asm_clobbers: empty_str_array()
+    )
+    return node
+
+}
+fn new_stmt_node(kind: StmtKind) -> StmtNode {
+    var node = StmtNode(
+        kind: kind,
+        block_stmts: empty_int_array(),
+        vardecl_name: "",
+        vardecl_type: "",
+        vardecl_value: -1,
+        vardecl_mut: false,
+        assign_target: -1,
+        assign_value: -1,
+        assign_op: "",
+        func_name: "",
+        func_params: empty_param_array(),
+        func_return_type: "",
+        func_body: -1,
+        func_capability: "",
+        func_type_params: empty_str_array(),
+        func_public: false,
+        struct_name: "",
+        struct_fields: empty_structfield_array(),
+        struct_type_params: empty_str_array(),
+        struct_methods: empty_int_array(),
+        struct_trait_impls: empty_int_array(),
+        struct_public: false,
+        impl_struct_name: "",
+        impl_trait_name: "",
+        impl_methods: empty_int_array(),
+        trait_name: "",
+        trait_methods: empty_int_array(),
+        trait_public: false,
+        enum_name: "",
+        enum_variants: empty_variant_array(),
+        enum_type_params: empty_str_array(),
+        enum_public: false,
+        if_cond: -1,
+        if_then: -1,
+        if_else: -1,
+        iflet_var: "",
+        iflet_expr: -1,
+        iflet_then: -1,
+        iflet_else: -1,
+        while_cond: -1,
+        while_body: -1,
+        for_var: "",
+        for_start: -1,
+        for_end: -1,
+        for_inclusive: false,
+        for_body: -1,
+        return_value: -1,
+        print_value: -1,
+        expr_stmt: -1,
+        defer_body: -1,
+        unsafe_body: -1,
+        extern_name: "",
+        extern_params: empty_param_array(),
+        extern_return: "",
+        import_path: empty_str_array(),
+        import_alias: "",
+        cimport_header: "",
+        cimport_alias: "",
+        block_drop_vars: empty_dropvarentry_array(),
+        block_is_loop_body: false,
+        match_expr: -1,
+        match_cases: empty_matchcase_array(),
+        error_name: "",
+        error_variants: empty_str_array()
+    )
+    return node
+
+}
+fn new_pattern_node(kind: PatternKind) -> PatternNode {
+    var node = PatternNode(
+        kind: kind,
+        variant_name: "",
+        bindings: empty_str_array(),
+        lit_value: TokenValue.tv_none
+    )
+    return node
+
+}

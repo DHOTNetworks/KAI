@@ -1,0 +1,2246 @@
+import ArrayList from std.collections.array
+import Allocator from std.core.allocator
+import StringBuilder from std.collections.string
+import int_to_str from std.collections.string
+import char_to_str from std.collections.string
+import substring from std.collections.string
+import length from std.collections.string
+
+import ExprKind from ast_nodes
+import ExprNode from ast_nodes
+import StmtKind from ast_nodes
+import StmtNode from ast_nodes
+import PatternKind from ast_nodes
+import PatternNode from ast_nodes
+import FieldInit from ast_nodes
+import Param from ast_nodes
+import StructField from ast_nodes
+import Variant from ast_nodes
+import MatchCase from ast_nodes
+import AsmOutput from ast_nodes
+import AsmInput from ast_nodes
+import TokenValue from token_defs
+import Lexer from lexer
+import Parser from parser
+import read_to_string from std.io.file
+import str_array_join from parser
+
+extern fn strcmp(s1: Str, s2: Str) -> Int
+
+struct StrMapEntry {
+    key: Str
+    value: Str
+}
+
+struct Codegen {
+    allocator: *Allocator
+    stmt_pool: *ArrayList<StmtNode>
+    expr_pool: *ArrayList<ExprNode>
+    pattern_pool: *ArrayList<PatternNode>
+
+    output: StringBuilder
+    struct_decls: StringBuilder
+    func_decls: StringBuilder
+
+    cur_func_name: Str
+    cur_return_type: Str
+    cur_method_is_init: Bool
+
+    func_types: ArrayList<StrMapEntry>
+    var_types: ArrayList<StrMapEntry>
+    loaded_modules: ArrayList<Str>
+    cimport_headers: ArrayList<Str>
+    block_stack: ArrayList<Int>
+
+    generic_struct_decls: ArrayList<StrMapEntry>
+    generic_enum_decls: ArrayList<StrMapEntry>
+    generic_func_decls: ArrayList<StrMapEntry>
+    generic_impl_blocks: ArrayList<StrMapEntry>
+    monomorphized_types: ArrayList<Str>
+    current_type_map: ArrayList<StrMapEntry>
+    enum_decls: ArrayList<StrMapEntry>
+}
+
+fn type_map_find(arr: *ArrayList<StrMapEntry>, key: Str) -> Int {
+    var i = arr.length() - 1
+    while i >= 0 {
+        if arr.get(i).key == key {
+            return i
+        }
+        i = i - 1
+    }
+    return -1
+}
+
+fn type_map_get(arr: *ArrayList<StrMapEntry>, key: Str) -> Str {
+    let idx = type_map_find(arr, key)
+    if idx < 0 { return "" }
+    return arr.get(idx).value
+}
+
+fn type_map_put(arr: *ArrayList<StrMapEntry>, key: Str, value: Str) {
+    arr.push(StrMapEntry(key: key, value: value))
+}
+
+fn strlist_find(arr: *ArrayList<Str>, key: Str) -> Int {
+    var i = 0
+    while i < arr.length() {
+        if arr.get(i) == key {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+impl Codegen {
+
+fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>) {
+    self.allocator = allocator
+    self.stmt_pool = stmt_pool
+    self.expr_pool = expr_pool
+    self.pattern_pool = pattern_pool
+    self.output = StringBuilder(allocator)
+    self.struct_decls = StringBuilder(allocator)
+    self.func_decls = StringBuilder(allocator)
+    self.cur_func_name = ""
+    self.cur_return_type = ""
+    self.cur_method_is_init = false
+    self.func_types = ArrayList<StrMapEntry>(allocator)
+    self.var_types = ArrayList<StrMapEntry>(allocator)
+    self.loaded_modules = ArrayList<Str>(allocator)
+    self.cimport_headers = ArrayList<Str>(allocator)
+    self.block_stack = ArrayList<Int>(allocator)
+    self.generic_struct_decls = ArrayList<StrMapEntry>(allocator)
+    self.generic_enum_decls = ArrayList<StrMapEntry>(allocator)
+    self.generic_func_decls = ArrayList<StrMapEntry>(allocator)
+    self.generic_impl_blocks = ArrayList<StrMapEntry>(allocator)
+    self.monomorphized_types = ArrayList<Str>(allocator)
+    self.current_type_map = ArrayList<StrMapEntry>(allocator)
+    self.enum_decls = ArrayList<StrMapEntry>(allocator)
+}
+
+fn map_type(self, type_name: Str) -> Str {
+    if length(type_name) == 0 {
+        return "void"
+    }
+
+    var resolved_type = type_name
+    if self.current_type_map.length() > 0 {
+        resolved_type = self.substitute_generic_type(type_name)
+    }
+
+    if resolved_type == "Int" { return "int64_t" }
+    if resolved_type == "Int8" { return "int8_t" }
+    if resolved_type == "Int32" { return "int32_t" }
+    if resolved_type == "Bool" { return "bool" }
+    if resolved_type == "Char" { return "char" }
+    if resolved_type == "Float" { return "double" }
+    if resolved_type == "Void" { return "void" }
+    if resolved_type == "Str" { return "const char*" }
+    if resolved_type == "Allocator" { return "KaiAllocator" }
+    
+    if substring(resolved_type, 0, 2) == "[]" {
+        let inner = substring(resolved_type, 2, length(resolved_type))
+        return self.map_type(inner) + "*"
+    }
+
+    if resolved_type[0] == Char(42) {
+        if length(resolved_type) > 5 && substring(resolved_type, 0, 5) == "*mut " {
+            let inner = substring(resolved_type, 5, length(resolved_type))
+            if inner == "Void" { return "void*" }
+            return self.map_type(inner) + "*"
+        } else {
+            let inner = substring(resolved_type, 1, length(resolved_type))
+            if inner == "Void" { return "void*" }
+            return self.map_type(inner) + "*"
+        }
+    }
+
+    if resolved_type[0] == Char(38) {
+        if length(resolved_type) > 5 && substring(resolved_type, 0, 5) == "&mut " {
+            let inner = substring(resolved_type, 5, length(resolved_type))
+            return self.map_type(inner) + "*"
+        } else {
+            let inner = substring(resolved_type, 1, length(resolved_type))
+            return self.map_type(inner) + "*"
+        }
+    }
+
+    if self.str_contains(resolved_type, Char(60)) {
+        let lt_pos = self.str_find(resolved_type, Char(60))
+        let base_name = substring(resolved_type, 0, lt_pos)
+        let args_str = substring(resolved_type, lt_pos + 1, length(resolved_type) - 1)
+        var args = ArrayList<Str>(self.allocator)
+        var start = 0
+        var i = 0
+        while i < length(args_str) {
+            let c = args_str[i]
+            if c == Char(44) {
+                args.push(self.trim_spaces(substring(args_str, start, i)))
+                start = i + 1
+            }
+            i = i + 1
+        }
+        args.push(self.trim_spaces(substring(args_str, start, length(args_str))))
+
+        var concrete_name = base_name
+        var ai = 0
+        while ai < args.length() {
+            let raw_arg = args.get(ai)
+            let clean_arg = self.clean_type_for_mangling(raw_arg)
+            concrete_name = concrete_name + "_" + clean_arg
+            ai = ai + 1
+        }
+
+        let struct_idx_str = type_map_get(&self.generic_struct_decls, base_name)
+        if length(struct_idx_str) > 0 {
+            if strlist_find(&self.monomorphized_types, concrete_name) < 0 {
+                self.monomorphized_types.push(concrete_name)
+                self.monomorphize_struct(self.str_to_int(struct_idx_str), concrete_name, &args)
+            }
+            return concrete_name
+        }
+
+        let enum_idx_str = type_map_get(&self.generic_enum_decls, base_name)
+        if length(enum_idx_str) > 0 {
+            if strlist_find(&self.monomorphized_types, concrete_name) < 0 {
+                self.monomorphized_types.push(concrete_name)
+                self.monomorphize_enum(self.str_to_int(enum_idx_str), concrete_name, &args)
+            }
+            return concrete_name
+        }
+        
+        return concrete_name
+    }
+
+    return resolved_type
+}
+
+fn substitute_generic_type(self, type_name: Str) -> Str {
+    let mapped = type_map_get(&self.current_type_map, type_name)
+    if length(mapped) > 0 {
+        return mapped
+    }
+    
+    if type_name[0] == Char(42) {
+        return "*" + self.substitute_generic_type(substring(type_name, 1, length(type_name)))
+    }
+    if type_name[0] == Char(38) {
+        if substring(type_name, 0, 5) == "&mut " {
+            return "&mut " + self.substitute_generic_type(substring(type_name, 5, length(type_name)))
+        }
+        return "&" + self.substitute_generic_type(substring(type_name, 1, length(type_name)))
+    }
+    
+    if self.str_contains(type_name, Char(60)) {
+        let lt_pos = self.str_find(type_name, Char(60))
+        let base = substring(type_name, 0, lt_pos)
+        let inner = substring(type_name, lt_pos + 1, length(type_name) - 1)
+        var res = base + "<"
+        var start = 0
+        var i = 0
+        var arg_count = 0
+        while i < length(inner) {
+            let c = inner[i]
+            if c == Char(44) {
+                let arg = self.trim_spaces(substring(inner, start, i))
+                if arg_count > 0 { res = res + ", " }
+                res = res + self.substitute_generic_type(arg)
+                start = i + 1
+                arg_count = arg_count + 1
+            }
+            i = i + 1
+        }
+        let arg = self.trim_spaces(substring(inner, start, length(inner)))
+        if arg_count > 0 { res = res + ", " }
+        res = res + self.substitute_generic_type(arg)
+        res = res + ">"
+        return res
+    }
+    
+    return type_name
+}
+
+fn trim_spaces(self, s: Str) -> Str {
+    var start = 0
+    while start < length(s) && s[start] == Char(32) {
+        start = start + 1
+    }
+    var end = length(s)
+    while end > start && s[end - 1] == Char(32) {
+        end = end - 1
+    }
+    return substring(s, start, end)
+}
+
+fn clean_type_for_mangling(self, s: Str) -> Str {
+    var res = ""
+    var i = 0
+    while i < length(s) {
+        let c = s[i]
+        if c == Char(42) {
+            res = res + "ptr"
+        } else if c == Char(38) {
+            res = res + "ref"
+        } else if c == Char(32) {
+            res = res + "_"
+        } else if c == Char(60) || c == Char(62) || c == Char(44) {
+            res = res + "_"
+        } else {
+            res = res + char_to_str(c)
+        }
+        i = i + 1
+    }
+    return res
+}
+
+fn str_to_int(self, s: Str) -> Int {
+    var res = 0
+    var i = 0
+    while i < length(s) {
+        let c = s[i]
+        if c >= Char(48) && c <= Char(57) {
+            res = res * 10 + (Int(c) - 48)
+        }
+        i = i + 1
+    }
+    return res
+}
+
+fn setup_current_type_map(self, type_params: *ArrayList<Str>, type_args: *ArrayList<Str>) -> Void {
+    var i = 0
+    while i < type_params.length() {
+        var param_name = self.trim_spaces(type_params.get(i))
+        let arg_name = self.trim_spaces(type_args.get(i))
+        if self.str_contains(param_name, Char(58)) { // ':' is 58
+            let colon_pos = self.str_find(param_name, Char(58))
+            param_name = substring(param_name, 0, colon_pos)
+        }
+        type_map_put(&self.current_type_map, param_name, arg_name)
+        i = i + 1
+    }
+}
+
+fn monomorphize_struct(self, stmt_idx: Int, concrete_name: Str, type_args: *ArrayList<Str>) -> Void {
+    let stmt = self.stmt_pool.get(stmt_idx)
+    let old_type_map = self.current_type_map
+    self.current_type_map = ArrayList<StrMapEntry>(self.allocator)
+    self.setup_current_type_map(&stmt.struct_type_params, type_args)
+    let typedef_str = "typedef struct " + concrete_name + " " + concrete_name + ";\n"
+    let _ = self.struct_decls.append(typedef_str)
+    var body = "struct " + concrete_name + " {\n"
+    var i = 0
+    while i < stmt.struct_fields.length() {
+        let f = stmt.struct_fields.get(i)
+        let f_type = self.map_type(f.ftype)
+        body = body + "    " + f_type + " " + f.name + ";\n"
+        i = i + 1
+    }
+    body = body + "};\n"
+    let _ = self.struct_decls.append(body)
+    self.monomorphize_methods(stmt.struct_name, concrete_name)
+    self.current_type_map = old_type_map
+}
+
+fn monomorphize_enum(self, stmt_idx: Int, concrete_name: Str, type_args: *ArrayList<Str>) -> Void {
+    let stmt = self.stmt_pool.get(stmt_idx)
+    let old_type_map = self.current_type_map
+    self.current_type_map = ArrayList<StrMapEntry>(self.allocator)
+    self.setup_current_type_map(&stmt.enum_type_params, type_args)
+    let typedef_str = "typedef struct " + concrete_name + " " + concrete_name + ";\n"
+    let _ = self.struct_decls.append(typedef_str)
+    let tags_name = concrete_name + "_tags"
+    var tags_str = "typedef enum {\n"
+    var i = 0
+    while i < stmt.enum_variants.length() {
+        let v = stmt.enum_variants.get(i)
+        tags_str = tags_str + "    " + concrete_name + "_" + v.vname + "_TAG,\n"
+        i = i + 1
+    }
+    tags_str = tags_str + "} " + tags_name + ";\n"
+    let _ = self.struct_decls.append(tags_str)
+    var body = "struct " + concrete_name + " {\n"
+    body = body + "    uint8_t tag;\n"
+    body = body + "    union {\n"
+    i = 0
+    while i < stmt.enum_variants.length() {
+        let v = stmt.enum_variants.get(i)
+        if v.params.length() > 0 {
+            body = body + "        struct {\n"
+            var p_idx = 0
+            while p_idx < v.params.length() {
+                let p = v.params.get(p_idx)
+                body = body + "            " + self.map_type(p.ptype) + " " + p.name + ";\n"
+                p_idx = p_idx + 1
+            }
+            body = body + "        } " + v.vname + ";\n"
+        }
+        i = i + 1
+    }
+    body = body + "    } payload;\n"
+    body = body + "};\n"
+    let _ = self.struct_decls.append(body)
+    self.monomorphize_methods(stmt.enum_name, concrete_name)
+    self.current_type_map = old_type_map
+}
+
+fn monomorphize_methods(self, base_struct_name: Str, concrete_struct_name: Str) -> Void {
+    var idx = 0
+    while idx < self.stmt_pool.length() {
+        let stmt = self.stmt_pool.get(idx)
+        if stmt.kind == StmtKind.sk_impl_block && stmt.impl_struct_name == base_struct_name {
+            var j = 0
+            while j < stmt.impl_methods.length() {
+                let m_idx = stmt.impl_methods.get(j)
+                let m_node = self.stmt_pool.get(m_idx)
+                let method_name = m_node.func_name
+                let is_init = (method_name == "init") || (m_node.func_return_type == base_struct_name) || (m_node.func_return_type == "*" + base_struct_name) || (m_node.func_return_type == "&" + base_struct_name)
+                var ret_type = ""
+                if is_init {
+                    ret_type = concrete_struct_name
+                } else {
+                    ret_type = self.map_type(m_node.func_return_type)
+                }
+                var params_str = ""
+                if !is_init {
+                    params_str = concrete_struct_name + "* self"
+                }
+                var p_idx = 0
+                while p_idx < m_node.func_params.length() {
+                    let p = m_node.func_params.get(p_idx)
+                    if p.name != "self" {
+                        if length(params_str) > 0 {
+                            params_str = params_str + ", "
+                        }
+                        params_str = params_str + self.map_type(p.ptype) + " " + p.name
+                    }
+                    p_idx = p_idx + 1
+                }
+                if length(params_str) == 0 {
+                    params_str = "void"
+                }
+                let mangled_fn_name = concrete_struct_name + "_" + method_name
+                var concrete_ret = m_node.func_return_type
+                if self.current_type_map.length() > 0 {
+                    concrete_ret = self.substitute_generic_type(concrete_ret)
+                }
+                type_map_put(&self.func_types, mangled_fn_name, concrete_ret)
+                let old_fn = self.cur_func_name
+                let old_ret = self.cur_return_type
+                let old_init = self.cur_method_is_init
+                self.cur_func_name = mangled_fn_name
+                if is_init {
+                    self.cur_return_type = base_struct_name
+                } else {
+                    self.cur_return_type = m_node.func_return_type
+                }
+                self.cur_method_is_init = is_init
+                
+                let old_var_len = self.var_types.length()
+                if is_init {
+                    type_map_put(&self.var_types, "self", concrete_struct_name)
+                } else {
+                    type_map_put(&self.var_types, "self", "*" + concrete_struct_name)
+                }
+                var p_idx2 = 0
+                while p_idx2 < m_node.func_params.length() {
+                    let p = m_node.func_params.get(p_idx2)
+                    if p.name != "self" {
+                        type_map_put(&self.var_types, p.name, p.ptype)
+                    }
+                    p_idx2 = p_idx2 + 1
+                }
+                
+                var body_str = self.gen_stmt(m_node.func_body)
+                
+                while self.var_types.length() > old_var_len {
+                    let _ = self.var_types.pop()
+                }
+                
+                if is_init {
+                    let self_decl = "    " + concrete_struct_name + " self = (" + concrete_struct_name + "){0};\n"
+                    let self_ret = "    return self;\n}"
+                    let body_len = length(body_str)
+                    body_str = "{\n" + self_decl + substring(body_str, 2, body_len - 1) + self_ret
+                }
+                let proto = ret_type + " " + mangled_fn_name + "(" + params_str + ");\n"
+                let impl_str = ret_type + " " + mangled_fn_name + "(" + params_str + ") " + body_str + "\n"
+                let _ = self.func_decls.append(proto)
+                let _ = self.output.append(impl_str)
+                self.cur_func_name = old_fn
+                self.cur_return_type = old_ret
+                self.cur_method_is_init = old_init
+                j = j + 1
+            }
+        }
+        idx = idx + 1
+    }
+}
+
+fn extract_first_type_arg(self, type_name: Str) -> Str {
+    var start = -1
+    var end = -1
+    var i = 0
+    while i < length(type_name) {
+        let c = type_name[i]
+        if c == Char(60) { // '<' is 60
+            start = i + 1
+        } else if c == Char(44) { // ',' is 44
+            end = i
+            break
+        } else if c == Char(62) { // '>' is 62
+            end = i
+            break
+        }
+        i = i + 1
+    }
+    if start >= 0 && end >= 0 {
+        return substring(type_name, start, end)
+    }
+    return "Int"
+}
+
+fn build_func_types(self) -> Void {
+    var i = 0
+    while i < self.stmt_pool.length() {
+        let stmt = self.stmt_pool.get(i)
+        if stmt.kind == StmtKind.sk_func_decl {
+            type_map_put(&self.func_types, stmt.func_name, stmt.func_return_type)
+        }
+        if stmt.kind == StmtKind.sk_extern {
+            type_map_put(&self.func_types, stmt.extern_name, stmt.extern_return)
+        }
+        if stmt.kind == StmtKind.sk_impl_block {
+            let struct_name = stmt.impl_struct_name
+            var j = 0
+            while j < stmt.impl_methods.length() {
+                let m_idx = stmt.impl_methods.get(j)
+                let m_node = self.stmt_pool.get(m_idx)
+                let key = struct_name + "_" + m_node.func_name
+                var ret = m_node.func_return_type
+                if m_node.func_name == "init" {
+                    ret = struct_name
+                }
+                type_map_put(&self.func_types, key, ret)
+                j = j + 1
+            }
+        }
+        i = i + 1
+    }
+}
+
+fn get_expr_type(self, expr_idx: Int) -> Str {
+    if expr_idx < 0 { return "Void" }
+    let expr = self.expr_pool.get(expr_idx)
+    
+    if expr.kind == ExprKind.ek_literal {
+        let vkind = expr.lit_vkind
+        if vkind == "INT" { return "Int" }
+        if vkind == "FLOAT" { return "Float" }
+        if vkind == "STRING" { return "Str" }
+        if vkind == "BOOL" { return "Bool" }
+        if vkind == "CHAR" { return "Char" }
+        return "Void"
+    }
+    
+    if expr.kind == ExprKind.ek_identifier {
+        let name = expr.ident_name
+        let var_t = type_map_get(&self.var_types, name)
+        if length(var_t) > 0 { return var_t }
+        
+        let fn_t = type_map_get(&self.func_types, name)
+        if length(fn_t) > 0 { return fn_t }
+        
+        let first_char = name[0]
+        if first_char >= Char(65) && first_char <= Char(90) {
+            if expr.ident_type_args.length() > 0 {
+                var full_name = name + "<"
+                var tai = 0
+                while tai < expr.ident_type_args.length() {
+                    if tai > 0 {
+                        full_name = full_name + ", "
+                    }
+                    full_name = full_name + expr.ident_type_args.get(tai)
+                    tai = tai + 1
+                }
+                full_name = full_name + ">"
+                return full_name
+            }
+            return name
+        }
+        
+        return "Void"
+    }
+    
+    if expr.kind == ExprKind.ek_binary_op {
+        let op = expr.binop_op
+        if op == "==" || op == "!=" || op == "<" || op == ">" || op == "<=" || op == ">=" || op == "&&" || op == "||" {
+            return "Bool"
+        }
+        return self.get_expr_type(expr.binop_left)
+    }
+    
+    if expr.kind == ExprKind.ek_unary_op {
+        let op = expr.unop_op
+        if op == "!" {
+            return "Bool"
+        }
+        return self.get_expr_type(expr.unop_operand)
+    }
+    
+    if expr.kind == ExprKind.ek_func_call {
+        let name = expr.func_name
+        if name == "cast" || name == "as" {
+            return expr.func_type_args.get(0)
+        }
+        if name == "size_of" {
+            return "Int"
+        }
+        if name == "Char" || name == "Int" || name == "Float" || name == "Bool" {
+            return name
+        }
+        var is_struct = false
+        var s_idx = 0
+        while s_idx < self.stmt_pool.length() {
+            let stmt = self.stmt_pool.get(s_idx)
+            if stmt.kind == StmtKind.sk_struct_decl && stmt.struct_name == name {
+                is_struct = true
+            }
+            s_idx = s_idx + 1
+        }
+        if name == "ArrayList" || name == "HashMap" || name == "StringBuilder" {
+            is_struct = true
+        }
+        if is_struct {
+            if expr.func_type_args.length() > 0 {
+                return name + "<" + str_array_join(expr.func_type_args, ", ") + ">"
+            }
+            return name
+        }
+        let fn_t = type_map_get(&self.func_types, name)
+        if length(fn_t) > 0 { return fn_t }
+        return "Void"
+    }
+    
+    if expr.kind == ExprKind.ek_field_access {
+        let base_type = self.get_expr_type(expr.field_expr)
+        var clean_type = ""
+        var i = 0
+        while i < length(base_type) {
+            let c = base_type[i]
+            if c != Char(42) && c != Char(38) {
+                clean_type = clean_type + char_to_str(c)
+            }
+            i = i + 1
+        }
+        if substring(clean_type, 0, 4) == "mut " {
+            clean_type = substring(clean_type, 4, length(clean_type))
+        }
+        var s_idx = 0
+        while s_idx < self.stmt_pool.length() {
+            let stmt = self.stmt_pool.get(s_idx)
+            if stmt.kind == StmtKind.sk_struct_decl {
+                var is_match = false
+                if stmt.struct_name == clean_type {
+                    is_match = true
+                } else if self.str_contains(clean_type, Char(95)) { // '_' is 95
+                    let underscore_pos = self.str_find(clean_type, Char(95))
+                    let base_name = substring(clean_type, 0, underscore_pos)
+                    if stmt.struct_name == base_name {
+                        is_match = true
+                    }
+                }
+                
+                if is_match {
+                    var f_idx = 0
+                    while f_idx < stmt.struct_fields.length() {
+                        let f = stmt.struct_fields.get(f_idx)
+                        if f.name == expr.field_name {
+                            var ftype = f.ftype
+                            if self.current_type_map.length() > 0 {
+                                ftype = self.substitute_generic_type(ftype)
+                            }
+                            return ftype
+                        }
+                        f_idx = f_idx + 1
+                    }
+                }
+            }
+            s_idx = s_idx + 1
+        }
+        return "Void"
+    }
+    
+    if expr.kind == ExprKind.ek_index {
+        let base_type = self.get_expr_type(expr.idx_expr)
+        if base_type == "Str" {
+            return "Char"
+        }
+        if base_type[0] == Char(42) {
+            return substring(base_type, 1, length(base_type))
+        }
+        return "Void"
+    }
+    
+    if expr.kind == ExprKind.ek_borrow {
+        return "&" + self.get_expr_type(expr.borrow_expr)
+    }
+    
+    if expr.kind == ExprKind.ek_deref {
+        let base_type = self.get_expr_type(expr.deref_expr)
+        if length(base_type) > 5 && substring(base_type, 0, 5) == "*mut " {
+            return substring(base_type, 5, length(base_type))
+        }
+        if length(base_type) > 5 && substring(base_type, 0, 5) == "&mut " {
+            return substring(base_type, 5, length(base_type))
+        }
+        if base_type[0] == Char(42) || base_type[0] == Char(38) {
+            return substring(base_type, 1, length(base_type))
+        }
+        return "Void"
+    }
+    
+    if expr.kind == ExprKind.ek_struct_init {
+        return expr.struct_name
+    }
+    
+    if expr.kind == ExprKind.ek_method_call {
+        let receiver_node = self.expr_pool.get(expr.meth_expr)
+        let method_name = expr.meth_name
+        
+        var rec_type = self.get_expr_type(expr.meth_expr)
+        var clean_type = ""
+        var i = 0
+        while i < length(rec_type) {
+            let c = rec_type[i]
+            if c != Char(42) && c != Char(38) {
+                clean_type = clean_type + char_to_str(c)
+            }
+            i = i + 1
+        }
+        if substring(clean_type, 0, 4) == "mut " {
+            clean_type = substring(clean_type, 4, length(clean_type))
+        }
+        
+        var is_constructor = false
+        if receiver_node.kind == ExprKind.ek_identifier {
+            let r_name = receiver_node.ident_name
+            let first_char = r_name[0]
+            if first_char >= Char(65) && first_char <= Char(90) {
+                is_constructor = true
+            }
+        }
+        
+        if method_name == "init" {
+            return clean_type
+        }
+        
+        let key = clean_type + "_" + method_name
+        let ret = type_map_get(&self.func_types, key)
+        if length(ret) > 0 { return ret }
+        
+        var clean_rec = rec_type
+        var done = false
+        while !done {
+            if length(clean_rec) > 0 && (clean_rec[0] == Char(42) || clean_rec[0] == Char(38)) {
+                clean_rec = substring(clean_rec, 1, length(clean_rec))
+            } else {
+                done = true
+            }
+        }
+        if substring(clean_rec, 0, 4) == "mut " {
+            clean_rec = substring(clean_rec, 4, length(clean_rec))
+        }
+        
+        if self.str_contains(clean_rec, Char(60)) { // '<'
+            let lt_pos = self.str_find(clean_rec, Char(60))
+            let base_struct = substring(clean_rec, 0, lt_pos)
+            let args_str = substring(clean_rec, lt_pos + 1, length(clean_rec) - 1)
+            var args = ArrayList<Str>(self.allocator)
+            var start = 0
+            var ai = 0
+            while ai < length(args_str) {
+                let c = args_str[ai]
+                if c == Char(44) {
+                    args.push(self.trim_spaces(substring(args_str, start, ai)))
+                    start = ai + 1
+                }
+                ai = ai + 1
+            }
+            args.push(self.trim_spaces(substring(args_str, start, length(args_str))))
+            
+            var struct_idx = -1
+            var si = 0
+            while si < self.stmt_pool.length() {
+                let s = self.stmt_pool.get(si)
+                if s.kind == StmtKind.sk_struct_decl && s.struct_name == base_struct {
+                    struct_idx = si
+                }
+                si = si + 1
+            }
+            
+            if struct_idx >= 0 {
+                let s_decl = self.stmt_pool.get(struct_idx)
+                var temp_map = ArrayList<StrMapEntry>(self.allocator)
+                var pi = 0
+                while pi < s_decl.struct_type_params.length() {
+                    var p_name = self.trim_spaces(s_decl.struct_type_params.get(pi))
+                    if self.str_contains(p_name, Char(58)) {
+                        let cp = self.str_find(p_name, Char(58))
+                        p_name = substring(p_name, 0, cp)
+                    }
+                    let a_name = args.get(pi)
+                    type_map_put(&temp_map, p_name, a_name)
+                    pi = pi + 1
+                }
+                
+                var impl_idx = 0
+                while impl_idx < self.stmt_pool.length() {
+                    let s_impl = self.stmt_pool.get(impl_idx)
+                    if s_impl.kind == StmtKind.sk_impl_block && s_impl.impl_struct_name == base_struct {
+                        var mi = 0
+                        while mi < s_impl.impl_methods.length() {
+                            let m_node = self.stmt_pool.get(s_impl.impl_methods.get(mi))
+                            if m_node.func_name == method_name {
+                                var ret_t = m_node.func_return_type
+                                let old_type_map = self.current_type_map
+                                self.current_type_map = temp_map
+                                ret_t = self.substitute_generic_type(ret_t)
+                                self.current_type_map = old_type_map
+                                return ret_t
+                            }
+                            mi = mi + 1
+                        }
+                    }
+                    impl_idx = impl_idx + 1
+                }
+            }
+        }
+        return "Void"
+    }
+    if expr.kind == ExprKind.ek_range {
+        return "Range"
+    }
+    if expr.kind == ExprKind.ek_slice {
+        return expr.inferred_type
+    }
+    if expr.kind == ExprKind.ek_array {
+        return expr.inferred_type
+    }
+    if expr.kind == ExprKind.ek_tuple {
+        return expr.inferred_type
+    }
+    if expr.kind == ExprKind.ek_asm {
+        return expr.inferred_type
+    }
+    return "Void"
+}
+
+fn gen_expr(self, expr_idx: Int) -> Str {
+    if expr_idx < 0 { return "" }
+    let expr = self.expr_pool.get(expr_idx)
+    
+    if expr.kind == ExprKind.ek_literal {
+        let vkind = expr.lit_vkind
+        if vkind == "INT" {
+            match expr.lit_value {
+                case .tv_str(v) => { return v }
+                case .tv_int(v) => { return int_to_str(v) }
+                case else => { return "0" }
+            }
+        }
+        if vkind == "FLOAT" {
+            match expr.lit_value {
+                case .tv_str(v) => { return v }
+                case else => { return "0.0" }
+            }
+        }
+        if vkind == "STRING" {
+            match expr.lit_value {
+                case .tv_str(v) => {
+                    return "\"" + self.escape_string(v) + "\""
+                }
+                case else => { return "\"\"" }
+            }
+        }
+        if vkind == "BOOL" {
+            match expr.lit_value {
+                case .tv_bool(v) => {
+                    if v { return "true" }
+                    else { return "false" }
+                }
+                case .tv_str(v) => {
+                    var is_true = false
+                    unsafe {
+                        if strcmp(v, "true") == 0 {
+                            is_true = true
+                        }
+                    }
+                    if is_true { return "true" }
+                    return "false"
+                }
+                case else => { return "false" }
+            }
+        }
+        if vkind == "CHAR" {
+            match expr.lit_value {
+                case .tv_char(v) => {
+                    if v == Char(10) { return "'\\n'" }
+                    if v == Char(13) { return "'\\r'" }
+                    if v == Char(9) { return "'\\t'" }
+                    if v == Char(92) { return "'\\\\'" }
+                    if v == Char(39) { return "'\\''" }
+                    return "'" + char_to_str(v) + "'"
+                }
+                case else => { return "'\\0'" }
+            }
+        }
+        if vkind == "NONE" {
+            return "NULL"
+        }
+        return "0"
+    }
+    
+    if expr.kind == ExprKind.ek_identifier {
+        return expr.ident_name
+    }
+    
+    if expr.kind == ExprKind.ek_binary_op {
+        let lhs = self.gen_expr(expr.binop_left)
+        let rhs = self.gen_expr(expr.binop_right)
+        let op = expr.binop_op
+        
+        let lhs_node = self.expr_pool.get(expr.binop_left)
+        let lhs_type = self.get_expr_type(expr.binop_left)
+        if lhs_type == "Str" {
+            if op == "+" {
+                return "/* Str concat */ ({\n  const char* const _tmp_l = " + lhs + ";\n  const char* const _tmp_r = " + rhs + ";\n  size_t l1 = strlen(_tmp_l);\n  size_t l2 = strlen(_tmp_r);\n  char* buf = malloc(l1 + l2 + 1);\n  strcpy(buf, _tmp_l);\n  strcat(buf, _tmp_r);\n  buf;\n})"
+            }
+            if op == "==" {
+                return "(strcmp(" + lhs + ", " + rhs + ") == 0)"
+            }
+            if op == "!=" {
+                return "(strcmp(" + lhs + ", " + rhs + ") != 0)"
+            }
+        }
+        
+        if (op == "==" || op == "!=") && self.is_enum_type(lhs_type) {
+            if self.enum_has_payload(lhs_type) {
+                var is_ptr = false
+                if lhs_type[0] == Char(42) || lhs_type[0] == Char(38) {
+                    is_ptr = true
+                }
+                var tag_op = "."
+                if is_ptr {
+                    tag_op = "->"
+                }
+                let rhs_type = self.get_expr_type(expr.binop_right)
+                var rhs_is_ptr = false
+                if rhs_type[0] == Char(42) || rhs_type[0] == Char(38) {
+                    rhs_is_ptr = true
+                }
+                var rhs_tag_op = "."
+                if rhs_is_ptr {
+                    rhs_tag_op = "->"
+                }
+                return "((" + lhs + ")" + tag_op + "tag " + op + " (" + rhs + ")" + rhs_tag_op + "tag)"
+            }
+        }
+        
+        return "(" + lhs + " " + op + " " + rhs + ")"
+    }
+    
+    if expr.kind == ExprKind.ek_unary_op {
+        let operand = self.gen_expr(expr.unop_operand)
+        let op = expr.unop_op
+        if op == "own" {
+            return operand
+        }
+        return "(" + op + operand + ")"
+    }
+    
+    if expr.kind == ExprKind.ek_func_call {
+        let name = expr.func_name
+        if name == "cast" || name == "as" {
+            return "(" + self.map_type(expr.func_type_args.get(0)) + ")(" + self.gen_expr(expr.func_args.get(0)) + ")"
+        }
+        if name == "size_of" {
+            return "sizeof(" + self.map_type(expr.func_type_args.get(0)) + ")"
+        }
+        if name == "Char" || name == "Int" || name == "Float" || name == "Bool" {
+            let ctype = self.map_type(name)
+            let arg_val = self.gen_expr(expr.func_args.get(0))
+            return "((" + ctype + ")(" + arg_val + "))"
+        }
+        if name == "length" {
+            let arg_val = self.gen_expr(expr.func_args.get(0))
+            return "strlen(" + arg_val + ")"
+        }
+        if name == "print" {
+            let arg = expr.func_args.get(0)
+            let val = self.gen_expr(arg)
+            let arg_type = self.get_expr_type(arg)
+            if arg_type == "Int" {
+                return "printf(\"%lld\\n\", (long long)(" + val + "))"
+            }
+            if arg_type == "Float" {
+                return "printf(\"%f\\n\", (double)(" + val + "))"
+            }
+            if arg_type == "Char" {
+                return "printf(\"%c\\n\", (char)(" + val + "))"
+            }
+            if arg_type == "Bool" {
+                return "printf(\"%s\\n\", (" + val + ") ? \"true\" : \"false\")"
+            }
+            return "printf(\"%s\\n\", " + val + ")"
+        }
+        
+        var is_struct = false
+        var s_idx = 0
+        while s_idx < self.stmt_pool.length() {
+            let stmt = self.stmt_pool.get(s_idx)
+            if stmt.kind == StmtKind.sk_struct_decl && stmt.struct_name == name {
+                is_struct = true
+            }
+            s_idx = s_idx + 1
+        }
+        if name == "ArrayList" || name == "HashMap" || name == "StringBuilder" {
+            is_struct = true
+        }
+        
+        var fn_name = name
+        if expr.func_type_args.length() > 0 {
+            var j = 0
+            while j < expr.func_type_args.length() {
+                fn_name = fn_name + "_" + self.clean_type_for_mangling(expr.func_type_args.get(j))
+                j = j + 1
+            }
+        }
+        if is_struct {
+            fn_name = fn_name + "_init"
+        }
+        
+        var args_str = ""
+        var i = 0
+        while i < expr.func_args.length() {
+            if i > 0 {
+                args_str = args_str + ", "
+            }
+            args_str = args_str + self.gen_expr(expr.func_args.get(i))
+            i = i + 1
+        }
+        return fn_name + "(" + args_str + ")"
+    }
+    
+    if expr.kind == ExprKind.ek_field_access {
+        let base_node = self.expr_pool.get(expr.field_expr)
+        if base_node.kind == ExprKind.ek_identifier && self.is_enum_type(base_node.ident_name) {
+            let enum_name = self.map_type(self.get_expr_type(expr.field_expr))
+            let var_name = expr.field_name
+            if self.enum_has_payload(base_node.ident_name) {
+                return "(" + enum_name + "){ .tag = " + enum_name + "_" + var_name + "_TAG }"
+            } else {
+                return enum_name + "_" + var_name
+            }
+        }
+        
+        let base_val = self.gen_expr(expr.field_expr)
+        let base_type = self.get_expr_type(expr.field_expr)
+        var is_ptr = false
+        let is_self_ptr = (base_node.kind == ExprKind.ek_identifier && base_node.ident_name == "self" && !self.cur_method_is_init)
+        if base_type[0] == Char(42) || base_type[0] == Char(38) || is_self_ptr {
+            is_ptr = true
+        }
+        var op = "."
+        if is_ptr {
+            op = "->"
+        }
+        let is_complex = (base_node.kind == ExprKind.ek_func_call || base_node.kind == ExprKind.ek_index || base_node.kind == ExprKind.ek_deref)
+        if is_ptr && is_complex {
+            return "(" + base_val + ")" + op + expr.field_name
+        }
+        return base_val + op + expr.field_name
+    }
+    
+    if expr.kind == ExprKind.ek_index {
+        let base_val = self.gen_expr(expr.idx_expr)
+        let idx_val = self.gen_expr(expr.idx_index)
+        return "(" + base_val + ")[" + idx_val + "]"
+    }
+    
+    if expr.kind == ExprKind.ek_borrow {
+        return "&(" + self.gen_expr(expr.borrow_expr) + ")"
+    }
+    
+    if expr.kind == ExprKind.ek_deref {
+        return "*(" + self.gen_expr(expr.deref_expr) + ")"
+    }
+    
+    if expr.kind == ExprKind.ek_check {
+        return self.gen_expr(expr.check_expr)
+    }
+    
+    if expr.kind == ExprKind.ek_try {
+        return self.gen_expr(expr.try_expr)
+    }
+
+    if expr.kind == ExprKind.ek_range {
+        let start = self.gen_expr(expr.range_start)
+        let end = self.gen_expr(expr.range_end)
+        var incl = "false"
+        if expr.range_inclusive {
+            incl = "true"
+        }
+        return "(Range){ .start = " + start + ", .end = " + end + ", .is_inclusive = " + incl + " }"
+    }
+
+    if expr.kind == ExprKind.ek_slice {
+        return self.gen_expr(expr.slice_expr)
+    }
+
+    if expr.kind == ExprKind.ek_array {
+        var elems = ArrayList<Str>(self.allocator)
+        var i = 0
+        while i < expr.arr_elements.length() {
+            elems.push(self.gen_expr(expr.arr_elements.get(i)))
+            i = i + 1
+        }
+        var elems_str = str_array_join(elems, ", ")
+        if length(elems_str) == 0 {
+            elems_str = "0"
+        }
+        var inner_ty = "Int"
+        if length(expr.inferred_type) > 2 && substring(expr.inferred_type, 0, 2) == "[]" {
+            inner_ty = substring(expr.inferred_type, 2, length(expr.inferred_type))
+        }
+        let mapped_inner = self.map_type(inner_ty)
+        return "(" + mapped_inner + "[]){ " + elems_str + " }"
+    }
+
+    if expr.kind == ExprKind.ek_tuple {
+        if length(expr.inferred_type) > 0 {
+            let mapped_ty = self.map_type(expr.inferred_type)
+            var elems = ArrayList<Str>(self.allocator)
+            var i = 0
+            while i < expr.tup_elements.length() {
+                elems.push(self.gen_expr(expr.tup_elements.get(i)))
+                i = i + 1
+            }
+            return "(" + mapped_ty + "){ " + str_array_join(elems, ", ") + " }"
+        }
+        return "NULL"
+    }
+
+    if expr.kind == ExprKind.ek_asm {
+        var decls = ArrayList<Str>(self.allocator)
+        var out_ops = ArrayList<Str>(self.allocator)
+        var i = 0
+        while i < expr.asm_outputs.length() {
+            let out = expr.asm_outputs.get(i)
+            if length(out.type_name) > 0 {
+                let mapped_type = self.map_type(out.type_name)
+                let var_name = "asm_ret_" + int_to_str(i)
+                decls.push(mapped_type + " " + var_name + ";")
+                out_ops.push("[" + out.name + "] \"" + out.constraint + "\" (" + var_name + ")")
+            } else if out.expr_idx >= 0 {
+                let val_str = self.gen_expr(out.expr_idx)
+                out_ops.push("[" + out.name + "] \"" + out.constraint + "\" (" + val_str + ")")
+            }
+            i = i + 1
+        }
+
+        var in_ops = ArrayList<Str>(self.allocator)
+        var j = 0
+        while j < expr.asm_inputs.length() {
+            let inp = expr.asm_inputs.get(j)
+            let val_str = self.gen_expr(inp.expr_idx)
+            in_ops.push("[" + inp.name + "] \"" + inp.constraint + "\" (" + val_str + ")")
+            j = j + 1
+        }
+
+        var clobs = ArrayList<Str>(self.allocator)
+        var k = 0
+        while k < expr.asm_clobbers.length() {
+            clobs.push("\"" + expr.asm_clobbers.get(k) + "\"")
+            k = k + 1
+        }
+
+        var volatile_prefix = ""
+        if expr.asm_is_volatile {
+            volatile_prefix = "volatile"
+        }
+
+        var escaped_asm = ""
+        var c_idx = 0
+        while c_idx < length(expr.asm_code) {
+            let c = expr.asm_code[c_idx]
+            if c == Char(10) {
+                escaped_asm = escaped_asm + "\\n\\t"
+            } else if c == Char(34) {
+                escaped_asm = escaped_asm + "\\\""
+            } else {
+                escaped_asm = escaped_asm + char_to_str(c)
+            }
+            c_idx = c_idx + 1
+        }
+
+        var asm_stmt = "__asm__ " + volatile_prefix + " (\"" + escaped_asm + "\""
+        if out_ops.length() > 0 || in_ops.length() > 0 || clobs.length() > 0 {
+            asm_stmt = asm_stmt + " : " + str_array_join(out_ops, ", ")
+        }
+        if in_ops.length() > 0 || clobs.length() > 0 {
+            asm_stmt = asm_stmt + " : " + str_array_join(in_ops, ", ")
+        }
+        if clobs.length() > 0 {
+            asm_stmt = asm_stmt + " : " + str_array_join(clobs, ", ")
+        }
+        asm_stmt = asm_stmt + ");"
+
+        var res = "({\n"
+        var d_idx = 0
+        while d_idx < decls.length() {
+            res = res + "    " + decls.get(d_idx) + "\n"
+            d_idx = d_idx + 1
+        }
+        res = res + "    " + asm_stmt + "\n"
+
+        if expr.asm_outputs.length() == 1 {
+            let out0 = expr.asm_outputs.get(0)
+            if length(out0.type_name) > 0 {
+                res = res + "    asm_ret_0;\n"
+            }
+        } else if expr.asm_outputs.length() > 1 {
+            var types = ArrayList<Str>(self.allocator)
+            var ti = 0
+            var all_typed = true
+            while ti < expr.asm_outputs.length() {
+                let out = expr.asm_outputs.get(ti)
+                if length(out.type_name) == 0 {
+                    all_typed = false
+                }
+                types.push(out.type_name)
+                ti = ti + 1
+            }
+            if all_typed {
+                let tuple_type = "(" + str_array_join(types, ", ") + ")"
+                let mapped_tuple = self.map_type(tuple_type)
+                var vals = ArrayList<Str>(self.allocator)
+                var vi = 0
+                while vi < expr.asm_outputs.length() {
+                    vals.push("asm_ret_" + int_to_str(vi))
+                    vi = vi + 1
+                }
+                res = res + "    (" + mapped_tuple + "){ " + str_array_join(vals, ", ") + " };\n"
+            }
+        }
+        res = res + "})"
+        return res
+    }
+    
+    if expr.kind == ExprKind.ek_struct_init {
+        let is_enum = (length(expr.struct_name) > 0) && (self.str_contains(expr.struct_name, Char(46))) // '.' is 46
+        if is_enum {
+            let dot_pos = self.str_find(expr.struct_name, Char(46))
+            let enum_part = substring(expr.struct_name, 0, dot_pos)
+            let variant_name = substring(expr.struct_name, dot_pos + 1, length(expr.struct_name))
+            let enum_name = self.map_type(enum_part)
+            
+            var fields_str = ""
+            var i = 0
+            while i < expr.struct_fields.length() {
+                let f = expr.struct_fields.get(i)
+                if i > 0 {
+                    fields_str = fields_str + ", "
+                }
+                fields_str = fields_str + "." + f.name + " = " + self.gen_expr(f.value)
+                i = i + 1
+            }
+            
+            var payload_str = ""
+            if length(fields_str) > 0 {
+                payload_str = ", .payload = { ." + variant_name + " = { " + fields_str + " } }"
+            }
+            return "(" + enum_name + "){ .tag = " + enum_name + "_" + variant_name + "_TAG" + payload_str + " }"
+        } else {
+            let struct_name = self.map_type(expr.struct_name)
+            var fields_str = ""
+            var i = 0
+            while i < expr.struct_fields.length() {
+                let f = expr.struct_fields.get(i)
+                if i > 0 {
+                    fields_str = fields_str + ", "
+                }
+                fields_str = fields_str + "." + f.name + " = " + self.gen_expr(f.value)
+                i = i + 1
+            }
+            return "(" + struct_name + "){ " + fields_str + " }"
+        }
+    }
+    
+    if expr.kind == ExprKind.ek_method_call {
+        let receiver_idx = expr.meth_expr
+        let receiver_node = self.expr_pool.get(receiver_idx)
+        let method_name = expr.meth_name
+        
+        var rec_type = self.get_expr_type(expr.meth_expr)
+        var clean_type = ""
+        var i = 0
+        while i < length(rec_type) {
+            let c = rec_type[i]
+            if c != Char(42) && c != Char(38) { // not '*' and not '&'
+                clean_type = clean_type + char_to_str(c)
+            }
+            i = i + 1
+        }
+        if substring(clean_type, 0, 4) == "mut " {
+            clean_type = substring(clean_type, 4, length(clean_type))
+        }
+        clean_type = self.map_type(clean_type)
+        
+        var is_constructor = false
+        if receiver_node.kind == ExprKind.ek_identifier {
+            let r_name = receiver_node.ident_name
+            let first_char = r_name[0]
+            if first_char >= Char(65) && first_char <= Char(90) { // Uppercase A-Z
+                is_constructor = true
+                clean_type = self.map_type(rec_type)
+            }
+        }
+        
+        let func_name = clean_type + "_" + method_name
+        
+        var args_str = ""
+        if !is_constructor && method_name != "init" {
+            let rec_val = self.gen_expr(receiver_idx)
+            let rec_inferred = self.get_expr_type(receiver_idx)
+            let is_self_ptr = (receiver_node.kind == ExprKind.ek_identifier && receiver_node.ident_name == "self" && !self.cur_method_is_init)
+            if rec_inferred[0] == Char(42) || rec_inferred[0] == Char(38) || is_self_ptr {
+                args_str = rec_val
+            } else {
+                args_str = "&(" + rec_val + ")"
+            }
+        }
+        
+        var ai = 0
+        while ai < expr.meth_args.length() {
+            if length(args_str) > 0 {
+                args_str = args_str + ", "
+            }
+            args_str = args_str + self.gen_expr(expr.meth_args.get(ai))
+            ai = ai + 1
+        }
+        
+        if method_name == "init" && !is_constructor {
+            let rec_val = self.gen_expr(receiver_idx)
+            let rec_inferred = self.get_expr_type(receiver_idx)
+            if rec_inferred[0] == Char(42) || rec_inferred[0] == Char(38) {
+                return "*(" + rec_val + ") = " + func_name + "(" + args_str + ")"
+            }
+            return rec_val + " = " + func_name + "(" + args_str + ")"
+        }
+        
+        return func_name + "(" + args_str + ")"
+    }
+    
+    return "0"
+}
+
+fn str_contains(self, s: Str, target: Char) -> Bool {
+    var i = 0
+    while i < length(s) {
+        if s[i] == target {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fn str_find(self, s: Str, target: Char) -> Int {
+    var i = 0
+    while i < length(s) {
+        if s[i] == target {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+fn is_standard_c_func(self, name: Str) -> Bool {
+    if name == "malloc" { return true }
+    if name == "free" { return true }
+    if name == "realloc" { return true }
+    if name == "calloc" { return true }
+    if name == "mmap" { return true }
+    if name == "munmap" { return true }
+    if name == "isdigit" { return true }
+    if name == "isalpha" { return true }
+    if name == "isalnum" { return true }
+    if name == "isspace" { return true }
+    if name == "toupper" { return true }
+    if name == "tolower" { return true }
+    if name == "strlen" { return true }
+    if name == "exit" { return true }
+    if name == "system" { return true }
+    if name == "fopen" { return true }
+    if name == "fread" { return true }
+    if name == "fwrite" { return true }
+    if name == "fclose" { return true }
+    if name == "fseek" { return true }
+    if name == "ftell" { return true }
+    if name == "rewind" { return true }
+    if name == "print_int" { return true }
+    if name == "strcmp" { return true }
+    if name == "printf" { return true }
+    if name == "fprintf" { return true }
+    if name == "sprintf" { return true }
+    if name == "snprintf" { return true }
+    if name == "sqrt" { return true }
+    return false
+}
+
+fn gen_stmt(self, stmt_idx: Int) -> Str {
+    if stmt_idx < 0 { return "" }
+
+    let stmt = self.stmt_pool.get(stmt_idx)
+    
+    if stmt.kind == StmtKind.sk_block {
+        self.block_stack.push(stmt_idx)
+        var block_str = "{\n"
+        var i = 0
+        while i < stmt.block_stmts.length() {
+            let s = self.gen_stmt(stmt.block_stmts.get(i))
+            if length(s) > 0 {
+                block_str = block_str + "    " + s + "\n"
+            }
+            i = i + 1
+        }
+        var di = 0
+        while di < stmt.block_drop_vars.length() {
+            let entry = stmt.block_drop_vars.get(di)
+            block_str = block_str + "    " + entry.base_type + "_drop(&" + entry.name + ");\n"
+            di = di + 1
+        }
+        block_str = block_str + "}"
+        let _ = self.block_stack.pop()
+        return block_str
+    }
+    
+    if stmt.kind == StmtKind.sk_var_decl {
+        let name = stmt.vardecl_name
+        let init_val = self.gen_expr(stmt.vardecl_value)
+        if name == "_" {
+            return "(void)(" + init_val + ");"
+        }
+        var var_type_name = stmt.vardecl_type
+        if length(var_type_name) == 0 {
+            var_type_name = self.get_expr_type(stmt.vardecl_value)
+        }
+        let var_type = self.map_type(var_type_name)
+        
+        type_map_put(&self.var_types, name, var_type_name)
+        
+        return var_type + " " + name + " = " + init_val + ";"
+    }
+    
+    if stmt.kind == StmtKind.sk_assignment {
+        let lhs = self.gen_expr(stmt.assign_target)
+        let rhs = self.gen_expr(stmt.assign_value)
+        return lhs + " = " + rhs + ";"
+    }
+    
+    if stmt.kind == StmtKind.sk_func_decl {
+        if stmt.func_type_params.length() > 0 {
+            type_map_put(&self.generic_func_decls, stmt.func_name, int_to_str(stmt_idx))
+            return ""
+        }
+        let name = stmt.func_name
+        let ret_type = self.map_type(stmt.func_return_type)
+        
+        var params_str = ""
+        var i = 0
+        while i < stmt.func_params.length() {
+            let p = stmt.func_params.get(i)
+            if i > 0 {
+                params_str = params_str + ", "
+            }
+            params_str = params_str + self.map_type(p.ptype) + " " + p.name
+            i = i + 1
+        }
+        if length(params_str) == 0 {
+            params_str = "void"
+        }
+        
+        let old_fn = self.cur_func_name
+        let old_ret = self.cur_return_type
+        let old_init = self.cur_method_is_init
+        
+        self.cur_func_name = name
+        self.cur_return_type = stmt.func_return_type
+        self.cur_method_is_init = false
+        
+        let old_var_len2 = self.var_types.length()
+        var p_reg2 = 0
+        while p_reg2 < stmt.func_params.length() {
+            let p = stmt.func_params.get(p_reg2)
+            type_map_put(&self.var_types, p.name, p.ptype)
+            p_reg2 = p_reg2 + 1
+        }
+        
+        var body_str = self.gen_stmt(stmt.func_body)
+        
+        while self.var_types.length() > old_var_len2 {
+            let _ = self.var_types.pop()
+        }
+        
+        var proto = ""
+        var impl_str = ""
+        if name == "main" {
+            impl_str = "int main(int argc, char** argv) " + body_str
+        } else {
+            proto = ret_type + " " + name + "(" + params_str + ");\n"
+            impl_str = ret_type + " " + name + "(" + params_str + ") " + body_str + "\n"
+        }
+        
+        if length(proto) > 0 {
+            let _ = self.func_decls.append(proto)
+        }
+        let _ = self.output.append(impl_str)
+        
+        self.cur_func_name = old_fn
+        self.cur_return_type = old_ret
+        self.cur_method_is_init = old_init
+        return ""
+    }
+    
+    if stmt.kind == StmtKind.sk_struct_decl {
+        if stmt.struct_type_params.length() > 0 {
+            type_map_put(&self.generic_struct_decls, stmt.struct_name, int_to_str(stmt_idx))
+            return ""
+        }
+        let name = self.map_type(stmt.struct_name)
+        var struct_str = "typedef struct " + name + " " + name + ";\n"
+        struct_str = struct_str + "struct " + name + " {\n"
+        var i = 0
+        while i < stmt.struct_fields.length() {
+            let f = stmt.struct_fields.get(i)
+            struct_str = struct_str + "    " + self.map_type(f.ftype) + " " + f.name + ";\n"
+            i = i + 1
+        }
+        struct_str = struct_str + "};\n"
+        let _ = self.struct_decls.append(struct_str)
+        return ""
+    }
+    
+    if stmt.kind == StmtKind.sk_enum_decl {
+        type_map_put(&self.enum_decls, stmt.enum_name, int_to_str(stmt_idx))
+        if stmt.enum_type_params.length() > 0 {
+            type_map_put(&self.generic_enum_decls, stmt.enum_name, int_to_str(stmt_idx))
+            return ""
+        }
+        let name = self.map_type(stmt.enum_name)
+        var has_payload = false
+        var i = 0
+        while i < stmt.enum_variants.length() {
+            let v = stmt.enum_variants.get(i)
+            if v.params.length() > 0 {
+                has_payload = true
+            }
+            i = i + 1
+        }
+        
+        var enum_str = ""
+        if !has_payload {
+            enum_str = "typedef enum {\n"
+            var j = 0
+            while j < stmt.enum_variants.length() {
+                let v = stmt.enum_variants.get(j)
+                enum_str = enum_str + "    " + name + "_" + v.vname + ",\n"
+                j = j + 1
+            }
+            enum_str = enum_str + "} " + name + ";\n"
+        } else {
+            let tags_name = name + "_tags"
+            enum_str = "typedef enum {\n"
+            var j = 0
+            while j < stmt.enum_variants.length() {
+                let v = stmt.enum_variants.get(j)
+                enum_str = enum_str + "    " + name + "_" + v.vname + "_TAG,\n"
+                j = j + 1
+            }
+            enum_str = enum_str + "} " + tags_name + ";\n"
+            
+            enum_str = enum_str + "typedef struct " + name + " " + name + ";\n"
+            enum_str = enum_str + "struct " + name + " {\n"
+            enum_str = enum_str + "    uint8_t tag;\n"
+            enum_str = enum_str + "    union {\n"
+            var k = 0
+            while k < stmt.enum_variants.length() {
+                let v = stmt.enum_variants.get(k)
+                if v.params.length() > 0 {
+                    enum_str = enum_str + "        struct {\n"
+                    var p_idx = 0
+                    while p_idx < v.params.length() {
+                        let p = v.params.get(p_idx)
+                        enum_str = enum_str + "            " + self.map_type(p.ptype) + " " + p.name + ";\n"
+                        p_idx = p_idx + 1
+                    }
+                    enum_str = enum_str + "        } " + v.vname + ";\n"
+                }
+                k = k + 1
+            }
+            enum_str = enum_str + "    } payload;\n"
+            enum_str = enum_str + "};\n"
+        }
+        let _ = self.struct_decls.append(enum_str)
+        return ""
+    }
+    
+    if stmt.kind == StmtKind.sk_impl_block {
+        let struct_name = stmt.impl_struct_name
+        let has_generic_struct = (length(type_map_get(&self.generic_struct_decls, struct_name)) > 0) || (length(type_map_get(&self.generic_enum_decls, struct_name)) > 0)
+        if has_generic_struct || self.str_contains(struct_name, Char(60)) {
+            type_map_put(&self.generic_impl_blocks, struct_name, int_to_str(stmt_idx))
+            return ""
+        }
+        let mapped_struct_name = self.map_type(struct_name)
+        
+        var idx = 0
+        while idx < stmt.impl_methods.length() {
+            let method_stmt_idx = stmt.impl_methods.get(idx)
+            let method_node = self.stmt_pool.get(method_stmt_idx)
+            let method_name = method_node.func_name
+            
+            let is_init = (method_name == "init") || (method_node.func_return_type == struct_name) || (method_node.func_return_type == "*" + struct_name) || (method_node.func_return_type == "&" + struct_name)
+            
+            var ret_type = ""
+            if is_init {
+                ret_type = mapped_struct_name
+            } else {
+                ret_type = self.map_type(method_node.func_return_type)
+            }
+            
+            var params_str = ""
+            if !is_init {
+                params_str = mapped_struct_name + "* self"
+            }
+            
+            var p_idx = 0
+            while p_idx < method_node.func_params.length() {
+                let p = method_node.func_params.get(p_idx)
+                if p.name != "self" {
+                    if length(params_str) > 0 {
+                        params_str = params_str + ", "
+                    }
+                    params_str = params_str + self.map_type(p.ptype) + " " + p.name
+                }
+                p_idx = p_idx + 1
+            }
+            if length(params_str) == 0 {
+                params_str = "void"
+            }
+            
+            let mangled_fn_name = mapped_struct_name + "_" + method_name
+            
+            let old_fn = self.cur_func_name
+            let old_ret = self.cur_return_type
+            let old_init = self.cur_method_is_init
+            
+            self.cur_func_name = mangled_fn_name
+            
+            if is_init {
+                self.cur_return_type = struct_name
+            } else {
+                self.cur_return_type = method_node.func_return_type
+            }
+            self.cur_method_is_init = is_init
+            
+            let old_var_len = self.var_types.length()
+            if is_init {
+                type_map_put(&self.var_types, "self", struct_name)
+            } else {
+                type_map_put(&self.var_types, "self", "*" + struct_name)
+            }
+            var p_reg = 0
+            while p_reg < method_node.func_params.length() {
+                let p = method_node.func_params.get(p_reg)
+                if p.name != "self" {
+                    type_map_put(&self.var_types, p.name, p.ptype)
+                }
+                p_reg = p_reg + 1
+            }
+            
+            var body_str = self.gen_stmt(method_node.func_body)
+            
+            while self.var_types.length() > old_var_len {
+                let _ = self.var_types.pop()
+            }
+            
+            if is_init {
+                let self_decl = "    " + mapped_struct_name + " self = (" + mapped_struct_name + "){0};\n"
+                let self_ret = "    return self;\n}"
+                let body_len = length(body_str)
+                body_str = "{\n" + self_decl + substring(body_str, 2, body_len - 1) + self_ret
+            }
+            
+            let proto = ret_type + " " + mangled_fn_name + "(" + params_str + ");\n"
+            let impl_str = ret_type + " " + mangled_fn_name + "(" + params_str + ") " + body_str + "\n"
+            
+            let _ = self.func_decls.append(proto)
+            let _ = self.output.append(impl_str)
+            
+            self.cur_func_name = old_fn
+            self.cur_return_type = old_ret
+            self.cur_method_is_init = old_init
+            idx = idx + 1
+        }
+        return ""
+    }
+    
+    if stmt.kind == StmtKind.sk_if {
+        let cond_val = self.gen_expr(stmt.if_cond)
+        var cond_str = ""
+        if length(cond_val) > 1 && cond_val[0] == Char(40) && cond_val[length(cond_val) - 1] == Char(41) {
+            cond_str = cond_val
+        } else {
+            cond_str = "(" + cond_val + ")"
+        }
+        var if_str = "if " + cond_str + " " + self.gen_stmt(stmt.if_then)
+        if stmt.if_else >= 0 {
+            let else_node = self.stmt_pool.get(stmt.if_else)
+            if else_node.kind == StmtKind.sk_block && else_node.block_stmts.length() == 1 {
+                let single_stmt_idx = else_node.block_stmts.get(0)
+                let single_stmt = self.stmt_pool.get(single_stmt_idx)
+                if single_stmt.kind == StmtKind.sk_if {
+                    if_str = if_str + " else " + self.gen_stmt(single_stmt_idx)
+                } else {
+                    if_str = if_str + " else " + self.gen_stmt(stmt.if_else)
+                }
+            } else {
+                if_str = if_str + " else " + self.gen_stmt(stmt.if_else)
+            }
+        }
+        return if_str
+    }
+    
+    if stmt.kind == StmtKind.sk_while {
+        let cond_val = self.gen_expr(stmt.while_cond)
+        var cond_str = ""
+        if length(cond_val) > 1 && cond_val[0] == Char(40) && cond_val[length(cond_val) - 1] == Char(41) {
+            cond_str = cond_val
+        } else {
+            cond_str = "(" + cond_val + ")"
+        }
+        if stmt.while_body >= 0 {
+            var body_stmt = self.stmt_pool.get(stmt.while_body)
+            body_stmt.block_is_loop_body = true
+            self.stmt_pool.set(stmt.while_body, body_stmt)
+        }
+        return "while " + cond_str + " " + self.gen_stmt(stmt.while_body)
+    }
+    
+    if stmt.kind == StmtKind.sk_for {
+        let iter_var = stmt.for_var
+        let start = self.gen_expr(stmt.for_start)
+        let end = self.gen_expr(stmt.for_end)
+        var op = "<"
+        if stmt.for_inclusive {
+            op = "<="
+        }
+        if stmt.for_body >= 0 {
+            var body_stmt = self.stmt_pool.get(stmt.for_body)
+            body_stmt.block_is_loop_body = true
+            self.stmt_pool.set(stmt.for_body, body_stmt)
+        }
+        let body = self.gen_stmt(stmt.for_body)
+        return "for (int64_t " + iter_var + " = " + start + "; " + iter_var + " " + op + " " + end + "; ++" + iter_var + ") " + body
+    }
+    
+    if stmt.kind == StmtKind.sk_return {
+        var drop_calls = ArrayList<Str>(self.allocator)
+        var bi = self.block_stack.length() - 1
+        while bi >= 0 {
+            let b_idx = self.block_stack.get(bi)
+            let b_node = self.stmt_pool.get(b_idx)
+            var di = 0
+            while di < b_node.block_drop_vars.length() {
+                let entry = b_node.block_drop_vars.get(di)
+                drop_calls.push(entry.base_type + "_drop(&" + entry.name + ");")
+                di = di + 1
+            }
+            bi = bi - 1
+        }
+        
+        if drop_calls.length() == 0 {
+            if stmt.return_value >= 0 {
+                return "return " + self.gen_expr(stmt.return_value) + ";"
+            }
+            return "return;"
+        }
+        
+        if stmt.return_value >= 0 {
+            let val_str = self.gen_expr(stmt.return_value)
+            let val_type = self.get_expr_type(stmt.return_value)
+            
+            if val_type == "Void" || val_type == "NoneType" {
+                var res = val_str + "; "
+                var ci = 0
+                while ci < drop_calls.length() {
+                    res = res + drop_calls.get(ci) + " "
+                    ci = ci + 1
+                }
+                return res + "return;"
+            }
+            
+            let mapped_type = self.map_type(val_type)
+            var res_str = "{\n"
+            res_str = res_str + "    " + mapped_type + " __ret_val = " + val_str + ";\n"
+            var ci = 0
+            while ci < drop_calls.length() {
+                res_str = res_str + "    " + drop_calls.get(ci) + "\n"
+                ci = ci + 1
+            }
+            res_str = res_str + "    return __ret_val;\n"
+            res_str = res_str + "}"
+            return res_str
+        } else {
+            var res_str = "{\n"
+            var ci = 0
+            while ci < drop_calls.length() {
+                res_str = res_str + "    " + drop_calls.get(ci) + "\n"
+                ci = ci + 1
+            }
+            res_str = res_str + "    return;\n"
+            res_str = res_str + "}"
+            return res_str
+        }
+    }
+    
+    if stmt.kind == StmtKind.sk_expr {
+        return self.gen_expr(stmt.expr_stmt) + ";"
+    }
+    
+    if stmt.kind == StmtKind.sk_unsafe {
+        return self.gen_stmt(stmt.unsafe_body)
+    }
+    
+    if stmt.kind == StmtKind.sk_extern {
+        let name = stmt.extern_name
+        if self.is_standard_c_func(name) {
+            return ""
+        }
+        let ret_type = self.map_type(stmt.extern_return)
+        
+        var params_str = ""
+        var i = 0
+        while i < stmt.extern_params.length() {
+            let p = stmt.extern_params.get(i)
+            if i > 0 {
+                params_str = params_str + ", "
+            }
+            params_str = params_str + self.map_type(p.ptype) + " " + p.name
+            i = i + 1
+        }
+        if length(params_str) == 0 {
+            params_str = "void"
+        }
+        
+        let proto = "extern " + ret_type + " " + name + "(" + params_str + ");\n"
+        let _ = self.func_decls.append(proto)
+        return ""
+    }
+    
+    if stmt.kind == StmtKind.sk_cimport {
+        let hdr = stmt.cimport_header
+        if strlist_find(&self.cimport_headers, hdr) < 0 {
+            self.cimport_headers.push(hdr)
+        }
+        return ""
+    }
+    
+    if stmt.kind == StmtKind.sk_import {
+        let path = stmt.import_path
+        var module_key = ""
+        var pi = 0
+        while pi < path.length() {
+            if pi > 0 {
+                module_key = module_key + "."
+            }
+            module_key = module_key + path.get(pi)
+            pi = pi + 1
+        }
+        if module_key == "" {
+            return ""
+        }
+        if strlist_find(&self.loaded_modules, module_key) >= 0 {
+            return ""
+        }
+        self.loaded_modules.push(module_key)
+
+        var file_path = ""
+        if path.length() > 0 && path.get(0) == "std" {
+            var path_str = ""
+            var i = 0
+            while i < path.length() {
+                if i > 0 {
+                    path_str = path_str + "/"
+                }
+                path_str = path_str + path.get(i)
+                i = i + 1
+            }
+            file_path = path_str + ".kai"
+        } else if path.length() > 0 {
+            file_path = "self/" + module_key + ".kai"
+        }
+        if file_path != "" {
+            let source_res = read_to_string(self.allocator, file_path)
+            match source_res {
+                case .ok(source) => {
+                    var lexer = Lexer(self.allocator, source)
+                    lexer.lex()
+                    if lexer.has_error {
+                        return ""
+                    }
+                    var parser = Parser.init_with_pools(self.allocator, lexer.tokens, self.expr_pool, self.stmt_pool, self.pattern_pool)
+                    let program_idx = parser.parse_program()
+                    if program_idx >= 0 {
+                        self.build_func_types()
+                        let _ = self.gen_stmt(program_idx)
+                    }
+                }
+                case .err(err_code) => {
+                    return ""
+                }
+            }
+        }
+        return ""
+    }
+    
+    if stmt.kind == StmtKind.sk_break {
+        let drop_calls = self._collect_loop_drops()
+        if drop_calls.length() == 0 {
+            return "break;"
+        }
+        var res_str = "{\n"
+        var ci = 0
+        while ci < drop_calls.length() {
+            res_str = res_str + "    " + drop_calls.get(ci) + "\n"
+            ci = ci + 1
+        }
+        res_str = res_str + "    break;\n"
+        res_str = res_str + "}"
+        return res_str
+    }
+    
+    if stmt.kind == StmtKind.sk_continue {
+        let drop_calls = self._collect_loop_drops()
+        if drop_calls.length() == 0 {
+            return "continue;"
+        }
+        var res_str = "{\n"
+        var ci = 0
+        while ci < drop_calls.length() {
+            res_str = res_str + "    " + drop_calls.get(ci) + "\n"
+            ci = ci + 1
+        }
+        res_str = res_str + "    continue;\n"
+        res_str = res_str + "}"
+        return res_str
+    }
+    
+    if stmt.kind == StmtKind.sk_match {
+        let expr_idx = stmt.match_expr
+        let expr_val = self.gen_expr(expr_idx)
+        let expr_node = self.expr_pool.get(expr_idx)
+        let expr_type = self.get_expr_type(expr_idx)
+        let mapped_expr_type = self.map_type(expr_type)
+        
+        let is_self_ptr = (expr_node.kind == ExprKind.ek_identifier && expr_node.ident_name == "self" && !self.cur_method_is_init)
+        var is_ptr = false
+        if expr_type[0] == Char(42) || expr_type[0] == Char(38) || is_self_ptr {
+            is_ptr = true
+        }
+        var op = "."
+        if is_ptr {
+            op = "->"
+        }
+        
+        var match_str = ""
+        var case_idx = 0
+        while case_idx < stmt.match_cases.length() {
+            let case_node = stmt.match_cases.get(case_idx)
+            let pat_node = self.pattern_pool.get(case_node.pattern)
+            let block_str = self.gen_stmt(case_node.body)
+            
+            var cond = ""
+            var bindings_str = ""
+            
+            if pat_node.kind == PatternKind.pk_literal {
+                var lit_str = ""
+                match pat_node.lit_value {
+                    case .tv_int(v) => { lit_str = int_to_str(v) }
+                    case .tv_str(v) => { lit_str = "\"" + self.escape_string(v) + "\"" }
+                    case .tv_bool(v) => {
+                        if v { lit_str = "true" }
+                        else { lit_str = "false" }
+                    }
+                    case .tv_char(v) => {
+                        if v == Char(10) { lit_str = "'\\n'" }
+                        else if v == Char(13) { lit_str = "'\\r'" }
+                        else if v == Char(9) { lit_str = "'\\t'" }
+                        else if v == Char(92) { lit_str = "'\\\\'" }
+                        else if v == Char(39) { lit_str = "'\\''" }
+                        else { lit_str = "'" + char_to_str(v) + "'" }
+                    }
+                    case else => { lit_str = "0" }
+                }
+                cond = expr_val + " == " + lit_str
+            } else if pat_node.kind == PatternKind.pk_variant {
+                let var_name = pat_node.variant_name
+                var base_type = mapped_expr_type
+                if length(base_type) > 0 && (base_type[length(base_type) - 1] == Char(42) || base_type[length(base_type) - 1] == Char(38)) {
+                    base_type = substring(base_type, 0, length(base_type) - 1)
+                }
+                if length(base_type) > 0 && base_type[0] == Char(42) {
+                    base_type = substring(base_type, 1, length(base_type))
+                }
+                if self.enum_has_payload(expr_type) {
+                    cond = expr_val + op + "tag == " + base_type + "_" + var_name + "_TAG"
+                } else {
+                    cond = expr_val + " == " + base_type + "_" + var_name
+                }
+                
+                if pat_node.bindings.length() > 0 {
+                    let bind_name = pat_node.bindings.get(0)
+                    if bind_name != "_" {
+                        var bind_type = ""
+                        var field_name = ""
+                        if var_name == "ok" {
+                            var t_type = type_map_get(&self.current_type_map, "T")
+                            if length(t_type) == 0 {
+                                t_type = self.extract_first_type_arg(expr_type)
+                            }
+                            bind_type = t_type
+                            field_name = "value"
+                        } else if var_name == "err" {
+                            var e_type = type_map_get(&self.current_type_map, "E")
+                            if length(e_type) == 0 {
+                                e_type = "Int"
+                            }
+                            bind_type = e_type
+                            field_name = "value"
+                        } else if var_name == "tv_int" {
+                            bind_type = "Int"
+                            field_name = "v"
+                        } else if var_name == "tv_float" {
+                            bind_type = "Float"
+                            field_name = "v"
+                        } else if var_name == "tv_bool" {
+                            bind_type = "Bool"
+                            field_name = "v"
+                        } else if var_name == "tv_char" {
+                            bind_type = "Char"
+                            field_name = "v"
+                        } else if var_name == "tv_str" {
+                            bind_type = "Str"
+                            field_name = "v"
+                        }
+                        
+                        let mapped_bind_type = self.map_type(bind_type)
+                        bindings_str = "    " + mapped_bind_type + " " + bind_name + " = " + expr_val + op + "payload." + var_name + "." + field_name + ";\n"
+                    }
+                }
+            } else if pat_node.kind == PatternKind.pk_else {
+                cond = "true"
+            }
+            
+            var prefix = ""
+            if case_idx == 0 {
+                prefix = "if (" + cond + ")"
+            } else if cond == "true" {
+                prefix = "else"
+            } else {
+                prefix = "else if (" + cond + ")"
+            }
+            
+            var full_block = block_str
+            if length(bindings_str) > 0 {
+                let body_len = length(block_str)
+                full_block = "{\n" + bindings_str + substring(block_str, 1, body_len)
+            }
+            
+            match_str = match_str + prefix + " " + full_block + " "
+            case_idx = case_idx + 1
+        }
+        return match_str
+    }
+    
+    return ""
+}
+
+    fn clean_enum_name(self, type_name: Str) -> Str {
+    var base_name = type_name
+    if self.str_contains(type_name, Char(60)) { // '<'
+        let lt_pos = self.str_find(type_name, Char(60))
+        base_name = substring(type_name, 0, lt_pos)
+    }
+    
+    if substring(base_name, 0, 4) == "mut " {
+        base_name = substring(base_name, 4, length(base_name))
+    }
+    
+    var done = false
+    while !done {
+        if length(base_name) > 0 && (base_name[0] == Char(42) || base_name[0] == Char(38)) {
+            base_name = substring(base_name, 1, length(base_name))
+        } else {
+            done = true
+        }
+    }
+    
+    done = false
+    while !done {
+        let l = length(base_name)
+        if l > 0 && (base_name[l - 1] == Char(42) || base_name[l - 1] == Char(38)) {
+            base_name = substring(base_name, 0, l - 1)
+        } else {
+            done = true
+        }
+    }
+    
+    if length(type_map_get(&self.enum_decls, base_name)) == 0 {
+        if self.str_contains(base_name, Char(95)) { // '_' is 95
+            let underscore_pos = self.str_find(base_name, Char(95))
+            let fallback_name = substring(base_name, 0, underscore_pos)
+            if length(type_map_get(&self.enum_decls, fallback_name)) > 0 {
+                return fallback_name
+            }
+        }
+    }
+    
+    return base_name
+}
+
+fn is_enum_type(self, type_name: Str) -> Bool {
+    let clean_name = self.clean_enum_name(type_name)
+    return length(type_map_get(&self.enum_decls, clean_name)) > 0
+}
+
+fn enum_has_payload(self, enum_name: Str) -> Bool {
+    let clean_name = self.clean_enum_name(enum_name)
+    let idx_str = type_map_get(&self.enum_decls, clean_name)
+    if length(idx_str) == 0 {
+        return false
+    }
+    let enum_stmt = self.stmt_pool.get(self.str_to_int(idx_str))
+    var has_payload = false
+    var vi = 0
+    while vi < enum_stmt.enum_variants.length() {
+        let v = enum_stmt.enum_variants.get(vi)
+        if v.params.length() > 0 {
+            has_payload = true
+        }
+        vi = vi + 1
+    }
+    return has_payload
+}
+
+fn escape_string(self, s: Str) -> Str {
+    var res = ""
+    var i = 0
+    while i < length(s) {
+        let c = s[i]
+        if c == Char(10) { res = res + "\\n" }
+        else if c == Char(13) { res = res + "\\r" }
+        else if c == Char(9) { res = res + "\\t" }
+        else if c == Char(92) { res = res + "\\\\" }
+        else if c == Char(34) { res = res + "\\\"" }
+        else { res = res + char_to_str(c) }
+        i = i + 1
+    }
+    return res
+}
+
+fn _collect_loop_drops(self) -> ArrayList<Str> {
+    var drop_calls = ArrayList<Str>(self.allocator)
+    var bi = self.block_stack.length() - 1
+    var done = false
+    while bi >= 0 && !done {
+        let b_idx = self.block_stack.get(bi)
+        let b_node = self.stmt_pool.get(b_idx)
+        var di = 0
+        while di < b_node.block_drop_vars.length() {
+            let entry = b_node.block_drop_vars.get(di)
+            drop_calls.push(entry.base_type + "_drop(&" + entry.name + ");")
+            di = di + 1
+        }
+        if b_node.block_is_loop_body {
+            done = true
+        }
+        bi = bi - 1
+    }
+    return drop_calls
+}
+
+fn generate(self, top_stmt_idx: Int) -> Str {
+    self.build_func_types()
+    let body = self.gen_stmt(top_stmt_idx)
+    
+    var final_code = ""
+    final_code = final_code + "#include <stdint.h>\n"
+    final_code = final_code + "#include <stdbool.h>\n"
+    final_code = final_code + "#include <stdio.h>\n"
+    final_code = final_code + "#include <stdlib.h>\n"
+    final_code = final_code + "#include <string.h>\n"
+    final_code = final_code + "#include <sys/mman.h>\n"
+    final_code = final_code + "#include <ctype.h>\n"
+
+    var ci = 0
+    var has_cimports = false
+    while ci < self.cimport_headers.length() {
+        let hdr = self.cimport_headers.get(ci)
+        var is_baseline = false
+        if hdr == "stdint.h" { is_baseline = true }
+        else if hdr == "stdbool.h" { is_baseline = true }
+        else if hdr == "stdio.h" { is_baseline = true }
+        else if hdr == "stdlib.h" { is_baseline = true }
+        else if hdr == "string.h" { is_baseline = true }
+        else if hdr == "sys/mman.h" { is_baseline = true }
+        else if hdr == "ctype.h" { is_baseline = true }
+
+        if !is_baseline {
+            if !has_cimports {
+                final_code = final_code + "/* C FFI Imports */\n"
+                has_cimports = true
+            }
+            var has_slash = false
+            var dot_start = false
+            if length(hdr) > 0 {
+                var hi = 0
+                while hi < length(hdr) {
+                    if hdr[hi] == Char(47) { has_slash = true }
+                    hi = hi + 1
+                }
+                if hdr[0] == Char(46) { dot_start = true }
+            }
+            if !has_slash && !dot_start {
+                final_code = final_code + "#include <" + hdr + ">\n"
+            } else {
+                final_code = final_code + "#include \"" + hdr + "\"\n"
+            }
+        }
+        ci = ci + 1
+    }
+    final_code = final_code + "\n"
+    final_code = final_code + "static inline void print_int(int64_t i) { printf(\"%lld\\n\", (long long)i); }\n\n"
+    
+    final_code = final_code + self.struct_decls.to_str() + "\n"
+    final_code = final_code + self.func_decls.to_str() + "\n"
+    final_code = final_code + self.output.to_str()
+    
+    return final_code
+}
+
+}

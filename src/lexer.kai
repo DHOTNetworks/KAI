@@ -1,0 +1,585 @@
+import ArrayList from std.collections.array
+import StringBuilder from std.collections.string
+import is_digit from std.collections.string
+import is_alpha from std.collections.string
+import is_alnum from std.collections.string
+import is_space from std.collections.string
+import Allocator from std.core.allocator
+
+extern fn strlen(s: Str) -> Int
+
+import TokenType from token_defs
+import TokenValue from token_defs
+import Token from token_defs
+
+fn keyword_type(ident: Str) -> TokenType {
+    if ident == "let" {
+        return TokenType.LET
+    } else if ident == "var" {
+        return TokenType.VAR
+    } else if ident == "func" {
+        return TokenType.FUNC
+    } else if ident == "fn" {
+        return TokenType.FUNC
+    } else if ident == "if" {
+        return TokenType.IF
+    } else if ident == "else" {
+        return TokenType.ELSE
+    } else if ident == "while" {
+        return TokenType.WHILE
+    } else if ident == "for" {
+        return TokenType.FOR
+    } else if ident == "in" {
+        return TokenType.IN
+    } else if ident == "return" {
+        return TokenType.RETURN
+    } else if ident == "true" {
+        return TokenType.BOOL_LIT
+    } else if ident == "false" {
+        return TokenType.BOOL_LIT
+    } else if ident == "struct" {
+        return TokenType.STRUCT
+    } else if ident == "impl" {
+        return TokenType.IMPL
+    } else if ident == "mut" {
+        return TokenType.MUT
+    } else if ident == "unsafe" {
+        return TokenType.UNSAFE
+    } else if ident == "extern" {
+        return TokenType.EXTERN
+    } else if ident == "enum" {
+        return TokenType.ENUM
+    } else if ident == "match" {
+        return TokenType.MATCH
+    } else if ident == "case" {
+        return TokenType.CASE
+    } else if ident == "use" {
+        return TokenType.USE
+    } else if ident == "check" {
+        return TokenType.CHECK
+    } else if ident == "trait" {
+        return TokenType.TRAIT
+    } else if ident == "pub" {
+        return TokenType.PUB
+    } else if ident == "import" {
+        return TokenType.IMPORT
+    } else if ident == "cimport" {
+        return TokenType.CIMPORT
+    } else if ident == "from" {
+        return TokenType.FROM
+    } else if ident == "as" {
+        return TokenType.AS
+    } else if ident == "sizeof" {
+        return TokenType.SIZEOF
+    } else if ident == "defer" {
+        return TokenType.DEFER
+    } else if ident == "none" {
+        return TokenType.NONE
+    } else if ident == "try" {
+        return TokenType.TRY
+    } else if ident == "catch" {
+        return TokenType.CATCH
+    } else if ident == "own" {
+        return TokenType.OWN
+    } else if ident == "error" {
+        return TokenType.ERROR
+    } else if ident == "asm" {
+        return TokenType.ASM
+    } else if ident == "volatile" {
+        return TokenType.VOLATILE
+    } else if ident == "break" {
+        return TokenType.BREAK
+    } else if ident == "continue" {
+        return TokenType.CONTINUE
+    } else {
+        return TokenType.IDENTIFIER
+
+    }
+}
+fn make_keyword_value(ident: Str, ttype: TokenType) -> TokenValue {
+    if ttype == TokenType.BOOL_LIT {
+        if ident == "true" {
+            return TokenValue.tv_bool(v: true)
+        }
+        return TokenValue.tv_bool(v: false)
+    }
+    return TokenValue.tv_str(v: ident)
+
+}
+struct Lexer {
+    allocator: *Allocator
+    source: Str
+    source_len: Int
+    cursor: Int
+    line: Int
+    column: Int
+    tokens: *ArrayList<Token>
+    indent_stack: *ArrayList<Int>
+    paren_depth: Int
+    brace_depth: Int
+    has_error: Bool
+
+}
+impl Lexer {
+    fn init(self, allocator: *Allocator, source: Str) {
+        self.allocator = allocator
+        self.source = source
+        self.cursor = 0
+        self.line = 1
+        self.column = 1
+        self.paren_depth = 0
+        self.brace_depth = 0
+        self.has_error = false
+        unsafe {
+            self.tokens = allocator.alloc(sizeof(ArrayList<Token>), 1) as *ArrayList<Token>
+            self.indent_stack = allocator.alloc(sizeof(ArrayList<Int>), 1) as *ArrayList<Int>
+        }
+        self.tokens.init(allocator)
+        self.indent_stack.init(allocator)
+        self.indent_stack.push(0)
+        unsafe {
+            self.source_len = strlen(source)
+
+        }
+    }
+    fn peek(self, offset: Int) -> Char {
+        let pos = self.cursor + offset
+        if pos >= self.source_len {
+            return Char(0)
+        }
+        return self.source[pos]
+
+    }
+    fn advance(self) -> Char {
+        if self.cursor >= self.source_len {
+            return Char(0)
+        }
+        let c = self.source[self.cursor]
+        self.cursor = self.cursor + 1
+        if c == '\n' {
+            self.line = self.line + 1
+            self.column = 1
+        } else {
+            self.column = self.column + 1
+        }
+        return c
+
+    }
+    fn emit(self, ttype: TokenType, value: TokenValue) {
+        self.tokens.push(Token(tok_type: ttype, value: value, line: self.line, column: self.column))
+
+    }
+    fn lex_error(self) {
+        self.has_error = true
+
+    }
+    fn skip_line_comment(self) {
+        while self.cursor < self.source_len && self.peek(0) != '\n' {
+            let _ = self.advance()
+
+        }
+    }
+    fn skip_block_comment(self) {
+        let _ = self.advance()
+        while self.cursor < self.source_len {
+            if self.peek(0) == '*' && self.peek(1) == '/' {
+                let _ = self.advance()
+                let _ = self.advance()
+                return
+            }
+            let _ = self.advance()
+
+        }
+    }
+    fn skip_whitespace(self) {
+        var done = false
+        while self.cursor < self.source_len && !done {
+            let c = self.peek(0)
+            if c == ' ' || c == '\t' || c == '\r' {
+                let _ = self.advance()
+            } else if c == '/' {
+                if self.peek(1) == '/' {
+                    self.skip_line_comment()
+                } else if self.peek(1) == '*' {
+                    self.skip_block_comment()
+                } else {
+                    done = true
+                }
+            } else {
+                done = true
+
+            }
+        }
+    }
+    fn lex_identifier(self) {
+        var sb = StringBuilder(self.allocator)
+        var done = false
+        while self.cursor < self.source_len && !done {
+            let c = self.peek(0)
+            if is_alnum(c) || c == '_' {
+                sb.append_char(self.advance())
+            } else {
+                done = true
+            }
+        }
+        let ident = sb.to_str()
+        let ktype = keyword_type(ident)
+        if ktype == TokenType.IDENTIFIER {
+            self.emit(TokenType.IDENTIFIER, TokenValue.tv_str(v: ident))
+        } else if ktype == TokenType.BOOL_LIT {
+            self.emit(TokenType.BOOL_LIT, make_keyword_value(ident, TokenType.BOOL_LIT))
+        } else {
+            self.emit(ktype, TokenValue.tv_str(v: ident))
+
+
+        }
+    }
+    fn lex_number(self) {
+        var sb = StringBuilder(self.allocator)
+        var done = false
+        while self.cursor < self.source_len && !done {
+            let c = self.peek(0)
+            if is_digit(c) {
+                sb.append_char(self.advance())
+            } else {
+                done = true
+            }
+        }
+        if self.peek(0) == '.' && self.peek(1) != '.' {
+            sb.append_char(self.advance())
+            done = false
+            while self.cursor < self.source_len && !done {
+                let c = self.peek(0)
+                if is_digit(c) {
+                    sb.append_char(self.advance())
+                } else {
+                    done = true
+                }
+            }
+            let num_str = sb.to_str()
+            self.emit(TokenType.FLOAT_LIT, TokenValue.tv_str(v: num_str))
+        } else {
+            let num_str = sb.to_str()
+            self.emit(TokenType.INT_LIT, TokenValue.tv_str(v: num_str))
+
+        }
+    }
+    fn lex_string(self) {
+        let _ = self.advance()
+        var sb = StringBuilder(self.allocator)
+        var done = false
+        while self.cursor < self.source_len && !done {
+            let c = self.peek(0)
+            if c == '"' {
+                done = true
+            } else if c == '\\' {
+                let _ = self.advance()
+                let esc = self.advance()
+                if esc == 'n' {
+                    sb.append_char('\n')
+                } else if esc == 't' {
+                    sb.append_char('\t')
+                } else if esc == 'r' {
+                    sb.append_char('\r')
+                } else if esc == '"' {
+                    sb.append_char('"')
+                } else if esc == '\\' {
+                    sb.append_char('\\')
+                } else {
+                    sb.append_char('\\')
+                    sb.append_char(esc)
+                }
+            } else {
+                sb.append_char(self.advance())
+            }
+        }
+        if self.cursor < self.source_len {
+            let _ = self.advance()
+        }
+        let s = sb.to_str()
+        self.emit(TokenType.STRING_LIT, TokenValue.tv_str(v: s))
+
+    }
+    fn lex_char(self) {
+        let _ = self.advance()
+        let c = self.advance()
+        var ch = Char(0)
+        if c == '\\' {
+            let esc = self.advance()
+            if esc == 'n' {
+                ch = '\n'
+            } else if esc == 't' {
+                ch = '\t'
+            } else if esc == 'r' {
+                ch = '\r'
+            } else if esc == '\'' {
+                ch = '\''
+            } else if esc == '\\' {
+                ch = '\\'
+            } else {
+                ch = esc
+            }
+        } else {
+            ch = c
+        }
+        let _ = self.advance()
+        self.emit(TokenType.CHAR_LIT, TokenValue.tv_char(v: ch))
+
+    }
+    fn compute_indent(self) -> Int {
+        var indent = 0
+        var temp = self.cursor
+        var done = false
+        var has_content = false
+        while temp < self.source_len && !done {
+            let c = self.source[temp]
+            if c == ' ' {
+                indent = indent + 1
+                temp = temp + 1
+            } else if c == '\t' {
+                indent = indent + 4
+                temp = temp + 1
+            } else if c == '\r' {
+                temp = temp + 1
+            } else if c == '\n' {
+                indent = 0
+                temp = temp + 1
+            } else if c == '/' && temp + 1 < self.source_len && self.source[temp + 1] == '/' {
+                // Line comment: skip to end of line
+                while temp < self.source_len && self.source[temp] != '\n' {
+                    temp = temp + 1
+                }
+                indent = 0
+            } else if c == '/' && temp + 1 < self.source_len && self.source[temp + 1] == '*' {
+                // Block comment: skip it and keep checking
+                temp = temp + 2
+                while temp < self.source_len && !(temp + 1 < self.source_len && self.source[temp] == '*' && self.source[temp + 1] == '/') {
+                    if self.source[temp] == '\n' {
+                        indent = 0
+                    }
+                    temp = temp + 1
+                }
+                if temp < self.source_len {
+                    temp = temp + 2
+                }
+            } else {
+                has_content = true
+                done = true
+            }
+        }
+        if has_content {
+            return indent
+        }
+        return -1
+    }
+
+    fn lex(self) {
+        var is_line_start = true
+        while self.cursor < self.source_len {
+            if false {
+                let indent = self.compute_indent()
+                if indent >= 0 {
+                    if self.paren_depth == 0 && self.brace_depth == 0 {
+                        let current = self.indent_stack.get(self.indent_stack.length() - 1)
+                        if indent > current {
+                            self.indent_stack.push(indent)
+                            self.emit(TokenType.INDENT, TokenValue.tv_int(v: indent))
+                        } else if indent < current {
+                            while indent < self.indent_stack.get(self.indent_stack.length() - 1) {
+                                let _ = self.indent_stack.pop()
+                                self.emit(TokenType.DEDENT, TokenValue.tv_int(v: indent))
+                            }
+                            if indent != self.indent_stack.get(self.indent_stack.length() - 1) {
+                                self.has_error = true
+                            }
+                        }
+                    }
+                }
+                is_line_start = false
+
+            }
+            self.skip_whitespace()
+            if self.cursor < self.source_len {
+                let c = self.peek(0)
+
+                if c == '\n' {
+                    let _ = self.advance()
+                    if self.paren_depth == 0 {
+                        let last = self.tokens.length()
+                        if last > 0 {
+                            let last_tok = self.tokens.get(last - 1)
+                            if last_tok.tok_type != TokenType.NEWLINE && last_tok.tok_type != TokenType.INDENT && last_tok.tok_type != TokenType.DEDENT {
+                                self.emit(TokenType.NEWLINE, TokenValue.tv_none)
+                            }
+                        }
+                    }
+                    is_line_start = true
+
+                } else if is_alpha(c) || c == '_' {
+                    self.lex_identifier()
+
+                } else if is_digit(c) {
+                    self.lex_number()
+
+                } else if c == '"' {
+                    self.lex_string()
+
+                } else if c == '\'' {
+                    self.lex_char()
+
+                } else if c == '-' && self.peek(1) == '>' {
+                    let _ = self.advance()
+                    let _ = self.advance()
+                    self.emit(TokenType.ARROW, TokenValue.tv_str(v: "->"))
+                } else if c == '=' && self.peek(1) == '>' {
+                    let _ = self.advance()
+                    let _ = self.advance()
+                    self.emit(TokenType.FAT_ARROW, TokenValue.tv_str(v: "=>"))
+                } else if c == '+' && self.peek(1) == '=' {
+                    let _ = self.advance()
+                    let _ = self.advance()
+                    self.emit(TokenType.PLUS_ASSIGN, TokenValue.tv_str(v: "+="))
+                } else if c == '-' && self.peek(1) == '=' {
+                    let _ = self.advance()
+                    let _ = self.advance()
+                    self.emit(TokenType.MINUS_ASSIGN, TokenValue.tv_str(v: "-="))
+                } else if c == '=' && self.peek(1) == '=' {
+                    let _ = self.advance()
+                    let _ = self.advance()
+                    self.emit(TokenType.EQ, TokenValue.tv_str(v: "=="))
+                } else if c == '!' && self.peek(1) == '=' {
+                    let _ = self.advance()
+                    let _ = self.advance()
+                    self.emit(TokenType.NE, TokenValue.tv_str(v: "!="))
+                } else if c == '<' && self.peek(1) == '=' {
+                    let _ = self.advance()
+                    let _ = self.advance()
+                    self.emit(TokenType.LE, TokenValue.tv_str(v: "<="))
+                } else if c == '>' && self.peek(1) == '=' {
+                    let _ = self.advance()
+                    let _ = self.advance()
+                    self.emit(TokenType.GE, TokenValue.tv_str(v: ">="))
+                } else if c == '&' && self.peek(1) == '&' {
+                    let _ = self.advance()
+                    let _ = self.advance()
+                    self.emit(TokenType.AND, TokenValue.tv_str(v: "&&"))
+                } else if c == '|' && self.peek(1) == '|' {
+                    let _ = self.advance()
+                    let _ = self.advance()
+                    self.emit(TokenType.OR, TokenValue.tv_str(v: "||"))
+                } else if c == '<' && self.peek(1) == '<' {
+                    let _ = self.advance()
+                    let _ = self.advance()
+                    self.emit(TokenType.LSHIFT, TokenValue.tv_str(v: "<<"))
+                } else if c == '>' && self.peek(1) == '>' {
+                    let _ = self.advance()
+                    let _ = self.advance()
+                    self.emit(TokenType.RSHIFT, TokenValue.tv_str(v: ">>"))
+                } else if c == '.' && self.peek(1) == '.' && self.peek(2) == '=' {
+                    let _ = self.advance()
+                    let _ = self.advance()
+                    let _ = self.advance()
+                    self.emit(TokenType.DOTDOTEQ, TokenValue.tv_str(v: "..="))
+                } else if c == '.' && self.peek(1) == '.' {
+                    let _ = self.advance()
+                    let _ = self.advance()
+                    self.emit(TokenType.DOTDOT, TokenValue.tv_str(v: ".."))
+                } else if c == '+' {
+                    let _ = self.advance()
+                    self.emit(TokenType.PLUS, TokenValue.tv_str(v: "+"))
+                } else if c == '-' {
+                    let _ = self.advance()
+                    self.emit(TokenType.MINUS, TokenValue.tv_str(v: "-"))
+                } else if c == '*' {
+                    let _ = self.advance()
+                    self.emit(TokenType.MUL, TokenValue.tv_str(v: "*"))
+                } else if c == '/' {
+                    let _ = self.advance()
+                    self.emit(TokenType.DIV, TokenValue.tv_str(v: "/"))
+                } else if c == '%' {
+                    let _ = self.advance()
+                    self.emit(TokenType.MOD, TokenValue.tv_str(v: "%"))
+                } else if c == '=' {
+                    let _ = self.advance()
+                    self.emit(TokenType.ASSIGN, TokenValue.tv_str(v: "="))
+                } else if c == '<' {
+                    let _ = self.advance()
+                    self.emit(TokenType.LT, TokenValue.tv_str(v: "<"))
+                } else if c == '>' {
+                    let _ = self.advance()
+                    self.emit(TokenType.GT, TokenValue.tv_str(v: ">"))
+                } else if c == ':' {
+                    let _ = self.advance()
+                    self.emit(TokenType.COLON, TokenValue.tv_str(v: ":"))
+                } else if c == ';' {
+                    let _ = self.advance()
+                    self.emit(TokenType.SEMICOLON, TokenValue.tv_str(v: ";"))
+                } else if c == ',' {
+                    let _ = self.advance()
+                    self.emit(TokenType.COMMA, TokenValue.tv_str(v: ","))
+                } else if c == '(' {
+                    let _ = self.advance()
+                    self.paren_depth = self.paren_depth + 1
+                    self.emit(TokenType.LPAREN, TokenValue.tv_str(v: "("))
+                } else if c == ')' {
+                    let _ = self.advance()
+                    if self.paren_depth > 0 {
+                        self.paren_depth = self.paren_depth - 1
+                    }
+                    self.emit(TokenType.RPAREN, TokenValue.tv_str(v: ")"))
+                } else if c == '[' {
+                    let _ = self.advance()
+                    self.paren_depth = self.paren_depth + 1
+                    self.emit(TokenType.LBRACKET, TokenValue.tv_str(v: "["))
+                } else if c == ']' {
+                    let _ = self.advance()
+                    if self.paren_depth > 0 {
+                        self.paren_depth = self.paren_depth - 1
+                    }
+                    self.emit(TokenType.RBRACKET, TokenValue.tv_str(v: "]"))
+                } else if c == '{' {
+                    let _ = self.advance()
+                    self.brace_depth = self.brace_depth + 1
+                    self.emit(TokenType.LBRACE, TokenValue.tv_str(v: "{"))
+                } else if c == '}' {
+                    let _ = self.advance()
+                    if self.brace_depth > 0 {
+                        self.brace_depth = self.brace_depth - 1
+                    }
+                    self.emit(TokenType.RBRACE, TokenValue.tv_str(v: "}"))
+                } else if c == '&' {
+                    let _ = self.advance()
+                    self.emit(TokenType.AMP, TokenValue.tv_str(v: "&"))
+                } else if c == '#' {
+                    let _ = self.advance()
+                    self.emit(TokenType.HASH, TokenValue.tv_str(v: "#"))
+                } else if c == '!' {
+                    let _ = self.advance()
+                    self.emit(TokenType.NOT, TokenValue.tv_str(v: "!"))
+                } else if c == '?' {
+                    let _ = self.advance()
+                    self.emit(TokenType.QUESTION, TokenValue.tv_str(v: "?"))
+                } else if c == '^' {
+                    let _ = self.advance()
+                    self.emit(TokenType.BITXOR, TokenValue.tv_str(v: "^"))
+                } else if c == '~' {
+                    let _ = self.advance()
+                    self.emit(TokenType.BITNOT, TokenValue.tv_str(v: "~"))
+                } else if c == '|' {
+                    let _ = self.advance()
+                    self.emit(TokenType.PIPE, TokenValue.tv_str(v: "|"))
+                } else if c == '.' {
+                    let _ = self.advance()
+                    self.emit(TokenType.DOT, TokenValue.tv_str(v: "."))
+
+                }
+            }
+        }
+        while false {
+            let _ = self.indent_stack.pop()
+            self.emit(TokenType.DEDENT, TokenValue.tv_int(v: 0))
+        }
+        self.emit(TokenType.EOF, TokenValue.tv_none)
+
+    }
+}

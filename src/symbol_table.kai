@@ -1,0 +1,88 @@
+import ArrayList from std.collections.array
+import Allocator from std.core.allocator
+
+struct Symbol {
+    name: Str
+    type_name: Str
+    is_mutable: Bool
+    kind: Str
+    llvm_value: Str
+    moved: Bool
+}
+
+struct SymbolTable {
+    entries: ArrayList<Symbol>
+    parent_idx: Int
+    allocator: *Allocator
+}
+
+impl SymbolTable {
+    fn init(self, allocator: *Allocator, parent_idx: Int) {
+        self.allocator = allocator
+        self.entries = ArrayList<Symbol>(allocator)
+        self.parent_idx = parent_idx
+    }
+
+    fn define(self, name: Str, type_name: Str, is_mutable: Bool, kind: Str, llvm_value: Str) {
+        self.entries.push(Symbol(name: name, type_name: type_name, is_mutable: is_mutable, kind: kind, llvm_value: llvm_value, moved: false))
+    }
+
+    fn lookup(self, name: Str, tables: *ArrayList<SymbolTable>) -> Int {
+        var i = 0
+        while i < self.entries.length() {
+            if self.entries.get(i).name == name {
+                return i
+            }
+            i = i + 1
+        }
+        if self.parent_idx >= 0 {
+            let parent = tables.get(self.parent_idx)
+            return parent.lookup(name, tables)
+        }
+        return -1
+    }
+
+    fn lookup_symbol(self, name: Str, tables: *ArrayList<SymbolTable>) -> Symbol {
+        var i = 0
+        while i < self.entries.length() {
+            if self.entries.get(i).name == name {
+                return self.entries.get(i)
+            }
+            i = i + 1
+        }
+        if self.parent_idx >= 0 {
+            let parent = tables.get(self.parent_idx)
+            return parent.lookup_symbol(name, tables)
+        }
+        return Symbol(name: "", type_name: "", is_mutable: false, kind: "", llvm_value: "", moved: false)
+    }
+
+    fn mark_moved(self, name: Str, tables: *ArrayList<SymbolTable>) -> Void {
+        var i = 0
+        while i < self.entries.length() {
+            if self.entries.get(i).name == name {
+                var sym = self.entries.get(i)
+                sym.moved = true
+                self.entries.set(i, sym)
+                return
+            }
+            i = i + 1
+        }
+        if self.parent_idx >= 0 {
+            var parent = tables.get(self.parent_idx)
+            parent.mark_moved(name, tables)
+            tables.set(self.parent_idx, parent)
+        }
+    }
+
+    fn lookup_current(self, name: Str) -> Int {
+        var i = 0
+        while i < self.entries.length() {
+            if self.entries.get(i).name == name {
+                return i
+            }
+            i = i + 1
+        }
+        return -1
+    }
+}

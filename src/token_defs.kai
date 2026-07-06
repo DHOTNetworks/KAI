@@ -1,0 +1,117 @@
+import ArrayList from std.collections.array
+import Allocator from std.core.allocator
+
+enum TokenType {
+    case INT_LIT
+    case FLOAT_LIT
+    case BOOL_LIT
+    case CHAR_LIT
+    case STRING_LIT
+    case IDENTIFIER
+
+    case LET
+    case VAR
+    case FUNC
+    case IF
+    case ELSE
+    case WHILE
+    case FOR
+    case IN
+    case RETURN
+    case PRINT
+    case STRUCT
+    case IMPL
+    case MUT
+    case UNSAFE
+    case EXTERN
+    case ENUM
+    case MATCH
+    case CASE
+    case USE
+    case CHECK
+    case TRAIT
+    case PUB
+    case IMPORT
+    case CIMPORT
+    case FROM
+    case AS
+    case SIZEOF
+    case DEFER
+    case NONE
+    case FN
+    case TRY
+    case CATCH
+    case OWN
+    case ERROR
+    case ASM
+    case VOLATILE
+
+    case PLUS
+    case MINUS
+    case MUL
+    case DIV
+    case MOD
+    case ASSIGN
+    case PLUS_ASSIGN
+    case MINUS_ASSIGN
+
+    case AND
+    case OR
+    case NOT
+
+    case PIPE
+    case BITXOR
+    case BITNOT
+    case LSHIFT
+    case RSHIFT
+
+    case EQ
+    case NE
+    case LT
+    case LE
+    case GT
+    case GE
+
+    case COLON
+    case ARROW
+    case FAT_ARROW
+    case COMMA
+    case LPAREN
+    case RPAREN
+    case LBRACKET
+    case RBRACKET
+    case LBRACE
+    case RBRACE
+    case DOTDOT
+    case DOTDOTEQ
+    case DOT
+    case AMP
+    case HASH
+    case QUESTION
+    case SEMICOLON
+    case BREAK
+    case CONTINUE
+
+    case NEWLINE
+    case INDENT
+    case DEDENT
+
+    case EOF
+
+}
+enum TokenValue {
+    case tv_none
+    case tv_int(v: Int)
+    case tv_float(v: Float)
+    case tv_bool(v: Bool)
+    case tv_char(v: Char)
+    case tv_str(v: Str)
+
+}
+struct Token {
+    tok_type: TokenType
+    value: TokenValue
+    line: Int
+    column: Int
+
+}
