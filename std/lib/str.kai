@@ -5,6 +5,7 @@ extern fn printf(format: Str, value: Str) -> Int
 extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn atoll(s: Str) -> Int
 extern fn strlen(s: Str) -> Int
+extern fn malloc(size: Int) -> *Char
 
 fn __kai_std_str_concat_alloc(left: Str, right: Str) -> Str {
     let left_len = strlen(left)
