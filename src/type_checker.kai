@@ -1,5 +1,6 @@
 import ArrayList from std.core.array
 import Allocator from std.core.allocator
+import KaiAllocator from std.core.allocator
 import StmtNode from ast_nodes
 import ExprNode from ast_nodes
 import PatternNode from ast_nodes
@@ -35,7 +36,7 @@ struct StructInfo {
 }
 
 struct TypeChecker {
-    allocator: *Allocator
+    allocator: *KaiAllocator
     stmt_pool: *ArrayList<StmtNode>
     expr_pool: *ArrayList<ExprNode>
     pattern_pool: *ArrayList<PatternNode>
@@ -57,7 +58,7 @@ struct TypeChecker {
 }
 
 impl TypeChecker {
-    fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, source_file: Str, source: Str, import_resolver: *ImportResolver) {
+    fn init(self, allocator: *KaiAllocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, source_file: Str, source: Str, import_resolver: *ImportResolver) {
         self.allocator = allocator
         self.stmt_pool = stmt_pool
         self.expr_pool = expr_pool
@@ -381,9 +382,6 @@ impl TypeChecker {
             s = substring(s, 4, length(s))
         }
         if t == "Void" || s == "Void" {
-            return true
-        }
-        if t == "Allocator" && (s == "KaiAllocator" || s == "CAlloc") {
             return true
         }
         if t == s {

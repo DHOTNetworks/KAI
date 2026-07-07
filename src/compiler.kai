@@ -22,7 +22,6 @@ import run_explain from explain
 
 extern fn system(cmd: *Char) -> Int
 extern fn strcmp(s1: Str, s2: Str) -> Int
-extern fn _kai_set_current_allocator(allocator: *Void)
 extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
 
 fn main(argc: Int, argv: **Char) -> Int {
@@ -138,7 +137,6 @@ fn main(argc: Int, argv: **Char) -> Int {
     }
 
     var allocator = KaiAllocator_new()
-    _kai_set_current_allocator(&allocator as *Void)
 
     var exe_include_flag = ""
     var exe_dir = ""

@@ -1,4 +1,5 @@
 import Allocator from std.core.allocator
+import KaiAllocator from std.core.allocator
 
 extern fn exit(code: Int)
 
@@ -6,11 +7,11 @@ struct ArrayList<T> {
     data: *T
     len: Int
     cap: Int
-    allocator: *Allocator
+    allocator: *KaiAllocator
 }
 
 impl ArrayList {
-    fn init(self, allocator: *Allocator) {
+    fn init(self, allocator: *KaiAllocator) {
         self.len = 0
         self.cap = 4
         self.allocator = allocator

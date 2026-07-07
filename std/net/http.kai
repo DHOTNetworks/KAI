@@ -11,7 +11,6 @@ import Thread from std.sync.thread
 import spawn from std.sync.thread
 
 import KaiAllocator from std.core.allocator
-import Allocator from std.core.allocator
 import malloc from std.core.allocator
 import free from std.core.allocator
 
@@ -32,7 +31,7 @@ struct HttpRequest {
     path: Str
     body: Str
     ffi_ptr: *Void
-    allocator: *Allocator
+    allocator: *KaiAllocator
 }
 
 impl HttpRequest {
@@ -67,7 +66,7 @@ fn http_conn_worker(arg: *Void) -> *Void {
 
     unsafe {
         var thread_allocator = KaiAllocator_new()
-        let alloc_ptr = &thread_allocator as *Allocator
+        let alloc_ptr = &thread_allocator
 
         let buf = thread_allocator.alloc(4096, 1) as *Char
         let bytes_received = socket_recv(client, buf, 4096)

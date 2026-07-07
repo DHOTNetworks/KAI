@@ -6,6 +6,7 @@ import is_alnum from std.core.string
 import is_space from std.core.string
 import char_to_str from std.core.string
 import Allocator from std.core.allocator
+import KaiAllocator from std.core.allocator
 import parser_err from parser
 
 extern fn strlen(s: Str) -> Int
@@ -109,7 +110,7 @@ fn make_keyword_value(ident: Str, ttype: TokenType) -> TokenValue {
 
 }
 struct Lexer {
-    allocator: *Allocator
+    allocator: *KaiAllocator
     source: Str
     source_file: Str
     source_len: Int
@@ -124,7 +125,7 @@ struct Lexer {
 
 }
 impl Lexer {
-    fn init(self, allocator: *Allocator, source: Str, source_file: Str) {
+    fn init(self, allocator: *KaiAllocator, source: Str, source_file: Str) {
         self.allocator = allocator
         self.source = source
         self.cursor = 0

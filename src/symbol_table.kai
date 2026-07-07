@@ -1,5 +1,6 @@
 import ArrayList from std.core.array
 import Allocator from std.core.allocator
+import KaiAllocator from std.core.allocator
 
 struct Symbol {
     name: Str
@@ -14,11 +15,11 @@ struct Symbol {
 struct SymbolTable {
     entries: ArrayList<Symbol>
     parent_idx: Int
-    allocator: *Allocator
+    allocator: *KaiAllocator
 }
 
 impl SymbolTable {
-    fn init(self, allocator: *Allocator, parent_idx: Int) {
+    fn init(self, allocator: *KaiAllocator, parent_idx: Int) {
         self.allocator = allocator
         self.entries = ArrayList<Symbol>(allocator)
         self.parent_idx = parent_idx

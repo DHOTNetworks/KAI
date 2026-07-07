@@ -20,7 +20,6 @@ import diag_line_end from std.lib.diag
 import diag_line_text from std.lib.diag
 
 extern fn strcmp(s1: Str, s2: Str) -> Int
-extern fn _kai_set_current_allocator(allocator: *Void)
 
 // ====================================================================
 // Safety/Repair mapping — 1:1 replica of Zero's diag_fix_safety,
@@ -277,8 +276,6 @@ fn print_patch(path: Str, json_mode: Bool, apply: Bool, applied: Bool,
 
 fn run_fix(fix_mode: Str, fix_file: Str, json: Bool) -> Int {
     var fix_alloc = KaiAllocator_new()
-    _kai_set_current_allocator(&fix_alloc as *Void)
-
     let src_res = read_to_string(&fix_alloc, fix_file)
     if src_res.tag != 0 {
         printf("Error: Could not read '%s'\n", fix_file)
@@ -316,7 +313,6 @@ fn run_fix(fix_mode: Str, fix_file: Str, json: Bool) -> Int {
     builtins.push("system")
     builtins.push("strcmp")
     builtins.push("get_exe_dir")
-    builtins.push("_kai_set_current_allocator")
     builtins.push("malloc")
     builtins.push("free")
     builtins.push("realloc")

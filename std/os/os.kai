@@ -1,5 +1,6 @@
 cimport "std/os/os.h"
 import Allocator from std.core.allocator
+import KaiAllocator from std.core.allocator
 
 extern fn kai_os_sleep_ms(ms: Int)
 extern fn kai_os_getpid() -> Int
@@ -41,7 +42,7 @@ fn os_get_exe_dir(buf: *Char, max_len: Int) -> Bool {
     }
 }
 
-fn os_get_exe_dir_alloc(allocator: *Allocator) -> ?Str {
+fn os_get_exe_dir_alloc(allocator: *KaiAllocator) -> ?Str {
     unsafe {
         let buf = allocator.alloc(1024, 1) as *Char
         if kai_os_get_exe_dir(buf, 1024) == 0 {

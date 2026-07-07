@@ -55,12 +55,6 @@ static void* __kai_arr_sub(const void* arr, int64_t start, int64_t end, int64_t 
 extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);
 extern int munmap(void* addr, unsigned long long length);
 
-static __thread void* _kai_current_allocator = NULL;
-
-static inline void _kai_set_current_allocator(void* allocator) {
-    _kai_current_allocator = allocator;
-}
-
 void __kai_print_int(int64_t v) {
     printf("%lld\n", (long long)(v));
 }
@@ -3189,7 +3183,6 @@ int main(int argc, char** argv) {
     return 1LL;
 }
     KaiAllocator allocator = KaiAllocator_new();
-    _kai_set_current_allocator((void*)(&(allocator)));
     const char* exe_include_flag = "";
     const char* exe_dir = "";
     {
@@ -4172,8 +4165,7 @@ const char* int_to_str(int64_t n) {
     {
     KaiAllocator allocator = (KaiAllocator){ .heads = (uint8_t*)(unsigned long long)(0LL), .used = 0LL };
     allocator = KaiAllocator_init();
-    KaiAllocator* alloc_ptr = (KaiAllocator*)(&(allocator));
-    StringBuilder sb = StringBuilder_init(alloc_ptr);
+    StringBuilder sb = StringBuilder_init(&(allocator));
     int64_t num = n;
     if (num < 0LL) {
     StringBuilder_append_char(&(sb), ((char)(45LL)));
@@ -4197,7 +4189,7 @@ const char* char_to_str(char c) {
     {
     KaiAllocator allocator = (KaiAllocator){ .heads = (uint8_t*)(unsigned long long)(0LL), .used = 0LL };
     allocator = KaiAllocator_init();
-    StringBuilder sb = StringBuilder_init((KaiAllocator*)(&(allocator)));
+    StringBuilder sb = StringBuilder_init(&(allocator));
     StringBuilder_append_char(&(sb), c);
     return StringBuilder_to_str(&(sb));
 }
@@ -6587,9 +6579,6 @@ bool TypeChecker_types_compatible(TypeChecker* self, const char* target, const c
     if ((strcmp(t, "Void") == 0) || (strcmp(s, "Void") == 0)) {
     return true;
 }
-    if ((strcmp(t, "Allocator") == 0) && ((strcmp(s, "KaiAllocator") == 0) || (strcmp(s, "CAlloc") == 0))) {
-    return true;
-}
     if (strcmp(t, s) == 0) {
     return true;
 }
@@ -8436,9 +8425,6 @@ const char* Codegen_map_type(Codegen* self, const char* type_name) {
 }
     if (strcmp(resolved_type, "Str") == 0) {
     return "const char*";
-}
-    if (strcmp(resolved_type, "Allocator") == 0) {
-    return "KaiAllocator";
 }
     if (strcmp(__kai_str_sub(resolved_type, 0LL, 2LL), "[]") == 0) {
     const char* inner = __kai_str_sub(resolved_type, 2LL, strlen(resolved_type));
@@ -10832,9 +10818,6 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     if (Codegen_is_standard_c_func(self, name)) {
     return "";
 }
-    if (strcmp(name, "_kai_set_current_allocator") == 0LL) {
-    return "";
-}
     const char* ret_type = Codegen_map_type(self, stmt.extern_return);
     const char* params_str = "";
     int64_t i = 0LL;
@@ -11364,12 +11347,6 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
     StringBuilder_append(&(result), "#endif\n");
     StringBuilder_append(&(result), "extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);\n");
     StringBuilder_append(&(result), "extern int munmap(void* addr, unsigned long long length);\n");
-    StringBuilder_append(&(result), "\n");
-    StringBuilder_append(&(result), "static __thread void* _kai_current_allocator = NULL;\n");
-    StringBuilder_append(&(result), "\n");
-    StringBuilder_append(&(result), "static inline void _kai_set_current_allocator(void* allocator) {\n");
-    StringBuilder_append(&(result), "    _kai_current_allocator = allocator;\n");
-    StringBuilder_append(&(result), "}\n");
     StringBuilder_append(&(result), "\n");
     StringBuilder_append(&(result), "void __kai_print_int(int64_t v) {\n");
     StringBuilder_append(&(result), "    printf(\"%lld\\n\", (long long)(v));\n");
@@ -12372,9 +12349,6 @@ const char* CodegenBuilder_map_type(CodegenBuilder* self, const char* resolved_t
     if (strcmp(orig, "NoneType") == 0) {
     return "void";
 }
-    if (strcmp(orig, "Allocator") == 0) {
-    return "KaiAllocator";
-}
     if (strcmp(orig, "TokenValue") == 0) {
     return "TokenValue";
 }
@@ -12499,8 +12473,6 @@ const char* CodegenBuilder_map_type(CodegenBuilder* self, const char* resolved_t
     base = "const char*";
 } else if (strcmp(base, "NoneType") == 0) {
     base = "void";
-} else if (strcmp(base, "Allocator") == 0) {
-    base = "KaiAllocator";
 } else if (strcmp(base, "TokenValue") == 0) {
     base = "TokenValue";
 } else if (strcmp(base, "TokenType") == 0) {
@@ -14511,8 +14483,6 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     if (stmt.kind == StmtKind_sk_extern) {
     if (!CodegenBuilder_is_standard_c_func(self, stmt.extern_name)) {
     {
-    if (strcmp(stmt.extern_name, "_kai_set_current_allocator") == 0LL) {
-} else {
     const char* params_str = "";
     int64_t pi3 = 0LL;
     while (pi3 < ArrayList_Param_length(&(stmt.extern_params))) {
@@ -14537,7 +14507,6 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     CPrinter printer = (CPrinter){ .builder = &(local_builder), .expr_pool = &(self->c_exprs), .stmt_pool = &(self->c_stmts) };
     CPrinter_print_decl(&(printer), ext_decl);
     StrBuf_append(&(self->func_decls), CCodeBuilder_to_str(&(local_builder)));
-}
 }
 }
 }
@@ -15533,12 +15502,6 @@ void CPrinter_emit_runtime_preamble(CPrinter* self, ArrayList_Str* cimport_heade
     CCodeBuilder_emit_line(self->builder, "extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);");
     CCodeBuilder_emit_line(self->builder, "extern int munmap(void* addr, unsigned long long length);");
     CCodeBuilder_emit_blank(self->builder);
-    CCodeBuilder_emit_line(self->builder, "static __thread void* _kai_current_allocator = NULL;");
-    CCodeBuilder_emit_blank(self->builder);
-    CCodeBuilder_emit_line(self->builder, "static inline void _kai_set_current_allocator(void* allocator) {");
-    CCodeBuilder_emit_line(self->builder, "    _kai_current_allocator = allocator;");
-    CCodeBuilder_emit_line(self->builder, "}");
-    CCodeBuilder_emit_blank(self->builder);
     CCodeBuilder_emit_line(self->builder, "void __kai_print_int(int64_t v) {");
     CCodeBuilder_emit_line(self->builder, "    printf(\"%lld\\n\", (long long)(v));");
     CCodeBuilder_emit_line(self->builder, "}");
@@ -15801,7 +15764,6 @@ void print_patch(const char* path, bool json_mode, bool apply, bool applied, Arr
 }
 int64_t run_fix(const char* fix_mode, const char* fix_file, bool json) {
     KaiAllocator fix_alloc = KaiAllocator_new();
-    _kai_set_current_allocator((void*)(&(fix_alloc)));
     Result_Str_IoError src_res = read_to_string(&(fix_alloc), fix_file);
     if (src_res.tag != 0LL) {
     printf("Error: Could not read '%s'\n", fix_file);
@@ -15835,7 +15797,6 @@ int64_t run_fix(const char* fix_mode, const char* fix_file, bool json) {
     ArrayList_Str_push(&(builtins), "system");
     ArrayList_Str_push(&(builtins), "strcmp");
     ArrayList_Str_push(&(builtins), "get_exe_dir");
-    ArrayList_Str_push(&(builtins), "_kai_set_current_allocator");
     ArrayList_Str_push(&(builtins), "malloc");
     ArrayList_Str_push(&(builtins), "free");
     ArrayList_Str_push(&(builtins), "realloc");
@@ -16536,7 +16497,6 @@ int64_t run_patch(int64_t argc, char** argv) {
     return 1LL;
 }
     KaiAllocator allocator = KaiAllocator_new();
-    _kai_set_current_allocator((void*)(&(allocator)));
     const char* patch_file = "";
     const char* operation = "";
     const char* op_arg1 = "";
@@ -16958,7 +16918,6 @@ int64_t run_graph(int64_t argc, char** argv) {
     return 1LL;
 }
     KaiAllocator graph_alloc = KaiAllocator_new();
-    _kai_set_current_allocator((void*)(&(graph_alloc)));
     Result_Str_IoError src_res2 = read_to_string(&(graph_alloc), graph_file);
     if (src_res2.tag != 0LL) {
     printf("Error: Could not read '%s'\n", graph_file);
@@ -17244,7 +17203,6 @@ int64_t run_init(int64_t argc, char** argv) {
 }
 int64_t run_skills(int64_t argc, char** argv) {
     KaiAllocator allocator = KaiAllocator_new();
-    _kai_set_current_allocator((void*)(&(allocator)));
     const char* exe_dir = "";
     {
     char* buf = (char*)(KaiAllocator_alloc(&(allocator), 1024LL, 1LL));

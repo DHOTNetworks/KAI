@@ -1,4 +1,5 @@
 import Allocator from std.core.allocator
+import KaiAllocator from std.core.allocator
 import Option from std.core.option
 import length from std.core.string
 
@@ -14,11 +15,11 @@ struct HashMap<V> {
     entries: *MapEntry<V>
     len: Int
     cap: Int
-    allocator: *Allocator
+    allocator: *KaiAllocator
 }
 
 impl HashMap {
-    fn init(self, allocator: *Allocator) {
+    fn init(self, allocator: *KaiAllocator) {
         self.len = 0
         self.cap = 16
         self.allocator = allocator

@@ -1,5 +1,6 @@
 import ArrayList from std.core.array
 import Allocator from std.core.allocator
+import KaiAllocator from std.core.allocator
 import std.io.print
 
 import TokenType from token_defs
@@ -142,7 +143,7 @@ fn str_array_join(arr: ArrayList<Str>, sep: Str) -> Str {
 
 }
 struct Parser {
-    allocator: *Allocator
+    allocator: *KaiAllocator
     source_file: Str
     source: Str
     tokens: *ArrayList<Token>
@@ -180,7 +181,7 @@ fn parser_err(source_file: Str, source: Str, code: Str, msg: Str, line: Int, col
     }
 }
 impl Parser {
-    fn init_with_pools(self, allocator: *Allocator, source_file: Str, tokens: *ArrayList<Token>, expr_pool: *ArrayList<ExprNode>, stmt_pool: *ArrayList<StmtNode>, pattern_pool: *ArrayList<PatternNode>, source: Str) -> Parser {
+    fn init_with_pools(self, allocator: *KaiAllocator, source_file: Str, tokens: *ArrayList<Token>, expr_pool: *ArrayList<ExprNode>, stmt_pool: *ArrayList<StmtNode>, pattern_pool: *ArrayList<PatternNode>, source: Str) -> Parser {
         self.allocator = allocator
         self.source_file = source_file
         self.source = source
@@ -197,7 +198,7 @@ impl Parser {
         return self
 
     }
-    fn init(self, allocator: *Allocator, source_file: Str, tokens: *ArrayList<Token>, source: Str) {
+    fn init(self, allocator: *KaiAllocator, source_file: Str, tokens: *ArrayList<Token>, source: Str) {
         self.allocator = allocator
         self.source_file = source_file
         self.source = source

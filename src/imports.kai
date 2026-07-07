@@ -1,5 +1,6 @@
 import ArrayList from std.core.array
 import Allocator from std.core.allocator
+import KaiAllocator from std.core.allocator
 import read_to_string from std.io.file
 import Lexer from lexer
 import Parser from parser
@@ -13,13 +14,13 @@ extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
 extern fn strlen(s: Str) -> Int
 
 struct ImportResolver {
-    allocator: *Allocator
+    allocator: *KaiAllocator
     loaded_modules: ArrayList<Str>
     cimport_headers: ArrayList<Str>
 }
 
 impl ImportResolver {
-    fn init(self, allocator: *Allocator) {
+    fn init(self, allocator: *KaiAllocator) {
         self.allocator = allocator
         self.loaded_modules = ArrayList<Str>(allocator)
         self.cimport_headers = ArrayList<Str>(allocator)

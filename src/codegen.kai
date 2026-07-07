@@ -2,6 +2,7 @@
 
 import ArrayList from std.core.array
 import Allocator from std.core.allocator
+import KaiAllocator from std.core.allocator
 import StringBuilder from std.core.string
 import int_to_str from std.core.string
 import char_to_str from std.core.string
@@ -64,7 +65,7 @@ struct StrMapEntry {
 }
 
 struct Codegen {
-    allocator: *Allocator
+    allocator: *KaiAllocator
     stmt_pool: *ArrayList<StmtNode>
     expr_pool: *ArrayList<ExprNode>
     pattern_pool: *ArrayList<PatternNode>
@@ -160,7 +161,7 @@ fn add_init_return(self, body_str: Str, struct_name: Str) -> Str {
     return "{\n" + self_decl + stripped_body + self_ret
 }
 
-fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, import_resolver: *ImportResolver) {
+fn init(self, allocator: *KaiAllocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, import_resolver: *ImportResolver) {
     self.allocator = allocator
     self.stmt_pool = stmt_pool
     self.expr_pool = expr_pool
@@ -296,7 +297,6 @@ fn map_type(self, type_name: Str) -> Str {
     if resolved_type == "Float" { return "double" }
     if resolved_type == "Void" { return "void" }
     if resolved_type == "Str" { return "const char*" }
-    if resolved_type == "Allocator" { return "KaiAllocator" }
     
     if resolved_type[0..2] == "[]" {
         let inner = resolved_type[2..length(resolved_type)]
@@ -2791,9 +2791,6 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
         if self.is_standard_c_func(name) {
             return ""
         }
-        if strcmp(name, "_kai_set_current_allocator") == 0 {
-            return ""
-        }
         let ret_type = self.map_type(stmt.extern_return)
         
         var params_str = ""
@@ -3335,12 +3332,6 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     result.append("#endif\n")
     result.append("extern void* mmap(void* addr, unsigned long long length, int prot, int flags, int fd, long long offset);\n")
     result.append("extern int munmap(void* addr, unsigned long long length);\n")
-    result.append("\n")
-    result.append("static __thread void* _kai_current_allocator = NULL;\n")
-    result.append("\n")
-    result.append("static inline void _kai_set_current_allocator(void* allocator) {\n")
-    result.append("    _kai_current_allocator = allocator;\n")
-    result.append("}\n")
     result.append("\n")
     result.append("void __kai_print_int(int64_t v) {\n")
     result.append("    printf(\"%lld\\n\", (long long)(v));\n")

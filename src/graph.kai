@@ -8,7 +8,6 @@ import Lexer from lexer
 import Parser from parser
 
 extern fn strcmp(s1: Str, s2: Str) -> Int
-extern fn _kai_set_current_allocator(allocator: *Void)
 
 fn run_graph(argc: Int, argv: **Char) -> Int {
     if argc < 3 {
@@ -45,7 +44,6 @@ fn run_graph(argc: Int, argv: **Char) -> Int {
     }
 
     var graph_alloc = KaiAllocator_new()
-    _kai_set_current_allocator(&graph_alloc as *Void)
 
     let src_res2 = read_to_string(&graph_alloc, graph_file)
     if src_res2.tag != 0 {

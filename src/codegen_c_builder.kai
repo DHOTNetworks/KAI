@@ -1,5 +1,6 @@
 import ArrayList from std.core.array
 import Allocator from std.core.allocator
+import KaiAllocator from std.core.allocator
 
 extern fn strlen(s: Str) -> Int
 extern fn __kai_std_str_concat_alloc(left: Str, right: Str) -> Str
@@ -12,14 +13,14 @@ extern fn __kai_std_str_concat_alloc(left: Str, right: Str) -> Str
 //   Uses only ArrayList + Allocator from std.core (std.core.string is avoided).
 
 struct CCodeBuilder {
-    alloc: *Allocator
+    alloc: *KaiAllocator
     lines: ArrayList<Str>
     indent_level: Int
 }
 
 impl CCodeBuilder {
 
-fn init(self, allocator: *Allocator) {
+fn init(self, allocator: *KaiAllocator) {
     self.alloc = allocator
     self.lines.init(allocator)
     self.indent_level = 0

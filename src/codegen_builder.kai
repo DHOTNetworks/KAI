@@ -1,5 +1,6 @@
 import ArrayList from std.core.array
 import Allocator from std.core.allocator
+import KaiAllocator from std.core.allocator
 
 import ExprKind from ast_nodes
 import ExprNode from ast_nodes
@@ -62,12 +63,12 @@ extern fn strlen(s: Str) -> Int
 //== Minimal string builder (replaces buggy StringBuilder from std.core.string)
 
 struct StrBuf {
-    alloc: *Allocator
+    alloc: *KaiAllocator
     parts: ArrayList<Str>
 }
 
 impl StrBuf {
-    fn init(self, a: *Allocator) {
+    fn init(self, a: *KaiAllocator) {
         self.alloc = a
         self.parts.init(a)
     }
@@ -95,7 +96,7 @@ struct CgbMapEntry {
 }
 
 struct CodegenBuilder {
-    allocator: *Allocator
+    allocator: *KaiAllocator
     stmt_pool: *ArrayList<StmtNode>
     expr_pool: *ArrayList<ExprNode>
     pattern_pool: *ArrayList<PatternNode>
@@ -212,7 +213,7 @@ fn add_init_return(self, body_str: Str, struct_name: Str) -> Str {
     return "{\n" + self_decl + content + "    return self;\n}"
 }
 
-fn init(self, allocator: *Allocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, import_resolver: *ImportResolver) {
+fn init(self, allocator: *KaiAllocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, import_resolver: *ImportResolver) {
     self.allocator = allocator
     self.stmt_pool = stmt_pool
     self.expr_pool = expr_pool
@@ -899,7 +900,6 @@ fn map_type(self, resolved_type: Str) -> Str {
     if orig == "Float" { return "double" }
     if orig == "Str" { return "const char*" }
     if orig == "NoneType" { return "void" }
-    if orig == "Allocator" { return "KaiAllocator" }
     if orig == "TokenValue" { return "TokenValue" }
     if orig == "TokenType" { return "TokenType" }
 
@@ -1007,7 +1007,6 @@ fn map_type(self, resolved_type: Str) -> Str {
     else if base == "Float" { base = "double" }
     else if base == "Str" { base = "const char*" }
     else if base == "NoneType" { base = "void" }
-    else if base == "Allocator" { base = "KaiAllocator" }
     else if base == "TokenValue" { base = "TokenValue" }
     else if base == "TokenType" { base = "TokenType" }
     else if self.str_contains(base, Char(33)) {
@@ -2946,8 +2945,6 @@ fn build_func_types(self) -> Void {
         if stmt.kind == StmtKind.sk_extern {
             if !self.is_standard_c_func(stmt.extern_name) {
                 unsafe {
-                    if strcmp(stmt.extern_name, "_kai_set_current_allocator") == 0 { /* skip */ }
-                    else {
                         var params_str = ""
                         var pi3 = 0
                         while pi3 < stmt.extern_params.length() {
@@ -2970,7 +2967,6 @@ fn build_func_types(self) -> Void {
                         var printer = CPrinter(builder: &local_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
                         printer.print_decl(ext_decl)
                         self.func_decls.append(local_builder.to_str())
-                    }
                 }
             }
         }

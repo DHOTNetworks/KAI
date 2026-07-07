@@ -48,11 +48,11 @@ struct StringBuilder {
     data: *Char
     len: Int
     cap: Int
-    allocator: *Allocator
+    allocator: *KaiAllocator
 }
 
 impl StringBuilder {
-    fn init(self, allocator: *Allocator) {
+    fn init(self, allocator: *KaiAllocator) {
         self.len = 0
         self.cap = 16
         self.allocator = allocator
@@ -108,8 +108,7 @@ fn int_to_str(n: Int) -> Str {
     unsafe {
         var allocator = KaiAllocator(heads: 0 as *u8, used: 0)
         allocator.init()
-        let alloc_ptr = &allocator as *Allocator
-        var sb = StringBuilder(alloc_ptr)
+        var sb = StringBuilder(&allocator)
         var num = n
         if num < 0 {
             sb.append_char(Char(45))
@@ -134,7 +133,7 @@ fn char_to_str(c: Char) -> Str {
     unsafe {
         var allocator = KaiAllocator(heads: 0 as *u8, used: 0)
         allocator.init()
-        var sb = StringBuilder(&allocator as *Allocator)
+        var sb = StringBuilder(&allocator)
         sb.append_char(c)
         return sb.to_str()
     }

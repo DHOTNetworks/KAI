@@ -1,5 +1,6 @@
 import ArrayList from std.core.array
 import Allocator from std.core.allocator
+import KaiAllocator from std.core.allocator
 
 //== C-AST: Formal C Intermediate Representation
 //
@@ -23,7 +24,7 @@ fn ctype_new(base: Str, pointer: Int, is_const: Bool, is_unsigned: Bool) -> CTyp
         pointer: pointer,
         is_const: is_const,
         is_unsigned: is_unsigned,
-        array_sizes: ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+        array_sizes: ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     )
     return t
 }
@@ -87,7 +88,7 @@ fn ctype_from_kai(kai_type: Str) -> CType {
 }
 
 fn ctype_copy(t: CType) -> CType {
-    var sizes = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var sizes = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CType(
         base: t.base,
         pointer: t.pointer,
@@ -269,8 +270,8 @@ fn cunit_new(includes: ArrayList<Str>, decls: ArrayList<CDeclNode>) -> CUnit {
 //== 8. Node Constructors
 
 fn cexpr_new_int(val: Str) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CExprNode(
         kind: CExprKind.ck_int_lit, int_val: val, float_val: "", str_val: "", char_val: "", bool_val: false,
         ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
@@ -278,13 +279,13 @@ fn cexpr_new_int(val: Str) -> CExprNode {
         cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
         tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
         assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator), stmt_result: -1
     )
 }
 
 fn cexpr_new_ident(name: Str) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CExprNode(
         kind: CExprKind.ck_ident, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
         ident_name: name, binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
@@ -292,13 +293,13 @@ fn cexpr_new_ident(name: Str) -> CExprNode {
         cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
         tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
         assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator), stmt_result: -1
     )
 }
 
 fn cexpr_new_binary(left: Int, op: Str, right: Int) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CExprNode(
         kind: CExprKind.ck_binary, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
         ident_name: "", binop_left: left, binop_right: right, binop_op: op, unop_operand: -1, unop_op: "", is_prefix: false,
@@ -306,12 +307,12 @@ fn cexpr_new_binary(left: Int, op: Str, right: Int) -> CExprNode {
         cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
         tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
         assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator), stmt_result: -1
     )
 }
 
 fn cexpr_new_call(callee: Str, args: ArrayList<Int>) -> CExprNode {
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CExprNode(
         kind: CExprKind.ck_call, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
         ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
@@ -319,12 +320,12 @@ fn cexpr_new_call(callee: Str, args: ArrayList<Int>) -> CExprNode {
         cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
         tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
         assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator), stmt_result: -1
     )
 }
 
 fn cstmt_new_expr(expr_idx: Int) -> CStmtNode {
-    var block_stmts = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var block_stmts = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CStmtNode(
         kind: CStmtKind.cs_expr, block_stmts: block_stmts, expr_stmt: expr_idx, if_cond: -1, if_then: -1, if_else: -1,
         while_cond: -1, while_body: -1, for_init: -1, for_cond: -1, for_inc: -1, for_body: -1, do_body: -1, do_cond: -1,
@@ -343,7 +344,7 @@ fn cstmt_new_block(stmts: ArrayList<Int>) -> CStmtNode {
 }
 
 fn cstmt_new_if(cond: Int, then_branch: Int, else_branch: Int) -> CStmtNode {
-    var block_stmts = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var block_stmts = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CStmtNode(
         kind: CStmtKind.cs_if, block_stmts: block_stmts, expr_stmt: -1, if_cond: cond, if_then: then_branch, if_else: else_branch,
         while_cond: -1, while_body: -1, for_init: -1, for_cond: -1, for_inc: -1, for_body: -1, do_body: -1, do_cond: -1,
@@ -355,8 +356,8 @@ fn cstmt_new_if(cond: Int, then_branch: Int, else_branch: Int) -> CStmtNode {
 //== 9. Additional CExprNode Constructors (Phase 1 migration)
 
 fn cexpr_new_float(val: Str) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CExprNode(
         kind: CExprKind.ck_float_lit, int_val: "", float_val: val, str_val: "", char_val: "", bool_val: false,
         ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
@@ -364,13 +365,13 @@ fn cexpr_new_float(val: Str) -> CExprNode {
         cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
         tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
         assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator), stmt_result: -1
     )
 }
 
 fn cexpr_new_str(val: Str) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CExprNode(
         kind: CExprKind.ck_str_lit, int_val: "", float_val: "", str_val: val, char_val: "", bool_val: false,
         ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
@@ -378,13 +379,13 @@ fn cexpr_new_str(val: Str) -> CExprNode {
         cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
         tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
         assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator), stmt_result: -1
     )
 }
 
 fn cexpr_new_bool(val: Bool) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CExprNode(
         kind: CExprKind.ck_bool_lit, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: val,
         ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
@@ -392,13 +393,13 @@ fn cexpr_new_bool(val: Bool) -> CExprNode {
         cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
         tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
         assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator), stmt_result: -1
     )
 }
 
 fn cexpr_new_char(val: Str) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CExprNode(
         kind: CExprKind.ck_char_lit, int_val: "", float_val: "", str_val: "", char_val: val, bool_val: false,
         ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
@@ -406,13 +407,13 @@ fn cexpr_new_char(val: Str) -> CExprNode {
         cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
         tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
         assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator), stmt_result: -1
     )
 }
 
 fn cexpr_new_unary(op: Str, operand: Int, is_prefix: Bool) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CExprNode(
         kind: CExprKind.ck_unary, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
         ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: operand, unop_op: op, is_prefix: is_prefix,
@@ -420,12 +421,12 @@ fn cexpr_new_unary(op: Str, operand: Int, is_prefix: Bool) -> CExprNode {
         cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
         tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
         assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator), stmt_result: -1
     )
 }
 
 fn cexpr_new_compound(t: CType, compound_fs: ArrayList<Str>) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CExprNode(
         kind: CExprKind.ck_compound, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
         ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
@@ -433,15 +434,15 @@ fn cexpr_new_compound(t: CType, compound_fs: ArrayList<Str>) -> CExprNode {
         cast_type: ctype_void(), cast_expr: -1, compound_type: t, compound_fields: compound_fs,
         tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
         assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator), stmt_result: -1
     )
 }
 
 //== 9b. CExprNode Constructors for structured field/index/cast/sizeof
 
 fn cexpr_new_field(base: Int, name: Str) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CExprNode(
         kind: CExprKind.ck_field, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
         ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
@@ -449,13 +450,13 @@ fn cexpr_new_field(base: Int, name: Str) -> CExprNode {
         cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
         tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
         assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator), stmt_result: -1
     )
 }
 
 fn cexpr_new_arrow(base: Int, name: Str) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CExprNode(
         kind: CExprKind.ck_arrow, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
         ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
@@ -463,13 +464,13 @@ fn cexpr_new_arrow(base: Int, name: Str) -> CExprNode {
         cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
         tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
         assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator), stmt_result: -1
     )
 }
 
 fn cexpr_new_index(base: Int, idx_val: Int) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CExprNode(
         kind: CExprKind.ck_index, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
         ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
@@ -477,13 +478,13 @@ fn cexpr_new_index(base: Int, idx_val: Int) -> CExprNode {
         cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
         tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
         assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator), stmt_result: -1
     )
 }
 
 fn cexpr_new_cast(t: CType, cast_e: Int) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CExprNode(
         kind: CExprKind.ck_cast, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
         ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
@@ -491,13 +492,13 @@ fn cexpr_new_cast(t: CType, cast_e: Int) -> CExprNode {
         cast_type: t, cast_expr: cast_e, compound_type: ctype_void(), compound_fields: fields,
         tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
         assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator), stmt_result: -1
     )
 }
 
 fn cexpr_new_sizeof_type(t: CType) -> CExprNode {
-    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CExprNode(
         kind: CExprKind.ck_sizeof_type, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
         ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
@@ -505,15 +506,15 @@ fn cexpr_new_sizeof_type(t: CType) -> CExprNode {
         cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
         tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: t, sizeof_expr: -1,
         assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
-        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator), stmt_result: -1
+        stmts: ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator), stmt_result: -1
     )
 }
 
 //== 10. CDeclNode Constructors
 
 fn cdecl_new_func(name: Str, ret_type: Str, params: ArrayList<Str>, is_extern: Bool, is_vararg: Bool) -> CDeclNode {
-    var empty_stmts = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *Allocator)
-    var empty_strs = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *Allocator)
+    var empty_stmts = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    var empty_strs = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CDeclNode(
         is_function: true, func_ret: ctype_new(ret_type, 0, false, false), func_name: name,
         func_params: params, func_vararg: is_vararg, func_body: empty_stmts,

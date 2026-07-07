@@ -3,12 +3,10 @@ import read_to_string from std.io.file
 import std.io.print
 
 extern fn strcmp(s1: Str, s2: Str) -> Int
-extern fn _kai_set_current_allocator(allocator: *Void)
 extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
 
 fn run_skills(argc: Int, argv: **Char) -> Int {
     var allocator = KaiAllocator_new()
-    _kai_set_current_allocator(&allocator as *Void)
     var exe_dir = ""
     unsafe {
         let buf = allocator.alloc(1024, 1) as *Char

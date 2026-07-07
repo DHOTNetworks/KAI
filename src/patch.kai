@@ -7,7 +7,6 @@ import str_replace from utils
 import std.io.print
 
 extern fn strcmp(s1: Str, s2: Str) -> Int
-extern fn _kai_set_current_allocator(allocator: *Void)
 
 fn run_patch(argc: Int, argv: **Char) -> Int {
     if argc < 4 {
@@ -23,7 +22,6 @@ fn run_patch(argc: Int, argv: **Char) -> Int {
         return 1
     }
     var allocator = KaiAllocator_new()
-    _kai_set_current_allocator(&allocator as *Void)
 
     var patch_file = ""
     var operation = ""

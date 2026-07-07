@@ -2,8 +2,6 @@ import KaiAllocator from std.core.allocator
 import int_to_str from std.core.string
 import std.io.print
 
-extern fn _kai_set_current_allocator(allocator: *Void)
-
 error FileError
 {
     case not_found
@@ -50,7 +48,6 @@ fn get_optional_value(flag: Bool) -> ?Int {
 fn main() -> Int {
     var allocator = KaiAllocator(heads: 0 as *u8, used: 0)
     allocator.init()
-    _kai_set_current_allocator(&allocator as *Void)
     
     defer {
         printf("Final defer run: Success\n")
