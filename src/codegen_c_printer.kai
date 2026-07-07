@@ -158,8 +158,18 @@ fn print_stmt(self, idx: Int) {
         self.builder.emit_line("if (" + cond + ")")
         self.print_stmt(node.if_then)
         if node.if_else >= 0 {
-            self.builder.emit_line("else")
-            self.print_stmt(node.if_else)
+            let else_node = self.stmt_pool.get(node.if_else)
+            if else_node.kind == CStmtKind.cs_if {
+                let inner_cond = self.print_expr(else_node.if_cond)
+                self.builder.append_to_last_line(" else if (" + inner_cond + ")")
+                self.print_stmt(else_node.if_then)
+                if else_node.if_else >= 0 {
+                    self.print_stmt(else_node.if_else)
+                }
+            } else {
+                self.builder.append_to_last_line(" else")
+                self.print_stmt(node.if_else)
+            }
         }
     }
     if node.kind == CStmtKind.cs_while {

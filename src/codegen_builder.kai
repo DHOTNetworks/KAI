@@ -2248,21 +2248,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
         self.builder.emit_line("if " + self.format_cond(cond))
         self.gen_stmt(stmt.if_then)
         if stmt.if_else >= 0 {
-            let else_node = self.stmt_pool.get(stmt.if_else)
-            if else_node.kind == StmtKind.sk_block && else_node.block_stmts.length() == 1 {
-                let single_stmt_idx = else_node.block_stmts.get(0)
-                let single_stmt = self.stmt_pool.get(single_stmt_idx)
-                if single_stmt.kind == StmtKind.sk_if {
-                    self.builder.emit_line("else")
-                    self.gen_stmt(single_stmt_idx)
-                } else {
-                    self.builder.emit_line("else")
-                    self.gen_stmt(stmt.if_else)
-                }
-            } else {
-                self.builder.emit_line("else")
-                self.gen_stmt(stmt.if_else)
-            }
+            self.gen_else_chain(stmt.if_else)
         }
         return
     }
@@ -2297,10 +2283,10 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
         if stmt.iflet_else >= 0 {
             let else_node = self.stmt_pool.get(stmt.iflet_else)
             if else_node.kind == StmtKind.sk_if_let {
-                self.builder.emit_line("else")
+                self.builder.append_to_last_line(" else")
                 self.gen_stmt(stmt.iflet_else)
             } else {
-                self.builder.emit_line("else")
+                self.builder.append_to_last_line(" else")
                 self.gen_stmt(stmt.iflet_else)
             }
         }
@@ -2603,9 +2589,9 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
             if case_idx == 0 {
                 self.builder.emit_line("if " + self.format_cond(cond))
             } else if cond == "true" {
-                self.builder.emit_line("else")
+                self.builder.append_to_last_line(" else")
             } else {
-                self.builder.emit_line("else if " + self.format_cond(cond))
+                self.builder.append_to_last_line(" else if " + self.format_cond(cond))
             }
 
             if strlen(bindings_str) > 0 {
@@ -2648,6 +2634,25 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     }
     if stmt.kind == StmtKind.sk_trait_decl { return }
     if stmt.kind == StmtKind.sk_error_decl { return }
+}
+
+fn gen_else_chain(self, else_idx: Int) {
+    let else_node = self.stmt_pool.get(else_idx)
+    if else_node.kind == StmtKind.sk_block && else_node.block_stmts.length() == 1 {
+        let single_stmt_idx = else_node.block_stmts.get(0)
+        let single_stmt = self.stmt_pool.get(single_stmt_idx)
+        if single_stmt.kind == StmtKind.sk_if {
+            let inner_cond = self.gen_expr_str(single_stmt.if_cond)
+            self.builder.append_to_last_line(" else if " + self.format_cond(inner_cond))
+            self.gen_stmt(single_stmt.if_then)
+            if single_stmt.if_else >= 0 {
+                self.gen_else_chain(single_stmt.if_else)
+            }
+            return
+        }
+    }
+    self.builder.append_to_last_line(" else")
+    self.gen_stmt(else_idx)
 }
 
 fn build_func_types(self) -> Void {

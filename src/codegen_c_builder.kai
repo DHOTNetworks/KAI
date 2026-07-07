@@ -49,6 +49,14 @@ fn emit_raw(self, code: Str) {
     self.lines.push(code)
 }
 
+fn append_to_last_line(self, suffix: Str) {
+    if self.lines.length() > 0 {
+        let idx = self.lines.length() - 1
+        let last = self.lines.get(idx)
+        self.lines.set(idx, last + suffix)
+    }
+}
+
 fn emit_include(self, header: Str, is_system: Bool) {
     if is_system {
         self.lines.push("#include <" + header + ">")

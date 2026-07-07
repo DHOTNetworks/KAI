@@ -1546,6 +1546,7 @@ const char* CodegenBuilder_expr_to_str(CodegenBuilder* self, int64_t c_idx);
 const char* CodegenBuilder_gen_expr_with_expected_type(CodegenBuilder* self, int64_t expr_idx, const char* expected_type);
 int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx);
 void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx);
+void CodegenBuilder_gen_else_chain(CodegenBuilder* self, int64_t else_idx);
 void CodegenBuilder_build_func_types(CodegenBuilder* self);
 void CodegenBuilder_emit_struct_body_with_deps(CodegenBuilder* self, int64_t stmt_idx, ArrayList_Str* emitted);
 const char* CodegenBuilder_generate(CodegenBuilder* self, int64_t top_stmt_idx);
@@ -1555,6 +1556,7 @@ void CCodeBuilder_clear(CCodeBuilder* self);
 void CCodeBuilder_emit_line(CCodeBuilder* self, const char* code);
 void CCodeBuilder_emit_blank(CCodeBuilder* self);
 void CCodeBuilder_emit_raw(CCodeBuilder* self, const char* code);
+void CCodeBuilder_append_to_last_line(CCodeBuilder* self, const char* suffix);
 void CCodeBuilder_emit_include(CCodeBuilder* self, const char* header, bool is_system);
 void CCodeBuilder_emit_directive(CCodeBuilder* self, const char* code);
 void CCodeBuilder_indent(CCodeBuilder* self);
@@ -14516,21 +14518,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc("if ", CodegenBuilder_format_cond(self, cond)));
     CodegenBuilder_gen_stmt(self, stmt.if_then);
     if (stmt.if_else >= 0LL) {
-    StmtNode else_node = ArrayList_StmtNode_get(self->stmt_pool, stmt.if_else);
-    if ((else_node.kind == StmtKind_sk_block) && (ArrayList_Int_length(&(else_node.block_stmts)) == 1LL)) {
-    int64_t single_stmt_idx = ArrayList_Int_get(&(else_node.block_stmts), 0LL);
-    StmtNode single_stmt = ArrayList_StmtNode_get(self->stmt_pool, single_stmt_idx);
-    if (single_stmt.kind == StmtKind_sk_if) {
-    CCodeBuilder_emit_line(&(self->builder), "else");
-    CodegenBuilder_gen_stmt(self, single_stmt_idx);
-} else {
-    CCodeBuilder_emit_line(&(self->builder), "else");
-    CodegenBuilder_gen_stmt(self, stmt.if_else);
-}
-} else {
-    CCodeBuilder_emit_line(&(self->builder), "else");
-    CodegenBuilder_gen_stmt(self, stmt.if_else);
-}
+    CodegenBuilder_gen_else_chain(self, stmt.if_else);
 }
     return;
 }
@@ -14561,10 +14549,10 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     if (stmt.iflet_else >= 0LL) {
     StmtNode else_node = ArrayList_StmtNode_get(self->stmt_pool, stmt.iflet_else);
     if (else_node.kind == StmtKind_sk_if_let) {
-    CCodeBuilder_emit_line(&(self->builder), "else");
+    CCodeBuilder_append_to_last_line(&(self->builder), " else");
     CodegenBuilder_gen_stmt(self, stmt.iflet_else);
 } else {
-    CCodeBuilder_emit_line(&(self->builder), "else");
+    CCodeBuilder_append_to_last_line(&(self->builder), " else");
     CodegenBuilder_gen_stmt(self, stmt.iflet_else);
 }
 }
@@ -14873,9 +14861,9 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     if (case_idx == 0LL) {
     CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc("if ", CodegenBuilder_format_cond(self, cond)));
 } else if (strcmp(cond, "true") == 0) {
-    CCodeBuilder_emit_line(&(self->builder), "else");
+    CCodeBuilder_append_to_last_line(&(self->builder), " else");
 } else {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc("else if ", CodegenBuilder_format_cond(self, cond)));
+    CCodeBuilder_append_to_last_line(&(self->builder), __kai_std_str_concat_alloc(" else if ", CodegenBuilder_format_cond(self, cond)));
 }
     if (strlen(bindings_str) > 0LL) {
     CCodeBuilder_begin_block(&(self->builder));
@@ -14931,6 +14919,24 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     if (stmt.kind == StmtKind_sk_error_decl) {
     return;
 }
+}
+void CodegenBuilder_gen_else_chain(CodegenBuilder* self, int64_t else_idx) {
+    StmtNode else_node = ArrayList_StmtNode_get(self->stmt_pool, else_idx);
+    if ((else_node.kind == StmtKind_sk_block) && (ArrayList_Int_length(&(else_node.block_stmts)) == 1LL)) {
+    int64_t single_stmt_idx = ArrayList_Int_get(&(else_node.block_stmts), 0LL);
+    StmtNode single_stmt = ArrayList_StmtNode_get(self->stmt_pool, single_stmt_idx);
+    if (single_stmt.kind == StmtKind_sk_if) {
+    const char* inner_cond = CodegenBuilder_gen_expr_str(self, single_stmt.if_cond);
+    CCodeBuilder_append_to_last_line(&(self->builder), __kai_std_str_concat_alloc(" else if ", CodegenBuilder_format_cond(self, inner_cond)));
+    CodegenBuilder_gen_stmt(self, single_stmt.if_then);
+    if (single_stmt.if_else >= 0LL) {
+    CodegenBuilder_gen_else_chain(self, single_stmt.if_else);
+}
+    return;
+}
+}
+    CCodeBuilder_append_to_last_line(&(self->builder), " else");
+    CodegenBuilder_gen_stmt(self, else_idx);
 }
 void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     int64_t i = 0LL;
@@ -15498,6 +15504,13 @@ void CCodeBuilder_emit_blank(CCodeBuilder* self) {
 void CCodeBuilder_emit_raw(CCodeBuilder* self, const char* code) {
     ArrayList_Str_push(&(self->lines), code);
 }
+void CCodeBuilder_append_to_last_line(CCodeBuilder* self, const char* suffix) {
+    if (ArrayList_Str_length(&(self->lines)) > 0LL) {
+    int64_t idx = (ArrayList_Str_length(&(self->lines)) - 1LL);
+    const char* last = ArrayList_Str_get(&(self->lines), idx);
+    ArrayList_Str_set(&(self->lines), idx, __kai_std_str_concat_alloc(last, suffix));
+}
+}
 void CCodeBuilder_emit_include(CCodeBuilder* self, const char* header, bool is_system) {
     if (is_system) {
     ArrayList_Str_push(&(self->lines), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include <", header), ">"));
@@ -15981,8 +15994,18 @@ void CPrinter_print_stmt(CPrinter* self, int64_t idx) {
     CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", cond), ")"));
     CPrinter_print_stmt(self, node.if_then);
     if (node.if_else >= 0LL) {
-    CCodeBuilder_emit_line(self->builder, "else");
+    CStmtNode else_node = ArrayList_CStmtNode_get(self->stmt_pool, node.if_else);
+    if (else_node.kind == CStmtKind_cs_if) {
+    const char* inner_cond = CPrinter_print_expr(self, else_node.if_cond);
+    CCodeBuilder_append_to_last_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(" else if (", inner_cond), ")"));
+    CPrinter_print_stmt(self, else_node.if_then);
+    if (else_node.if_else >= 0LL) {
+    CPrinter_print_stmt(self, else_node.if_else);
+}
+} else {
+    CCodeBuilder_append_to_last_line(self->builder, " else");
     CPrinter_print_stmt(self, node.if_else);
+}
 }
 }
     if (node.kind == CStmtKind_cs_while) {
