@@ -639,9 +639,20 @@ impl TypeChecker {
 
     fn mark_expr_moved(self, expr_idx: Int) {
         if expr_idx < 0 { return }
-        let expr = self.expr_pool.get(expr_idx)
+        // Walk through as casts to find the underlying identifier
+        var inner = expr_idx
+        var done = false
+        while !done {
+            let e = self.expr_pool.get(inner)
+            if e.kind == ExprKind.ek_func_call && e.func_name == "as" && e.func_args.length() >= 1 {
+                inner = e.func_args.get(0)
+            } else {
+                done = true
+            }
+        }
+        let expr = self.expr_pool.get(inner)
         if expr.kind == ExprKind.ek_identifier {
-            let t = self.get_expr_type(expr_idx)
+            let t = self.get_expr_type(inner)
             if !self.is_copy_type(t) {
                 var table = self.symbol_tables.get(self.current_table_idx)
                 table.mark_moved(expr.ident_name, &self.symbol_tables)
@@ -652,13 +663,15 @@ impl TypeChecker {
 
     fn mark_expr_freed(self, expr_idx: Int) {
         if expr_idx < 0 { return }
-        // Walk through cast/coerce wrappers to find the underlying identifier
+        // Walk through cast and field-access wrappers to find the root identifier
         var inner = expr_idx
         var done = false
         while !done {
             let e = self.expr_pool.get(inner)
             if e.kind == ExprKind.ek_func_call && e.func_name == "as" && e.func_args.length() >= 1 {
                 inner = e.func_args.get(0)
+            } else if e.kind == ExprKind.ek_field_access {
+                inner = e.field_expr
             } else {
                 done = true
             }
@@ -1159,6 +1172,23 @@ impl TypeChecker {
         }
         
         if stmt.kind == StmtKind.sk_assignment {
+            // If target is a field access whose root identifier is freed,
+            // clear freed state first (reassigning a field resurrects the struct)
+            if stmt.assign_target >= 0 {
+                let tgt = self.expr_pool.get(stmt.assign_target)
+                if tgt.kind == ExprKind.ek_field_access {
+                    var root = tgt.field_expr
+                    let re = self.expr_pool.get(root)
+                    if re.kind == ExprKind.ek_identifier {
+                        let tbl = self.symbol_tables.get(self.current_table_idx)
+                        let rsym = tbl.lookup_symbol(re.ident_name, &self.symbol_tables)
+                        if length(rsym.name) > 0 && rsym.freed {
+                            tbl.clear_freed(re.ident_name, &self.symbol_tables)
+                            self.symbol_tables.set(self.current_table_idx, tbl)
+                        }
+                    }
+                }
+            }
             self.check_expr(stmt.assign_target)
             self.check_expr(stmt.assign_value)
             var target_type = "Void"
@@ -1467,6 +1497,13 @@ impl TypeChecker {
                 }
                 if self.is_imported_name(name) {
                     self.mark_import_used(name)
+                }
+            } else if name == "as" {
+                var i = 0
+                while i < expr.func_args.length() {
+                    let arg = expr.func_args.get(i)
+                    self.check_expr(arg)
+                    i = i + 1
                 }
             } else {
                 var i = 0

@@ -95,6 +95,24 @@ impl SymbolTable {
         }
     }
 
+    fn clear_freed(self, name: Str, tables: *ArrayList<SymbolTable>) -> Void {
+        var i = 0
+        while i < self.entries.length() {
+            if self.entries.get(i).name == name {
+                var sym = self.entries.get(i)
+                sym.freed = false
+                self.entries.set(i, sym)
+                return
+            }
+            i = i + 1
+        }
+        if self.parent_idx >= 0 {
+            var parent = tables.get(self.parent_idx)
+            parent.clear_freed(name, tables)
+            tables.set(self.parent_idx, parent)
+        }
+    }
+
     fn lookup_current(self, name: Str) -> Int {
         var i = 0
         while i < self.entries.length() {

@@ -1377,6 +1377,7 @@ int64_t SymbolTable_lookup(SymbolTable* self, const char* name, ArrayList_Symbol
 Symbol SymbolTable_lookup_symbol(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
 void SymbolTable_mark_moved(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
 void SymbolTable_mark_freed(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
+void SymbolTable_clear_freed(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
 int64_t SymbolTable_lookup_current(SymbolTable* self, const char* name);
 extern int64_t get_exe_dir(char* buf, int64_t max_len);
 ImportResolver ImportResolver_init(KaiAllocator* allocator);
@@ -6817,10 +6818,24 @@ void TypeChecker_mark_expr_moved(TypeChecker* self, int64_t expr_idx)
     {
         return;
     }
-    ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
+    int64_t inner = expr_idx;
+    bool done = false;
+    while (!done)
+    {
+        ExprNode e = ArrayList_ExprNode_get(self->expr_pool, inner);
+        if (((e.kind == ExprKind_ek_func_call) && (strcmp(e.func_name, "as") == 0LL)) && (ArrayList_Int_length(&(e.func_args)) >= 1LL))
+        {
+            inner = ArrayList_Int_get(&(e.func_args), 0LL);
+        }
+        else
+        {
+            done = true;
+        }
+    }
+    ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, inner);
     if (expr.kind == ExprKind_ek_identifier)
     {
-        const char* t = TypeChecker_get_expr_type(self, expr_idx);
+        const char* t = TypeChecker_get_expr_type(self, inner);
         if (!TypeChecker_is_copy_type(self, t))
         {
             SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
@@ -6843,6 +6858,11 @@ void TypeChecker_mark_expr_freed(TypeChecker* self, int64_t expr_idx)
         if (((e.kind == ExprKind_ek_func_call) && (strcmp(e.func_name, "as") == 0LL)) && (ArrayList_Int_length(&(e.func_args)) >= 1LL))
         {
             inner = ArrayList_Int_get(&(e.func_args), 0LL);
+        }
+        else
+        if (e.kind == ExprKind_ek_field_access)
+        {
+            inner = e.field_expr;
         }
         else
         {
@@ -7500,6 +7520,25 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx)
     }
     if (stmt.kind == StmtKind_sk_assignment)
     {
+        if (stmt.assign_target >= 0LL)
+        {
+            ExprNode tgt = ArrayList_ExprNode_get(self->expr_pool, stmt.assign_target);
+            if (tgt.kind == ExprKind_ek_field_access)
+            {
+                int64_t root = tgt.field_expr;
+                ExprNode re = ArrayList_ExprNode_get(self->expr_pool, root);
+                if (re.kind == ExprKind_ek_identifier)
+                {
+                    SymbolTable tbl = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
+                    Symbol rsym = SymbolTable_lookup_symbol(&(tbl), re.ident_name, (&self->symbol_tables));
+                    if ((strlen(rsym.name) > 0LL) && rsym.freed)
+                    {
+                        SymbolTable_clear_freed(&(tbl), re.ident_name, (&self->symbol_tables));
+                        ArrayList_SymbolTable_set(&(self->symbol_tables), self->current_table_idx, tbl);
+                    }
+                }
+            }
+        }
         TypeChecker_check_expr(self, stmt.assign_target);
         TypeChecker_check_expr(self, stmt.assign_value);
         const char* target_type = "Void";
@@ -7884,6 +7923,17 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx)
             if (TypeChecker_is_imported_name(self, name))
             {
                 TypeChecker_mark_import_used(self, name);
+            }
+        }
+        else
+        if (strcmp(name, "as") == 0LL)
+        {
+            int64_t i = 0LL;
+            while (i < ArrayList_Int_length(&(expr.func_args)))
+            {
+                int64_t arg = ArrayList_Int_get(&(expr.func_args), i);
+                TypeChecker_check_expr(self, arg);
+                i = (i + 1LL);
             }
         }
         else
@@ -8359,6 +8409,27 @@ void SymbolTable_mark_freed(SymbolTable* self, const char* name, ArrayList_Symbo
     {
         SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
         SymbolTable_mark_freed(&(parent), name, tables);
+        ArrayList_SymbolTable_set(tables, self->parent_idx, parent);
+    }
+}
+void SymbolTable_clear_freed(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables)
+{
+    int64_t i = 0LL;
+    while (i < ArrayList_Symbol_length(&(self->entries)))
+    {
+        if (strcmp(ArrayList_Symbol_get(&(self->entries), i).name, name) == 0LL)
+        {
+            Symbol sym = ArrayList_Symbol_get(&(self->entries), i);
+            sym.freed = false;
+            ArrayList_Symbol_set(&(self->entries), i, sym);
+            return;
+        }
+        i = (i + 1LL);
+    }
+    if (self->parent_idx >= 0LL)
+    {
+        SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
+        SymbolTable_clear_freed(&(parent), name, tables);
         ArrayList_SymbolTable_set(tables, self->parent_idx, parent);
     }
 }
