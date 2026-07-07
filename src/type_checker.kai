@@ -36,6 +36,19 @@ struct StructInfo {
     has_drop: Bool
 }
 
+struct FuncEffect {
+    func_name: Str
+    free_param_indices: ArrayList<Int>
+}
+
+struct SymTrackState {
+    name: Str
+    table_idx: Int
+    entry_idx: Int
+    moved: Bool
+    freed: Bool
+}
+
 struct TypeChecker {
     allocator: *KaiAllocator
     stmt_pool: *ArrayList<StmtNode>
@@ -56,6 +69,16 @@ struct TypeChecker {
     import_lines: ArrayList<Int>
     import_cols: ArrayList<Int>
     loop_depth: Int
+    // Deferred tracking-state from defer/errdefer statements.
+    // Stored flat to avoid nested ArrayList<T> types that break the -CC codegen.
+    // scope_deferred_flat: all SymTrackState entries from all snapshots concatenated
+    // scope_deferred_sizes[i]: entry count of the i-th snapshot
+    // scope_deferred_counts[s]: how many snapshots belong to scope level s
+    scope_deferred_flat: ArrayList<SymTrackState>
+    scope_deferred_sizes: ArrayList<Int>
+    scope_deferred_counts: ArrayList<Int>
+    // Per-function effect inference: which parameters are freed/moved
+    func_effects: ArrayList<FuncEffect>
 }
 
 impl TypeChecker {
@@ -77,6 +100,10 @@ impl TypeChecker {
         self.import_lines = ArrayList<Int>(allocator)
         self.import_cols = ArrayList<Int>(allocator)
         self.loop_depth = 0
+        self.scope_deferred_flat = ArrayList<SymTrackState>(allocator)
+        self.scope_deferred_sizes = ArrayList<Int>(allocator)
+        self.scope_deferred_counts = ArrayList<Int>(allocator)
+        self.func_effects = ArrayList<FuncEffect>(allocator)
     }
 
     fn err(self, code: Str, msg: Str, line: Int, col: Int) {
@@ -108,9 +135,57 @@ impl TypeChecker {
         new_table.init(self.allocator, self.current_table_idx)
         self.symbol_tables.push(new_table)
         self.current_table_idx = self.symbol_tables.length() - 1
+        self.scope_deferred_counts.push(0)
     }
 
     fn exit_scope(self) {
+        // Apply deferred tracking effects from defer/errdefer before exiting
+        if self.scope_deferred_counts.length() > 0 {
+            let snap_count = self.scope_deferred_counts.get(self.scope_deferred_counts.length() - 1)
+            if snap_count > 0 {
+                // Reconstruct snapshots from the flat list
+                let total_sizes_idx = self.scope_deferred_sizes.length() - snap_count
+                let flat_idx = self.scope_deferred_flat.length()
+                // Walk backward through sizes to find where reconstructed snapshots begin
+                var walk = snap_count
+                var begin = flat_idx
+                while walk > 0 {
+                    let sz = self.scope_deferred_sizes.get(total_sizes_idx + walk - 1)
+                    begin = begin - sz
+                    walk = walk - 1
+                }
+                // Build state list from reconstructed snapshots
+                let states = ArrayList<ArrayList<SymTrackState>>(self.allocator)
+                var si = 0
+                var fi = begin
+                while si < snap_count {
+                    let sz = self.scope_deferred_sizes.get(total_sizes_idx + si)
+                    var snapshot = ArrayList<SymTrackState>(self.allocator)
+                    var ei = 0
+                    while ei < sz {
+                        snapshot.push(self.scope_deferred_flat.get(fi))
+                        fi = fi + 1
+                        ei = ei + 1
+                    }
+                    states.push(snapshot)
+                    si = si + 1
+                }
+                self.merge_and_apply_tracking_state(states)
+                // Pop the processed snapshot metadata
+                var pi = 0
+                while pi < snap_count {
+                    self.scope_deferred_sizes.pop()
+                    pi = pi + 1
+                }
+                // Pop the flat entries
+                var pop_count = self.scope_deferred_flat.length() - begin
+                while pop_count > 0 {
+                    self.scope_deferred_flat.pop()
+                    pop_count = pop_count - 1
+                }
+            }
+            self.scope_deferred_counts.pop()
+        }
         if self.current_table_idx >= 0 {
             let table = self.symbol_tables.get(self.current_table_idx)
             self.current_table_idx = table.parent_idx
@@ -639,13 +714,16 @@ impl TypeChecker {
 
     fn mark_expr_moved(self, expr_idx: Int) {
         if expr_idx < 0 { return }
-        // Walk through as casts to find the underlying identifier
+        // Walk through as casts and field-access wrappers to find the underlying identifier.
+        // Borrow (&) is NOT peeled — borrowing creates a reference without transferring ownership.
         var inner = expr_idx
         var done = false
         while !done {
             let e = self.expr_pool.get(inner)
             if e.kind == ExprKind.ek_func_call && e.func_name == "as" && e.func_args.length() >= 1 {
                 inner = e.func_args.get(0)
+            } else if e.kind == ExprKind.ek_field_access {
+                inner = e.field_expr
             } else {
                 done = true
             }
@@ -695,8 +773,99 @@ impl TypeChecker {
         }
     }
 
+    // ── Tracking state snapshot/restore/merge for branch & loop handling ──
+    // These functions let us isolate tracking state between if/else branches,
+    // match arms, and loop iterations, then merge results conservatively (OR).
 
+    fn capture_tracking_state(self) -> ArrayList<SymTrackState> {
+        let result = ArrayList<SymTrackState>(self.allocator)
+        var tidx = self.current_table_idx
+        while tidx >= 0 {
+            let table = self.symbol_tables.get(tidx)
+            var i = 0
+            while i < table.entries.length() {
+                let sym = table.entries.get(i)
+                result.push(SymTrackState(
+                    name: sym.name,
+                    table_idx: tidx,
+                    entry_idx: i,
+                    moved: sym.moved,
+                    freed: sym.freed
+                ))
+                i = i + 1
+            }
+            tidx = table.parent_idx
+        }
+        return result
+    }
 
+    fn restore_tracking_state(self, state: ArrayList<SymTrackState>) {
+        var i = 0
+        while i < state.length() {
+            let s = state.get(i)
+            if s.table_idx >= 0 && s.table_idx < self.symbol_tables.length() {
+                var table = self.symbol_tables.get(s.table_idx)
+                if s.entry_idx >= 0 && s.entry_idx < table.entries.length() {
+                    var sym = table.entries.get(s.entry_idx)
+                    sym.moved = s.moved
+                    sym.freed = s.freed
+                    table.entries.set(s.entry_idx, sym)
+                    self.symbol_tables.set(s.table_idx, table)
+                }
+            }
+            i = i + 1
+        }
+    }
+
+    fn merge_and_apply_tracking_state(self, states: ArrayList<ArrayList<SymTrackState>>) {
+        // For each unique (table_idx, entry_idx), OR the moved/freed flags across all states.
+        let merged = ArrayList<SymTrackState>(self.allocator)
+        var si = 0
+        while si < states.length() {
+            let state = states.get(si)
+            var ei = 0
+            while ei < state.length() {
+                let s = state.get(ei)
+                // Check if we already have an entry for this (table_idx, entry_idx)
+                var found = false
+                var mi = 0
+                while mi < merged.length() {
+                    let m = merged.get(mi)
+                    if m.table_idx == s.table_idx && m.entry_idx == s.entry_idx {
+                        // OR the flags
+                        var updated = m
+                        if s.moved { updated.moved = true }
+                        if s.freed { updated.freed = true }
+                        merged.set(mi, updated)
+                        found = true
+                        break
+                    }
+                    mi = mi + 1
+                }
+                if !found {
+                    merged.push(s)
+                }
+                ei = ei + 1
+            }
+            si = si + 1
+        }
+        // Apply merged state directly
+        var i = 0
+        while i < merged.length() {
+            let s = merged.get(i)
+            if s.table_idx >= 0 && s.table_idx < self.symbol_tables.length() {
+                var table = self.symbol_tables.get(s.table_idx)
+                if s.entry_idx >= 0 && s.entry_idx < table.entries.length() {
+                    var sym = table.entries.get(s.entry_idx)
+                    sym.moved = s.moved
+                    sym.freed = s.freed
+                    table.entries.set(s.entry_idx, sym)
+                    self.symbol_tables.set(s.table_idx, table)
+                }
+            }
+            i = i + 1
+        }
+    }
 
     fn get_expr_type(self, expr_idx: Int) -> Str {
         if expr_idx < 0 { return "Void" }
@@ -1144,7 +1313,46 @@ impl TypeChecker {
                 self.check_stmt(stmt.block_stmts.get(i))
                 i = i + 1
             }
+            // Temporarily apply deferred effects (from defer/errdefer) so that
+            // collect_block_drops skips variables that will be freed by deferred code.
+            var have_deferred = false
+            var pre_drop_snapshot = ArrayList<SymTrackState>(self.allocator)
+            if self.scope_deferred_counts.length() > 0 {
+                let snap_cnt = self.scope_deferred_counts.get(self.scope_deferred_counts.length() - 1)
+                if snap_cnt > 0 {
+                    pre_drop_snapshot = self.capture_tracking_state()
+                    // Reconstruct snapshots from flat structure
+                    let total_sizes_idx = self.scope_deferred_sizes.length() - snap_cnt
+                    var b = self.scope_deferred_flat.length()
+                    var w = snap_cnt
+                    while w > 0 {
+                        let sz = self.scope_deferred_sizes.get(total_sizes_idx + w - 1)
+                        b = b - sz
+                        w = w - 1
+                    }
+                    let states = ArrayList<ArrayList<SymTrackState>>(self.allocator)
+                    var si = 0
+                    var fi = b
+                    while si < snap_cnt {
+                        let sz = self.scope_deferred_sizes.get(total_sizes_idx + si)
+                        var snapshot = ArrayList<SymTrackState>(self.allocator)
+                        var ei = 0
+                        while ei < sz {
+                            snapshot.push(self.scope_deferred_flat.get(fi))
+                            fi = fi + 1
+                            ei = ei + 1
+                        }
+                        states.push(snapshot)
+                        si = si + 1
+                    }
+                    self.merge_and_apply_tracking_state(states)
+                    have_deferred = true
+                }
+            }
             self.collect_block_drops(stmt_idx)
+            if have_deferred {
+                self.restore_tracking_state(pre_drop_snapshot)
+            }
             self.exit_scope()
             return
         }
@@ -1167,25 +1375,66 @@ impl TypeChecker {
                 }
             }
             self.define_symbol(stmt.vardecl_name, var_type, stmt.vardecl_mut, "var")
+            // Conservative alias propagation: if the initializer is a non-copy-type
+            // identifier (or as-cast thereof), copy its current moved/freed status
+            // to the new variable.
+            if stmt.vardecl_value >= 0 && !self.is_copy_type(var_type) {
+                var src_expr = self.expr_pool.get(stmt.vardecl_value)
+                var src_ident = stmt.vardecl_value
+                var done = false
+                while !done {
+                    if src_expr.kind == ExprKind.ek_func_call && src_expr.func_name == "as" && src_expr.func_args.length() >= 1 {
+                        src_ident = src_expr.func_args.get(0)
+                        src_expr = self.expr_pool.get(src_ident)
+                    } else {
+                        done = true
+                    }
+                }
+                if src_expr.kind == ExprKind.ek_identifier {
+                    var table = self.symbol_tables.get(self.current_table_idx)
+                    let src_sym = table.lookup_symbol(src_expr.ident_name, &self.symbol_tables)
+                    if length(src_sym.name) > 0 {
+                        if src_sym.freed {
+                            table.mark_freed(stmt.vardecl_name, &self.symbol_tables)
+                        } else if src_sym.moved {
+                            table.mark_moved(stmt.vardecl_name, &self.symbol_tables)
+                        }
+                        self.symbol_tables.set(self.current_table_idx, table)
+                    }
+                }
+            }
             self.mark_expr_moved(stmt.vardecl_value)
             return
         }
         
         if stmt.kind == StmtKind.sk_assignment {
-            // If target is a field access whose root identifier is freed,
-            // clear freed state first (reassigning a field resurrects the struct)
+            // Find root identifier of the assignment target and clear moved/freed flags,
+            // because reassigning resurrects the variable (even if it was moved or freed)
             if stmt.assign_target >= 0 {
-                let tgt = self.expr_pool.get(stmt.assign_target)
-                if tgt.kind == ExprKind.ek_field_access {
-                    var root = tgt.field_expr
-                    let re = self.expr_pool.get(root)
-                    if re.kind == ExprKind.ek_identifier {
-                        let tbl = self.symbol_tables.get(self.current_table_idx)
-                        let rsym = tbl.lookup_symbol(re.ident_name, &self.symbol_tables)
-                        if length(rsym.name) > 0 && rsym.freed {
-                            tbl.clear_freed(re.ident_name, &self.symbol_tables)
-                            self.symbol_tables.set(self.current_table_idx, tbl)
+                var root = stmt.assign_target
+                var done = false
+                while !done {
+                    let e = self.expr_pool.get(root)
+                    if e.kind == ExprKind.ek_field_access {
+                        root = e.field_expr
+                    } else if e.kind == ExprKind.ek_deref {
+                        root = e.deref_expr
+                    } else {
+                        done = true
+                    }
+                }
+                let re = self.expr_pool.get(root)
+                if re.kind == ExprKind.ek_identifier {
+                    let tbl = self.symbol_tables.get(self.current_table_idx)
+                    let rsym = tbl.lookup_symbol(re.ident_name, &self.symbol_tables)
+                    if length(rsym.name) > 0 {
+                        if rsym.moved {
+                            tbl.clear_moved(re.ident_name, &self.symbol_tables)
                         }
+                        if rsym.freed {
+                            tbl.clear_freed(re.ident_name, &self.symbol_tables)
+                        }
+                        self.symbol_tables.set(self.current_table_idx, tbl)
                     }
                 }
             }
@@ -1243,6 +1492,24 @@ impl TypeChecker {
                 i = i + 1
             }
             self.check_stmt(stmt.func_body)
+            // Infer effect annotations: detect which parameters were freed inside the body
+            if stmt.func_type_params.length() == 0 && stmt.func_params.length() > 0 {
+                var free_indices = ArrayList<Int>(self.allocator)
+                var pi = 0
+                while pi < stmt.func_params.length() {
+                    let p = stmt.func_params.get(pi)
+                    let table = self.symbol_tables.get(self.current_table_idx)
+                    let sym = table.lookup_symbol(p.name, &self.symbol_tables)
+                    if length(sym.name) > 0 && sym.freed {
+                        free_indices.push(pi)
+                    }
+                    pi = pi + 1
+                }
+                if free_indices.length() > 0 {
+                    var effect = FuncEffect(func_name: stmt.func_name, free_param_indices: free_indices)
+                    self.func_effects.push(effect)
+                }
+            }
             self.exit_scope()
             self.current_func_ret_type = old_ret
             return
@@ -1257,8 +1524,18 @@ impl TypeChecker {
             if cond_type != "Bool" && cond_type != "Void" {
                 self.err("E0024", "if condition must be Bool, got '" + cond_type + "'", stmt.line, stmt.col)
             }
+            // Snapshot tracking state, process then/else independently, merge (OR)
+            let snapshot = self.capture_tracking_state()
             self.check_stmt(stmt.if_then)
+            let then_state = self.capture_tracking_state()
+            self.restore_tracking_state(snapshot)
             self.check_stmt(stmt.if_else)
+            let else_state = self.capture_tracking_state()
+            self.restore_tracking_state(snapshot)
+            let states = ArrayList<ArrayList<SymTrackState>>(self.allocator)
+            states.push(then_state)
+            states.push(else_state)
+            self.merge_and_apply_tracking_state(states)
             return
         }
         
@@ -1269,11 +1546,22 @@ impl TypeChecker {
             if length(opt_type) > 0 && opt_type[0] == Char(63) {
                 unwrapped_type = substring(opt_type, 1, length(opt_type))
             }
+            // Snapshot tracking state before the if-let (the let-binding adds a new
+            // scope for then-branch only; else-branch doesn't see it)
+            let snapshot = self.capture_tracking_state()
             self.enter_scope()
             self.define_symbol(stmt.iflet_var, unwrapped_type, false, "var")
             self.check_stmt(stmt.iflet_then)
             self.exit_scope()
+            let then_state = self.capture_tracking_state()
+            self.restore_tracking_state(snapshot)
             self.check_stmt(stmt.iflet_else)
+            let else_state = self.capture_tracking_state()
+            self.restore_tracking_state(snapshot)
+            let states = ArrayList<ArrayList<SymTrackState>>(self.allocator)
+            states.push(then_state)
+            states.push(else_state)
+            self.merge_and_apply_tracking_state(states)
             return
         }
         
@@ -1322,8 +1610,12 @@ impl TypeChecker {
         
         if stmt.kind == StmtKind.sk_match {
             self.check_expr(stmt.match_expr)
+            // Snapshot tracking state before match, process each arm independently, merge (OR)
+            let snapshot = self.capture_tracking_state()
+            let arm_states = ArrayList<ArrayList<SymTrackState>>(self.allocator)
             var i = 0
             while i < stmt.match_cases.length() {
+                self.restore_tracking_state(snapshot)
                 let mc = stmt.match_cases.get(i)
                 self.enter_scope()
                 let pat = self.pattern_pool.get(mc.pattern)
@@ -1336,7 +1628,12 @@ impl TypeChecker {
                 }
                 self.check_stmt(mc.body)
                 self.exit_scope()
+                arm_states.push(self.capture_tracking_state())
                 i = i + 1
+            }
+            self.restore_tracking_state(snapshot)
+            if arm_states.length() > 0 {
+                self.merge_and_apply_tracking_state(arm_states)
             }
             return
         }
@@ -1402,11 +1699,43 @@ impl TypeChecker {
             return
         }
         if stmt.kind == StmtKind.sk_defer {
+            // Snapshot, process defer body, capture its tracking effects, restore.
+            // The captured effects are applied at scope exit (in exit_scope).
+            let snapshot = self.capture_tracking_state()
             self.check_stmt(stmt.defer_body)
+            if self.scope_deferred_counts.length() > 0 {
+                let idx = self.scope_deferred_counts.length() - 1
+                let post_state = self.capture_tracking_state()
+                var ei = 0
+                while ei < post_state.length() {
+                    self.scope_deferred_flat.push(post_state.get(ei))
+                    ei = ei + 1
+                }
+                self.scope_deferred_sizes.push(post_state.length())
+                var count = self.scope_deferred_counts.get(idx)
+                count = count + 1
+                self.scope_deferred_counts.set(idx, count)
+            }
+            self.restore_tracking_state(snapshot)
             return
         }
         if stmt.kind == StmtKind.sk_errdefer {
+            let snapshot = self.capture_tracking_state()
             self.check_stmt(stmt.errdefer_body)
+            if self.scope_deferred_counts.length() > 0 {
+                let idx = self.scope_deferred_counts.length() - 1
+                let post_state = self.capture_tracking_state()
+                var ei = 0
+                while ei < post_state.length() {
+                    self.scope_deferred_flat.push(post_state.get(ei))
+                    ei = ei + 1
+                }
+                self.scope_deferred_sizes.push(post_state.length())
+                var count = self.scope_deferred_counts.get(idx)
+                count = count + 1
+                self.scope_deferred_counts.set(idx, count)
+            }
+            self.restore_tracking_state(snapshot)
             return
         }
         if stmt.kind == StmtKind.sk_print {
@@ -1506,11 +1835,42 @@ impl TypeChecker {
                     i = i + 1
                 }
             } else {
+                // Pass 1: type-check all arguments
                 var i = 0
                 while i < expr.func_args.length() {
-                    let arg = expr.func_args.get(i)
-                    self.check_expr(arg)
-                    self.mark_expr_moved(arg)
+                    self.check_expr(expr.func_args.get(i))
+                    i = i + 1
+                }
+                // Pass 2: apply tracking — check if the callee frees any arguments
+                var free_set = ArrayList<Int>(self.allocator)
+                var ei = 0
+                while ei < self.func_effects.length() {
+                    let eff = self.func_effects.get(ei)
+                    if eff.func_name == name {
+                        var fi = 0
+                        while fi < eff.free_param_indices.length() {
+                            free_set.push(eff.free_param_indices.get(fi))
+                            fi = fi + 1
+                        }
+                    }
+                    ei = ei + 1
+                }
+                i = 0
+                while i < expr.func_args.length() {
+                    var is_freed = false
+                    var fi = 0
+                    while fi < free_set.length() {
+                        if free_set.get(fi) == i {
+                            is_freed = true
+                            break
+                        }
+                        fi = fi + 1
+                    }
+                    if is_freed {
+                        self.mark_expr_freed(expr.func_args.get(i))
+                    } else {
+                        self.mark_expr_moved(expr.func_args.get(i))
+                    }
                     i = i + 1
                 }
             }

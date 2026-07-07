@@ -103,6 +103,8 @@ typedef struct StmtNode StmtNode;
 typedef struct Dir Dir;
 typedef struct PtrRefResult PtrRefResult;
 typedef struct StructInfo StructInfo;
+typedef struct FuncEffect FuncEffect;
+typedef struct SymTrackState SymTrackState;
 typedef struct TypeChecker TypeChecker;
 typedef struct Symbol Symbol;
 typedef struct SymbolTable SymbolTable;
@@ -642,6 +644,17 @@ struct StructInfo {
     const char* name;
     bool has_drop;
 };
+struct FuncEffect {
+    const char* func_name;
+    ArrayList_Int free_param_indices;
+};
+struct SymTrackState {
+    const char* name;
+    int64_t table_idx;
+    int64_t entry_idx;
+    bool moved;
+    bool freed;
+};
 typedef struct ArrayList_SymbolTable ArrayList_SymbolTable;
 struct ArrayList_SymbolTable {
     SymbolTable* data;
@@ -659,6 +672,20 @@ struct ArrayList_StructInfo {
 typedef struct ArrayList_Bool ArrayList_Bool;
 struct ArrayList_Bool {
     bool* data;
+    int64_t len;
+    int64_t cap;
+    KaiAllocator* allocator;
+};
+typedef struct ArrayList_SymTrackState ArrayList_SymTrackState;
+struct ArrayList_SymTrackState {
+    SymTrackState* data;
+    int64_t len;
+    int64_t cap;
+    KaiAllocator* allocator;
+};
+typedef struct ArrayList_FuncEffect ArrayList_FuncEffect;
+struct ArrayList_FuncEffect {
+    FuncEffect* data;
     int64_t len;
     int64_t cap;
     KaiAllocator* allocator;
@@ -681,6 +708,10 @@ struct TypeChecker {
     ArrayList_Int import_lines;
     ArrayList_Int import_cols;
     int64_t loop_depth;
+    ArrayList_SymTrackState scope_deferred_flat;
+    ArrayList_Int scope_deferred_sizes;
+    ArrayList_Int scope_deferred_counts;
+    ArrayList_FuncEffect func_effects;
 };
 struct Symbol {
     const char* name;
@@ -985,6 +1016,13 @@ struct Result_Bool_IoError {
     int64_t tag;
     bool value;
 };
+typedef struct ArrayList_ArrayList_SymTrackState_ ArrayList_ArrayList_SymTrackState_;
+struct ArrayList_ArrayList_SymTrackState_ {
+    ArrayList_SymTrackState* data;
+    int64_t len;
+    int64_t cap;
+    KaiAllocator* allocator;
+};
 typedef struct Optional_Char Optional_Char;
 struct Optional_Char {
     bool has_value;
@@ -1122,6 +1160,20 @@ void ArrayList_Bool_set(ArrayList_Bool* self, int64_t index, bool item);
 bool ArrayList_Bool_pop(ArrayList_Bool* self);
 int64_t ArrayList_Bool_length(ArrayList_Bool* self);
 void ArrayList_Bool_deinit(ArrayList_Bool* self);
+ArrayList_SymTrackState ArrayList_SymTrackState_init(KaiAllocator* allocator);
+void ArrayList_SymTrackState_push(ArrayList_SymTrackState* self, SymTrackState item);
+SymTrackState ArrayList_SymTrackState_get(ArrayList_SymTrackState* self, int64_t index);
+void ArrayList_SymTrackState_set(ArrayList_SymTrackState* self, int64_t index, SymTrackState item);
+SymTrackState ArrayList_SymTrackState_pop(ArrayList_SymTrackState* self);
+int64_t ArrayList_SymTrackState_length(ArrayList_SymTrackState* self);
+void ArrayList_SymTrackState_deinit(ArrayList_SymTrackState* self);
+ArrayList_FuncEffect ArrayList_FuncEffect_init(KaiAllocator* allocator);
+void ArrayList_FuncEffect_push(ArrayList_FuncEffect* self, FuncEffect item);
+FuncEffect ArrayList_FuncEffect_get(ArrayList_FuncEffect* self, int64_t index);
+void ArrayList_FuncEffect_set(ArrayList_FuncEffect* self, int64_t index, FuncEffect item);
+FuncEffect ArrayList_FuncEffect_pop(ArrayList_FuncEffect* self);
+int64_t ArrayList_FuncEffect_length(ArrayList_FuncEffect* self);
+void ArrayList_FuncEffect_deinit(ArrayList_FuncEffect* self);
 ArrayList_Symbol ArrayList_Symbol_init(KaiAllocator* allocator);
 void ArrayList_Symbol_push(ArrayList_Symbol* self, Symbol item);
 Symbol ArrayList_Symbol_get(ArrayList_Symbol* self, int64_t index);
@@ -1356,6 +1408,13 @@ void fs_closedir(Dir dir);
 TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, const char* source_file, const char* source, ImportResolver* import_resolver);
 void TypeChecker_err(TypeChecker* self, const char* code, const char* msg, int64_t line, int64_t col);
 void TypeChecker_enter_scope(TypeChecker* self);
+ArrayList_ArrayList_SymTrackState_ ArrayList_ArrayList_SymTrackState__init(KaiAllocator* allocator);
+void ArrayList_ArrayList_SymTrackState__push(ArrayList_ArrayList_SymTrackState_* self, ArrayList_SymTrackState item);
+ArrayList_SymTrackState ArrayList_ArrayList_SymTrackState__get(ArrayList_ArrayList_SymTrackState_* self, int64_t index);
+void ArrayList_ArrayList_SymTrackState__set(ArrayList_ArrayList_SymTrackState_* self, int64_t index, ArrayList_SymTrackState item);
+ArrayList_SymTrackState ArrayList_ArrayList_SymTrackState__pop(ArrayList_ArrayList_SymTrackState_* self);
+int64_t ArrayList_ArrayList_SymTrackState__length(ArrayList_ArrayList_SymTrackState_* self);
+void ArrayList_ArrayList_SymTrackState__deinit(ArrayList_ArrayList_SymTrackState_* self);
 void TypeChecker_exit_scope(TypeChecker* self);
 void TypeChecker_define_symbol(TypeChecker* self, const char* name, const char* type_name, bool is_mutable, const char* kind);
 bool TypeChecker_check_program(TypeChecker* self, int64_t top_stmt_idx);
@@ -1380,6 +1439,9 @@ int64_t TypeChecker_find_struct_decl(TypeChecker* self, const char* name);
 const char* TypeChecker_get_block_yield_type(TypeChecker* self, int64_t stmt_idx);
 void TypeChecker_mark_expr_moved(TypeChecker* self, int64_t expr_idx);
 void TypeChecker_mark_expr_freed(TypeChecker* self, int64_t expr_idx);
+ArrayList_SymTrackState TypeChecker_capture_tracking_state(TypeChecker* self);
+void TypeChecker_restore_tracking_state(TypeChecker* self, ArrayList_SymTrackState state);
+void TypeChecker_merge_and_apply_tracking_state(TypeChecker* self, ArrayList_ArrayList_SymTrackState_ states);
 const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx);
 bool TypeChecker_expr_is_mutable(TypeChecker* self, int64_t expr_idx);
 bool TypeChecker_is_enum_or_error_type(TypeChecker* self, const char* name);
@@ -1397,6 +1459,7 @@ int64_t SymbolTable_lookup(SymbolTable* self, const char* name, ArrayList_Symbol
 Symbol SymbolTable_lookup_symbol(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
 void SymbolTable_mark_moved(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
 void SymbolTable_mark_freed(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
+void SymbolTable_clear_moved(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
 void SymbolTable_clear_freed(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables);
 int64_t SymbolTable_lookup_current(SymbolTable* self, const char* name);
 extern int64_t get_exe_dir(char* buf, int64_t max_len);
@@ -2670,6 +2733,128 @@ int64_t ArrayList_Bool_length(ArrayList_Bool* self) {
     return self->len;
 }
 void ArrayList_Bool_deinit(ArrayList_Bool* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+ArrayList_SymTrackState ArrayList_SymTrackState_init(KaiAllocator* allocator) {
+    ArrayList_SymTrackState self = (ArrayList_SymTrackState){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (SymTrackState*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(SymTrackState))), 1LL));
+}
+    return self;
+}
+void ArrayList_SymTrackState_push(ArrayList_SymTrackState* self, SymTrackState item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    SymTrackState* new_data = (SymTrackState*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(SymTrackState))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+SymTrackState ArrayList_SymTrackState_get(ArrayList_SymTrackState* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_SymTrackState_set(ArrayList_SymTrackState* self, int64_t index, SymTrackState item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+SymTrackState ArrayList_SymTrackState_pop(ArrayList_SymTrackState* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_SymTrackState_length(ArrayList_SymTrackState* self) {
+    return self->len;
+}
+void ArrayList_SymTrackState_deinit(ArrayList_SymTrackState* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
+}
+ArrayList_FuncEffect ArrayList_FuncEffect_init(KaiAllocator* allocator) {
+    ArrayList_FuncEffect self = (ArrayList_FuncEffect){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (FuncEffect*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(FuncEffect))), 1LL));
+}
+    return self;
+}
+void ArrayList_FuncEffect_push(ArrayList_FuncEffect* self, FuncEffect item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    FuncEffect* new_data = (FuncEffect*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(FuncEffect))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+FuncEffect ArrayList_FuncEffect_get(ArrayList_FuncEffect* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_FuncEffect_set(ArrayList_FuncEffect* self, int64_t index, FuncEffect item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+FuncEffect ArrayList_FuncEffect_pop(ArrayList_FuncEffect* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_FuncEffect_length(ArrayList_FuncEffect* self) {
+    return self->len;
+}
+void ArrayList_FuncEffect_deinit(ArrayList_FuncEffect* self) {
     {
     KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
 }
@@ -6198,6 +6383,10 @@ TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_p
     self.import_lines = ArrayList_Int_init(allocator);
     self.import_cols = ArrayList_Int_init(allocator);
     self.loop_depth = 0LL;
+    self.scope_deferred_flat = ArrayList_SymTrackState_init(allocator);
+    self.scope_deferred_sizes = ArrayList_Int_init(allocator);
+    self.scope_deferred_counts = ArrayList_Int_init(allocator);
+    self.func_effects = ArrayList_FuncEffect_init(allocator);
     return self;
 }
 void TypeChecker_err(TypeChecker* self, const char* code, const char* msg, int64_t line, int64_t col) {
@@ -6227,8 +6416,111 @@ void TypeChecker_enter_scope(TypeChecker* self) {
     new_table = SymbolTable_init(self->allocator, self->current_table_idx);
     ArrayList_SymbolTable_push(&(self->symbol_tables), new_table);
     self->current_table_idx = (ArrayList_SymbolTable_length(&(self->symbol_tables)) - 1LL);
+    ArrayList_Int_push(&(self->scope_deferred_counts), 0LL);
+}
+ArrayList_ArrayList_SymTrackState_ ArrayList_ArrayList_SymTrackState__init(KaiAllocator* allocator) {
+    ArrayList_ArrayList_SymTrackState_ self = (ArrayList_ArrayList_SymTrackState_){0};
+    self.len = 0LL;
+    self.cap = 4LL;
+    self.allocator = allocator;
+    {
+    self.data = (ArrayList_SymTrackState*)(KaiAllocator_alloc(allocator, (self.cap * (int64_t)(sizeof(ArrayList_SymTrackState))), 1LL));
+}
+    return self;
+}
+void ArrayList_ArrayList_SymTrackState__push(ArrayList_ArrayList_SymTrackState_* self, ArrayList_SymTrackState item) {
+    if (self->len == self->cap) {
+    int64_t new_cap = (self->cap * 2LL);
+    {
+    ArrayList_SymTrackState* new_data = (ArrayList_SymTrackState*)(KaiAllocator_alloc(self->allocator, (new_cap * (int64_t)(sizeof(ArrayList_SymTrackState))), 1LL));
+    int64_t i = 0LL;
+    while (i < self->len) {
+    (new_data)[i] = (self->data)[i];
+    i = (i + 1LL);
+}
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+    self->data = new_data;
+    self->cap = new_cap;
+}
+}
+    (self->data)[self->len] = item;
+    self->len = (self->len + 1LL);
+}
+ArrayList_SymTrackState ArrayList_ArrayList_SymTrackState__get(ArrayList_ArrayList_SymTrackState_* self, int64_t index) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    return (self->data)[index];
+}
+void ArrayList_ArrayList_SymTrackState__set(ArrayList_ArrayList_SymTrackState_* self, int64_t index, ArrayList_SymTrackState item) {
+    if ((index < 0LL) || (index >= self->len)) {
+    {
+    exit(1LL);
+}
+}
+    (self->data)[index] = item;
+}
+ArrayList_SymTrackState ArrayList_ArrayList_SymTrackState__pop(ArrayList_ArrayList_SymTrackState_* self) {
+    if (self->len == 0LL) {
+    {
+    exit(1LL);
+}
+}
+    self->len = (self->len - 1LL);
+    return (self->data)[self->len];
+}
+int64_t ArrayList_ArrayList_SymTrackState__length(ArrayList_ArrayList_SymTrackState_* self) {
+    return self->len;
+}
+void ArrayList_ArrayList_SymTrackState__deinit(ArrayList_ArrayList_SymTrackState_* self) {
+    {
+    KaiAllocator_free(self->allocator, (uint8_t*)(self->data));
+}
 }
 void TypeChecker_exit_scope(TypeChecker* self) {
+    if (ArrayList_Int_length(&(self->scope_deferred_counts)) > 0LL) {
+    int64_t snap_count = ArrayList_Int_get(&(self->scope_deferred_counts), (ArrayList_Int_length(&(self->scope_deferred_counts)) - 1LL));
+    if (snap_count > 0LL) {
+    int64_t total_sizes_idx = (ArrayList_Int_length(&(self->scope_deferred_sizes)) - snap_count);
+    int64_t flat_idx = ArrayList_SymTrackState_length(&(self->scope_deferred_flat));
+    int64_t walk = snap_count;
+    int64_t begin = flat_idx;
+    while (walk > 0LL) {
+    int64_t sz = ArrayList_Int_get(&(self->scope_deferred_sizes), ((total_sizes_idx + walk) - 1LL));
+    begin = (begin - sz);
+    walk = (walk - 1LL);
+}
+    ArrayList_ArrayList_SymTrackState_ states = ArrayList_ArrayList_SymTrackState__init(self->allocator);
+    int64_t si = 0LL;
+    int64_t fi = begin;
+    while (si < snap_count) {
+    int64_t sz = ArrayList_Int_get(&(self->scope_deferred_sizes), (total_sizes_idx + si));
+    ArrayList_SymTrackState snapshot = ArrayList_SymTrackState_init(self->allocator);
+    int64_t ei = 0LL;
+    while (ei < sz) {
+    ArrayList_SymTrackState_push(&(snapshot), ArrayList_SymTrackState_get(&(self->scope_deferred_flat), fi));
+    fi = (fi + 1LL);
+    ei = (ei + 1LL);
+}
+    ArrayList_ArrayList_SymTrackState__push(&(states), snapshot);
+    si = (si + 1LL);
+}
+    TypeChecker_merge_and_apply_tracking_state(self, states);
+    int64_t pi = 0LL;
+    while (pi < snap_count) {
+    ArrayList_Int_pop(&(self->scope_deferred_sizes));
+    pi = (pi + 1LL);
+}
+    int64_t pop_count = (ArrayList_SymTrackState_length(&(self->scope_deferred_flat)) - begin);
+    while (pop_count > 0LL) {
+    ArrayList_SymTrackState_pop(&(self->scope_deferred_flat));
+    pop_count = (pop_count - 1LL);
+}
+}
+    ArrayList_Int_pop(&(self->scope_deferred_counts));
+}
     if (self->current_table_idx >= 0LL) {
     SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
     self->current_table_idx = table.parent_idx;
@@ -6850,6 +7142,8 @@ void TypeChecker_mark_expr_moved(TypeChecker* self, int64_t expr_idx) {
     ExprNode e = ArrayList_ExprNode_get(self->expr_pool, inner);
     if (((e.kind == ExprKind_ek_func_call) && (strcmp(e.func_name, "as") == 0)) && (ArrayList_Int_length(&(e.func_args)) >= 1LL)) {
     inner = ArrayList_Int_get(&(e.func_args), 0LL);
+} else if (e.kind == ExprKind_ek_field_access) {
+    inner = e.field_expr;
 } else {
     done = true;
 }
@@ -6896,6 +7190,87 @@ void TypeChecker_mark_expr_freed(TypeChecker* self, int64_t expr_idx) {
     SymbolTable_mark_freed(&(table), expr.ident_name, &(self->symbol_tables));
     ArrayList_SymbolTable_set(&(self->symbol_tables), self->current_table_idx, table);
 }
+}
+}
+ArrayList_SymTrackState TypeChecker_capture_tracking_state(TypeChecker* self) {
+    ArrayList_SymTrackState result = ArrayList_SymTrackState_init(self->allocator);
+    int64_t tidx = self->current_table_idx;
+    while (tidx >= 0LL) {
+    SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), tidx);
+    int64_t i = 0LL;
+    while (i < ArrayList_Symbol_length(&(table.entries))) {
+    Symbol sym = ArrayList_Symbol_get(&(table.entries), i);
+    ArrayList_SymTrackState_push(&(result), (SymTrackState){ .name = sym.name, .table_idx = tidx, .entry_idx = i, .moved = sym.moved, .freed = sym.freed });
+    i = (i + 1LL);
+}
+    tidx = table.parent_idx;
+}
+    return result;
+}
+void TypeChecker_restore_tracking_state(TypeChecker* self, ArrayList_SymTrackState state) {
+    int64_t i = 0LL;
+    while (i < ArrayList_SymTrackState_length(&(state))) {
+    SymTrackState s = ArrayList_SymTrackState_get(&(state), i);
+    if ((s.table_idx >= 0LL) && (s.table_idx < ArrayList_SymbolTable_length(&(self->symbol_tables)))) {
+    SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), s.table_idx);
+    if ((s.entry_idx >= 0LL) && (s.entry_idx < ArrayList_Symbol_length(&(table.entries)))) {
+    Symbol sym = ArrayList_Symbol_get(&(table.entries), s.entry_idx);
+    sym.moved = s.moved;
+    sym.freed = s.freed;
+    ArrayList_Symbol_set(&(table.entries), s.entry_idx, sym);
+    ArrayList_SymbolTable_set(&(self->symbol_tables), s.table_idx, table);
+}
+}
+    i = (i + 1LL);
+}
+}
+void TypeChecker_merge_and_apply_tracking_state(TypeChecker* self, ArrayList_ArrayList_SymTrackState_ states) {
+    ArrayList_SymTrackState merged = ArrayList_SymTrackState_init(self->allocator);
+    int64_t si = 0LL;
+    while (si < ArrayList_ArrayList_SymTrackState__length(&(states))) {
+    ArrayList_SymTrackState state = ArrayList_ArrayList_SymTrackState__get(&(states), si);
+    int64_t ei = 0LL;
+    while (ei < ArrayList_SymTrackState_length(&(state))) {
+    SymTrackState s = ArrayList_SymTrackState_get(&(state), ei);
+    bool found = false;
+    int64_t mi = 0LL;
+    while (mi < ArrayList_SymTrackState_length(&(merged))) {
+    SymTrackState m = ArrayList_SymTrackState_get(&(merged), mi);
+    if ((m.table_idx == s.table_idx) && (m.entry_idx == s.entry_idx)) {
+    SymTrackState updated = m;
+    if (s.moved) {
+    updated.moved = true;
+}
+    if (s.freed) {
+    updated.freed = true;
+}
+    ArrayList_SymTrackState_set(&(merged), mi, updated);
+    found = true;
+    break;
+}
+    mi = (mi + 1LL);
+}
+    if (!found) {
+    ArrayList_SymTrackState_push(&(merged), s);
+}
+    ei = (ei + 1LL);
+}
+    si = (si + 1LL);
+}
+    int64_t i = 0LL;
+    while (i < ArrayList_SymTrackState_length(&(merged))) {
+    SymTrackState s = ArrayList_SymTrackState_get(&(merged), i);
+    if ((s.table_idx >= 0LL) && (s.table_idx < ArrayList_SymbolTable_length(&(self->symbol_tables)))) {
+    SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), s.table_idx);
+    if ((s.entry_idx >= 0LL) && (s.entry_idx < ArrayList_Symbol_length(&(table.entries)))) {
+    Symbol sym = ArrayList_Symbol_get(&(table.entries), s.entry_idx);
+    sym.moved = s.moved;
+    sym.freed = s.freed;
+    ArrayList_Symbol_set(&(table.entries), s.entry_idx, sym);
+    ArrayList_SymbolTable_set(&(self->symbol_tables), s.table_idx, table);
+}
+}
+    i = (i + 1LL);
 }
 }
 const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx) {
@@ -7359,7 +7734,43 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     TypeChecker_check_stmt(self, ArrayList_Int_get(&(stmt.block_stmts), i));
     i = (i + 1LL);
 }
+    bool have_deferred = false;
+    ArrayList_SymTrackState pre_drop_snapshot = ArrayList_SymTrackState_init(self->allocator);
+    if (ArrayList_Int_length(&(self->scope_deferred_counts)) > 0LL) {
+    int64_t snap_cnt = ArrayList_Int_get(&(self->scope_deferred_counts), (ArrayList_Int_length(&(self->scope_deferred_counts)) - 1LL));
+    if (snap_cnt > 0LL) {
+    pre_drop_snapshot = TypeChecker_capture_tracking_state(self);
+    int64_t total_sizes_idx = (ArrayList_Int_length(&(self->scope_deferred_sizes)) - snap_cnt);
+    int64_t b = ArrayList_SymTrackState_length(&(self->scope_deferred_flat));
+    int64_t w = snap_cnt;
+    while (w > 0LL) {
+    int64_t sz = ArrayList_Int_get(&(self->scope_deferred_sizes), ((total_sizes_idx + w) - 1LL));
+    b = (b - sz);
+    w = (w - 1LL);
+}
+    ArrayList_ArrayList_SymTrackState_ states = ArrayList_ArrayList_SymTrackState__init(self->allocator);
+    int64_t si = 0LL;
+    int64_t fi = b;
+    while (si < snap_cnt) {
+    int64_t sz = ArrayList_Int_get(&(self->scope_deferred_sizes), (total_sizes_idx + si));
+    ArrayList_SymTrackState snapshot = ArrayList_SymTrackState_init(self->allocator);
+    int64_t ei = 0LL;
+    while (ei < sz) {
+    ArrayList_SymTrackState_push(&(snapshot), ArrayList_SymTrackState_get(&(self->scope_deferred_flat), fi));
+    fi = (fi + 1LL);
+    ei = (ei + 1LL);
+}
+    ArrayList_ArrayList_SymTrackState__push(&(states), snapshot);
+    si = (si + 1LL);
+}
+    TypeChecker_merge_and_apply_tracking_state(self, states);
+    have_deferred = true;
+}
+}
     TypeChecker_collect_block_drops(self, stmt_idx);
+    if (have_deferred) {
+    TypeChecker_restore_tracking_state(self, pre_drop_snapshot);
+}
     TypeChecker_exit_scope(self);
     return;
 }
@@ -7379,22 +7790,60 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     TypeChecker_err(self, "E0001", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("type mismatch in declaration of '", stmt.vardecl_name), "': expected '"), var_type), "', got '"), val_type), "'"), stmt.line, stmt.col);
 }
     TypeChecker_define_symbol(self, stmt.vardecl_name, var_type, stmt.vardecl_mut, "var");
+    if ((stmt.vardecl_value >= 0LL) && (!TypeChecker_is_copy_type(self, var_type))) {
+    ExprNode src_expr = ArrayList_ExprNode_get(self->expr_pool, stmt.vardecl_value);
+    int64_t src_ident = stmt.vardecl_value;
+    bool done = false;
+    while (!done) {
+    if (((src_expr.kind == ExprKind_ek_func_call) && (strcmp(src_expr.func_name, "as") == 0)) && (ArrayList_Int_length(&(src_expr.func_args)) >= 1LL)) {
+    src_ident = ArrayList_Int_get(&(src_expr.func_args), 0LL);
+    src_expr = ArrayList_ExprNode_get(self->expr_pool, src_ident);
+} else {
+    done = true;
+}
+}
+    if (src_expr.kind == ExprKind_ek_identifier) {
+    SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
+    Symbol src_sym = SymbolTable_lookup_symbol(&(table), src_expr.ident_name, &(self->symbol_tables));
+    if (strlen(src_sym.name) > 0LL) {
+    if (src_sym.freed) {
+    SymbolTable_mark_freed(&(table), stmt.vardecl_name, &(self->symbol_tables));
+} else if (src_sym.moved) {
+    SymbolTable_mark_moved(&(table), stmt.vardecl_name, &(self->symbol_tables));
+}
+    ArrayList_SymbolTable_set(&(self->symbol_tables), self->current_table_idx, table);
+}
+}
+}
     TypeChecker_mark_expr_moved(self, stmt.vardecl_value);
     return;
 }
     if (stmt.kind == StmtKind_sk_assignment) {
     if (stmt.assign_target >= 0LL) {
-    ExprNode tgt = ArrayList_ExprNode_get(self->expr_pool, stmt.assign_target);
-    if (tgt.kind == ExprKind_ek_field_access) {
-    int64_t root = tgt.field_expr;
+    int64_t root = stmt.assign_target;
+    bool done = false;
+    while (!done) {
+    ExprNode e = ArrayList_ExprNode_get(self->expr_pool, root);
+    if (e.kind == ExprKind_ek_field_access) {
+    root = e.field_expr;
+} else if (e.kind == ExprKind_ek_deref) {
+    root = e.deref_expr;
+} else {
+    done = true;
+}
+}
     ExprNode re = ArrayList_ExprNode_get(self->expr_pool, root);
     if (re.kind == ExprKind_ek_identifier) {
     SymbolTable tbl = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
     Symbol rsym = SymbolTable_lookup_symbol(&(tbl), re.ident_name, &(self->symbol_tables));
-    if ((strlen(rsym.name) > 0LL) && rsym.freed) {
-    SymbolTable_clear_freed(&(tbl), re.ident_name, &(self->symbol_tables));
-    ArrayList_SymbolTable_set(&(self->symbol_tables), self->current_table_idx, tbl);
+    if (strlen(rsym.name) > 0LL) {
+    if (rsym.moved) {
+    SymbolTable_clear_moved(&(tbl), re.ident_name, &(self->symbol_tables));
 }
+    if (rsym.freed) {
+    SymbolTable_clear_freed(&(tbl), re.ident_name, &(self->symbol_tables));
+}
+    ArrayList_SymbolTable_set(&(self->symbol_tables), self->current_table_idx, tbl);
 }
 }
 }
@@ -7451,6 +7900,23 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     i = (i + 1LL);
 }
     TypeChecker_check_stmt(self, stmt.func_body);
+    if ((ArrayList_Str_length(&(stmt.func_type_params)) == 0LL) && (ArrayList_Param_length(&(stmt.func_params)) > 0LL)) {
+    ArrayList_Int free_indices = ArrayList_Int_init(self->allocator);
+    int64_t pi = 0LL;
+    while (pi < ArrayList_Param_length(&(stmt.func_params))) {
+    Param p = ArrayList_Param_get(&(stmt.func_params), pi);
+    SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
+    Symbol sym = SymbolTable_lookup_symbol(&(table), p.name, &(self->symbol_tables));
+    if ((strlen(sym.name) > 0LL) && sym.freed) {
+    ArrayList_Int_push(&(free_indices), pi);
+}
+    pi = (pi + 1LL);
+}
+    if (ArrayList_Int_length(&(free_indices)) > 0LL) {
+    FuncEffect effect = (FuncEffect){ .func_name = stmt.func_name, .free_param_indices = free_indices };
+    ArrayList_FuncEffect_push(&(self->func_effects), effect);
+}
+}
     TypeChecker_exit_scope(self);
     self->current_func_ret_type = old_ret;
     return;
@@ -7464,8 +7930,17 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     if ((strcmp(cond_type, "Bool") != 0) && (strcmp(cond_type, "Void") != 0)) {
     TypeChecker_err(self, "E0024", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if condition must be Bool, got '", cond_type), "'"), stmt.line, stmt.col);
 }
+    ArrayList_SymTrackState snapshot = TypeChecker_capture_tracking_state(self);
     TypeChecker_check_stmt(self, stmt.if_then);
+    ArrayList_SymTrackState then_state = TypeChecker_capture_tracking_state(self);
+    TypeChecker_restore_tracking_state(self, snapshot);
     TypeChecker_check_stmt(self, stmt.if_else);
+    ArrayList_SymTrackState else_state = TypeChecker_capture_tracking_state(self);
+    TypeChecker_restore_tracking_state(self, snapshot);
+    ArrayList_ArrayList_SymTrackState_ states = ArrayList_ArrayList_SymTrackState__init(self->allocator);
+    ArrayList_ArrayList_SymTrackState__push(&(states), then_state);
+    ArrayList_ArrayList_SymTrackState__push(&(states), else_state);
+    TypeChecker_merge_and_apply_tracking_state(self, states);
     return;
 }
     if (stmt.kind == StmtKind_sk_if_let) {
@@ -7475,11 +7950,20 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     if ((strlen(opt_type) > 0LL) && ((opt_type)[0LL] == ((char)(63LL)))) {
     unwrapped_type = substring(opt_type, 1LL, strlen(opt_type));
 }
+    ArrayList_SymTrackState snapshot = TypeChecker_capture_tracking_state(self);
     TypeChecker_enter_scope(self);
     TypeChecker_define_symbol(self, stmt.iflet_var, unwrapped_type, false, "var");
     TypeChecker_check_stmt(self, stmt.iflet_then);
     TypeChecker_exit_scope(self);
+    ArrayList_SymTrackState then_state = TypeChecker_capture_tracking_state(self);
+    TypeChecker_restore_tracking_state(self, snapshot);
     TypeChecker_check_stmt(self, stmt.iflet_else);
+    ArrayList_SymTrackState else_state = TypeChecker_capture_tracking_state(self);
+    TypeChecker_restore_tracking_state(self, snapshot);
+    ArrayList_ArrayList_SymTrackState_ states = ArrayList_ArrayList_SymTrackState__init(self->allocator);
+    ArrayList_ArrayList_SymTrackState__push(&(states), then_state);
+    ArrayList_ArrayList_SymTrackState__push(&(states), else_state);
+    TypeChecker_merge_and_apply_tracking_state(self, states);
     return;
 }
     if (stmt.kind == StmtKind_sk_while) {
@@ -7522,8 +8006,11 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
 }
     if (stmt.kind == StmtKind_sk_match) {
     TypeChecker_check_expr(self, stmt.match_expr);
+    ArrayList_SymTrackState snapshot = TypeChecker_capture_tracking_state(self);
+    ArrayList_ArrayList_SymTrackState_ arm_states = ArrayList_ArrayList_SymTrackState__init(self->allocator);
     int64_t i = 0LL;
     while (i < ArrayList_MatchCase_length(&(stmt.match_cases))) {
+    TypeChecker_restore_tracking_state(self, snapshot);
     MatchCase mc = ArrayList_MatchCase_get(&(stmt.match_cases), i);
     TypeChecker_enter_scope(self);
     PatternNode pat = ArrayList_PatternNode_get(self->pattern_pool, mc.pattern);
@@ -7536,7 +8023,12 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
 }
     TypeChecker_check_stmt(self, mc.body);
     TypeChecker_exit_scope(self);
+    ArrayList_ArrayList_SymTrackState__push(&(arm_states), TypeChecker_capture_tracking_state(self));
     i = (i + 1LL);
+}
+    TypeChecker_restore_tracking_state(self, snapshot);
+    if (ArrayList_ArrayList_SymTrackState__length(&(arm_states)) > 0LL) {
+    TypeChecker_merge_and_apply_tracking_state(self, arm_states);
 }
     return;
 }
@@ -7596,11 +8088,41 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     return;
 }
     if (stmt.kind == StmtKind_sk_defer) {
+    ArrayList_SymTrackState snapshot = TypeChecker_capture_tracking_state(self);
     TypeChecker_check_stmt(self, stmt.defer_body);
+    if (ArrayList_Int_length(&(self->scope_deferred_counts)) > 0LL) {
+    int64_t idx = (ArrayList_Int_length(&(self->scope_deferred_counts)) - 1LL);
+    ArrayList_SymTrackState post_state = TypeChecker_capture_tracking_state(self);
+    int64_t ei = 0LL;
+    while (ei < ArrayList_SymTrackState_length(&(post_state))) {
+    ArrayList_SymTrackState_push(&(self->scope_deferred_flat), ArrayList_SymTrackState_get(&(post_state), ei));
+    ei = (ei + 1LL);
+}
+    ArrayList_Int_push(&(self->scope_deferred_sizes), ArrayList_SymTrackState_length(&(post_state)));
+    int64_t count = ArrayList_Int_get(&(self->scope_deferred_counts), idx);
+    count = (count + 1LL);
+    ArrayList_Int_set(&(self->scope_deferred_counts), idx, count);
+}
+    TypeChecker_restore_tracking_state(self, snapshot);
     return;
 }
     if (stmt.kind == StmtKind_sk_errdefer) {
+    ArrayList_SymTrackState snapshot = TypeChecker_capture_tracking_state(self);
     TypeChecker_check_stmt(self, stmt.errdefer_body);
+    if (ArrayList_Int_length(&(self->scope_deferred_counts)) > 0LL) {
+    int64_t idx = (ArrayList_Int_length(&(self->scope_deferred_counts)) - 1LL);
+    ArrayList_SymTrackState post_state = TypeChecker_capture_tracking_state(self);
+    int64_t ei = 0LL;
+    while (ei < ArrayList_SymTrackState_length(&(post_state))) {
+    ArrayList_SymTrackState_push(&(self->scope_deferred_flat), ArrayList_SymTrackState_get(&(post_state), ei));
+    ei = (ei + 1LL);
+}
+    ArrayList_Int_push(&(self->scope_deferred_sizes), ArrayList_SymTrackState_length(&(post_state)));
+    int64_t count = ArrayList_Int_get(&(self->scope_deferred_counts), idx);
+    count = (count + 1LL);
+    ArrayList_Int_set(&(self->scope_deferred_counts), idx, count);
+}
+    TypeChecker_restore_tracking_state(self, snapshot);
     return;
 }
     if (stmt.kind == StmtKind_sk_print) {
@@ -7702,9 +8224,38 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
 } else {
     int64_t i = 0LL;
     while (i < ArrayList_Int_length(&(expr.func_args))) {
-    int64_t arg = ArrayList_Int_get(&(expr.func_args), i);
-    TypeChecker_check_expr(self, arg);
-    TypeChecker_mark_expr_moved(self, arg);
+    TypeChecker_check_expr(self, ArrayList_Int_get(&(expr.func_args), i));
+    i = (i + 1LL);
+}
+    ArrayList_Int free_set = ArrayList_Int_init(self->allocator);
+    int64_t ei = 0LL;
+    while (ei < ArrayList_FuncEffect_length(&(self->func_effects))) {
+    FuncEffect eff = ArrayList_FuncEffect_get(&(self->func_effects), ei);
+    if (strcmp(eff.func_name, name) == 0) {
+    int64_t fi = 0LL;
+    while (fi < ArrayList_Int_length(&(eff.free_param_indices))) {
+    ArrayList_Int_push(&(free_set), ArrayList_Int_get(&(eff.free_param_indices), fi));
+    fi = (fi + 1LL);
+}
+}
+    ei = (ei + 1LL);
+}
+    i = 0LL;
+    while (i < ArrayList_Int_length(&(expr.func_args))) {
+    bool is_freed = false;
+    int64_t fi = 0LL;
+    while (fi < ArrayList_Int_length(&(free_set))) {
+    if (ArrayList_Int_get(&(free_set), fi) == i) {
+    is_freed = true;
+    break;
+}
+    fi = (fi + 1LL);
+}
+    if (is_freed) {
+    TypeChecker_mark_expr_freed(self, ArrayList_Int_get(&(expr.func_args), i));
+} else {
+    TypeChecker_mark_expr_moved(self, ArrayList_Int_get(&(expr.func_args), i));
+}
     i = (i + 1LL);
 }
 }
@@ -8063,6 +8614,23 @@ void SymbolTable_mark_freed(SymbolTable* self, const char* name, ArrayList_Symbo
     if (self->parent_idx >= 0LL) {
     SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
     SymbolTable_mark_freed(&(parent), name, tables);
+    ArrayList_SymbolTable_set(tables, self->parent_idx, parent);
+}
+}
+void SymbolTable_clear_moved(SymbolTable* self, const char* name, ArrayList_SymbolTable* tables) {
+    int64_t i = 0LL;
+    while (i < ArrayList_Symbol_length(&(self->entries))) {
+    if (strcmp(ArrayList_Symbol_get(&(self->entries), i).name, name) == 0) {
+    Symbol sym = ArrayList_Symbol_get(&(self->entries), i);
+    sym.moved = false;
+    ArrayList_Symbol_set(&(self->entries), i, sym);
+    return;
+}
+    i = (i + 1LL);
+}
+    if (self->parent_idx >= 0LL) {
+    SymbolTable parent = ArrayList_SymbolTable_get(tables, self->parent_idx);
+    SymbolTable_clear_moved(&(parent), name, tables);
     ArrayList_SymbolTable_set(tables, self->parent_idx, parent);
 }
 }
