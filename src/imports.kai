@@ -2,6 +2,7 @@ import ArrayList from std.core.array
 import Allocator from std.core.allocator
 import KaiAllocator from std.core.allocator
 import read_to_string from std.io.file
+import std.io.print
 import Lexer from lexer
 import Parser from parser
 import StmtNode from ast_nodes
@@ -17,6 +18,10 @@ struct ImportResolver {
     allocator: *KaiAllocator
     loaded_modules: ArrayList<Str>
     cimport_headers: ArrayList<Str>
+    has_error: Bool
+    error_message: Str
+    error_stmt_idx: Int
+    import_stack: ArrayList<Str>
 }
 
 impl ImportResolver {
@@ -24,6 +29,22 @@ impl ImportResolver {
         self.allocator = allocator
         self.loaded_modules = ArrayList<Str>(allocator)
         self.cimport_headers = ArrayList<Str>(allocator)
+        self.has_error = false
+        self.error_message = ""
+        self.error_stmt_idx = -1
+        self.import_stack = ArrayList<Str>(allocator)
+    }
+
+    fn err_at(self, msg: Str, stmt_idx: Int) {
+        if !self.has_error {
+            self.has_error = true
+            self.error_message = msg
+            self.error_stmt_idx = stmt_idx
+        }
+    }
+
+    fn err(self, msg: Str) {
+        self.err_at(msg, -1)
     }
 
     fn record_cimport(self, header: Str) {
@@ -48,15 +69,30 @@ impl ImportResolver {
         }
         if module_key == "" { return }
 
+        // Circular import check (must come before loaded check:
+        // an already-loaded module in the current stack is still circular)
+        var si = 0
+        while si < self.import_stack.length() {
+            if self.import_stack.get(si) == module_key {
+                self.err_at("circular import detected: '" + module_key + "'", stmt_idx)
+                return
+            }
+            si = si + 1
+        }
+
+        // Already loaded check
         var li = 0
         while li < self.loaded_modules.length() {
             if self.loaded_modules.get(li) == module_key { return }
             li = li + 1
         }
-        self.loaded_modules.push(module_key)
+
+        self.import_stack.push(module_key)
 
         var has_source = false
         var source = ""
+        var resolved_path = ""
+
         if path.length() > 0 && path.get(0) == "std" {
             var path_str = ""
             var ii = 0
@@ -70,6 +106,7 @@ impl ImportResolver {
             if s1.tag == 0 && strlen(s1.value) > 0 {
                 source = s1.value
                 has_source = true
+                resolved_path = rel_path
             }
             if !has_source {
                 unsafe {
@@ -81,6 +118,7 @@ impl ImportResolver {
                         if s2.tag == 0 && strlen(s2.value) > 0 {
                             source = s2.value
                             has_source = true
+                            resolved_path = full_path
                         }
                         if !has_source {
                             let parent_path = exe_dir + "/../" + rel_path
@@ -88,6 +126,7 @@ impl ImportResolver {
                             if s3.tag == 0 && strlen(s3.value) > 0 {
                                 source = s3.value
                                 has_source = true
+                                resolved_path = parent_path
                             }
                             if !has_source {
                                 let lib_path = exe_dir + "/../lib/kai/" + rel_path
@@ -95,6 +134,7 @@ impl ImportResolver {
                                 if s4.tag == 0 && strlen(s4.value) > 0 {
                                     source = s4.value
                                     has_source = true
+                                    resolved_path = lib_path
                                 }
                             }
                         }
@@ -102,50 +142,86 @@ impl ImportResolver {
                 }
             }
         } else if path.length() > 0 {
-            let file_path = "src/" + module_key + ".kai"
-            let s = read_to_string(self.allocator, file_path)
-            if s.tag == 0 && strlen(s.value) > 0 {
-                source = s.value
-                has_source = true
+            // Convert dot-separated path to directory/file structure
+            var path_str = ""
+            var ii = 0
+            while ii < path.length() {
+                if ii > 0 { path_str = path_str + "/" }
+                path_str = path_str + path.get(ii)
+                ii = ii + 1
             }
-        }
+            let file_name = path_str + ".kai"
 
-        if has_source {
-            var current_file_path = ""
-            if path.length() > 0 && path.get(0) == "std" {
-                var path_str = ""
-                var ii = 0
-                while ii < path.length() {
-                    if ii > 0 { path_str = path_str + "/" }
-                    path_str = path_str + path.get(ii)
-                    ii = ii + 1
-                }
-                current_file_path = path_str + ".kai"
-            } else {
-                current_file_path = "src/" + module_key + ".kai"
+            // Try bare name first, then with src/ prefix
+            let s1 = read_to_string(self.allocator, file_name)
+            if s1.tag == 0 && strlen(s1.value) > 0 {
+                source = s1.value
+                has_source = true
+                resolved_path = file_name
             }
-            var lexer = Lexer(self.allocator, source, current_file_path)
-            lexer.lex()
-            if !lexer.has_error {
-                var parser = Parser.init_with_pools(self.allocator, current_file_path, lexer.tokens, expr_pool, stmt_pool, pattern_pool, source)
-                let program_idx = parser.parse_program()
-                if program_idx >= 0 {
-                    let prog = stmt_pool.get(program_idx)
-                    if prog.kind == StmtKind.sk_block {
-                        var pi = 0
-                        while pi < prog.block_stmts.length() {
-                            let sub = stmt_pool.get(prog.block_stmts.get(pi))
-                            if sub.kind == StmtKind.sk_import {
-                                self.resolve_import(prog.block_stmts.get(pi), stmt_pool, expr_pool, pattern_pool)
-                            }
-                            if sub.kind == StmtKind.sk_cimport {
-                                self.record_cimport(sub.cimport_header)
-                            }
-                            pi = pi + 1
+            if !has_source {
+                let src_path = "src/" + file_name
+                let s2 = read_to_string(self.allocator, src_path)
+                if s2.tag == 0 && strlen(s2.value) > 0 {
+                    source = s2.value
+                    has_source = true
+                    resolved_path = src_path
+                }
+            }
+            // Also try with exe_dir relative paths
+            if !has_source {
+                unsafe {
+                    let buf = malloc(1024) as *Char
+                    if get_exe_dir(buf, 1024) == 0 {
+                        let exe_dir = buf as Str
+                        let exe_src = exe_dir + "/../../src/" + file_name
+                        let s3 = read_to_string(self.allocator, exe_src)
+                        if s3.tag == 0 && strlen(s3.value) > 0 {
+                            source = s3.value
+                            has_source = true
+                            resolved_path = exe_src
                         }
                     }
                 }
             }
+        }
+
+        if has_source {
+            self.loaded_modules.push(module_key)
+            var lexer = Lexer(self.allocator, source, resolved_path)
+            lexer.lex()
+            if lexer.has_error {
+                self.import_stack.pop()
+                self.err_at("lexer error in imported module '" + module_key + "'", stmt_idx)
+                return
+            }
+            var parser = Parser.init_with_pools(self.allocator, resolved_path, lexer.tokens, expr_pool, stmt_pool, pattern_pool, source)
+            let program_idx = parser.parse_program()
+            if program_idx < 0 {
+                self.import_stack.pop()
+                self.err_at("parser error in imported module '" + module_key + "'", stmt_idx)
+                return
+            }
+            let prog = stmt_pool.get(program_idx)
+            if prog.kind == StmtKind.sk_block {
+                var pi = 0
+                while pi < prog.block_stmts.length() {
+                    let sub = stmt_pool.get(prog.block_stmts.get(pi))
+                    if sub.kind == StmtKind.sk_import {
+                        if !self.has_error {
+                            self.resolve_import(prog.block_stmts.get(pi), stmt_pool, expr_pool, pattern_pool)
+                        }
+                    }
+                    if sub.kind == StmtKind.sk_cimport {
+                        self.record_cimport(sub.cimport_header)
+                    }
+                    pi = pi + 1
+                }
+            }
+            self.import_stack.pop()
+        } else {
+            self.import_stack.pop()
+            self.err_at("module not found: '" + module_key + "'", stmt_idx)
         }
     }
 

@@ -205,7 +205,20 @@ impl TypeChecker {
         self.register_struct_info(top_stmt_idx)
         self.detect_imports(top_stmt_idx)
         self.import_resolver.resolve_all(top_stmt_idx, self.stmt_pool, self.expr_pool, self.pattern_pool)
-        
+
+        if self.import_resolver.has_error {
+            let err_idx = self.import_resolver.error_stmt_idx
+            var err_line = 0
+            var err_col = 0
+            if err_idx >= 0 {
+                let stmt = self.stmt_pool.get(err_idx)
+                err_line = stmt.line
+                err_col = stmt.col
+            }
+            self.err("E0034", self.import_resolver.error_message, err_line, err_col)
+            return false
+        }
+
         // Start checking
         self.enter_scope()
         self.check_stmt(top_stmt_idx)

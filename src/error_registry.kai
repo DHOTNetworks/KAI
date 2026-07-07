@@ -214,6 +214,14 @@ fn get_error_info(code: Str) -> ErrorInfo {
             fix: "Remove the unused import, or use the imported symbol in the code."
         )
     }
+    if code == "E0034" {
+        return ErrorInfo(
+            code: code,
+            title: "Import resolution error",
+            description: "The import resolver could not find or load the specified module. This can happen when the module file doesn't exist, contains syntax errors, or creates a circular dependency.",
+            fix: "Check that the module path is correct, the file exists, and the module doesn't circularly import itself. Verify the file's syntax is valid."
+        )
+    }
     if code == "E0100" {
         return ErrorInfo(
             code: code,

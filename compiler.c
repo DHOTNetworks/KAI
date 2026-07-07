@@ -738,6 +738,10 @@ struct ImportResolver {
     KaiAllocator* allocator;
     ArrayList_Str loaded_modules;
     ArrayList_Str cimport_headers;
+    bool has_error;
+    const char* error_message;
+    int64_t error_stmt_idx;
+    ArrayList_Str import_stack;
 };
 struct StrMapEntry {
     const char* key;
@@ -1464,6 +1468,8 @@ void SymbolTable_clear_freed(SymbolTable* self, const char* name, ArrayList_Symb
 int64_t SymbolTable_lookup_current(SymbolTable* self, const char* name);
 extern int64_t get_exe_dir(char* buf, int64_t max_len);
 ImportResolver ImportResolver_init(KaiAllocator* allocator);
+void ImportResolver_err_at(ImportResolver* self, const char* msg, int64_t stmt_idx);
+void ImportResolver_err(ImportResolver* self, const char* msg);
 void ImportResolver_record_cimport(ImportResolver* self, const char* header);
 void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool);
 void ImportResolver_resolve_all(ImportResolver* self, int64_t program_idx, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool);
@@ -6537,6 +6543,18 @@ bool TypeChecker_check_program(TypeChecker* self, int64_t top_stmt_idx) {
     TypeChecker_register_struct_info(self, top_stmt_idx);
     TypeChecker_detect_imports(self, top_stmt_idx);
     ImportResolver_resolve_all(self->import_resolver, top_stmt_idx, self->stmt_pool, self->expr_pool, self->pattern_pool);
+    if (self->import_resolver->has_error) {
+    int64_t err_idx = self->import_resolver->error_stmt_idx;
+    int64_t err_line = 0LL;
+    int64_t err_col = 0LL;
+    if (err_idx >= 0LL) {
+    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, err_idx);
+    err_line = stmt.line;
+    err_col = stmt.col;
+}
+    TypeChecker_err(self, "E0034", self->import_resolver->error_message, err_line, err_col);
+    return false;
+}
     TypeChecker_enter_scope(self);
     TypeChecker_check_stmt(self, top_stmt_idx);
     TypeChecker_exit_scope(self);
@@ -8666,7 +8684,21 @@ ImportResolver ImportResolver_init(KaiAllocator* allocator) {
     self.allocator = allocator;
     self.loaded_modules = ArrayList_Str_init(allocator);
     self.cimport_headers = ArrayList_Str_init(allocator);
+    self.has_error = false;
+    self.error_message = "";
+    self.error_stmt_idx = (-1LL);
+    self.import_stack = ArrayList_Str_init(allocator);
     return self;
+}
+void ImportResolver_err_at(ImportResolver* self, const char* msg, int64_t stmt_idx) {
+    if (!self->has_error) {
+    self->has_error = true;
+    self->error_message = msg;
+    self->error_stmt_idx = stmt_idx;
+}
+}
+void ImportResolver_err(ImportResolver* self, const char* msg) {
+    ImportResolver_err_at(self, msg, (-1LL));
 }
 void ImportResolver_record_cimport(ImportResolver* self, const char* header) {
     bool found = false;
@@ -8696,6 +8728,14 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     if (strcmp(module_key, "") == 0) {
     return;
 }
+    int64_t si = 0LL;
+    while (si < ArrayList_Str_length(&(self->import_stack))) {
+    if (strcmp(ArrayList_Str_get(&(self->import_stack), si), module_key) == 0) {
+    ImportResolver_err_at(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("circular import detected: '", module_key), "'"), stmt_idx);
+    return;
+}
+    si = (si + 1LL);
+}
     int64_t li = 0LL;
     while (li < ArrayList_Str_length(&(self->loaded_modules))) {
     if (strcmp(ArrayList_Str_get(&(self->loaded_modules), li), module_key) == 0) {
@@ -8703,9 +8743,10 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
 }
     li = (li + 1LL);
 }
-    ArrayList_Str_push(&(self->loaded_modules), module_key);
+    ArrayList_Str_push(&(self->import_stack), module_key);
     bool has_source = false;
     const char* source = "";
+    const char* resolved_path = "";
     if ((ArrayList_Str_length(&(path)) > 0LL) && (strcmp(ArrayList_Str_get(&(path), 0LL), "std") == 0)) {
     const char* path_str = "";
     int64_t ii = 0LL;
@@ -8721,6 +8762,7 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     if ((s1.tag == 0LL) && (strlen(s1.value) > 0LL)) {
     source = s1.value;
     has_source = true;
+    resolved_path = rel_path;
 }
     if (!has_source) {
     {
@@ -8732,6 +8774,7 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     if ((s2.tag == 0LL) && (strlen(s2.value) > 0LL)) {
     source = s2.value;
     has_source = true;
+    resolved_path = full_path;
 }
     if (!has_source) {
     const char* parent_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../"), rel_path);
@@ -8739,6 +8782,7 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     if ((s3.tag == 0LL) && (strlen(s3.value) > 0LL)) {
     source = s3.value;
     has_source = true;
+    resolved_path = parent_path;
 }
     if (!has_source) {
     const char* lib_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../lib/kai/"), rel_path);
@@ -8746,6 +8790,7 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     if ((s4.tag == 0LL) && (strlen(s4.value) > 0LL)) {
     source = s4.value;
     has_source = true;
+    resolved_path = lib_path;
 }
 }
 }
@@ -8753,16 +8798,6 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
 }
 }
 } else if (ArrayList_Str_length(&(path)) > 0LL) {
-    const char* file_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("src/", module_key), ".kai");
-    Result_Str_IoError s = read_to_string(self->allocator, file_path);
-    if ((s.tag == 0LL) && (strlen(s.value) > 0LL)) {
-    source = s.value;
-    has_source = true;
-}
-}
-    if (has_source) {
-    const char* current_file_path = "";
-    if ((ArrayList_Str_length(&(path)) > 0LL) && (strcmp(ArrayList_Str_get(&(path), 0LL), "std") == 0)) {
     const char* path_str = "";
     int64_t ii = 0LL;
     while (ii < ArrayList_Str_length(&(path))) {
@@ -8772,23 +8807,63 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     path_str = __kai_std_str_concat_alloc(path_str, ArrayList_Str_get(&(path), ii));
     ii = (ii + 1LL);
 }
-    current_file_path = __kai_std_str_concat_alloc(path_str, ".kai");
-} else {
-    current_file_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("src/", module_key), ".kai");
+    const char* file_name = __kai_std_str_concat_alloc(path_str, ".kai");
+    Result_Str_IoError s1 = read_to_string(self->allocator, file_name);
+    if ((s1.tag == 0LL) && (strlen(s1.value) > 0LL)) {
+    source = s1.value;
+    has_source = true;
+    resolved_path = file_name;
 }
-    Lexer lexer = Lexer_init(self->allocator, source, current_file_path);
+    if (!has_source) {
+    const char* src_path = __kai_std_str_concat_alloc("src/", file_name);
+    Result_Str_IoError s2 = read_to_string(self->allocator, src_path);
+    if ((s2.tag == 0LL) && (strlen(s2.value) > 0LL)) {
+    source = s2.value;
+    has_source = true;
+    resolved_path = src_path;
+}
+}
+    if (!has_source) {
+    {
+    char* buf = (char*)(malloc(1024LL));
+    if (get_exe_dir(buf, 1024LL) == 0LL) {
+    const char* exe_dir = (const char*)(buf);
+    const char* exe_src = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../../src/"), file_name);
+    Result_Str_IoError s3 = read_to_string(self->allocator, exe_src);
+    if ((s3.tag == 0LL) && (strlen(s3.value) > 0LL)) {
+    source = s3.value;
+    has_source = true;
+    resolved_path = exe_src;
+}
+}
+}
+}
+}
+    if (has_source) {
+    ArrayList_Str_push(&(self->loaded_modules), module_key);
+    Lexer lexer = Lexer_init(self->allocator, source, resolved_path);
     Lexer_lex(&(lexer));
-    if (!lexer.has_error) {
-    Parser parser = Parser_init_with_pools(self->allocator, current_file_path, lexer.tokens, expr_pool, stmt_pool, pattern_pool, source);
+    if (lexer.has_error) {
+    ArrayList_Str_pop(&(self->import_stack));
+    ImportResolver_err_at(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("lexer error in imported module '", module_key), "'"), stmt_idx);
+    return;
+}
+    Parser parser = Parser_init_with_pools(self->allocator, resolved_path, lexer.tokens, expr_pool, stmt_pool, pattern_pool, source);
     int64_t program_idx = Parser_parse_program(&(parser));
-    if (program_idx >= 0LL) {
+    if (program_idx < 0LL) {
+    ArrayList_Str_pop(&(self->import_stack));
+    ImportResolver_err_at(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("parser error in imported module '", module_key), "'"), stmt_idx);
+    return;
+}
     StmtNode prog = ArrayList_StmtNode_get(stmt_pool, program_idx);
     if (prog.kind == StmtKind_sk_block) {
     int64_t pi = 0LL;
     while (pi < ArrayList_Int_length(&(prog.block_stmts))) {
     StmtNode sub = ArrayList_StmtNode_get(stmt_pool, ArrayList_Int_get(&(prog.block_stmts), pi));
     if (sub.kind == StmtKind_sk_import) {
+    if (!self->has_error) {
     ImportResolver_resolve_import(self, ArrayList_Int_get(&(prog.block_stmts), pi), stmt_pool, expr_pool, pattern_pool);
+}
 }
     if (sub.kind == StmtKind_sk_cimport) {
     ImportResolver_record_cimport(self, sub.cimport_header);
@@ -8796,8 +8871,10 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     pi = (pi + 1LL);
 }
 }
-}
-}
+    ArrayList_Str_pop(&(self->import_stack));
+} else {
+    ArrayList_Str_pop(&(self->import_stack));
+    ImportResolver_err_at(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("module not found: '", module_key), "'"), stmt_idx);
 }
 }
 void ImportResolver_resolve_all(ImportResolver* self, int64_t program_idx, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool) {
@@ -16916,6 +16993,9 @@ ErrorInfo get_error_info(const char* code) {
 }
     if (strcmp(code, "E0033") == 0) {
     return (ErrorInfo){ .code = code, .title = "Unused import", .description = "An imported symbol was never used in the current compilation unit.", .fix = "Remove the unused import, or use the imported symbol in the code." };
+}
+    if (strcmp(code, "E0034") == 0) {
+    return (ErrorInfo){ .code = code, .title = "Import resolution error", .description = "The import resolver could not find or load the specified module. This can happen when the module file doesn't exist, contains syntax errors, or creates a circular dependency.", .fix = "Check that the module path is correct, the file exists, and the module doesn't circularly import itself. Verify the file's syntax is valid." };
 }
     if (strcmp(code, "E0100") == 0) {
     return (ErrorInfo){ .code = code, .title = "Lexer error", .description = "The lexer encountered an unexpected character or syntax that could not be tokenized.", .fix = "Check for unexpected characters, unclosed strings, or invalid syntax near the reported position." };
