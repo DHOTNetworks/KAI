@@ -1,0 +1,172 @@
+//== Type Mapping Registry — Single Source of Truth
+//
+//   Every type that crosses the Kai↔C boundary is declared here.
+//   All codegen modules should consume these tables instead of
+//   maintaining private if/elif chains.
+//
+//   Coverage: full Zig type system emitted by `zig translate-c`
+//   against all 34 export functions in types.zig.
+//
+//   Convention:
+//     kai_type  = ""  →  not yet supported by Kai
+//     c_type    = ""  →  no direct C representation (comptime-only)
+
+import ArrayList from std.core.array
+import KaiAllocator from std.core.allocator
+
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn strlen(s: Str) -> Int
+
+//== 1. Record Definition
+
+struct TypeEntry {
+    zig_type: Str
+    c_type: Str
+    kai_type: Str
+    category: Str
+    is_unsigned: Bool
+}
+
+//== 2. Master Table — all registered types
+
+fn get_type_entries(allocator: *KaiAllocator) -> ArrayList<TypeEntry> {
+    var t = ArrayList<TypeEntry>(allocator: allocator)
+
+    // Signed integers
+    t.push(TypeEntry(zig_type: "i8",     c_type: "int8_t",       kai_type: "i8",     category: "int",  is_unsigned: false))
+    t.push(TypeEntry(zig_type: "i16",    c_type: "int16_t",      kai_type: "i16",    category: "int",  is_unsigned: false))
+    t.push(TypeEntry(zig_type: "i32",    c_type: "int32_t",      kai_type: "i32",    category: "int",  is_unsigned: false))
+    t.push(TypeEntry(zig_type: "i64",    c_type: "int64_t",      kai_type: "i64",    category: "int",  is_unsigned: false))
+    t.push(TypeEntry(zig_type: "isize",  c_type: "intptr_t",     kai_type: "isize",  category: "int",  is_unsigned: false))
+
+    // Unsigned integers
+    t.push(TypeEntry(zig_type: "u8",     c_type: "uint8_t",      kai_type: "u8",     category: "int",  is_unsigned: true))
+    t.push(TypeEntry(zig_type: "u16",    c_type: "uint16_t",     kai_type: "u16",    category: "int",  is_unsigned: true))
+    t.push(TypeEntry(zig_type: "u32",    c_type: "uint32_t",     kai_type: "u32",    category: "int",  is_unsigned: true))
+    t.push(TypeEntry(zig_type: "u64",    c_type: "uint64_t",     kai_type: "u64",    category: "int",  is_unsigned: true))
+    t.push(TypeEntry(zig_type: "usize",  c_type: "uintptr_t",    kai_type: "usize",  category: "int",  is_unsigned: true))
+
+    // C-compat integers (not yet in Kai)
+    t.push(TypeEntry(zig_type: "c_short",     c_type: "short",            kai_type: "",  category: "c_int", is_unsigned: false))
+    t.push(TypeEntry(zig_type: "c_ushort",    c_type: "unsigned short",   kai_type: "",  category: "c_int", is_unsigned: true))
+    t.push(TypeEntry(zig_type: "c_int",       c_type: "int",              kai_type: "",  category: "c_int", is_unsigned: false))
+    t.push(TypeEntry(zig_type: "c_uint",      c_type: "unsigned int",     kai_type: "",  category: "c_int", is_unsigned: true))
+    t.push(TypeEntry(zig_type: "c_long",      c_type: "long",             kai_type: "",  category: "c_int", is_unsigned: false))
+    t.push(TypeEntry(zig_type: "c_ulong",     c_type: "unsigned long",    kai_type: "",  category: "c_int", is_unsigned: true))
+    t.push(TypeEntry(zig_type: "c_longlong",  c_type: "long long",        kai_type: "",  category: "c_int", is_unsigned: false))
+    t.push(TypeEntry(zig_type: "c_ulonglong", c_type: "unsigned long long", kai_type: "", category: "c_int", is_unsigned: true))
+
+    // Floating point
+    t.push(TypeEntry(zig_type: "f32",    c_type: "float",       kai_type: "",     category: "float", is_unsigned: false))
+    t.push(TypeEntry(zig_type: "f64",    c_type: "double",      kai_type: "Float", category: "float", is_unsigned: false))
+
+    // Boolean
+    t.push(TypeEntry(zig_type: "bool",   c_type: "bool",        kai_type: "Bool",  category: "bool",  is_unsigned: false))
+
+    // Char / byte
+    t.push(TypeEntry(zig_type: "u8",     c_type: "char",        kai_type: "Char",  category: "char",  is_unsigned: false))
+
+    // Void
+    t.push(TypeEntry(zig_type: "void",   c_type: "void",        kai_type: "Void",    category: "void",  is_unsigned: false))
+    t.push(TypeEntry(zig_type: "void",   c_type: "void",        kai_type: "NoneType", category: "void", is_unsigned: false))
+
+    // String (Kai sentinel, no Zig equivalent)
+    t.push(TypeEntry(zig_type: "",       c_type: "const char*",  kai_type: "Str",   category: "string", is_unsigned: false))
+
+    return t
+}
+
+//== 3. Lookups
+
+fn lookup_by_kai(kai_type: Str, allocator: *KaiAllocator) -> TypeEntry {
+    let entries = get_type_entries(allocator)
+    var i = 0
+    while i < entries.length() {
+        let e = entries.get(i)
+        if strlen(e.kai_type) > 0 && strcmp(e.kai_type, kai_type) == 0 {
+            return e
+        }
+        i = i + 1
+    }
+    return TypeEntry(zig_type: "", c_type: kai_type, kai_type: kai_type, category: "opaque", is_unsigned: false)
+}
+
+fn lookup_by_c(c_type: Str, allocator: *KaiAllocator) -> TypeEntry {
+    let entries = get_type_entries(allocator)
+    var i = 0
+    while i < entries.length() {
+        let e = entries.get(i)
+        if strcmp(e.c_type, c_type) == 0 {
+            return e
+        }
+        i = i + 1
+    }
+    return TypeEntry(zig_type: "", c_type: c_type, kai_type: "", category: "unknown", is_unsigned: false)
+}
+
+fn lookup_by_zig(zig_type: Str, allocator: *KaiAllocator) -> TypeEntry {
+    let entries = get_type_entries(allocator)
+    var i = 0
+    while i < entries.length() {
+        let e = entries.get(i)
+        if strlen(e.zig_type) > 0 && strcmp(e.zig_type, zig_type) == 0 {
+            return e
+        }
+        i = i + 1
+    }
+    return TypeEntry(zig_type: zig_type, c_type: "", kai_type: "", category: "unknown", is_unsigned: false)
+}
+
+//== 4. Kai → C string (drop-in for ctype_map_base)
+
+fn kai_to_c(kai_type: Str, allocator: *KaiAllocator) -> Str {
+    // Int is the default integer (int64_t in Kai)
+    if strcmp(kai_type, "Int") == 0 { return "int64_t" }
+
+    let e = lookup_by_kai(kai_type, allocator)
+    if strlen(e.c_type) > 0 { return e.c_type }
+
+    // Passthrough for user-defined types (struct/enum/generic)
+    if strlen(kai_type) > 0 {
+        let first = kai_type[0]
+        if first >= Char(65) && first <= Char(90) {
+            return kai_type
+        }
+    }
+    return "void"
+}
+
+//== 5. Classification
+
+fn is_integer_type(kai_type: Str, allocator: *KaiAllocator) -> Bool {
+    if strcmp(kai_type, "Int") == 0 { return true }
+    let e = lookup_by_kai(kai_type, allocator)
+    return strcmp(e.category, "int") == 0
+}
+
+fn is_float_type(kai_type: Str, allocator: *KaiAllocator) -> Bool {
+    if strcmp(kai_type, "Float") == 0 { return true }
+    let e = lookup_by_kai(kai_type, allocator)
+    return strcmp(e.category, "float") == 0
+}
+
+fn is_unsigned_type(kai_type: Str, allocator: *KaiAllocator) -> Bool {
+    let e = lookup_by_kai(kai_type, allocator)
+    return e.is_unsigned
+}
+
+//== 6. Unsupported types (for gap analysis)
+
+fn get_unsupported(allocator: *KaiAllocator) -> ArrayList<TypeEntry> {
+    let all = get_type_entries(allocator)
+    var result = ArrayList<TypeEntry>(allocator: allocator)
+    var i = 0
+    while i < all.length() {
+        let e = all.get(i)
+        if strlen(e.kai_type) == 0 {
+            result.push(e)
+        }
+        i = i + 1
+    }
+    return result
+}
