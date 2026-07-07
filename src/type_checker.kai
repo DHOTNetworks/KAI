@@ -1,6 +1,7 @@
 import ArrayList from std.core.array
 import Allocator from std.core.allocator
 import KaiAllocator from std.core.allocator
+import KaiAllocator from std.core.allocator
 import StmtNode from ast_nodes
 import ExprNode from ast_nodes
 import PatternNode from ast_nodes
@@ -273,7 +274,7 @@ impl TypeChecker {
     }
 
     fn is_standard_c_func(self, name: Str) -> Bool {
-        if name == "malloc" || name == "free" || name == "realloc" || name == "calloc" { return true }
+        if name == "malloc" || name == "realloc" || name == "calloc" { return true }
         if name == "printf" || name == "fprintf" || name == "sprintf" || name == "snprintf" { return true }
         if name == "fopen" || name == "fread" || name == "fwrite" || name == "fclose" || name == "fseek" || name == "ftell" || name == "rewind" { return true }
         if name == "strlen" || name == "strcmp" { return true }
@@ -1550,7 +1551,11 @@ impl TypeChecker {
             while i < expr.meth_args.length() {
                 let arg = expr.meth_args.get(i)
                 self.check_expr(arg)
-                self.mark_expr_moved(arg)
+                if expr.meth_name == "free" && i == 0 {
+                    self.mark_expr_freed(arg)
+                } else {
+                    self.mark_expr_moved(arg)
+                }
                 i = i + 1
             }
             let recv_type = self.get_expr_type(expr.meth_expr)

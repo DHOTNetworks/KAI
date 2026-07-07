@@ -6403,7 +6403,7 @@ bool TypeChecker_is_struct_type(TypeChecker* self, const char* name) {
     return false;
 }
 bool TypeChecker_is_standard_c_func(TypeChecker* self, const char* name) {
-    if ((((strcmp(name, "malloc") == 0) || (strcmp(name, "free") == 0)) || (strcmp(name, "realloc") == 0)) || (strcmp(name, "calloc") == 0)) {
+    if (((strcmp(name, "malloc") == 0) || (strcmp(name, "realloc") == 0)) || (strcmp(name, "calloc") == 0)) {
     return true;
 }
     if ((((strcmp(name, "printf") == 0) || (strcmp(name, "fprintf") == 0)) || (strcmp(name, "sprintf") == 0)) || (strcmp(name, "snprintf") == 0)) {
@@ -7744,7 +7744,11 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     while (i < ArrayList_Int_length(&(expr.meth_args))) {
     int64_t arg = ArrayList_Int_get(&(expr.meth_args), i);
     TypeChecker_check_expr(self, arg);
+    if ((strcmp(expr.meth_name, "free") == 0) && (i == 0LL)) {
+    TypeChecker_mark_expr_freed(self, arg);
+} else {
     TypeChecker_mark_expr_moved(self, arg);
+}
     i = (i + 1LL);
 }
     const char* recv_type = TypeChecker_get_expr_type(self, expr.meth_expr);
@@ -15798,7 +15802,6 @@ int64_t run_fix(const char* fix_mode, const char* fix_file, bool json) {
     ArrayList_Str_push(&(builtins), "strcmp");
     ArrayList_Str_push(&(builtins), "get_exe_dir");
     ArrayList_Str_push(&(builtins), "malloc");
-    ArrayList_Str_push(&(builtins), "free");
     ArrayList_Str_push(&(builtins), "realloc");
     ArrayList_Str_push(&(builtins), "memcpy");
     ArrayList_Str_push(&(builtins), "memset");

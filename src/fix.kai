@@ -314,7 +314,6 @@ fn run_fix(fix_mode: Str, fix_file: Str, json: Bool) -> Int {
     builtins.push("strcmp")
     builtins.push("get_exe_dir")
     builtins.push("malloc")
-    builtins.push("free")
     builtins.push("realloc")
     builtins.push("memcpy")
     builtins.push("memset")
