@@ -3,7 +3,7 @@ import Allocator from std.core.allocator
 import KaiAllocator from std.core.allocator
 
 extern fn strlen(s: Str) -> Int
-extern fn __kai_std_str_concat_alloc(left: Str, right: Str) -> Str
+extern fn concatAlloc(left: Str, right: Str) -> Str
 
 //== CCodeBuilder — Structured C Code Emission Engine
 //

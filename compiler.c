@@ -1244,6 +1244,35 @@ void KaiAllocator_deinit(KaiAllocator* self);
 KaiAllocator KaiAllocator_new(void);
 Result_Str_IoError read_to_string(KaiAllocator* allocator, const char* path);
 Result_Bool_IoError write_string(const char* path, const char* content);
+const char* concatAlloc(const char* left, const char* right);
+bool __kai_std_str_is_ascii_space(char byte);
+char __kai_std_str_to_lower_byte(char byte);
+char __kai_std_str_to_upper_byte(char byte);
+const char* __kai_std_str_copy(char* buffer, const char* text);
+const char* __kai_std_str_concat(char* buffer, const char* left, const char* right);
+const char* __kai_std_str_repeat(char* buffer, const char* text, int64_t count);
+const char* __kai_std_str_replace(char* buffer, const char* text, const char* old, const char* replacement);
+const char* __kai_std_str_to_lower_ascii(char* buffer, const char* text);
+const char* __kai_std_str_to_upper_ascii(char* buffer, const char* text);
+const char* __kai_std_str_reverse(char* buffer, const char* text);
+int64_t __kai_std_str_count_byte(const char* text, char byte);
+bool __kai_std_str_starts_with(const char* text, const char* prefix);
+bool __kai_std_str_ends_with(const char* text, const char* suffix);
+bool __kai_std_str_contains(const char* text, const char* needle);
+int64_t __kai_std_str_index_of(const char* text, const char* needle);
+int64_t __kai_std_str_last_index_of(const char* text, const char* needle);
+int64_t __kai_std_str_count(const char* text, const char* needle);
+int64_t __kai_std_str_split_count(const char* text, const char* sep);
+const char* __kai_std_str_split(const char* text, const char* sep, int64_t part_index);
+bool __kai_std_str_eql_ignore_ascii_case(const char* left, const char* right);
+const char* __kai_std_str_trim_ascii(const char* text);
+const char* __kai_std_str_trim_start_ascii(const char* text);
+const char* __kai_std_str_trim_end_ascii(const char* text);
+int64_t __kai_std_str_field_count_ascii(const char* text);
+const char* __kai_std_str_field_ascii(const char* text, int64_t field_index);
+int64_t __kai_std_str_line_count(const char* text);
+const char* __kai_std_str_line(const char* text, int64_t line_index);
+int64_t __kai_std_str_word_count_ascii(const char* text);
 TokenType keyword_type(const char* ident);
 TokenValue make_keyword_value(const char* ident, TokenType ttype);
 Lexer Lexer_init(KaiAllocator* allocator, const char* source, const char* source_file);
@@ -1475,7 +1504,7 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
 void ImportResolver_resolve_all(ImportResolver* self, int64_t program_idx, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool);
 extern int64_t get_exe_dir(char* buf, int64_t max_len);
 extern char* strstr(const char* haystack, const char* needle);
-const char* __kai_std_str_concat_alloc(const char* left, const char* right);
+extern const char* concatAlloc(const char* left, const char* right);
 int64_t type_map_find(ArrayList_StrMapEntry* arr, const char* key);
 const char* type_map_get(ArrayList_StrMapEntry* arr, const char* key);
 void type_map_put(ArrayList_StrMapEntry* arr, const char* key, const char* value);
@@ -1550,7 +1579,7 @@ void CodegenBuilder_gen_else_chain(CodegenBuilder* self, int64_t else_idx);
 void CodegenBuilder_build_func_types(CodegenBuilder* self);
 void CodegenBuilder_emit_struct_body_with_deps(CodegenBuilder* self, int64_t stmt_idx, ArrayList_Str* emitted);
 const char* CodegenBuilder_generate(CodegenBuilder* self, int64_t top_stmt_idx);
-extern const char* __kai_std_str_concat_alloc(const char* left, const char* right);
+extern const char* concatAlloc(const char* left, const char* right);
 CCodeBuilder CCodeBuilder_init(KaiAllocator* allocator);
 void CCodeBuilder_clear(CCodeBuilder* self);
 void CCodeBuilder_emit_line(CCodeBuilder* self, const char* code);
@@ -1646,6 +1675,7 @@ int64_t run_init(int64_t argc, char** argv);
 extern int64_t get_exe_dir(char* buf, int64_t max_len);
 int64_t run_skills(int64_t argc, char** argv);
 int64_t run_explain(int64_t argc, char** argv);
+int64_t run_build(int64_t argc, char** argv);
 
 ArrayList_Token ArrayList_Token_init(KaiAllocator* allocator) {
     ArrayList_Token self = (ArrayList_Token){0};
@@ -3234,10 +3264,12 @@ void ArrayList_CDeclNode_deinit(ArrayList_CDeclNode* self) {
 }
 }
 int main(int argc, char** argv) {
+    (void)(concatAlloc("", ""));
     if (argc < 2LL) {
     printf("Usage: kai <command> [options]\n");
     printf("Commands:\n");
     printf("  init [path]     Create a new Kai project\n");
+    printf("  build [args]    Build the project using build.kai\n");
     printf("  check <file>    Type-check only (no code generation)\n");
     printf("  run <file>      Compile and run a .kai file\n");
     printf("  <file>          Compile and run (shorthand)\n");
@@ -3267,6 +3299,9 @@ int main(int argc, char** argv) {
 }
     if (strcmp(first_arg, "init") == 0LL) {
     return run_init(argc, argv);
+}
+    if (strcmp(first_arg, "build") == 0LL) {
+    return run_build(argc, argv);
 }
     if (strcmp(first_arg, "patch") == 0LL) {
     return run_patch(argc, argv);
@@ -3383,7 +3418,7 @@ int main(int argc, char** argv) {
     char* buf = (char*)(KaiAllocator_alloc(&(allocator), 1024LL, 1LL));
     if (get_exe_dir(buf, 1024LL) == 0LL) {
     exe_dir = (const char*)(buf);
-    exe_include_flag = __kai_std_str_concat_alloc("-I", exe_dir);
+    exe_include_flag = concatAlloc("-I", exe_dir);
 }
 }
     const char* base = get_base_name(input_file);
@@ -3391,9 +3426,9 @@ int main(int argc, char** argv) {
     if (strlen(output_bin) > 0LL) {
     bin_name = output_bin;
 }
-    const char* c_file = __kai_std_str_concat_alloc(base, ".c");
+    const char* c_file = concatAlloc(base, ".c");
     if (use_builder) {
-    c_file = __kai_std_str_concat_alloc("CC", c_file);
+    c_file = concatAlloc("CC", c_file);
 }
     Result_Str_IoError source_res = read_to_string(&(allocator), input_file);
     if (source_res.tag != 0LL) {
@@ -3449,7 +3484,7 @@ int main(int argc, char** argv) {
     if (emit_c_only) {
     return 0LL;
 }
-    const char* cmd = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("clang ", exe_include_flag), " "), opt_level), " "), c_file), " -o "), bin_name);
+    const char* cmd = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("clang ", exe_include_flag), " "), opt_level), " "), c_file), " -o "), bin_name);
     {
     return system((char*)(cmd));
 }
@@ -3739,6 +3774,434 @@ Result_Bool_IoError write_string(const char* path, const char* content) {
     fclose(file);
     return (Result_Bool_IoError){ .tag = 0, .value = true };
 }
+}
+const char* concatAlloc(const char* left, const char* right) {
+    int64_t left_len = strlen(left);
+    int64_t right_len = strlen(right);
+    int64_t total = ((left_len + right_len) + 1LL);
+    char* buf = malloc(total);
+    if (buf != (char*)(unsigned long long)(0LL)) {
+    (void)(__kai_std_str_concat(buf, left, right));
+    (buf)[(total - 1LL)] = ((char)(0LL));
+}
+    return (const char*)(buf);
+}
+bool __kai_std_str_is_ascii_space(char byte) {
+    return (((byte == ((char)(32LL))) || (byte == ((char)(9LL)))) || ((byte == ((char)(10LL))) || (byte == ((char)(13LL)))));
+}
+char __kai_std_str_to_lower_byte(char byte) {
+    if ((byte >= ((char)(65LL))) && (byte <= ((char)(90LL)))) {
+    return (byte + ((char)(32LL)));
+}
+    return byte;
+}
+char __kai_std_str_to_upper_byte(char byte) {
+    if ((byte >= ((char)(97LL))) && (byte <= ((char)(122LL)))) {
+    return (byte - ((char)(32LL)));
+}
+    return byte;
+}
+const char* __kai_std_str_copy(char* buffer, const char* text) {
+    int64_t len = strlen((const char*)(text));
+    if (len > 1000000LL) {
+    return NULL;
+}
+    int64_t index = 0LL;
+    while (index < len) {
+    (buffer)[index] = (text)[index];
+    index = (index + 1LL);
+}
+    return __kai_str_sub(buffer, 0, len);
+}
+const char* __kai_std_str_concat(char* buffer, const char* left, const char* right) {
+    int64_t left_len = strlen((const char*)(left));
+    int64_t right_len = strlen((const char*)(right));
+    if ((left_len > 1000000LL) || (right_len > (1000000LL - left_len))) {
+    return NULL;
+}
+    int64_t index = 0LL;
+    while (index < left_len) {
+    (buffer)[index] = (left)[index];
+    index = (index + 1LL);
+}
+    int64_t right_index = 0LL;
+    while (right_index < right_len) {
+    (buffer)[(left_len + right_index)] = (right)[right_index];
+    right_index = (right_index + 1LL);
+}
+    return __kai_str_sub(buffer, 0, (left_len + right_len));
+}
+const char* __kai_std_str_repeat(char* buffer, const char* text, int64_t count) {
+    int64_t len = strlen((const char*)(text));
+    if ((count > 0LL) && (len > (1000000LL / count))) {
+    return NULL;
+}
+    int64_t out = 0LL;
+    int64_t repetition = 0LL;
+    while (repetition < count) {
+    int64_t index = 0LL;
+    while (index < len) {
+    (buffer)[out] = (text)[index];
+    out = (out + 1LL);
+    index = (index + 1LL);
+}
+    repetition = (repetition + 1LL);
+}
+    return __kai_str_sub(buffer, 0, out);
+}
+const char* __kai_std_str_replace(char* buffer, const char* text, const char* old, const char* replacement) {
+    int64_t old_len = strlen((const char*)(old));
+    if (old_len == 0LL) {
+    return NULL;
+}
+    int64_t text_len = strlen((const char*)(text));
+    int64_t read = 0LL;
+    int64_t write = 0LL;
+    while (read < text_len) {
+    if ((old_len <= (text_len - read)) && __kai_std_str_starts_with(__kai_str_sub(text, read, strlen(text)), old)) {
+    if (strlen((const char*)(replacement)) > (1000000LL - write)) {
+    return NULL;
+}
+    int64_t new_index = 0LL;
+    while (new_index < strlen((const char*)(replacement))) {
+    (buffer)[write] = (replacement)[new_index];
+    write = (write + 1LL);
+    new_index = (new_index + 1LL);
+}
+    read = (read + old_len);
+} else {
+    if (write >= 1000000LL) {
+    return NULL;
+}
+    (buffer)[write] = (text)[read];
+    write = (write + 1LL);
+    read = (read + 1LL);
+}
+}
+    return __kai_str_sub(buffer, 0, write);
+}
+const char* __kai_std_str_to_lower_ascii(char* buffer, const char* text) {
+    int64_t len = strlen((const char*)(text));
+    if (len > 1000000LL) {
+    return NULL;
+}
+    int64_t index = 0LL;
+    while (index < len) {
+    (buffer)[index] = __kai_std_str_to_lower_byte((text)[index]);
+    index = (index + 1LL);
+}
+    return __kai_str_sub(buffer, 0, len);
+}
+const char* __kai_std_str_to_upper_ascii(char* buffer, const char* text) {
+    int64_t len = strlen((const char*)(text));
+    if (len > 1000000LL) {
+    return NULL;
+}
+    int64_t index = 0LL;
+    while (index < len) {
+    (buffer)[index] = __kai_std_str_to_upper_byte((text)[index]);
+    index = (index + 1LL);
+}
+    return __kai_str_sub(buffer, 0, len);
+}
+const char* __kai_std_str_reverse(char* buffer, const char* text) {
+    int64_t len = strlen((const char*)(text));
+    if (len > 1000000LL) {
+    return NULL;
+}
+    int64_t index = 0LL;
+    while (index < len) {
+    (buffer)[index] = (text)[((len - 1LL) - index)];
+    index = (index + 1LL);
+}
+    return __kai_str_sub(buffer, 0, len);
+}
+int64_t __kai_std_str_count_byte(const char* text, char byte) {
+    int64_t index = 0LL;
+    int64_t count = 0LL;
+    while (index < strlen((const char*)(text))) {
+    if ((text)[index] == byte) {
+    count = (count + 1LL);
+}
+    index = (index + 1LL);
+}
+    return count;
+}
+bool __kai_std_str_starts_with(const char* text, const char* prefix) {
+    int64_t prefix_len = strlen((const char*)(prefix));
+    if (prefix_len > strlen((const char*)(text))) {
+    return false;
+}
+    int64_t index = 0LL;
+    while (index < prefix_len) {
+    if ((text)[index] != (prefix)[index]) {
+    return false;
+}
+    index = (index + 1LL);
+}
+    return true;
+}
+bool __kai_std_str_ends_with(const char* text, const char* suffix) {
+    int64_t text_len = strlen((const char*)(text));
+    int64_t suffix_len = strlen((const char*)(suffix));
+    if (suffix_len > text_len) {
+    return false;
+}
+    int64_t start = (text_len - suffix_len);
+    int64_t index = 0LL;
+    while (index < suffix_len) {
+    if ((text)[(start + index)] != (suffix)[index]) {
+    return false;
+}
+    index = (index + 1LL);
+}
+    return true;
+}
+bool __kai_std_str_contains(const char* text, const char* needle) {
+    int64_t needle_len = strlen((const char*)(needle));
+    if (needle_len == 0LL) {
+    return true;
+}
+    int64_t text_len = strlen((const char*)(text));
+    if (needle_len > text_len) {
+    return false;
+}
+    int64_t last_start = (text_len - needle_len);
+    int64_t start = 0LL;
+    while (start <= last_start) {
+    int64_t offset = 0LL;
+    bool same = true;
+    while (same && (offset < needle_len)) {
+    if ((text)[(start + offset)] != (needle)[offset]) {
+    same = false;
+} else {
+    offset = (offset + 1LL);
+}
+}
+    if (same) {
+    return true;
+}
+    start = (start + 1LL);
+}
+    return false;
+}
+int64_t __kai_std_str_index_of(const char* text, const char* needle) {
+    int64_t needle_len = strlen((const char*)(needle));
+    if (needle_len == 0LL) {
+    return 0LL;
+}
+    int64_t text_len = strlen((const char*)(text));
+    if (needle_len > text_len) {
+    return text_len;
+}
+    int64_t last_start = (text_len - needle_len);
+    int64_t start = 0LL;
+    while (start <= last_start) {
+    int64_t offset = 0LL;
+    bool same = true;
+    while (same && (offset < needle_len)) {
+    if ((text)[(start + offset)] != (needle)[offset]) {
+    same = false;
+} else {
+    offset = (offset + 1LL);
+}
+}
+    if (same) {
+    return start;
+}
+    start = (start + 1LL);
+}
+    return text_len;
+}
+int64_t __kai_std_str_last_index_of(const char* text, const char* needle) {
+    int64_t needle_len = strlen((const char*)(needle));
+    int64_t text_len = strlen((const char*)(text));
+    if (needle_len == 0LL) {
+    return text_len;
+}
+    if (needle_len > text_len) {
+    return text_len;
+}
+    int64_t start = ((text_len - needle_len) + 1LL);
+    while (start > 0LL) {
+    start = (start - 1LL);
+    int64_t offset = 0LL;
+    bool same = true;
+    while (same && (offset < needle_len)) {
+    if ((text)[(start + offset)] != (needle)[offset]) {
+    same = false;
+} else {
+    offset = (offset + 1LL);
+}
+}
+    if (same) {
+    return start;
+}
+}
+    return text_len;
+}
+int64_t __kai_std_str_count(const char* text, const char* needle) {
+    int64_t needle_len = strlen((const char*)(needle));
+    if (needle_len == 0LL) {
+    return (strlen((const char*)(text)) + 1LL);
+}
+    int64_t index = 0LL;
+    int64_t count = 0LL;
+    while (index <= strlen((const char*)(text))) {
+    const char* rest = __kai_str_sub(text, index, strlen(text));
+    int64_t found = __kai_std_str_index_of(rest, needle);
+    if (found == strlen((const char*)(rest))) {
+    return count;
+}
+    count = (count + 1LL);
+    index = ((index + found) + needle_len);
+}
+    return count;
+}
+int64_t __kai_std_str_split_count(const char* text, const char* sep) {
+    if (strlen((const char*)(sep)) == 0LL) {
+    return 0LL;
+}
+    return (__kai_std_str_count(text, sep) + 1LL);
+}
+const char* __kai_std_str_split(const char* text, const char* sep, int64_t part_index) {
+    int64_t sep_len = strlen((const char*)(sep));
+    if (sep_len == 0LL) {
+    return NULL;
+}
+    int64_t current = 0LL;
+    int64_t start = 0LL;
+    while (start <= strlen((const char*)(text))) {
+    const char* rest = __kai_str_sub(text, start, strlen(text));
+    int64_t found = __kai_std_str_index_of(rest, sep);
+    int64_t end = (start + found);
+    if (current == part_index) {
+    return __kai_str_sub(text, start, end);
+}
+    if (found == strlen((const char*)(rest))) {
+    return NULL;
+}
+    current = (current + 1LL);
+    start = (end + sep_len);
+}
+    return NULL;
+}
+bool __kai_std_str_eql_ignore_ascii_case(const char* left, const char* right) {
+    if (strlen((const char*)(left)) != strlen((const char*)(right))) {
+    return false;
+}
+    int64_t index = 0LL;
+    while (index < strlen((const char*)(left))) {
+    if (__kai_std_str_to_lower_byte((left)[index]) != __kai_std_str_to_lower_byte((right)[index])) {
+    return false;
+}
+    index = (index + 1LL);
+}
+    return true;
+}
+const char* __kai_std_str_trim_ascii(const char* text) {
+    int64_t start = 0LL;
+    int64_t end = strlen((const char*)(text));
+    while ((start < end) && __kai_std_str_is_ascii_space((text)[start])) {
+    start = (start + 1LL);
+}
+    while ((end > start) && __kai_std_str_is_ascii_space((text)[(end - 1LL)])) {
+    end = (end - 1LL);
+}
+    return __kai_str_sub(text, start, end);
+}
+const char* __kai_std_str_trim_start_ascii(const char* text) {
+    int64_t start = 0LL;
+    while ((start < strlen((const char*)(text))) && __kai_std_str_is_ascii_space((text)[start])) {
+    start = (start + 1LL);
+}
+    return __kai_str_sub(text, start, strlen(text));
+}
+const char* __kai_std_str_trim_end_ascii(const char* text) {
+    int64_t end = strlen((const char*)(text));
+    while ((end > 0LL) && __kai_std_str_is_ascii_space((text)[(end - 1LL)])) {
+    end = (end - 1LL);
+}
+    return __kai_str_sub(text, 0, end);
+}
+int64_t __kai_std_str_field_count_ascii(const char* text) {
+    return __kai_std_str_word_count_ascii(text);
+}
+const char* __kai_std_str_field_ascii(const char* text, int64_t field_index) {
+    int64_t index = 0LL;
+    int64_t current = 0LL;
+    while (index < strlen((const char*)(text))) {
+    while ((index < strlen((const char*)(text))) && __kai_std_str_is_ascii_space((text)[index])) {
+    index = (index + 1LL);
+}
+    if (index >= strlen((const char*)(text))) {
+    return NULL;
+}
+    int64_t start = index;
+    while ((index < strlen((const char*)(text))) && (!__kai_std_str_is_ascii_space((text)[index]))) {
+    index = (index + 1LL);
+}
+    if (current == field_index) {
+    return __kai_str_sub(text, start, index);
+}
+    current = (current + 1LL);
+}
+    return NULL;
+}
+int64_t __kai_std_str_line_count(const char* text) {
+    if (strlen((const char*)(text)) == 0LL) {
+    return 0LL;
+}
+    int64_t count = 1LL;
+    int64_t index = 0LL;
+    while (index < strlen((const char*)(text))) {
+    if (((text)[index] == ((char)(10LL))) && ((index + 1LL) < strlen((const char*)(text)))) {
+    count = (count + 1LL);
+}
+    index = (index + 1LL);
+}
+    return count;
+}
+const char* __kai_std_str_line(const char* text, int64_t line_index) {
+    if (strlen((const char*)(text)) == 0LL) {
+    return NULL;
+}
+    int64_t current = 0LL;
+    int64_t start = 0LL;
+    int64_t index = 0LL;
+    while (index <= strlen((const char*)(text))) {
+    if ((index == strlen((const char*)(text))) || ((text)[index] == ((char)(10LL)))) {
+    if ((index == strlen((const char*)(text))) && (start == strlen((const char*)(text)))) {
+    return NULL;
+}
+    int64_t end = index;
+    if ((end > start) && ((text)[(end - 1LL)] == ((char)(13LL)))) {
+    end = (end - 1LL);
+}
+    if (current == line_index) {
+    return __kai_str_sub(text, start, end);
+}
+    current = (current + 1LL);
+    start = (index + 1LL);
+}
+    index = (index + 1LL);
+}
+    return NULL;
+}
+int64_t __kai_std_str_word_count_ascii(const char* text) {
+    int64_t index = 0LL;
+    int64_t count = 0LL;
+    bool in_word = false;
+    while (index < strlen((const char*)(text))) {
+    if (__kai_std_str_is_ascii_space((text)[index])) {
+    in_word = false;
+} else if (!in_word) {
+    count = (count + 1LL);
+    in_word = true;
+}
+    index = (index + 1LL);
+}
+    return count;
 }
 TokenType keyword_type(const char* ident) {
     if (strcmp(ident, "let") == 0) {
@@ -4265,7 +4728,7 @@ void Lexer_lex(Lexer* self) {
     Lexer_emit(self, TokenType_DOT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = "." } } });
 } else {
     (void)(Lexer_advance(self));
-    parser_err(self->source_file, self->source, "E0100", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("unexpected character '", char_to_str(c)), "'"), self->line, self->column);
+    parser_err(self->source_file, self->source, "E0100", concatAlloc(concatAlloc("unexpected character '", char_to_str(c)), "'"), self->line, self->column);
     self->has_error = true;
 }
 }
@@ -4524,7 +4987,7 @@ const char* str_array_join(ArrayList_Str arr, const char* sep) {
     const char* result = ArrayList_Str_get(&(arr), 0LL);
     int64_t i = 1LL;
     while (i < ArrayList_Str_length(&(arr))) {
-    result = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(result, sep), ArrayList_Str_get(&(arr), i));
+    result = concatAlloc(concatAlloc(result, sep), ArrayList_Str_get(&(arr), i));
     i = (i + 1LL);
 }
     return result;
@@ -4539,13 +5002,13 @@ void parser_err(const char* source_file, const char* source, const char* code, c
     int64_t ci = 0LL;
     while ((ci < col) && (ci < strlen(line_text))) {
     if ((line_text)[ci] == ((char)(9LL))) {
-    caret = __kai_std_str_concat_alloc(caret, "\t");
+    caret = concatAlloc(caret, "\t");
 } else {
-    caret = __kai_std_str_concat_alloc(caret, " ");
+    caret = concatAlloc(caret, " ");
 }
     ci = (ci + 1LL);
 }
-    caret = __kai_std_str_concat_alloc(caret, "^");
+    caret = concatAlloc(caret, "^");
     printf("%s\n", caret);
 }
 }
@@ -4637,7 +5100,7 @@ Token Parser_expect(Parser* self, TokenType ttype) {
     return Parser_advance(self);
 }
     {
-    parser_err(self->source_file, self->source, "E0101", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("expected token type ", int_to_str(((int64_t)(ttype)))), " but found "), int_to_str(((int64_t)(tok.tok_type)))), tok.line, tok.column);
+    parser_err(self->source_file, self->source, "E0101", concatAlloc(concatAlloc(concatAlloc("expected token type ", int_to_str(((int64_t)(ttype)))), " but found "), int_to_str(((int64_t)(tok.tok_type)))), tok.line, tok.column);
     exit(1LL);
 }
     return tok;
@@ -4895,7 +5358,7 @@ int64_t Parser_st_struct(Parser* self, const char* name, ArrayList_StructField f
     node.struct_trait_impls = impls;
     ArrayList_StmtNode_push(self->stmt_pool, node);
     StmtNode ctor = Parser_mk_stmt_node(self, StmtKind_sk_func_decl);
-    ctor.func_name = __kai_std_str_concat_alloc(name, "_new");
+    ctor.func_name = concatAlloc(name, "_new");
     ctor.func_params = ArrayList_Param_init(self->allocator);
     ctor.func_return_type = name;
     ctor.func_body = (-1LL);
@@ -5128,16 +5591,16 @@ const char* Parser_parse_type(Parser* self) {
     const char* base_type = Parser_parse_base_type(self);
     if (Parser_match_token(self, TokenType_NOT)) {
     const char* error_set = Parser_parse_type(self);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(base_type, "!"), error_set);
+    return concatAlloc(concatAlloc(base_type, "!"), error_set);
 }
     return base_type;
 }
 const char* Parser_parse_base_type(Parser* self) {
     if (Parser_match_token(self, TokenType_OWN)) {
     const char* inner = Parser_parse_type(self);
-    return __kai_std_str_concat_alloc("own ", inner);
+    return concatAlloc("own ", inner);
 } else if (Parser_match_token(self, TokenType_QUESTION)) {
-    return __kai_std_str_concat_alloc("?", Parser_parse_type(self));
+    return concatAlloc("?", Parser_parse_type(self));
 } else if (Parser_match_token(self, TokenType_AMP)) {
     bool is_mut = false;
     if (Parser_match_token(self, TokenType_MUT)) {
@@ -5145,9 +5608,9 @@ const char* Parser_parse_base_type(Parser* self) {
 }
     const char* inner = Parser_parse_type(self);
     if (is_mut) {
-    return __kai_std_str_concat_alloc("*mut ", inner);
+    return concatAlloc("*mut ", inner);
 }
-    return __kai_std_str_concat_alloc("*", inner);
+    return concatAlloc("*", inner);
 } else if (Parser_match_token(self, TokenType_MUL)) {
     bool is_mut = false;
     if (Parser_match_token(self, TokenType_MUT)) {
@@ -5155,12 +5618,12 @@ const char* Parser_parse_base_type(Parser* self) {
 }
     const char* inner = Parser_parse_type(self);
     if (is_mut) {
-    return __kai_std_str_concat_alloc("*mut ", inner);
+    return concatAlloc("*mut ", inner);
 }
-    return __kai_std_str_concat_alloc("*", inner);
+    return concatAlloc("*", inner);
 } else if (Parser_match_token(self, TokenType_LBRACKET)) {
     (void)(Parser_expect(self, TokenType_RBRACKET));
-    return __kai_std_str_concat_alloc("[]", Parser_parse_type(self));
+    return concatAlloc("[]", Parser_parse_type(self));
 } else if (Parser_match_token(self, TokenType_LPAREN)) {
     ArrayList_Str types = ArrayList_Str_init(self->allocator);
     if (Parser_peek(self, 0LL).tok_type != TokenType_RPAREN) {
@@ -5173,7 +5636,7 @@ const char* Parser_parse_base_type(Parser* self) {
 }
 }
     (void)(Parser_expect(self, TokenType_RPAREN));
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", str_array_join(types, ", ")), ")");
+    return concatAlloc(concatAlloc("(", str_array_join(types, ", ")), ")");
 } else {
     const char* name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value);
     if (Parser_peek(self, 0LL).tok_type == TokenType_LT) {
@@ -5187,7 +5650,7 @@ const char* Parser_parse_base_type(Parser* self) {
 }
 }
     (void)(Parser_expect(self, TokenType_GT));
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(name, "<"), str_array_join(type_args, ", ")), ">");
+    return concatAlloc(concatAlloc(concatAlloc(name, "<"), str_array_join(type_args, ", ")), ">");
 }
     return name;
 }
@@ -5200,7 +5663,7 @@ ArrayList_Str Parser_parse_generic_params(Parser* self) {
     while (!done) {
     const char* tp_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value);
     if (Parser_match_token(self, TokenType_COLON)) {
-    ArrayList_Str_push(&(type_params), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(tp_name, ":"), tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value)));
+    ArrayList_Str_push(&(type_params), concatAlloc(concatAlloc(tp_name, ":"), tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value)));
 } else {
     ArrayList_Str_push(&(type_params), tp_name);
 }
@@ -5801,10 +6264,10 @@ int64_t Parser_parse_expression(Parser* self, int64_t precedence) {
     if (left_node.kind == ExprKind_ek_identifier) {
     full_name = left_node.ident_name;
     if (ArrayList_Str_length(&(left_node.ident_type_args)) > 0LL) {
-    full_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(full_name, "<"), str_array_join(left_node.ident_type_args, ", ")), ">");
+    full_name = concatAlloc(concatAlloc(concatAlloc(full_name, "<"), str_array_join(left_node.ident_type_args, ", ")), ">");
 }
 }
-    left = Parser_ex_struct_init(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(full_name, "."), member_name), fields);
+    left = Parser_ex_struct_init(self, concatAlloc(concatAlloc(full_name, "."), member_name), fields);
 } else {
     ArrayList_Int args = ArrayList_Int_init(self->allocator);
     if (Parser_peek(self, 0LL).tok_type != TokenType_RPAREN) {
@@ -6054,7 +6517,7 @@ int64_t Parser_parse_primary(Parser* self) {
     cj = (cj + 1LL);
 }
     const char* type_args_str = str_array_join(sa_type_args, ", ");
-    return Parser_ex_struct_init(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ident, "<"), type_args_str), ">"), fields);
+    return Parser_ex_struct_init(self, concatAlloc(concatAlloc(concatAlloc(ident, "<"), type_args_str), ">"), fields);
 }
     ArrayList_Int args = ArrayList_Int_init(self->allocator);
     if (Parser_peek(self, 0LL).tok_type != TokenType_RPAREN) {
@@ -6169,7 +6632,7 @@ int64_t Parser_parse_primary(Parser* self) {
     return first;
 } else {
     {
-    parser_err(self->source_file, self->source, "E0101", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("unexpected token (type: ", int_to_str(((int64_t)(tok.tok_type)))), ")"), tok.line, tok.column);
+    parser_err(self->source_file, self->source, "E0101", concatAlloc(concatAlloc("unexpected token (type: ", int_to_str(((int64_t)(tok.tok_type)))), ")"), tok.line, tok.column);
     exit(1LL);
 }
     return (-1LL);
@@ -6300,10 +6763,10 @@ const char* str_replace(const char* s, const char* old, const char* new_val) {
     j = (j + 1LL);
 }
     if (matched) {
-    result = __kai_std_str_concat_alloc(result, new_val);
+    result = concatAlloc(result, new_val);
     i = (i + old_len);
 } else {
-    result = __kai_std_str_concat_alloc(result, substring(s, i, (i + 1LL)));
+    result = concatAlloc(result, substring(s, i, (i + 1LL)));
     i = (i + 1LL);
 }
 }
@@ -6407,13 +6870,13 @@ void TypeChecker_err(TypeChecker* self, const char* code, const char* msg, int64
     int64_t ci = 0LL;
     while ((ci < col) && (ci < strlen(line_text))) {
     if ((line_text)[ci] == ((char)(9LL))) {
-    caret = __kai_std_str_concat_alloc(caret, "\t");
+    caret = concatAlloc(caret, "\t");
 } else {
-    caret = __kai_std_str_concat_alloc(caret, " ");
+    caret = concatAlloc(caret, " ");
 }
     ci = (ci + 1LL);
 }
-    caret = __kai_std_str_concat_alloc(caret, "^");
+    caret = concatAlloc(caret, "^");
     printf("%s\n", caret);
 }
 }
@@ -6565,7 +7028,7 @@ bool TypeChecker_check_program(TypeChecker* self, int64_t top_stmt_idx) {
     if (!ArrayList_Bool_get(&(self->import_used), ui)) {
     int64_t line = ArrayList_Int_get(&(self->import_lines), ui);
     int64_t col = ArrayList_Int_get(&(self->import_cols), ui);
-    TypeChecker_err(self, "E0033", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("unused import: '", ArrayList_Str_get(&(self->imported_names), ui)), "'"), line, col);
+    TypeChecker_err(self, "E0033", concatAlloc(concatAlloc("unused import: '", ArrayList_Str_get(&(self->imported_names), ui)), "'"), line, col);
 }
     ui = (ui + 1LL);
 }
@@ -7067,7 +7530,7 @@ int64_t TypeChecker_find_method_decl(TypeChecker* self, const char* struct_name,
     while (i < strlen(clean_struct)) {
     char c = (clean_struct)[i];
     if ((c != ((char)(42LL))) && (c != ((char)(38LL)))) {
-    clean = __kai_std_str_concat_alloc(clean, char_to_str(c));
+    clean = concatAlloc(clean, char_to_str(c));
 }
     i = (i + 1LL);
 }
@@ -7200,11 +7663,11 @@ void TypeChecker_mark_expr_freed(TypeChecker* self, int64_t expr_idx) {
     Symbol sym = SymbolTable_lookup_symbol(&(table), expr.ident_name, &(self->symbol_tables));
     if (strlen(sym.name) > 0LL) {
     if (sym.freed) {
-    TypeChecker_err(self, "E0032", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("double-free: '", expr.ident_name), "' is already freed"), expr.line, expr.col);
+    TypeChecker_err(self, "E0032", concatAlloc(concatAlloc("double-free: '", expr.ident_name), "' is already freed"), expr.line, expr.col);
     return;
 }
     if (sym.moved) {
-    TypeChecker_err(self, "E0009", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("use of moved value: '", expr.ident_name), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0009", concatAlloc(concatAlloc("use of moved value: '", expr.ident_name), "'"), expr.line, expr.col);
     return;
 }
     SymbolTable_mark_freed(&(table), expr.ident_name, &(self->symbol_tables));
@@ -7365,9 +7828,9 @@ const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx) {
 }
     if (is_struct) {
     if (ArrayList_Str_length(&(expr.func_type_args)) > 0LL) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("*", name), "<"), str_array_join(expr.func_type_args, ", ")), ">");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("*", name), "<"), str_array_join(expr.func_type_args, ", ")), ">");
 }
-    return __kai_std_str_concat_alloc("*", name);
+    return concatAlloc("*", name);
 }
     int64_t func_idx = TypeChecker_find_func_decl(self, name);
     if (func_idx >= 0LL) {
@@ -7458,7 +7921,7 @@ const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx) {
     while (i < strlen(base_type)) {
     char c = (base_type)[i];
     if ((c != ((char)(42LL))) && (c != ((char)(38LL)))) {
-    clean_type = __kai_std_str_concat_alloc(clean_type, char_to_str(c));
+    clean_type = concatAlloc(clean_type, char_to_str(c));
 }
     i = (i + 1LL);
 }
@@ -7503,9 +7966,9 @@ const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx) {
     if (expr.kind == ExprKind_ek_borrow) {
     const char* base_type = TypeChecker_get_expr_type(self, expr.borrow_expr);
     if (TypeChecker_expr_is_mutable(self, expr.borrow_expr)) {
-    return __kai_std_str_concat_alloc("*mut ", base_type);
+    return concatAlloc("*mut ", base_type);
 }
-    return __kai_std_str_concat_alloc("*", base_type);
+    return concatAlloc("*", base_type);
 }
     if (expr.kind == ExprKind_ek_deref) {
     const char* base_type = TypeChecker_get_expr_type(self, expr.deref_expr);
@@ -7530,7 +7993,7 @@ const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx) {
     while (i < strlen(recv_type)) {
     char c = (recv_type)[i];
     if ((c != ((char)(42LL))) && (c != ((char)(38LL)))) {
-    clean = __kai_std_str_concat_alloc(clean, char_to_str(c));
+    clean = concatAlloc(clean, char_to_str(c));
 }
     i = (i + 1LL);
 }
@@ -7625,7 +8088,7 @@ const char* TypeChecker_get_expr_type(TypeChecker* self, int64_t expr_idx) {
     ArrayList_Str_push(&(types), TypeChecker_get_expr_type(self, ArrayList_Int_get(&(expr.tup_elements), i)));
     i = (i + 1LL);
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", str_array_join(types, ", ")), ")");
+    return concatAlloc(concatAlloc("(", str_array_join(types, ", ")), ")");
 }
     return "Void";
 }
@@ -7690,12 +8153,12 @@ void TypeChecker_check_identifier(TypeChecker* self, int64_t expr_idx) {
     Symbol sym = SymbolTable_lookup_symbol(&(table), name, &(self->symbol_tables));
     if (strlen(sym.name) > 0LL) {
     if (sym.freed) {
-    TypeChecker_err(self, "E0031", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("use of freed value: '", name), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0031", concatAlloc(concatAlloc("use of freed value: '", name), "'"), expr.line, expr.col);
 } else if (sym.moved) {
-    TypeChecker_err(self, "E0009", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("use of moved value: '", name), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0009", concatAlloc(concatAlloc("use of moved value: '", name), "'"), expr.line, expr.col);
 }
 } else if (((!TypeChecker_is_enum_or_error_type(self, name)) && (!TypeChecker_is_builtin_type(self, name))) && (!TypeChecker_is_imported_name(self, name))) {
-    TypeChecker_err(self, "E0019", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined identifier: '", name), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0019", concatAlloc(concatAlloc("undefined identifier: '", name), "'"), expr.line, expr.col);
 }
     if (TypeChecker_is_imported_name(self, name)) {
     TypeChecker_mark_import_used(self, name);
@@ -7705,14 +8168,14 @@ void TypeChecker_check_field_access(TypeChecker* self, int64_t expr_idx) {
     ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
     const char* recv_type = TypeChecker_get_expr_type(self, expr.field_expr);
     if ((strlen(recv_type) > 0LL) && ((recv_type)[0LL] == ((char)(63LL)))) {
-    TypeChecker_err(self, "E0011", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot access field '", expr.field_name), "' on optional type '"), recv_type), "'. unwrap it first"), expr.line, expr.col);
+    TypeChecker_err(self, "E0011", concatAlloc(concatAlloc(concatAlloc(concatAlloc("cannot access field '", expr.field_name), "' on optional type '"), recv_type), "'. unwrap it first"), expr.line, expr.col);
 }
 }
 void TypeChecker_check_method_call(TypeChecker* self, int64_t expr_idx) {
     ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
     const char* recv_type = TypeChecker_get_expr_type(self, expr.meth_expr);
     if ((strlen(recv_type) > 0LL) && ((recv_type)[0LL] == ((char)(63LL)))) {
-    TypeChecker_err(self, "E0012", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot call method '", expr.meth_name), "' on optional type '"), recv_type), "'. unwrap it first"), expr.line, expr.col);
+    TypeChecker_err(self, "E0012", concatAlloc(concatAlloc(concatAlloc(concatAlloc("cannot call method '", expr.meth_name), "' on optional type '"), recv_type), "'. unwrap it first"), expr.line, expr.col);
 }
 }
 void TypeChecker_check_return_stmt(TypeChecker* self, int64_t stmt_idx) {
@@ -7727,7 +8190,7 @@ void TypeChecker_check_return_stmt(TypeChecker* self, int64_t stmt_idx) {
     SymbolTable table = ArrayList_SymbolTable_get(&(self->symbol_tables), self->current_table_idx);
     Symbol sym = SymbolTable_lookup_symbol(&(table), name, &(self->symbol_tables));
     if ((strcmp(sym.kind, "var") == 0) || (strcmp(sym.kind, "param") == 0)) {
-    TypeChecker_err(self, "E0010", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot return reference to local variable '", name), "'"), stmt.line, stmt.col);
+    TypeChecker_err(self, "E0010", concatAlloc(concatAlloc("cannot return reference to local variable '", name), "'"), stmt.line, stmt.col);
 }
 }
 }
@@ -7738,7 +8201,7 @@ void TypeChecker_check_return_stmt(TypeChecker* self, int64_t stmt_idx) {
     const char* expected_ret = self->current_func_ret_type;
     if ((strlen(expected_ret) > 0LL) && (strcmp(expected_ret, "<infer>") != 0)) {
     if (!TypeChecker_types_compatible(self, expected_ret, val_type)) {
-    TypeChecker_err(self, "E0007", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return type mismatch: expected '", expected_ret), "', got '"), val_type), "'"), stmt.line, stmt.col);
+    TypeChecker_err(self, "E0007", concatAlloc(concatAlloc(concatAlloc(concatAlloc("return type mismatch: expected '", expected_ret), "', got '"), val_type), "'"), stmt.line, stmt.col);
 }
 }
 }
@@ -7804,10 +8267,10 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     ExprNode val_expr = ArrayList_ExprNode_get(self->expr_pool, stmt.vardecl_value);
     int64_t v = TypeChecker_int_literal_value(self, val_expr);
     if (!TypeChecker_fits_in_type(self, v, var_type)) {
-    TypeChecker_err(self, "E0030", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("integer literal ", int_to_str(v)), " does not fit in type '"), var_type), "'"), stmt.line, stmt.col);
+    TypeChecker_err(self, "E0030", concatAlloc(concatAlloc(concatAlloc(concatAlloc("integer literal ", int_to_str(v)), " does not fit in type '"), var_type), "'"), stmt.line, stmt.col);
 }
 } else if (!TypeChecker_types_compatible(self, var_type, val_type)) {
-    TypeChecker_err(self, "E0001", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("type mismatch in declaration of '", stmt.vardecl_name), "': expected '"), var_type), "', got '"), val_type), "'"), stmt.line, stmt.col);
+    TypeChecker_err(self, "E0001", concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("type mismatch in declaration of '", stmt.vardecl_name), "': expected '"), var_type), "', got '"), val_type), "'"), stmt.line, stmt.col);
 }
     TypeChecker_define_symbol(self, stmt.vardecl_name, var_type, stmt.vardecl_mut, "var");
     if ((stmt.vardecl_value >= 0LL) && (!TypeChecker_is_copy_type(self, var_type))) {
@@ -7878,9 +8341,9 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     Symbol sym = SymbolTable_lookup_symbol(&(table), target_expr.ident_name, &(self->symbol_tables));
     if (strlen(sym.name) > 0LL) {
     if (sym.freed) {
-    TypeChecker_err(self, "E0031", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot assign to freed variable '", target_expr.ident_name), "'"), target_expr.line, target_expr.col);
+    TypeChecker_err(self, "E0031", concatAlloc(concatAlloc("cannot assign to freed variable '", target_expr.ident_name), "'"), target_expr.line, target_expr.col);
 } else if (!sym.is_mutable) {
-    TypeChecker_err(self, "E0008", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot assign to immutable variable '", target_expr.ident_name), "'"), target_expr.line, target_expr.col);
+    TypeChecker_err(self, "E0008", concatAlloc(concatAlloc("cannot assign to immutable variable '", target_expr.ident_name), "'"), target_expr.line, target_expr.col);
 }
 }
 }
@@ -7890,7 +8353,7 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     ExprNode val_expr = ArrayList_ExprNode_get(self->expr_pool, stmt.assign_value);
     int64_t v = TypeChecker_int_literal_value(self, val_expr);
     if (!TypeChecker_fits_in_type(self, v, target_type)) {
-    TypeChecker_err(self, "E0030", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("integer literal ", int_to_str(v)), " does not fit in type '"), target_type), "'"), stmt.line, stmt.col);
+    TypeChecker_err(self, "E0030", concatAlloc(concatAlloc(concatAlloc(concatAlloc("integer literal ", int_to_str(v)), " does not fit in type '"), target_type), "'"), stmt.line, stmt.col);
 }
 } else if (!TypeChecker_types_compatible(self, target_type, val_type)) {
     const char* target_name = "<non-ident>";
@@ -7900,7 +8363,7 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     target_name = target_expr.ident_name;
 }
 }
-    TypeChecker_err(self, "E0002", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("type mismatch in assignment to '", target_name), "': expected '"), target_type), "', got '"), val_type), "'"), stmt.line, stmt.col);
+    TypeChecker_err(self, "E0002", concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("type mismatch in assignment to '", target_name), "': expected '"), target_type), "', got '"), val_type), "'"), stmt.line, stmt.col);
 }
     TypeChecker_mark_expr_moved(self, stmt.assign_value);
     return;
@@ -7948,7 +8411,7 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     TypeChecker_check_expr(self, stmt.if_cond);
     const char* cond_type = TypeChecker_get_expr_type(self, stmt.if_cond);
     if ((strcmp(cond_type, "Bool") != 0) && (strcmp(cond_type, "Void") != 0)) {
-    TypeChecker_err(self, "E0024", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if condition must be Bool, got '", cond_type), "'"), stmt.line, stmt.col);
+    TypeChecker_err(self, "E0024", concatAlloc(concatAlloc("if condition must be Bool, got '", cond_type), "'"), stmt.line, stmt.col);
 }
     ArrayList_SymTrackState snapshot = TypeChecker_capture_tracking_state(self);
     TypeChecker_check_stmt(self, stmt.if_then);
@@ -7990,7 +8453,7 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     TypeChecker_check_expr(self, stmt.while_cond);
     const char* cond_type = TypeChecker_get_expr_type(self, stmt.while_cond);
     if ((strcmp(cond_type, "Bool") != 0) && (strcmp(cond_type, "Void") != 0)) {
-    TypeChecker_err(self, "E0024", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("while condition must be Bool, got '", cond_type), "'"), stmt.line, stmt.col);
+    TypeChecker_err(self, "E0024", concatAlloc(concatAlloc("while condition must be Bool, got '", cond_type), "'"), stmt.line, stmt.col);
 }
     self->loop_depth = (self->loop_depth + 1LL);
     TypeChecker_check_stmt(self, stmt.while_body);
@@ -8057,7 +8520,7 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     while (i < ArrayList_Int_length(&(stmt.impl_methods))) {
     int64_t m_idx = ArrayList_Int_get(&(stmt.impl_methods), i);
     StmtNode m = ArrayList_StmtNode_get(self->stmt_pool, m_idx);
-    const char* mangled_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(stmt.impl_struct_name, "_"), m.func_name);
+    const char* mangled_name = concatAlloc(concatAlloc(stmt.impl_struct_name, "_"), m.func_name);
     TypeChecker_define_symbol(self, mangled_name, m.func_return_type, false, "func");
     const char* old_ret = self->current_func_ret_type;
     self->current_func_ret_type = m.func_return_type;
@@ -8167,35 +8630,35 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     const char* op = expr.binop_op;
     if (strcmp(op, "+") == 0) {
     if (((!TypeChecker_is_numeric_type(self, left_type)) && (strcmp(left_type, "Str") != 0)) && (strcmp(left_type, "Void") != 0)) {
-    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '+' must be numeric or Str, got '", left_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0025", concatAlloc(concatAlloc("left operand of '+' must be numeric or Str, got '", left_type), "'"), expr.line, expr.col);
 }
     if (((!TypeChecker_is_numeric_type(self, right_type)) && (strcmp(right_type, "Str") != 0)) && (strcmp(right_type, "Void") != 0)) {
-    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '+' must be numeric or Str, got '", right_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0025", concatAlloc(concatAlloc("right operand of '+' must be numeric or Str, got '", right_type), "'"), expr.line, expr.col);
 }
 } else if ((((strcmp(op, "-") == 0) || (strcmp(op, "*") == 0)) || (strcmp(op, "/") == 0)) || (strcmp(op, "%") == 0)) {
     if ((!TypeChecker_is_numeric_type(self, left_type)) && (strcmp(left_type, "Void") != 0)) {
-    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '", op), "' must be numeric, got '"), left_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0025", concatAlloc(concatAlloc(concatAlloc(concatAlloc("left operand of '", op), "' must be numeric, got '"), left_type), "'"), expr.line, expr.col);
 }
     if ((!TypeChecker_is_numeric_type(self, right_type)) && (strcmp(right_type, "Void") != 0)) {
-    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '", op), "' must be numeric, got '"), right_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0025", concatAlloc(concatAlloc(concatAlloc(concatAlloc("right operand of '", op), "' must be numeric, got '"), right_type), "'"), expr.line, expr.col);
 }
 } else if ((strcmp(op, "&&") == 0) || (strcmp(op, "||") == 0)) {
     if ((strcmp(left_type, "Bool") != 0) && (strcmp(left_type, "Void") != 0)) {
-    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '", op), "' must be Bool, got '"), left_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0025", concatAlloc(concatAlloc(concatAlloc(concatAlloc("left operand of '", op), "' must be Bool, got '"), left_type), "'"), expr.line, expr.col);
 }
     if ((strcmp(right_type, "Bool") != 0) && (strcmp(right_type, "Void") != 0)) {
-    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '", op), "' must be Bool, got '"), right_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0025", concatAlloc(concatAlloc(concatAlloc(concatAlloc("right operand of '", op), "' must be Bool, got '"), right_type), "'"), expr.line, expr.col);
 }
 } else if (((((strcmp(op, "|") == 0) || (strcmp(op, "^") == 0)) || (strcmp(op, "&") == 0)) || (strcmp(op, "<<") == 0)) || (strcmp(op, ">>") == 0)) {
     if ((!TypeChecker_is_integer_type(self, left_type)) && (strcmp(left_type, "Void") != 0)) {
-    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("left operand of '", op), "' must be an integer type, got '"), left_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0025", concatAlloc(concatAlloc(concatAlloc(concatAlloc("left operand of '", op), "' must be an integer type, got '"), left_type), "'"), expr.line, expr.col);
 }
     if ((!TypeChecker_is_integer_type(self, right_type)) && (strcmp(right_type, "Void") != 0)) {
-    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("right operand of '", op), "' must be an integer type, got '"), right_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0025", concatAlloc(concatAlloc(concatAlloc(concatAlloc("right operand of '", op), "' must be an integer type, got '"), right_type), "'"), expr.line, expr.col);
 }
 } else if ((((((strcmp(op, "==") == 0) || (strcmp(op, "!=") == 0)) || (strcmp(op, "<") == 0)) || (strcmp(op, ">") == 0)) || (strcmp(op, "<=") == 0)) || (strcmp(op, ">=") == 0)) {
     if (((strcmp(left_type, "Void") != 0) && (strcmp(right_type, "Void") != 0)) && (!TypeChecker_types_compatible(self, left_type, right_type))) {
-    TypeChecker_err(self, "E0025", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("type mismatch in comparison: '", left_type), "' and '"), right_type), "' are not compatible"), expr.line, expr.col);
+    TypeChecker_err(self, "E0025", concatAlloc(concatAlloc(concatAlloc(concatAlloc("type mismatch in comparison: '", left_type), "' and '"), right_type), "' are not compatible"), expr.line, expr.col);
 }
 }
     return;
@@ -8206,15 +8669,15 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     const char* binop = expr.unop_op;
     if (strcmp(binop, "!") == 0) {
     if ((strcmp(operand_type, "Bool") != 0) && (strcmp(operand_type, "Void") != 0)) {
-    TypeChecker_err(self, "E0026", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("operand of '!' must be Bool, got '", operand_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0026", concatAlloc(concatAlloc("operand of '!' must be Bool, got '", operand_type), "'"), expr.line, expr.col);
 }
 } else if (strcmp(binop, "-") == 0) {
     if ((!TypeChecker_is_numeric_type(self, operand_type)) && (strcmp(operand_type, "Void") != 0)) {
-    TypeChecker_err(self, "E0026", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("operand of negation must be numeric, got '", operand_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0026", concatAlloc(concatAlloc("operand of negation must be numeric, got '", operand_type), "'"), expr.line, expr.col);
 }
 } else if (strcmp(binop, "~") == 0) {
     if ((!TypeChecker_is_integer_type(self, operand_type)) && (strcmp(operand_type, "Void") != 0)) {
-    TypeChecker_err(self, "E0026", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("operand of '~' must be an integer type, got '", operand_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0026", concatAlloc(concatAlloc("operand of '~' must be an integer type, got '", operand_type), "'"), expr.line, expr.col);
 }
 }
     return;
@@ -8293,7 +8756,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     type_params = empty_str_array();
 }
     if (ArrayList_Param_length(&(params)) != ArrayList_Int_length(&(expr.func_args))) {
-    TypeChecker_err(self, "E0005", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("argument count mismatch for function '", name), "': expected "), int_to_str(ArrayList_Param_length(&(params)))), ", got "), int_to_str(ArrayList_Int_length(&(expr.func_args)))), expr.line, expr.col);
+    TypeChecker_err(self, "E0005", concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("argument count mismatch for function '", name), "': expected "), int_to_str(ArrayList_Param_length(&(params)))), ", got "), int_to_str(ArrayList_Int_length(&(expr.func_args)))), expr.line, expr.col);
 } else {
     if (ArrayList_Str_length(&(type_params)) > 0LL) {
     return;
@@ -8309,10 +8772,10 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (TypeChecker_is_integer_type(self, ptype) && TypeChecker_is_integer_literal(self, arg)) {
     int64_t v = TypeChecker_int_literal_value(self, ArrayList_ExprNode_get(self->expr_pool, arg));
     if (!TypeChecker_fits_in_type(self, v, ptype)) {
-    TypeChecker_err(self, "E0030", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("integer literal ", int_to_str(v)), " does not fit in type '"), ptype), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0030", concatAlloc(concatAlloc(concatAlloc(concatAlloc("integer literal ", int_to_str(v)), " does not fit in type '"), ptype), "'"), expr.line, expr.col);
 }
 } else {
-    TypeChecker_err(self, "E0003", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("argument type mismatch for function '", name), "', parameter '"), param.name), "': expected '"), ptype), "', got '"), arg_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0003", concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("argument type mismatch for function '", name), "', parameter '"), param.name), "': expected '"), ptype), "', got '"), arg_type), "'"), expr.line, expr.col);
 }
 }
     arg_i = (arg_i + 1LL);
@@ -8321,7 +8784,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
 } else if ((!TypeChecker_is_imported_name(self, name)) && (!TypeChecker_is_standard_c_func(self, name))) {
     if (TypeChecker_is_builtin_type(self, name) || TypeChecker_is_struct_type(self, name)) {
 } else {
-    TypeChecker_err(self, "E0020", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined function: '", name), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0020", concatAlloc(concatAlloc("undefined function: '", name), "'"), expr.line, expr.col);
 }
 }
     if (TypeChecker_is_imported_name(self, name)) {
@@ -8363,7 +8826,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (meth_idx >= 0LL) {
     StmtNode decl = ArrayList_StmtNode_get(self->stmt_pool, meth_idx);
     if (ArrayList_Param_length(&(decl.func_params)) != (ArrayList_Int_length(&(expr.meth_args)) + 1LL)) {
-    TypeChecker_err(self, "E0006", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("argument count mismatch for method '", meth_name), "': expected "), int_to_str((ArrayList_Param_length(&(decl.func_params)) - 1LL))), ", got "), int_to_str(ArrayList_Int_length(&(expr.meth_args)))), expr.line, expr.col);
+    TypeChecker_err(self, "E0006", concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("argument count mismatch for method '", meth_name), "': expected "), int_to_str((ArrayList_Param_length(&(decl.func_params)) - 1LL))), ", got "), int_to_str(ArrayList_Int_length(&(expr.meth_args)))), expr.line, expr.col);
 } else {
     int64_t arg_i = 0LL;
     while (arg_i < ArrayList_Int_length(&(expr.meth_args))) {
@@ -8374,17 +8837,17 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (TypeChecker_is_integer_type(self, param.ptype) && TypeChecker_is_integer_literal(self, arg)) {
     int64_t v = TypeChecker_int_literal_value(self, ArrayList_ExprNode_get(self->expr_pool, arg));
     if (!TypeChecker_fits_in_type(self, v, param.ptype)) {
-    TypeChecker_err(self, "E0030", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("integer literal ", int_to_str(v)), " does not fit in type '"), param.ptype), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0030", concatAlloc(concatAlloc(concatAlloc(concatAlloc("integer literal ", int_to_str(v)), " does not fit in type '"), param.ptype), "'"), expr.line, expr.col);
 }
 } else {
-    TypeChecker_err(self, "E0003", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("argument type mismatch for method '", meth_name), "', parameter '"), param.name), "': expected '"), param.ptype), "', got '"), arg_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0003", concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("argument type mismatch for method '", meth_name), "', parameter '"), param.name), "': expected '"), param.ptype), "', got '"), arg_type), "'"), expr.line, expr.col);
 }
 }
     arg_i = (arg_i + 1LL);
 }
 }
 } else if ((strcmp(recv_type, "Void") != 0) && (!TypeChecker_is_imported_name(self, meth_name))) {
-    TypeChecker_err(self, "E0022", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined method: '", meth_name), "' for type '"), recv_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0022", concatAlloc(concatAlloc(concatAlloc(concatAlloc("undefined method: '", meth_name), "' for type '"), recv_type), "'"), expr.line, expr.col);
 }
     if (TypeChecker_is_imported_name(self, meth_name)) {
     TypeChecker_mark_import_used(self, meth_name);
@@ -8396,13 +8859,13 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     TypeChecker_check_expr(self, expr.idx_index);
     const char* index_type = TypeChecker_get_expr_type(self, expr.idx_index);
     if ((strcmp(index_type, "Int") != 0) && (strcmp(index_type, "Void") != 0)) {
-    TypeChecker_err(self, "E0027", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("index must be Int, got '", index_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0027", concatAlloc(concatAlloc("index must be Int, got '", index_type), "'"), expr.line, expr.col);
 }
     const char* base_type = TypeChecker_get_expr_type(self, expr.idx_expr);
     if ((strcmp(base_type, "Str") != 0) && (strcmp(base_type, "Void") != 0)) {
     if ((strlen(base_type) == 0LL) || (((base_type)[0LL] != ((char)(42LL))) && ((base_type)[0LL] != ((char)(38LL))))) {
     if (!((strlen(base_type) >= 2LL) && (strcmp(__kai_str_sub(base_type, 0LL, 2LL), "[]") == 0))) {
-    TypeChecker_err(self, "E0028", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("type '", base_type), "' is not indexable"), expr.line, expr.col);
+    TypeChecker_err(self, "E0028", concatAlloc(concatAlloc("type '", base_type), "' is not indexable"), expr.line, expr.col);
 }
 }
 }
@@ -8443,7 +8906,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     int64_t struct_idx = TypeChecker_find_struct_decl(self, struct_name);
     if (struct_idx < 0LL) {
     if (!TypeChecker_is_imported_name(self, struct_name)) {
-    TypeChecker_err(self, "E0021", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("undefined struct: '", struct_name), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0021", concatAlloc(concatAlloc("undefined struct: '", struct_name), "'"), expr.line, expr.col);
 }
     return;
 }
@@ -8462,13 +8925,13 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     found = true;
     const char* val_type = TypeChecker_get_expr_type(self, f.value);
     if (!TypeChecker_types_compatible(self, df.ftype, val_type)) {
-    TypeChecker_err(self, "E0004", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("type mismatch in initializer for field '", f.name), "' of struct '"), struct_name), "': expected '"), df.ftype), "', got '"), val_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0004", concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("type mismatch in initializer for field '", f.name), "' of struct '"), struct_name), "': expected '"), df.ftype), "', got '"), val_type), "'"), expr.line, expr.col);
 }
 }
     dfi = (dfi + 1LL);
 }
     if (!found) {
-    TypeChecker_err(self, "E0013", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("field '", f.name), "' does not exist in struct '"), struct_name), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0013", concatAlloc(concatAlloc(concatAlloc(concatAlloc("field '", f.name), "' does not exist in struct '"), struct_name), "'"), expr.line, expr.col);
 }
     fi = (fi + 1LL);
 }
@@ -8489,7 +8952,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1LL);
 }
     if (excl_pos < 0LL) {
-    TypeChecker_err(self, "E0014", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot use 'try' on non-error-union type '", inner_ty), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0014", concatAlloc(concatAlloc("cannot use 'try' on non-error-union type '", inner_ty), "'"), expr.line, expr.col);
 } else {
     const char* error_set = substring(inner_ty, (excl_pos + 1LL), strlen(inner_ty));
     const char* expected_ret = self->current_func_ret_type;
@@ -8502,11 +8965,11 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1LL);
 }
     if (func_excl < 0LL) {
-    TypeChecker_err(self, "E0015", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot use 'try' in a function that returns non-error-union type '", expected_ret), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0015", concatAlloc(concatAlloc("cannot use 'try' in a function that returns non-error-union type '", expected_ret), "'"), expr.line, expr.col);
 } else {
     const char* func_err = substring(expected_ret, (func_excl + 1LL), strlen(expected_ret));
     if (!TypeChecker_types_compatible(self, func_err, error_set)) {
-    TypeChecker_err(self, "E0016", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("error set '", error_set), "' of try expression is not compatible with function error set '"), func_err), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0016", concatAlloc(concatAlloc(concatAlloc(concatAlloc("error set '", error_set), "' of try expression is not compatible with function error set '"), func_err), "'"), expr.line, expr.col);
 }
 }
 }
@@ -8534,7 +8997,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     TypeChecker_exit_scope(self);
     const char* fallback_yields = TypeChecker_get_block_yield_type(self, expr.catch_fallback);
     if (!TypeChecker_types_compatible(self, val_type, fallback_yields)) {
-    TypeChecker_err(self, "E0018", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("catch fallback type '", fallback_yields), "' is not compatible with expected type '"), val_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0018", concatAlloc(concatAlloc(concatAlloc(concatAlloc("catch fallback type '", fallback_yields), "' is not compatible with expected type '"), val_type), "'"), expr.line, expr.col);
 }
     return;
 }
@@ -8547,7 +9010,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     i = (i + 1LL);
 }
     if (excl_pos < 0LL) {
-    TypeChecker_err(self, "E0017", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cannot use 'catch' on non-error-union type '", inner_ty), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0017", concatAlloc(concatAlloc("cannot use 'catch' on non-error-union type '", inner_ty), "'"), expr.line, expr.col);
 } else {
     const char* val_type = substring(inner_ty, 0LL, excl_pos);
     const char* error_set = substring(inner_ty, (excl_pos + 1LL), strlen(inner_ty));
@@ -8559,7 +9022,7 @@ void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     TypeChecker_exit_scope(self);
     const char* fallback_yields = TypeChecker_get_block_yield_type(self, expr.catch_fallback);
     if (!TypeChecker_types_compatible(self, val_type, fallback_yields)) {
-    TypeChecker_err(self, "E0018", __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("catch fallback type '", fallback_yields), "' is not compatible with expected type '"), val_type), "'"), expr.line, expr.col);
+    TypeChecker_err(self, "E0018", concatAlloc(concatAlloc(concatAlloc(concatAlloc("catch fallback type '", fallback_yields), "' is not compatible with expected type '"), val_type), "'"), expr.line, expr.col);
 }
 }
     return;
@@ -8722,9 +9185,9 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     int64_t pi = 0LL;
     while (pi < ArrayList_Str_length(&(path))) {
     if (pi > 0LL) {
-    module_key = __kai_std_str_concat_alloc(module_key, ".");
+    module_key = concatAlloc(module_key, ".");
 }
-    module_key = __kai_std_str_concat_alloc(module_key, ArrayList_Str_get(&(path), pi));
+    module_key = concatAlloc(module_key, ArrayList_Str_get(&(path), pi));
     pi = (pi + 1LL);
 }
     if (strcmp(module_key, "") == 0) {
@@ -8733,7 +9196,7 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     int64_t si = 0LL;
     while (si < ArrayList_Str_length(&(self->import_stack))) {
     if (strcmp(ArrayList_Str_get(&(self->import_stack), si), module_key) == 0) {
-    ImportResolver_err_at(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("circular import detected: '", module_key), "'"), stmt_idx);
+    ImportResolver_err_at(self, concatAlloc(concatAlloc("circular import detected: '", module_key), "'"), stmt_idx);
     return;
 }
     si = (si + 1LL);
@@ -8754,12 +9217,12 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     int64_t ii = 0LL;
     while (ii < ArrayList_Str_length(&(path))) {
     if (ii > 0LL) {
-    path_str = __kai_std_str_concat_alloc(path_str, "/");
+    path_str = concatAlloc(path_str, "/");
 }
-    path_str = __kai_std_str_concat_alloc(path_str, ArrayList_Str_get(&(path), ii));
+    path_str = concatAlloc(path_str, ArrayList_Str_get(&(path), ii));
     ii = (ii + 1LL);
 }
-    const char* rel_path = __kai_std_str_concat_alloc(path_str, ".kai");
+    const char* rel_path = concatAlloc(path_str, ".kai");
     Result_Str_IoError s1 = read_to_string(self->allocator, rel_path);
     if ((s1.tag == 0LL) && (strlen(s1.value) > 0LL)) {
     source = s1.value;
@@ -8771,7 +9234,7 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     char* buf = (char*)(malloc(1024LL));
     if (get_exe_dir(buf, 1024LL) == 0LL) {
     const char* exe_dir = (const char*)(buf);
-    const char* full_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/"), rel_path);
+    const char* full_path = concatAlloc(concatAlloc(exe_dir, "/"), rel_path);
     Result_Str_IoError s2 = read_to_string(self->allocator, full_path);
     if ((s2.tag == 0LL) && (strlen(s2.value) > 0LL)) {
     source = s2.value;
@@ -8779,7 +9242,7 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     resolved_path = full_path;
 }
     if (!has_source) {
-    const char* parent_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../"), rel_path);
+    const char* parent_path = concatAlloc(concatAlloc(exe_dir, "/../"), rel_path);
     Result_Str_IoError s3 = read_to_string(self->allocator, parent_path);
     if ((s3.tag == 0LL) && (strlen(s3.value) > 0LL)) {
     source = s3.value;
@@ -8787,7 +9250,7 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     resolved_path = parent_path;
 }
     if (!has_source) {
-    const char* lib_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../lib/kai/"), rel_path);
+    const char* lib_path = concatAlloc(concatAlloc(exe_dir, "/../lib/kai/"), rel_path);
     Result_Str_IoError s4 = read_to_string(self->allocator, lib_path);
     if ((s4.tag == 0LL) && (strlen(s4.value) > 0LL)) {
     source = s4.value;
@@ -8804,12 +9267,12 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     int64_t ii = 0LL;
     while (ii < ArrayList_Str_length(&(path))) {
     if (ii > 0LL) {
-    path_str = __kai_std_str_concat_alloc(path_str, "/");
+    path_str = concatAlloc(path_str, "/");
 }
-    path_str = __kai_std_str_concat_alloc(path_str, ArrayList_Str_get(&(path), ii));
+    path_str = concatAlloc(path_str, ArrayList_Str_get(&(path), ii));
     ii = (ii + 1LL);
 }
-    const char* file_name = __kai_std_str_concat_alloc(path_str, ".kai");
+    const char* file_name = concatAlloc(path_str, ".kai");
     Result_Str_IoError s1 = read_to_string(self->allocator, file_name);
     if ((s1.tag == 0LL) && (strlen(s1.value) > 0LL)) {
     source = s1.value;
@@ -8817,7 +9280,7 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     resolved_path = file_name;
 }
     if (!has_source) {
-    const char* src_path = __kai_std_str_concat_alloc("src/", file_name);
+    const char* src_path = concatAlloc("src/", file_name);
     Result_Str_IoError s2 = read_to_string(self->allocator, src_path);
     if ((s2.tag == 0LL) && (strlen(s2.value) > 0LL)) {
     source = s2.value;
@@ -8830,7 +9293,7 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     char* buf = (char*)(malloc(1024LL));
     if (get_exe_dir(buf, 1024LL) == 0LL) {
     const char* exe_dir = (const char*)(buf);
-    const char* exe_src = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/../../src/"), file_name);
+    const char* exe_src = concatAlloc(concatAlloc(exe_dir, "/../../src/"), file_name);
     Result_Str_IoError s3 = read_to_string(self->allocator, exe_src);
     if ((s3.tag == 0LL) && (strlen(s3.value) > 0LL)) {
     source = s3.value;
@@ -8847,14 +9310,14 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     Lexer_lex(&(lexer));
     if (lexer.has_error) {
     ArrayList_Str_pop(&(self->import_stack));
-    ImportResolver_err_at(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("lexer error in imported module '", module_key), "'"), stmt_idx);
+    ImportResolver_err_at(self, concatAlloc(concatAlloc("lexer error in imported module '", module_key), "'"), stmt_idx);
     return;
 }
     Parser parser = Parser_init_with_pools(self->allocator, resolved_path, lexer.tokens, expr_pool, stmt_pool, pattern_pool, source);
     int64_t program_idx = Parser_parse_program(&(parser));
     if (program_idx < 0LL) {
     ArrayList_Str_pop(&(self->import_stack));
-    ImportResolver_err_at(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("parser error in imported module '", module_key), "'"), stmt_idx);
+    ImportResolver_err_at(self, concatAlloc(concatAlloc("parser error in imported module '", module_key), "'"), stmt_idx);
     return;
 }
     StmtNode prog = ArrayList_StmtNode_get(stmt_pool, program_idx);
@@ -8876,7 +9339,7 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
     ArrayList_Str_pop(&(self->import_stack));
 } else {
     ArrayList_Str_pop(&(self->import_stack));
-    ImportResolver_err_at(self, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("module not found: '", module_key), "'"), stmt_idx);
+    ImportResolver_err_at(self, concatAlloc(concatAlloc("module not found: '", module_key), "'"), stmt_idx);
 }
 }
 void ImportResolver_resolve_all(ImportResolver* self, int64_t program_idx, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool) {
@@ -8895,26 +9358,6 @@ void ImportResolver_resolve_all(ImportResolver* self, int64_t program_idx, Array
     i = (i + 1LL);
 }
 }
-}
-const char* __kai_std_str_concat_alloc(const char* left, const char* right) {
-    int64_t left_len = strlen(left);
-    int64_t right_len = strlen(right);
-    int64_t total = ((left_len + right_len) + 1LL);
-    char* buf = malloc(total);
-    if (buf != (char*)(unsigned long long)(0LL)) {
-    int64_t i = 0LL;
-    while (i < left_len) {
-    (buf)[i] = (left)[i];
-    i = (i + 1LL);
-}
-    int64_t j = 0LL;
-    while (j < right_len) {
-    (buf)[(left_len + j)] = (right)[j];
-    j = (j + 1LL);
-}
-    (buf)[(total - 1LL)] = ((char)(0LL));
-}
-    return (const char*)(buf);
 }
 int64_t type_map_find(ArrayList_StrMapEntry* arr, const char* key) {
     int64_t i = (ArrayList_StrMapEntry_length(arr) - 1LL);
@@ -8947,7 +9390,7 @@ int64_t strlist_find(ArrayList_Str* arr, const char* key) {
     return (-1LL);
 }
 const char* Codegen_add_init_return(Codegen* self, const char* body_str, const char* struct_name) {
-    const char* self_decl = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", struct_name), " self = ("), struct_name), "){0};\n");
+    const char* self_decl = concatAlloc(concatAlloc(concatAlloc(concatAlloc("    ", struct_name), " self = ("), struct_name), "){0};\n");
     int64_t body_len = strlen(body_str);
     const char* stripped_body = __kai_str_sub(body_str, 2LL, (body_len - 1LL));
     bool ends_with_return = false;
@@ -8961,10 +9404,10 @@ const char* Codegen_add_init_return(Codegen* self, const char* body_str, const c
 }
 }
     if (ends_with_return) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("{\n", self_decl), stripped_body), "}");
+    return concatAlloc(concatAlloc(concatAlloc("{\n", self_decl), stripped_body), "}");
 }
     const char* self_ret = "    return self;\n}";
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("{\n", self_decl), stripped_body), self_ret);
+    return concatAlloc(concatAlloc(concatAlloc("{\n", self_decl), stripped_body), self_ret);
 }
 Codegen Codegen_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, ImportResolver* import_resolver) {
     Codegen self = (Codegen){0};
@@ -9019,7 +9462,7 @@ const char* Codegen_map_type(Codegen* self, const char* type_name) {
     resolved_type = Codegen_substitute_generic_type(self, type_name);
 }
     if ((strlen(resolved_type) > 0LL) && ((resolved_type)[0LL] == ((char)(40LL)))) {
-    const char* clean_name = __kai_std_str_concat_alloc("Tuple_", Codegen_clean_type_for_mangling(self, resolved_type));
+    const char* clean_name = concatAlloc("Tuple_", Codegen_clean_type_for_mangling(self, resolved_type));
     if (strlist_find(&(self->result_definitions), clean_name) < 0LL) {
     ArrayList_Str_push(&(self->result_definitions), clean_name);
     const char* inner_types = __kai_str_sub(resolved_type, 1LL, (strlen(resolved_type) - 1LL));
@@ -9034,14 +9477,14 @@ const char* Codegen_map_type(Codegen* self, const char* type_name) {
     i = (i + 1LL);
 }
     ArrayList_Str_push(&(types_list), Codegen_trim_spaces(self, __kai_str_sub(inner_types, start, strlen(inner_types))));
-    const char* struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", clean_name), " "), clean_name), ";\n");
-    struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "struct "), clean_name), " {\n");
+    const char* struct_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc("typedef struct ", clean_name), " "), clean_name), ";\n");
+    struct_str = concatAlloc(concatAlloc(concatAlloc(struct_str, "struct "), clean_name), " {\n");
     int64_t ti = 0LL;
     while (ti < ArrayList_Str_length(&(types_list))) {
-    struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "    "), Codegen_map_type(self, ArrayList_Str_get(&(types_list), ti))), " f"), int_to_str(ti)), ";\n");
+    struct_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(struct_str, "    "), Codegen_map_type(self, ArrayList_Str_get(&(types_list), ti))), " f"), int_to_str(ti)), ";\n");
     ti = (ti + 1LL);
 }
-    struct_str = __kai_std_str_concat_alloc(struct_str, "};\n");
+    struct_str = concatAlloc(struct_str, "};\n");
     (void)(StringBuilder_append(&(self->struct_decls), struct_str));
 }
     return clean_name;
@@ -9052,14 +9495,14 @@ const char* Codegen_map_type(Codegen* self, const char* type_name) {
     return Codegen_map_type(self, val_type);
 }
     const char* clean_val = Codegen_clean_type_for_mangling(self, val_type);
-    const char* concrete_name = __kai_std_str_concat_alloc("Optional_", clean_val);
+    const char* concrete_name = concatAlloc("Optional_", clean_val);
     if (strlist_find(&(self->result_definitions), concrete_name) < 0LL) {
     ArrayList_Str_push(&(self->result_definitions), concrete_name);
-    const char* struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", concrete_name), " "), concrete_name), ";\n");
-    struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "struct "), concrete_name), " {\n");
-    struct_str = __kai_std_str_concat_alloc(struct_str, "    bool has_value;\n");
-    struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "    "), Codegen_map_type(self, val_type)), " value;\n");
-    struct_str = __kai_std_str_concat_alloc(struct_str, "};\n");
+    const char* struct_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc("typedef struct ", concrete_name), " "), concrete_name), ";\n");
+    struct_str = concatAlloc(concatAlloc(concatAlloc(struct_str, "struct "), concrete_name), " {\n");
+    struct_str = concatAlloc(struct_str, "    bool has_value;\n");
+    struct_str = concatAlloc(concatAlloc(concatAlloc(struct_str, "    "), Codegen_map_type(self, val_type)), " value;\n");
+    struct_str = concatAlloc(struct_str, "};\n");
     (void)(StringBuilder_append(&(self->struct_decls), struct_str));
 }
     return concrete_name;
@@ -9070,16 +9513,16 @@ const char* Codegen_map_type(Codegen* self, const char* type_name) {
     const char* err_type = __kai_str_sub(resolved_type, (excl_pos + 1LL), strlen(resolved_type));
     const char* clean_val = Codegen_clean_type_for_mangling(self, val_type);
     const char* clean_err = Codegen_clean_type_for_mangling(self, err_type);
-    const char* concrete_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("Result_", clean_val), "_"), clean_err);
+    const char* concrete_name = concatAlloc(concatAlloc(concatAlloc("Result_", clean_val), "_"), clean_err);
     if (strlist_find(&(self->result_definitions), concrete_name) < 0LL) {
     ArrayList_Str_push(&(self->result_definitions), concrete_name);
-    const char* struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", concrete_name), " "), concrete_name), ";\n");
-    struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "struct "), concrete_name), " {\n");
-    struct_str = __kai_std_str_concat_alloc(struct_str, "    int64_t tag;\n");
+    const char* struct_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc("typedef struct ", concrete_name), " "), concrete_name), ";\n");
+    struct_str = concatAlloc(concatAlloc(concatAlloc(struct_str, "struct "), concrete_name), " {\n");
+    struct_str = concatAlloc(struct_str, "    int64_t tag;\n");
     if (strcmp(val_type, "Void") != 0) {
-    struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "    "), Codegen_map_type(self, val_type)), " value;\n");
+    struct_str = concatAlloc(concatAlloc(concatAlloc(struct_str, "    "), Codegen_map_type(self, val_type)), " value;\n");
 }
-    struct_str = __kai_std_str_concat_alloc(struct_str, "};\n");
+    struct_str = concatAlloc(struct_str, "};\n");
     (void)(StringBuilder_append(&(self->struct_decls), struct_str));
 }
     return concrete_name;
@@ -9131,7 +9574,7 @@ const char* Codegen_map_type(Codegen* self, const char* type_name) {
 }
     if (strcmp(__kai_str_sub(resolved_type, 0LL, 2LL), "[]") == 0) {
     const char* inner = __kai_str_sub(resolved_type, 2LL, strlen(resolved_type));
-    return __kai_std_str_concat_alloc(Codegen_map_type(self, inner), "*");
+    return concatAlloc(Codegen_map_type(self, inner), "*");
 }
     if ((resolved_type)[0LL] == ((char)(42LL))) {
     if ((strlen(resolved_type) > 5LL) && (strcmp(__kai_str_sub(resolved_type, 0LL, 5LL), "*mut ") == 0)) {
@@ -9139,22 +9582,22 @@ const char* Codegen_map_type(Codegen* self, const char* type_name) {
     if (strcmp(inner, "Void") == 0) {
     return "void*";
 }
-    return __kai_std_str_concat_alloc(Codegen_map_type(self, inner), "*");
+    return concatAlloc(Codegen_map_type(self, inner), "*");
 } else {
     const char* inner = __kai_str_sub(resolved_type, 1LL, strlen(resolved_type));
     if (strcmp(inner, "Void") == 0) {
     return "void*";
 }
-    return __kai_std_str_concat_alloc(Codegen_map_type(self, inner), "*");
+    return concatAlloc(Codegen_map_type(self, inner), "*");
 }
 }
     if ((resolved_type)[0LL] == ((char)(38LL))) {
     if ((strlen(resolved_type) > 5LL) && (strcmp(__kai_str_sub(resolved_type, 0LL, 5LL), "&mut ") == 0)) {
     const char* inner = __kai_str_sub(resolved_type, 5LL, strlen(resolved_type));
-    return __kai_std_str_concat_alloc(Codegen_map_type(self, inner), "*");
+    return concatAlloc(Codegen_map_type(self, inner), "*");
 } else {
     const char* inner = __kai_str_sub(resolved_type, 1LL, strlen(resolved_type));
-    return __kai_std_str_concat_alloc(Codegen_map_type(self, inner), "*");
+    return concatAlloc(Codegen_map_type(self, inner), "*");
 }
 }
     if (Codegen_str_contains(self, resolved_type, ((char)(60LL)))) {
@@ -9178,7 +9621,7 @@ const char* Codegen_map_type(Codegen* self, const char* type_name) {
     while (ai < ArrayList_Str_length(&(args))) {
     const char* raw_arg = ArrayList_Str_get(&(args), ai);
     const char* clean_arg = Codegen_clean_type_for_mangling(self, raw_arg);
-    concrete_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(concrete_name, "_"), clean_arg);
+    concrete_name = concatAlloc(concatAlloc(concrete_name, "_"), clean_arg);
     ai = (ai + 1LL);
 }
     const char* struct_idx_str = type_map_get(&(self->generic_struct_decls), base_name);
@@ -9207,19 +9650,19 @@ const char* Codegen_substitute_generic_type(Codegen* self, const char* type_name
     return mapped;
 }
     if ((type_name)[0LL] == ((char)(42LL))) {
-    return __kai_std_str_concat_alloc("*", Codegen_substitute_generic_type(self, __kai_str_sub(type_name, 1LL, strlen(type_name))));
+    return concatAlloc("*", Codegen_substitute_generic_type(self, __kai_str_sub(type_name, 1LL, strlen(type_name))));
 }
     if ((type_name)[0LL] == ((char)(38LL))) {
     if (strcmp(__kai_str_sub(type_name, 0LL, 5LL), "&mut ") == 0) {
-    return __kai_std_str_concat_alloc("&mut ", Codegen_substitute_generic_type(self, __kai_str_sub(type_name, 5LL, strlen(type_name))));
+    return concatAlloc("&mut ", Codegen_substitute_generic_type(self, __kai_str_sub(type_name, 5LL, strlen(type_name))));
 }
-    return __kai_std_str_concat_alloc("&", Codegen_substitute_generic_type(self, __kai_str_sub(type_name, 1LL, strlen(type_name))));
+    return concatAlloc("&", Codegen_substitute_generic_type(self, __kai_str_sub(type_name, 1LL, strlen(type_name))));
 }
     if (Codegen_str_contains(self, type_name, ((char)(60LL)))) {
     int64_t lt_pos = Codegen_str_find(self, type_name, ((char)(60LL)));
     const char* base = __kai_str_sub(type_name, 0LL, lt_pos);
     const char* inner = __kai_str_sub(type_name, (lt_pos + 1LL), (strlen(type_name) - 1LL));
-    const char* res = __kai_std_str_concat_alloc(base, "<");
+    const char* res = concatAlloc(base, "<");
     int64_t start = 0LL;
     int64_t i = 0LL;
     int64_t arg_count = 0LL;
@@ -9228,9 +9671,9 @@ const char* Codegen_substitute_generic_type(Codegen* self, const char* type_name
     if (c == ((char)(44LL))) {
     const char* arg = Codegen_trim_spaces(self, __kai_str_sub(inner, start, i));
     if (arg_count > 0LL) {
-    res = __kai_std_str_concat_alloc(res, ", ");
+    res = concatAlloc(res, ", ");
 }
-    res = __kai_std_str_concat_alloc(res, Codegen_substitute_generic_type(self, arg));
+    res = concatAlloc(res, Codegen_substitute_generic_type(self, arg));
     start = (i + 1LL);
     arg_count = (arg_count + 1LL);
 }
@@ -9238,10 +9681,10 @@ const char* Codegen_substitute_generic_type(Codegen* self, const char* type_name
 }
     const char* arg = Codegen_trim_spaces(self, __kai_str_sub(inner, start, strlen(inner)));
     if (arg_count > 0LL) {
-    res = __kai_std_str_concat_alloc(res, ", ");
+    res = concatAlloc(res, ", ");
 }
-    res = __kai_std_str_concat_alloc(res, Codegen_substitute_generic_type(self, arg));
-    res = __kai_std_str_concat_alloc(res, ">");
+    res = concatAlloc(res, Codegen_substitute_generic_type(self, arg));
+    res = concatAlloc(res, ">");
     return res;
 }
     return type_name;
@@ -9263,17 +9706,17 @@ const char* Codegen_clean_type_for_mangling(Codegen* self, const char* s) {
     while (i < strlen(s)) {
     char c = (s)[i];
     if (c == ((char)(42LL))) {
-    res = __kai_std_str_concat_alloc(res, "ptr");
+    res = concatAlloc(res, "ptr");
 } else if (c == ((char)(38LL))) {
-    res = __kai_std_str_concat_alloc(res, "ref");
+    res = concatAlloc(res, "ref");
 } else if (c == ((char)(32LL))) {
-    res = __kai_std_str_concat_alloc(res, "_");
+    res = concatAlloc(res, "_");
 } else if (c == ((char)(63LL))) {
-    res = __kai_std_str_concat_alloc(res, "opt_");
+    res = concatAlloc(res, "opt_");
 } else if ((((((c == ((char)(60LL))) || (c == ((char)(62LL)))) || (c == ((char)(44LL)))) || (c == ((char)(33LL)))) || (c == ((char)(40LL)))) || (c == ((char)(41LL)))) {
-    res = __kai_std_str_concat_alloc(res, "_");
+    res = concatAlloc(res, "_");
 } else {
-    res = __kai_std_str_concat_alloc(res, char_to_str(c));
+    res = concatAlloc(res, char_to_str(c));
 }
     i = (i + 1LL);
 }
@@ -9376,17 +9819,17 @@ void Codegen_monomorphize_struct(Codegen* self, int64_t stmt_idx, const char* co
     ArrayList_StrMapEntry old_type_map = self->current_type_map;
     self->current_type_map = ArrayList_StrMapEntry_init(self->allocator);
     Codegen_setup_current_type_map(self, &(stmt.struct_type_params), type_args);
-    const char* typedef_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", concrete_name), " "), concrete_name), ";\n");
+    const char* typedef_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc("typedef struct ", concrete_name), " "), concrete_name), ";\n");
     (void)(StringBuilder_append(&(self->struct_decls), typedef_str));
-    const char* body = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", concrete_name), " {\n");
+    const char* body = concatAlloc(concatAlloc("struct ", concrete_name), " {\n");
     int64_t i = 0LL;
     while (i < ArrayList_StructField_length(&(stmt.struct_fields))) {
     StructField f = ArrayList_StructField_get(&(stmt.struct_fields), i);
     const char* f_type = Codegen_map_type(self, f.ftype);
-    body = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(body, "    "), f_type), " "), f.name), ";\n");
+    body = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(body, "    "), f_type), " "), f.name), ";\n");
     i = (i + 1LL);
 }
-    body = __kai_std_str_concat_alloc(body, "};\n");
+    body = concatAlloc(body, "};\n");
     (void)(StringBuilder_append(&(self->struct_decls), body));
     Codegen_monomorphize_methods(self, stmt.struct_name, concrete_name);
     self->current_type_map = old_type_map;
@@ -9396,38 +9839,38 @@ void Codegen_monomorphize_enum(Codegen* self, int64_t stmt_idx, const char* conc
     ArrayList_StrMapEntry old_type_map = self->current_type_map;
     self->current_type_map = ArrayList_StrMapEntry_init(self->allocator);
     Codegen_setup_current_type_map(self, &(stmt.enum_type_params), type_args);
-    const char* typedef_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", concrete_name), " "), concrete_name), ";\n");
+    const char* typedef_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc("typedef struct ", concrete_name), " "), concrete_name), ";\n");
     (void)(StringBuilder_append(&(self->struct_decls), typedef_str));
-    const char* tags_name = __kai_std_str_concat_alloc(concrete_name, "_tags");
+    const char* tags_name = concatAlloc(concrete_name, "_tags");
     const char* tags_str = "typedef enum {\n";
     int64_t i = 0LL;
     while (i < ArrayList_Variant_length(&(stmt.enum_variants))) {
     Variant v = ArrayList_Variant_get(&(stmt.enum_variants), i);
-    tags_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(tags_str, "    "), concrete_name), "_"), v.vname), "_TAG,\n");
+    tags_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(tags_str, "    "), concrete_name), "_"), v.vname), "_TAG,\n");
     i = (i + 1LL);
 }
-    tags_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(tags_str, "} "), tags_name), ";\n");
+    tags_str = concatAlloc(concatAlloc(concatAlloc(tags_str, "} "), tags_name), ";\n");
     (void)(StringBuilder_append(&(self->struct_decls), tags_str));
-    const char* body = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", concrete_name), " {\n");
-    body = __kai_std_str_concat_alloc(body, "    uint8_t tag;\n");
-    body = __kai_std_str_concat_alloc(body, "    union {\n");
+    const char* body = concatAlloc(concatAlloc("struct ", concrete_name), " {\n");
+    body = concatAlloc(body, "    uint8_t tag;\n");
+    body = concatAlloc(body, "    union {\n");
     i = 0LL;
     while (i < ArrayList_Variant_length(&(stmt.enum_variants))) {
     Variant v = ArrayList_Variant_get(&(stmt.enum_variants), i);
     if (ArrayList_Param_length(&(v.params)) > 0LL) {
-    body = __kai_std_str_concat_alloc(body, "        struct {\n");
+    body = concatAlloc(body, "        struct {\n");
     int64_t p_idx = 0LL;
     while (p_idx < ArrayList_Param_length(&(v.params))) {
     Param p = ArrayList_Param_get(&(v.params), p_idx);
-    body = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(body, "            "), Codegen_map_type(self, p.ptype)), " "), p.name), ";\n");
+    body = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(body, "            "), Codegen_map_type(self, p.ptype)), " "), p.name), ";\n");
     p_idx = (p_idx + 1LL);
 }
-    body = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(body, "        } "), v.vname), ";\n");
+    body = concatAlloc(concatAlloc(concatAlloc(body, "        } "), v.vname), ";\n");
 }
     i = (i + 1LL);
 }
-    body = __kai_std_str_concat_alloc(body, "    } payload;\n");
-    body = __kai_std_str_concat_alloc(body, "};\n");
+    body = concatAlloc(body, "    } payload;\n");
+    body = concatAlloc(body, "};\n");
     (void)(StringBuilder_append(&(self->struct_decls), body));
     Codegen_monomorphize_methods(self, stmt.enum_name, concrete_name);
     self->current_type_map = old_type_map;
@@ -9442,7 +9885,7 @@ void Codegen_monomorphize_methods(Codegen* self, const char* base_struct_name, c
     int64_t m_idx = ArrayList_Int_get(&(stmt.impl_methods), j);
     StmtNode m_node = ArrayList_StmtNode_get(self->stmt_pool, m_idx);
     const char* method_name = m_node.func_name;
-    bool is_init = ((((strcmp(method_name, "init") == 0) || (strcmp(m_node.func_return_type, base_struct_name) == 0)) || (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("*", base_struct_name)) == 0)) || (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("&", base_struct_name)) == 0));
+    bool is_init = ((((strcmp(method_name, "init") == 0) || (strcmp(m_node.func_return_type, base_struct_name) == 0)) || (strcmp(m_node.func_return_type, concatAlloc("*", base_struct_name)) == 0)) || (strcmp(m_node.func_return_type, concatAlloc("&", base_struct_name)) == 0));
     const char* ret_type = "";
     if (is_init) {
     ret_type = concrete_struct_name;
@@ -9451,23 +9894,23 @@ void Codegen_monomorphize_methods(Codegen* self, const char* base_struct_name, c
 }
     const char* params_str = "";
     if (!is_init) {
-    params_str = __kai_std_str_concat_alloc(concrete_struct_name, "* self");
+    params_str = concatAlloc(concrete_struct_name, "* self");
 }
     int64_t p_idx = 0LL;
     while (p_idx < ArrayList_Param_length(&(m_node.func_params))) {
     Param p = ArrayList_Param_get(&(m_node.func_params), p_idx);
     if (strcmp(p.name, "self") != 0) {
     if (strlen(params_str) > 0LL) {
-    params_str = __kai_std_str_concat_alloc(params_str, ", ");
+    params_str = concatAlloc(params_str, ", ");
 }
-    params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
+    params_str = concatAlloc(concatAlloc(concatAlloc(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
 }
     p_idx = (p_idx + 1LL);
 }
     if (strlen(params_str) == 0LL) {
     params_str = "void";
 }
-    const char* mangled_fn_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(concrete_struct_name, "_"), method_name);
+    const char* mangled_fn_name = concatAlloc(concatAlloc(concrete_struct_name, "_"), method_name);
     const char* concrete_ret = m_node.func_return_type;
     if (ArrayList_StrMapEntry_length(&(self->current_type_map)) > 0LL) {
     concrete_ret = Codegen_substitute_generic_type(self, concrete_ret);
@@ -9487,7 +9930,7 @@ void Codegen_monomorphize_methods(Codegen* self, const char* base_struct_name, c
     if (is_init) {
     type_map_put(&(self->var_types), "self", concrete_struct_name);
 } else {
-    type_map_put(&(self->var_types), "self", __kai_std_str_concat_alloc("*", concrete_struct_name));
+    type_map_put(&(self->var_types), "self", concatAlloc("*", concrete_struct_name));
 }
     int64_t p_idx2 = 0LL;
     while (p_idx2 < ArrayList_Param_length(&(m_node.func_params))) {
@@ -9504,8 +9947,8 @@ void Codegen_monomorphize_methods(Codegen* self, const char* base_struct_name, c
     if (is_init) {
     body_str = Codegen_add_init_return(self, body_str, concrete_struct_name);
 }
-    const char* proto = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), mangled_fn_name), "("), params_str), ");\n");
-    const char* impl_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), mangled_fn_name), "("), params_str), ") "), body_str), "\n");
+    const char* proto = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(ret_type, " "), mangled_fn_name), "("), params_str), ");\n");
+    const char* impl_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(ret_type, " "), mangled_fn_name), "("), params_str), ") "), body_str), "\n");
     (void)(StringBuilder_append(&(self->func_decls), proto));
     (void)(StringBuilder_append(&(self->output), impl_str));
     self->cur_func_name = old_fn;
@@ -9533,10 +9976,10 @@ void Codegen_monomorphize_func(Codegen* self, int64_t func_stmt_idx, const char*
     while (p_idx < ArrayList_Param_length(&(stmt.func_params))) {
     Param p = ArrayList_Param_get(&(stmt.func_params), p_idx);
     if (p_idx > 0LL) {
-    params_str = __kai_std_str_concat_alloc(params_str, ", ");
+    params_str = concatAlloc(params_str, ", ");
 }
     const char* concrete_ptype = Codegen_substitute_generic_type(self, p.ptype);
-    params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, Codegen_map_type(self, concrete_ptype)), " "), p.name);
+    params_str = concatAlloc(concatAlloc(concatAlloc(params_str, Codegen_map_type(self, concrete_ptype)), " "), p.name);
     p_idx = (p_idx + 1LL);
 }
     if (strlen(params_str) == 0LL) {
@@ -9570,8 +10013,8 @@ void Codegen_monomorphize_func(Codegen* self, int64_t func_stmt_idx, const char*
     while (ArrayList_StrMapEntry_length(&(self->var_types)) > old_var_len) {
     (void)(ArrayList_StrMapEntry_pop(&(self->var_types)));
 }
-    const char* proto = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(mapped_ret, " "), mangled_name), "("), params_str), ");\n");
-    const char* impl_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(mapped_ret, " "), mangled_name), "("), params_str), ") "), body_str), "\n");
+    const char* proto = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(mapped_ret, " "), mangled_name), "("), params_str), ");\n");
+    const char* impl_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(mapped_ret, " "), mangled_name), "("), params_str), ") "), body_str), "\n");
     (void)(StringBuilder_append(&(self->func_decls), proto));
     (void)(StringBuilder_append(&(self->output), impl_str));
     self->cur_func_name = old_fn;
@@ -9610,7 +10053,7 @@ void Codegen_build_func_types(Codegen* self) {
     int64_t p_i = 0LL;
     while (p_i < ArrayList_Param_length(&(stmt.func_params))) {
     Param p = ArrayList_Param_get(&(stmt.func_params), p_i);
-    const char* p_key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(stmt.func_name, "_param_"), int_to_str(p_i));
+    const char* p_key = concatAlloc(concatAlloc(stmt.func_name, "_param_"), int_to_str(p_i));
     type_map_put(&(self->func_param_types), p_key, p.ptype);
     p_i = (p_i + 1LL);
 }
@@ -9620,7 +10063,7 @@ void Codegen_build_func_types(Codegen* self) {
     int64_t p_i = 0LL;
     while (p_i < ArrayList_Param_length(&(stmt.extern_params))) {
     Param p = ArrayList_Param_get(&(stmt.extern_params), p_i);
-    const char* p_key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(stmt.extern_name, "_param_"), int_to_str(p_i));
+    const char* p_key = concatAlloc(concatAlloc(stmt.extern_name, "_param_"), int_to_str(p_i));
     type_map_put(&(self->func_param_types), p_key, p.ptype);
     p_i = (p_i + 1LL);
 }
@@ -9631,7 +10074,7 @@ void Codegen_build_func_types(Codegen* self) {
     while (j < ArrayList_Int_length(&(stmt.impl_methods))) {
     int64_t m_idx = ArrayList_Int_get(&(stmt.impl_methods), j);
     StmtNode m_node = ArrayList_StmtNode_get(self->stmt_pool, m_idx);
-    const char* key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_name, "_"), m_node.func_name);
+    const char* key = concatAlloc(concatAlloc(struct_name, "_"), m_node.func_name);
     const char* ret = m_node.func_return_type;
     if (strcmp(m_node.func_name, "init") == 0) {
     ret = struct_name;
@@ -9640,7 +10083,7 @@ void Codegen_build_func_types(Codegen* self) {
     int64_t p_i = 0LL;
     while (p_i < ArrayList_Param_length(&(m_node.func_params))) {
     Param p = ArrayList_Param_get(&(m_node.func_params), p_i);
-    const char* p_key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(key, "_param_"), int_to_str(p_i));
+    const char* p_key = concatAlloc(concatAlloc(key, "_param_"), int_to_str(p_i));
     type_map_put(&(self->func_param_types), p_key, p.ptype);
     p_i = (p_i + 1LL);
 }
@@ -9657,7 +10100,7 @@ void Codegen_build_func_types(Codegen* self) {
     while (j < ArrayList_Int_length(&(impl_node.impl_methods))) {
     int64_t m_idx = ArrayList_Int_get(&(impl_node.impl_methods), j);
     StmtNode m_node = ArrayList_StmtNode_get(self->stmt_pool, m_idx);
-    const char* key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_name, "_"), m_node.func_name);
+    const char* key = concatAlloc(concatAlloc(struct_name, "_"), m_node.func_name);
     const char* ret = m_node.func_return_type;
     if (strcmp(m_node.func_name, "init") == 0) {
     ret = struct_name;
@@ -9666,7 +10109,7 @@ void Codegen_build_func_types(Codegen* self) {
     int64_t p_i = 0LL;
     while (p_i < ArrayList_Param_length(&(m_node.func_params))) {
     Param p = ArrayList_Param_get(&(m_node.func_params), p_i);
-    const char* p_key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(key, "_param_"), int_to_str(p_i));
+    const char* p_key = concatAlloc(concatAlloc(key, "_param_"), int_to_str(p_i));
     type_map_put(&(self->func_param_types), p_key, p.ptype);
     p_i = (p_i + 1LL);
 }
@@ -9715,16 +10158,16 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
     char first_char = (name)[0LL];
     if ((first_char >= ((char)(65LL))) && (first_char <= ((char)(90LL)))) {
     if (ArrayList_Str_length(&(expr.ident_type_args)) > 0LL) {
-    const char* full_name = __kai_std_str_concat_alloc(name, "<");
+    const char* full_name = concatAlloc(name, "<");
     int64_t tai = 0LL;
     while (tai < ArrayList_Str_length(&(expr.ident_type_args))) {
     if (tai > 0LL) {
-    full_name = __kai_std_str_concat_alloc(full_name, ", ");
+    full_name = concatAlloc(full_name, ", ");
 }
-    full_name = __kai_std_str_concat_alloc(full_name, ArrayList_Str_get(&(expr.ident_type_args), tai));
+    full_name = concatAlloc(full_name, ArrayList_Str_get(&(expr.ident_type_args), tai));
     tai = (tai + 1LL);
 }
-    full_name = __kai_std_str_concat_alloc(full_name, ">");
+    full_name = concatAlloc(full_name, ">");
     return full_name;
 }
     return name;
@@ -9770,7 +10213,7 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
 }
     if (is_struct) {
     if (ArrayList_Str_length(&(expr.func_type_args)) > 0LL) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(name, "<"), str_array_join(expr.func_type_args, ", ")), ">");
+    return concatAlloc(concatAlloc(concatAlloc(name, "<"), str_array_join(expr.func_type_args, ", ")), ">");
 }
     return name;
 }
@@ -9823,7 +10266,7 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
     while (i < strlen(base_type)) {
     char c = (base_type)[i];
     if ((c != ((char)(42LL))) && (c != ((char)(38LL)))) {
-    clean_type = __kai_std_str_concat_alloc(clean_type, char_to_str(c));
+    clean_type = concatAlloc(clean_type, char_to_str(c));
 }
     i = (i + 1LL);
 }
@@ -9879,7 +10322,7 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
     return "Void";
 }
     if (expr.kind == ExprKind_ek_borrow) {
-    return __kai_std_str_concat_alloc("&", Codegen_get_expr_type(self, expr.borrow_expr));
+    return concatAlloc("&", Codegen_get_expr_type(self, expr.borrow_expr));
 }
     if (expr.kind == ExprKind_ek_deref) {
     const char* base_type = Codegen_get_expr_type(self, expr.deref_expr);
@@ -9906,7 +10349,7 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
     while (i < strlen(rec_type)) {
     char c = (rec_type)[i];
     if ((c != ((char)(42LL))) && (c != ((char)(38LL)))) {
-    clean_type = __kai_std_str_concat_alloc(clean_type, char_to_str(c));
+    clean_type = concatAlloc(clean_type, char_to_str(c));
 }
     i = (i + 1LL);
 }
@@ -9924,7 +10367,7 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
     if (strcmp(method_name, "init") == 0) {
     return clean_type;
 }
-    const char* key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(clean_type, "_"), method_name);
+    const char* key = concatAlloc(concatAlloc(clean_type, "_"), method_name);
     const char* ret = type_map_get(&(self->func_types), key);
     if (strlen(ret) > 0LL) {
     return ret;
@@ -10055,7 +10498,7 @@ const char* Codegen_gen_expr_with_expected_type(Codegen* self, int64_t expr_idx,
     if (Codegen_is_pointer_type(self, val_type)) {
     return "NULL";
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", Codegen_map_type(self, expected_type)), "){0}");
+    return concatAlloc(concatAlloc("(", Codegen_map_type(self, expected_type)), "){0}");
 }
     return "NULL";
 }
@@ -10063,7 +10506,7 @@ const char* Codegen_gen_expr_with_expected_type(Codegen* self, int64_t expr_idx,
     if ((strlen(expected_type) > 0LL) && ((expected_type)[0LL] == ((char)(63LL)))) {
     const char* val_type = __kai_str_sub(expected_type, 1LL, strlen(expected_type));
     if ((!Codegen_is_pointer_type(self, val_type)) && (strcmp(actual_type, val_type) == 0)) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", Codegen_map_type(self, expected_type)), "){ .has_value = true, .value = "), gen_val), " }");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", Codegen_map_type(self, expected_type)), "){ .has_value = true, .value = "), gen_val), " }");
 }
 }
     return gen_val;
@@ -10083,13 +10526,13 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     const char* val_type = __kai_str_sub(inner_ty, 0LL, excl_pos);
     const char* result_ctype = Codegen_map_type(self, inner_ty);
     const char* ret_ctype = Codegen_map_type(self, self->cur_return_type);
-    const char* try_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("({ ", result_ctype), " _kai_res = ("), inner), "); ");
-    try_code = __kai_std_str_concat_alloc(try_code, "if (_kai_res.tag != 0) { ");
-    try_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(try_code, ret_ctype), " _kai_err_ret; _kai_err_ret.tag = _kai_res.tag; return _kai_err_ret; } ");
+    const char* try_code = concatAlloc(concatAlloc(concatAlloc(concatAlloc("({ ", result_ctype), " _kai_res = ("), inner), "); ");
+    try_code = concatAlloc(try_code, "if (_kai_res.tag != 0) { ");
+    try_code = concatAlloc(concatAlloc(try_code, ret_ctype), " _kai_err_ret; _kai_err_ret.tag = _kai_res.tag; return _kai_err_ret; } ");
     if (strcmp(val_type, "Void") == 0) {
-    try_code = __kai_std_str_concat_alloc(try_code, "0; })");
+    try_code = concatAlloc(try_code, "0; })");
 } else {
-    try_code = __kai_std_str_concat_alloc(try_code, "_kai_res.value; })");
+    try_code = concatAlloc(try_code, "_kai_res.value; })");
 }
     return try_code;
 }
@@ -10100,11 +10543,11 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     const char* v = expr.lit_value.payload.tv_str.v;
 
     const char* s = v;
-    return __kai_std_str_concat_alloc(s, "LL");
+    return concatAlloc(s, "LL");
 } else if (expr.lit_value.tag == TokenValue_tv_int_TAG) {
     int64_t v = expr.lit_value.payload.tv_int.v;
 
-    return __kai_std_str_concat_alloc(int_to_str(v), "LL");
+    return concatAlloc(int_to_str(v), "LL");
 } else {
     return "0LL";
 } 
@@ -10122,7 +10565,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (expr.lit_value.tag == TokenValue_tv_str_TAG) {
     const char* v = expr.lit_value.payload.tv_str.v;
 
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("\"", Codegen_escape_string(self, v)), "\"");
+    return concatAlloc(concatAlloc("\"", Codegen_escape_string(self, v)), "\"");
 } else {
     return "\"\"";
 } 
@@ -10172,7 +10615,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (v == ((char)(39LL))) {
     return "'\\''";
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("'", char_to_str(v)), "'");
+    return concatAlloc(concatAlloc("'", char_to_str(v)), "'");
 } else {
     return "'\\0'";
 } 
@@ -10192,16 +10635,16 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     StrInterpPart part = ArrayList_StrInterpPart_get(&(expr.interp_parts), i);
     const char* part_str = "";
     if (part.kind == 0LL) {
-    part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("\"", Codegen_escape_string(self, part.str_val)), "\"");
+    part_str = concatAlloc(concatAlloc("\"", Codegen_escape_string(self, part.str_val)), "\"");
 } else {
     const char* expr_val = Codegen_gen_expr(self, part.expr_idx);
     const char* expr_type = Codegen_get_expr_type(self, part.expr_idx);
     if (strcmp(expr_type, "Int") == 0) {
-    part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("int_to_str(", expr_val), ")");
+    part_str = concatAlloc(concatAlloc("int_to_str(", expr_val), ")");
 } else if (strcmp(expr_type, "Char") == 0) {
-    part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("char_to_str(", expr_val), ")");
+    part_str = concatAlloc(concatAlloc("char_to_str(", expr_val), ")");
 } else if (strcmp(expr_type, "Bool") == 0) {
-    part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", expr_val), ") ? \"true\" : \"false\")");
+    part_str = concatAlloc(concatAlloc("((", expr_val), ") ? \"true\" : \"false\")");
 } else if (strcmp(expr_type, "Str") == 0) {
     part_str = expr_val;
 } else {
@@ -10211,7 +10654,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (i == 0LL) {
     result = part_str;
 } else {
-    result = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_std_str_concat_alloc(", result), ", "), part_str), ")");
+    result = concatAlloc(concatAlloc(concatAlloc(concatAlloc("concatAlloc(", result), ", "), part_str), ")");
 }
     i = (i + 1LL);
 }
@@ -10230,34 +10673,34 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (((strlen(lhs_type) > 0LL) && ((lhs_type)[0LL] == ((char)(63LL)))) && (strcmp(rhs, "NULL") == 0)) {
     const char* val_type = __kai_str_sub(lhs_type, 1LL, strlen(lhs_type));
     if (Codegen_is_pointer_type(self, val_type)) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", lhs), " "), op), " NULL)");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", lhs), " "), op), " NULL)");
 }
     if (strcmp(op, "==") == 0) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(!", lhs), ".has_value)");
+    return concatAlloc(concatAlloc("(!", lhs), ".has_value)");
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", lhs), ".has_value)");
+    return concatAlloc(concatAlloc("(", lhs), ".has_value)");
 }
     if (((strlen(rhs_type) > 0LL) && ((rhs_type)[0LL] == ((char)(63LL)))) && (strcmp(lhs, "NULL") == 0)) {
     const char* val_type = __kai_str_sub(rhs_type, 1LL, strlen(rhs_type));
     if (Codegen_is_pointer_type(self, val_type)) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(NULL ", op), " "), rhs), ")");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(NULL ", op), " "), rhs), ")");
 }
     if (strcmp(op, "==") == 0) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(!", rhs), ".has_value)");
+    return concatAlloc(concatAlloc("(!", rhs), ".has_value)");
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", rhs), ".has_value)");
+    return concatAlloc(concatAlloc("(", rhs), ".has_value)");
 }
 }
     ExprNode lhs_node = ArrayList_ExprNode_get(self->expr_pool, expr.binop_left);
     if (strcmp(lhs_type, "Str") == 0) {
     if (strcmp(op, "+") == 0) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_std_str_concat_alloc(", lhs), ", "), rhs), ")");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("concatAlloc(", lhs), ", "), rhs), ")");
 }
     if (strcmp(op, "==") == 0) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(strcmp(", lhs), ", "), rhs), ") == 0)");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(strcmp(", lhs), ", "), rhs), ") == 0)");
 }
     if (strcmp(op, "!=") == 0) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(strcmp(", lhs), ", "), rhs), ") != 0)");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(strcmp(", lhs), ", "), rhs), ") != 0)");
 }
 }
     if (((strcmp(op, "==") == 0) || (strcmp(op, "!=") == 0)) && Codegen_is_enum_type(self, lhs_type)) {
@@ -10279,10 +10722,10 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (rhs_is_ptr) {
     rhs_tag_op = "->";
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", lhs), ")"), tag_op), "tag "), op), " ("), rhs), ")"), rhs_tag_op), "tag)");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("((", lhs), ")"), tag_op), "tag "), op), " ("), rhs), ")"), rhs_tag_op), "tag)");
 }
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", lhs), " "), op), " "), rhs), ")");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", lhs), " "), op), " "), rhs), ")");
 }
     if (expr.kind == ExprKind_ek_unary_op) {
     const char* operand = Codegen_gen_expr(self, expr.unop_operand);
@@ -10290,7 +10733,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (strcmp(op, "own") == 0) {
     return operand;
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", op), operand), ")");
+    return concatAlloc(concatAlloc(concatAlloc("(", op), operand), ")");
 }
     if (expr.kind == ExprKind_ek_func_call) {
     const char* name = expr.func_name;
@@ -10300,21 +10743,21 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     bool is_target_ptr = (((strlen(target_type) > 0LL) && (((target_type)[0LL] == ((char)(42LL))) || ((target_type)[0LL] == ((char)(38LL))))) || (strcmp(target_type, "Str") == 0LL));
     bool is_operand_int = (((strcmp(operand_type, "Int") == 0LL) || (strcmp(operand_type, "Char") == 0LL)) || (strcmp(operand_type, "Bool") == 0LL));
     if (is_target_ptr && is_operand_int) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", Codegen_map_type(self, target_type)), ")(unsigned long long)("), Codegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0LL))), ")");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", Codegen_map_type(self, target_type)), ")(unsigned long long)("), Codegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0LL))), ")");
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", Codegen_map_type(self, target_type)), ")("), Codegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0LL))), ")");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", Codegen_map_type(self, target_type)), ")("), Codegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0LL))), ")");
 }
     if (strcmp(name, "size_of") == 0) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("sizeof(", Codegen_map_type(self, ArrayList_Str_get(&(expr.func_type_args), 0LL))), ")");
+    return concatAlloc(concatAlloc("sizeof(", Codegen_map_type(self, ArrayList_Str_get(&(expr.func_type_args), 0LL))), ")");
 }
     if ((((strcmp(name, "Char") == 0) || (strcmp(name, "Int") == 0)) || (strcmp(name, "Float") == 0)) || (strcmp(name, "Bool") == 0)) {
     const char* ctype = Codegen_map_type(self, name);
     const char* arg_val = Codegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0LL));
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", ctype), ")("), arg_val), "))");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("((", ctype), ")("), arg_val), "))");
 }
     if (strcmp(name, "length") == 0) {
     const char* arg_val = Codegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0LL));
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("strlen(", arg_val), ")");
+    return concatAlloc(concatAlloc("strlen(", arg_val), ")");
 }
     bool is_struct = false;
     int64_t s_idx = 0LL;
@@ -10344,36 +10787,36 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
 }
     int64_t j = 0LL;
     while (j < ArrayList_Str_length(&(type_args))) {
-    fn_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fn_name, "_"), Codegen_clean_type_for_mangling(self, ArrayList_Str_get(&(type_args), j)));
+    fn_name = concatAlloc(concatAlloc(fn_name, "_"), Codegen_clean_type_for_mangling(self, ArrayList_Str_get(&(type_args), j)));
     j = (j + 1LL);
 }
     Codegen_monomorphize_func(self, gf_idx, fn_name, &(type_args));
 } else if (ArrayList_Str_length(&(expr.func_type_args)) > 0LL) {
     int64_t j = 0LL;
     while (j < ArrayList_Str_length(&(expr.func_type_args))) {
-    fn_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fn_name, "_"), Codegen_clean_type_for_mangling(self, ArrayList_Str_get(&(expr.func_type_args), j)));
+    fn_name = concatAlloc(concatAlloc(fn_name, "_"), Codegen_clean_type_for_mangling(self, ArrayList_Str_get(&(expr.func_type_args), j)));
     j = (j + 1LL);
 }
 }
     if (is_struct) {
-    fn_name = __kai_std_str_concat_alloc(fn_name, "_init");
+    fn_name = concatAlloc(fn_name, "_init");
 }
     const char* args_str = "";
     int64_t i = 0LL;
     while (i < ArrayList_Int_length(&(expr.func_args))) {
     if (i > 0LL) {
-    args_str = __kai_std_str_concat_alloc(args_str, ", ");
+    args_str = concatAlloc(args_str, ", ");
 }
     int64_t p_idx = i;
     if (is_struct) {
     p_idx = (i + 1LL);
 }
-    const char* p_key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fn_name, "_param_"), int_to_str(p_idx));
+    const char* p_key = concatAlloc(concatAlloc(fn_name, "_param_"), int_to_str(p_idx));
     const char* expected_type = type_map_get(&(self->func_param_types), p_key);
-    args_str = __kai_std_str_concat_alloc(args_str, Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&(expr.func_args), i), expected_type));
+    args_str = concatAlloc(args_str, Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&(expr.func_args), i), expected_type));
     i = (i + 1LL);
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fn_name, "("), args_str), ")");
+    return concatAlloc(concatAlloc(concatAlloc(fn_name, "("), args_str), ")");
 }
     if (expr.kind == ExprKind_ek_field_access) {
     ExprNode base_node = ArrayList_ExprNode_get(self->expr_pool, expr.field_expr);
@@ -10381,9 +10824,9 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     const char* enum_name = Codegen_map_type(self, Codegen_get_expr_type(self, expr.field_expr));
     const char* var_name = expr.field_name;
     if (Codegen_enum_has_payload(self, base_node.ident_name)) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", enum_name), "){ .tag = "), enum_name), "_"), var_name), "_TAG }");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", enum_name), "){ .tag = "), enum_name), "_"), var_name), "_TAG }");
 } else {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_name, "_"), var_name);
+    return concatAlloc(concatAlloc(enum_name, "_"), var_name);
 }
 }
     const char* base_val = Codegen_gen_expr(self, expr.field_expr);
@@ -10399,20 +10842,20 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
 }
     bool is_complex = (((base_node.kind == ExprKind_ek_func_call) || (base_node.kind == ExprKind_ek_index)) || (base_node.kind == ExprKind_ek_deref));
     if (is_ptr && is_complex) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", base_val), ")"), op), expr.field_name);
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", base_val), ")"), op), expr.field_name);
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(base_val, op), expr.field_name);
+    return concatAlloc(concatAlloc(base_val, op), expr.field_name);
 }
     if (expr.kind == ExprKind_ek_index) {
     const char* base_val = Codegen_gen_expr(self, expr.idx_expr);
     const char* idx_val = Codegen_gen_expr(self, expr.idx_index);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", base_val), ")["), idx_val), "]");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", base_val), ")["), idx_val), "]");
 }
     if (expr.kind == ExprKind_ek_borrow) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("&(", Codegen_gen_expr(self, expr.borrow_expr)), ")");
+    return concatAlloc(concatAlloc("&(", Codegen_gen_expr(self, expr.borrow_expr)), ")");
 }
     if (expr.kind == ExprKind_ek_deref) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("*(", Codegen_gen_expr(self, expr.deref_expr)), ")");
+    return concatAlloc(concatAlloc("*(", Codegen_gen_expr(self, expr.deref_expr)), ")");
 }
     if (expr.kind == ExprKind_ek_check) {
     return Codegen_gen_expr(self, expr.check_expr);
@@ -10427,13 +10870,13 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (expr.range_inclusive) {
     incl = "true";
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(Range){ .start = ", start), ", .end = "), end), ", .is_inclusive = "), incl), " }");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("(Range){ .start = ", start), ", .end = "), end), ", .is_inclusive = "), incl), " }");
 }
     if (expr.kind == ExprKind_ek_slice) {
     const char* base = Codegen_gen_expr(self, expr.slice_expr);
     const char* base_type = Codegen_get_expr_type(self, expr.slice_expr);
     const char* lower = "0";
-    const char* upper = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("strlen(", base), ")");
+    const char* upper = concatAlloc(concatAlloc("strlen(", base), ")");
     if (expr.slice_lower >= 0LL) {
     lower = Codegen_gen_expr(self, expr.slice_lower);
 }
@@ -10441,12 +10884,12 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     upper = Codegen_gen_expr(self, expr.slice_upper);
 }
     if ((strcmp(base_type, "Str") == 0) || (strcmp(base_type, "*Char") == 0)) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_str_sub(", base), ", "), lower), ", "), upper), ")");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("__kai_str_sub(", base), ", "), lower), ", "), upper), ")");
 }
     if ((strlen(base_type) >= 2LL) && (strcmp(__kai_str_sub(base_type, 0LL, 2LL), "[]") == 0)) {
     const char* inner_type = __kai_str_sub(base_type, 2LL, strlen(base_type));
     const char* mapped_inner = Codegen_map_type(self, inner_type);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_arr_sub(", base), ", "), lower), ", "), upper), ", sizeof("), mapped_inner), "))");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("__kai_arr_sub(", base), ", "), lower), ", "), upper), ", sizeof("), mapped_inner), "))");
 }
     return base;
 }
@@ -10466,7 +10909,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     inner_ty = __kai_str_sub(expr.inferred_type, 2LL, strlen(expr.inferred_type));
 }
     const char* mapped_inner = Codegen_map_type(self, inner_ty);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_inner), "[]){ "), elems_str), " }");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", mapped_inner), "[]){ "), elems_str), " }");
 }
     if (expr.kind == ExprKind_ek_tuple) {
     if (strlen(expr.inferred_type) > 0LL) {
@@ -10477,7 +10920,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     ArrayList_Str_push(&(elems), Codegen_gen_expr(self, ArrayList_Int_get(&(expr.tup_elements), i)));
     i = (i + 1LL);
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_ty), "){ "), str_array_join(elems, ", ")), " }");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", mapped_ty), "){ "), str_array_join(elems, ", ")), " }");
 }
     return "NULL";
 }
@@ -10489,12 +10932,12 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     AsmOutput out = ArrayList_AsmOutput_get(&(expr.asm_outputs), i);
     if (strlen(out.type_name) > 0LL) {
     const char* mapped_type = Codegen_map_type(self, out.type_name);
-    const char* var_name = __kai_std_str_concat_alloc("asm_ret_", int_to_str(i));
-    ArrayList_Str_push(&(decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(mapped_type, " "), var_name), ";"));
-    ArrayList_Str_push(&(out_ops), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("[", out.name), "] \""), out.constraint), "\" ("), var_name), ")"));
+    const char* var_name = concatAlloc("asm_ret_", int_to_str(i));
+    ArrayList_Str_push(&(decls), concatAlloc(concatAlloc(concatAlloc(mapped_type, " "), var_name), ";"));
+    ArrayList_Str_push(&(out_ops), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("[", out.name), "] \""), out.constraint), "\" ("), var_name), ")"));
 } else if (out.expr_idx >= 0LL) {
     const char* val_str = Codegen_gen_expr(self, out.expr_idx);
-    ArrayList_Str_push(&(out_ops), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("[", out.name), "] \""), out.constraint), "\" ("), val_str), ")"));
+    ArrayList_Str_push(&(out_ops), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("[", out.name), "] \""), out.constraint), "\" ("), val_str), ")"));
 }
     i = (i + 1LL);
 }
@@ -10503,13 +10946,13 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     while (j < ArrayList_AsmInput_length(&(expr.asm_inputs))) {
     AsmInput inp = ArrayList_AsmInput_get(&(expr.asm_inputs), j);
     const char* val_str = Codegen_gen_expr(self, inp.expr_idx);
-    ArrayList_Str_push(&(in_ops), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("[", inp.name), "] \""), inp.constraint), "\" ("), val_str), ")"));
+    ArrayList_Str_push(&(in_ops), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("[", inp.name), "] \""), inp.constraint), "\" ("), val_str), ")"));
     j = (j + 1LL);
 }
     ArrayList_Str clobs = ArrayList_Str_init(self->allocator);
     int64_t k = 0LL;
     while (k < ArrayList_Str_length(&(expr.asm_clobbers))) {
-    ArrayList_Str_push(&(clobs), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("\"", ArrayList_Str_get(&(expr.asm_clobbers), k)), "\""));
+    ArrayList_Str_push(&(clobs), concatAlloc(concatAlloc("\"", ArrayList_Str_get(&(expr.asm_clobbers), k)), "\""));
     k = (k + 1LL);
 }
     const char* volatile_prefix = "";
@@ -10521,36 +10964,36 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     while (c_idx < strlen(expr.asm_code)) {
     char c = (expr.asm_code)[c_idx];
     if (c == ((char)(10LL))) {
-    escaped_asm = __kai_std_str_concat_alloc(escaped_asm, "\\n\\t");
+    escaped_asm = concatAlloc(escaped_asm, "\\n\\t");
 } else if (c == ((char)(34LL))) {
-    escaped_asm = __kai_std_str_concat_alloc(escaped_asm, "\\\"");
+    escaped_asm = concatAlloc(escaped_asm, "\\\"");
 } else {
-    escaped_asm = __kai_std_str_concat_alloc(escaped_asm, char_to_str(c));
+    escaped_asm = concatAlloc(escaped_asm, char_to_str(c));
 }
     c_idx = (c_idx + 1LL);
 }
-    const char* asm_stmt = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__asm__ ", volatile_prefix), " (\""), escaped_asm), "\"");
+    const char* asm_stmt = concatAlloc(concatAlloc(concatAlloc(concatAlloc("__asm__ ", volatile_prefix), " (\""), escaped_asm), "\"");
     if (((ArrayList_Str_length(&(out_ops)) > 0LL) || (ArrayList_Str_length(&(in_ops)) > 0LL)) || (ArrayList_Str_length(&(clobs)) > 0LL)) {
-    asm_stmt = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(asm_stmt, " : "), str_array_join(out_ops, ", "));
+    asm_stmt = concatAlloc(concatAlloc(asm_stmt, " : "), str_array_join(out_ops, ", "));
 }
     if ((ArrayList_Str_length(&(in_ops)) > 0LL) || (ArrayList_Str_length(&(clobs)) > 0LL)) {
-    asm_stmt = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(asm_stmt, " : "), str_array_join(in_ops, ", "));
+    asm_stmt = concatAlloc(concatAlloc(asm_stmt, " : "), str_array_join(in_ops, ", "));
 }
     if (ArrayList_Str_length(&(clobs)) > 0LL) {
-    asm_stmt = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(asm_stmt, " : "), str_array_join(clobs, ", "));
+    asm_stmt = concatAlloc(concatAlloc(asm_stmt, " : "), str_array_join(clobs, ", "));
 }
-    asm_stmt = __kai_std_str_concat_alloc(asm_stmt, ");");
+    asm_stmt = concatAlloc(asm_stmt, ");");
     const char* res = "({\n";
     int64_t d_idx = 0LL;
     while (d_idx < ArrayList_Str_length(&(decls))) {
-    res = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res, "    "), ArrayList_Str_get(&(decls), d_idx)), "\n");
+    res = concatAlloc(concatAlloc(concatAlloc(res, "    "), ArrayList_Str_get(&(decls), d_idx)), "\n");
     d_idx = (d_idx + 1LL);
 }
-    res = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res, "    "), asm_stmt), "\n");
+    res = concatAlloc(concatAlloc(concatAlloc(res, "    "), asm_stmt), "\n");
     if (ArrayList_AsmOutput_length(&(expr.asm_outputs)) == 1LL) {
     AsmOutput out0 = ArrayList_AsmOutput_get(&(expr.asm_outputs), 0LL);
     if (strlen(out0.type_name) > 0LL) {
-    res = __kai_std_str_concat_alloc(res, "    asm_ret_0;\n");
+    res = concatAlloc(res, "    asm_ret_0;\n");
 }
 } else if (ArrayList_AsmOutput_length(&(expr.asm_outputs)) > 1LL) {
     ArrayList_Str types = ArrayList_Str_init(self->allocator);
@@ -10565,18 +11008,18 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     ti = (ti + 1LL);
 }
     if (all_typed) {
-    const char* tuple_type = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", str_array_join(types, ", ")), ")");
+    const char* tuple_type = concatAlloc(concatAlloc("(", str_array_join(types, ", ")), ")");
     const char* mapped_tuple = Codegen_map_type(self, tuple_type);
     ArrayList_Str vals = ArrayList_Str_init(self->allocator);
     int64_t vi = 0LL;
     while (vi < ArrayList_AsmOutput_length(&(expr.asm_outputs))) {
-    ArrayList_Str_push(&(vals), __kai_std_str_concat_alloc("asm_ret_", int_to_str(vi)));
+    ArrayList_Str_push(&(vals), concatAlloc("asm_ret_", int_to_str(vi)));
     vi = (vi + 1LL);
 }
-    res = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res, "    ("), mapped_tuple), "){ "), str_array_join(vals, ", ")), " };\n");
+    res = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(res, "    ("), mapped_tuple), "){ "), str_array_join(vals, ", ")), " };\n");
 }
 }
-    res = __kai_std_str_concat_alloc(res, "})");
+    res = concatAlloc(res, "})");
     return res;
 }
     if (expr.kind == ExprKind_ek_struct_init) {
@@ -10591,16 +11034,16 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     while (i < ArrayList_FieldInit_length(&(expr.struct_fields))) {
     FieldInit f = ArrayList_FieldInit_get(&(expr.struct_fields), i);
     if (i > 0LL) {
-    fields_str = __kai_std_str_concat_alloc(fields_str, ", ");
+    fields_str = concatAlloc(fields_str, ", ");
 }
-    fields_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fields_str, "."), f.name), " = "), Codegen_gen_expr(self, f.value));
+    fields_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(fields_str, "."), f.name), " = "), Codegen_gen_expr(self, f.value));
     i = (i + 1LL);
 }
     const char* payload_str = "";
     if (strlen(fields_str) > 0LL) {
-    payload_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(", .payload = { .", variant_name), " = { "), fields_str), " } }");
+    payload_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(", .payload = { .", variant_name), " = { "), fields_str), " } }");
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", enum_name), "){ .tag = "), enum_name), "_"), variant_name), "_TAG"), payload_str), " }");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", enum_name), "){ .tag = "), enum_name), "_"), variant_name), "_TAG"), payload_str), " }");
 } else {
     const char* struct_name = Codegen_map_type(self, expr.struct_name);
     const char* fields_str = "";
@@ -10608,7 +11051,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     while (i < ArrayList_FieldInit_length(&(expr.struct_fields))) {
     FieldInit f = ArrayList_FieldInit_get(&(expr.struct_fields), i);
     if (i > 0LL) {
-    fields_str = __kai_std_str_concat_alloc(fields_str, ", ");
+    fields_str = concatAlloc(fields_str, ", ");
 }
     const char* field_type = "";
     int64_t si = 0LL;
@@ -10626,10 +11069,10 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
 }
     si = (si + 1LL);
 }
-    fields_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fields_str, "."), f.name), " = "), Codegen_gen_expr_with_expected_type(self, f.value, field_type));
+    fields_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(fields_str, "."), f.name), " = "), Codegen_gen_expr_with_expected_type(self, f.value, field_type));
     i = (i + 1LL);
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", struct_name), "){ "), fields_str), " }");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", struct_name), "){ "), fields_str), " }");
 }
 }
     if (expr.kind == ExprKind_ek_method_call) {
@@ -10642,7 +11085,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     while (i < strlen(rec_type)) {
     char c = (rec_type)[i];
     if ((c != ((char)(42LL))) && (c != ((char)(38LL)))) {
-    clean_type = __kai_std_str_concat_alloc(clean_type, char_to_str(c));
+    clean_type = concatAlloc(clean_type, char_to_str(c));
 }
     i = (i + 1LL);
 }
@@ -10659,7 +11102,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     clean_type = Codegen_map_type(self, rec_type);
 }
 }
-    const char* func_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(clean_type, "_"), method_name);
+    const char* func_name = concatAlloc(concatAlloc(clean_type, "_"), method_name);
     if (type_map_find(&(self->func_types), func_name) < 0LL) {
     printf("error[E0023]: type '%s' has no method '%s'\n", rec_type, method_name);
     {
@@ -10677,31 +11120,31 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     bool is_complex = ((receiver_node.kind == ExprKind_ek_func_call) || (receiver_node.kind == ExprKind_ek_method_call));
     if (is_complex) {
     const char* tmp_type = Codegen_map_type(self, rec_inferred);
-    args_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("({ ", tmp_type), " __tmp_recv = "), rec_val), "; &__tmp_recv; })");
+    args_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc("({ ", tmp_type), " __tmp_recv = "), rec_val), "; &__tmp_recv; })");
 } else {
-    args_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("&(", rec_val), ")");
+    args_str = concatAlloc(concatAlloc("&(", rec_val), ")");
 }
 }
 }
     int64_t ai = 0LL;
     while (ai < ArrayList_Int_length(&(expr.meth_args))) {
     if (strlen(args_str) > 0LL) {
-    args_str = __kai_std_str_concat_alloc(args_str, ", ");
+    args_str = concatAlloc(args_str, ", ");
 }
-    const char* p_key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(func_name, "_param_"), int_to_str((ai + 1LL)));
+    const char* p_key = concatAlloc(concatAlloc(func_name, "_param_"), int_to_str((ai + 1LL)));
     const char* expected_type = type_map_get(&(self->func_param_types), p_key);
-    args_str = __kai_std_str_concat_alloc(args_str, Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&(expr.meth_args), ai), expected_type));
+    args_str = concatAlloc(args_str, Codegen_gen_expr_with_expected_type(self, ArrayList_Int_get(&(expr.meth_args), ai), expected_type));
     ai = (ai + 1LL);
 }
     if ((strcmp(method_name, "init") == 0) && (!is_constructor)) {
     const char* rec_val = Codegen_gen_expr(self, receiver_idx);
     const char* rec_inferred = Codegen_get_expr_type(self, receiver_idx);
     if (((rec_inferred)[0LL] == ((char)(42LL))) || ((rec_inferred)[0LL] == ((char)(38LL)))) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("*(", rec_val), ") = "), func_name), "("), args_str), ")");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("*(", rec_val), ") = "), func_name), "("), args_str), ")");
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(rec_val, " = "), func_name), "("), args_str), ")");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(rec_val, " = "), func_name), "("), args_str), ")");
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(func_name, "("), args_str), ")");
+    return concatAlloc(concatAlloc(concatAlloc(func_name, "("), args_str), ")");
 }
     if (expr.kind == ExprKind_ek_catch) {
     const char* inner = Codegen_gen_expr(self, expr.catch_expr);
@@ -10741,22 +11184,22 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
 }
     const char* catch_code = "({ ";
     if (Codegen_is_pointer_type(self, val_type)) {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_opt = ("), inner), "); ");
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_cv; ");
-    catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } ");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(concatAlloc(catch_code, val_ctype), " _kai_opt = ("), inner), "); ");
+    catch_code = concatAlloc(concatAlloc(catch_code, val_ctype), " _kai_cv; ");
+    catch_code = concatAlloc(catch_code, "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } ");
     if (fallback_is_stmt2) {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
 } else {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
 }
 } else {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, cond_ctype), " _kai_opt = ("), inner), "); ");
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_cv; ");
-    catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } ");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(concatAlloc(catch_code, cond_ctype), " _kai_opt = ("), inner), "); ");
+    catch_code = concatAlloc(concatAlloc(catch_code, val_ctype), " _kai_cv; ");
+    catch_code = concatAlloc(catch_code, "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } ");
     if (fallback_is_stmt2) {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
 } else {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
 }
 }
     return catch_code;
@@ -10797,25 +11240,25 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
 } else {
     fallback_code = "0";
 }
-    const char* catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("({ ", result_ctype), " _kai_cr = ("), inner), "); ");
+    const char* catch_code = concatAlloc(concatAlloc(concatAlloc(concatAlloc("({ ", result_ctype), " _kai_cr = ("), inner), "); ");
     if (strcmp(val_type, "Void") == 0) {
-    catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_cr.tag != 0) { ");
+    catch_code = concatAlloc(catch_code, "if (_kai_cr.tag != 0) { ");
     if (strlen(expr.catch_var) > 0LL) {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
 }
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, fallback_code), " } 0; })");
+    catch_code = concatAlloc(concatAlloc(catch_code, fallback_code), " } 0; })");
 } else {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_cv; ");
-    catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_cr.tag != 0) { ");
+    catch_code = concatAlloc(concatAlloc(catch_code, val_ctype), " _kai_cv; ");
+    catch_code = concatAlloc(catch_code, "if (_kai_cr.tag != 0) { ");
     if (strlen(expr.catch_var) > 0LL) {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
 }
     if (fallback_is_stmt) {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, fallback_code), " __builtin_unreachable(); ");
+    catch_code = concatAlloc(concatAlloc(catch_code, fallback_code), " __builtin_unreachable(); ");
 } else {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "_kai_cv = ("), fallback_code), "); ");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "_kai_cv = ("), fallback_code), "); ");
 }
-    catch_code = __kai_std_str_concat_alloc(catch_code, "} else { _kai_cv = _kai_cr.value; } _kai_cv; })");
+    catch_code = concatAlloc(catch_code, "} else { _kai_cv = _kai_cr.value; } _kai_cv; })");
 }
     return catch_code;
 }
@@ -10963,7 +11406,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     while (i < ArrayList_Int_length(&(stmt.block_stmts))) {
     const char* s = Codegen_gen_stmt(self, ArrayList_Int_get(&(stmt.block_stmts), i));
     if (strlen(s) > 0LL) {
-    block_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(block_str, "    "), s), "\n");
+    block_str = concatAlloc(concatAlloc(concatAlloc(block_str, "    "), s), "\n");
 }
     i = (i + 1LL);
 }
@@ -10973,16 +11416,16 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     StmtNode def_node = ArrayList_StmtNode_get(self->stmt_pool, def_idx);
     const char* s = Codegen_gen_stmt(self, def_node.defer_body);
     if (strlen(s) > 0LL) {
-    block_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(block_str, "    "), s), "\n");
+    block_str = concatAlloc(concatAlloc(concatAlloc(block_str, "    "), s), "\n");
 }
 }
     int64_t di = 0LL;
     while (di < ArrayList_DropVarEntry_length(&(stmt.block_drop_vars))) {
     DropVarEntry entry = ArrayList_DropVarEntry_get(&(stmt.block_drop_vars), di);
-    block_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(block_str, "    "), entry.base_type), "_drop(&"), entry.name), ");\n");
+    block_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(block_str, "    "), entry.base_type), "_drop(&"), entry.name), ");\n");
     di = (di + 1LL);
 }
-    block_str = __kai_std_str_concat_alloc(block_str, "}");
+    block_str = concatAlloc(block_str, "}");
     (void)(ArrayList_Int_pop(&(self->block_stack)));
     return block_str;
 }
@@ -10998,11 +11441,11 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 }
     const char* init_val = Codegen_gen_expr_with_expected_type(self, stmt.vardecl_value, var_type_name);
     if (strcmp(name, "_") == 0) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(void)(", init_val), ");");
+    return concatAlloc(concatAlloc("(void)(", init_val), ");");
 }
     const char* var_type = Codegen_map_type(self, var_type_name);
     type_map_put(&(self->var_types), name, var_type_name);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(var_type, " "), name), " = "), init_val), ";");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(var_type, " "), name), " = "), init_val), ";");
 }
     if (stmt.kind == StmtKind_sk_assignment) {
     const char* lhs = Codegen_gen_expr(self, stmt.assign_target);
@@ -11012,7 +11455,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     if (strlen(stmt.assign_op) > 0LL) {
     op = stmt.assign_op;
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(lhs, " "), op), " "), rhs), ";");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(lhs, " "), op), " "), rhs), ";");
 }
     if (stmt.kind == StmtKind_sk_func_decl) {
     if (ArrayList_Str_length(&(stmt.func_type_params)) > 0LL) {
@@ -11026,9 +11469,9 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     while (i < ArrayList_Param_length(&(stmt.func_params))) {
     Param p = ArrayList_Param_get(&(stmt.func_params), i);
     if (i > 0LL) {
-    params_str = __kai_std_str_concat_alloc(params_str, ", ");
+    params_str = concatAlloc(params_str, ", ");
 }
-    params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
+    params_str = concatAlloc(concatAlloc(concatAlloc(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
     i = (i + 1LL);
 }
     if (strlen(params_str) == 0LL) {
@@ -11060,10 +11503,10 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     const char* proto = "";
     const char* impl_str = "";
     if (strcmp(name, "main") == 0) {
-    impl_str = __kai_std_str_concat_alloc("int main(int argc, char** argv) ", body_str);
+    impl_str = concatAlloc("int main(int argc, char** argv) ", body_str);
 } else {
-    proto = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), name), "("), params_str), ");\n");
-    impl_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), name), "("), params_str), ") "), body_str), "\n");
+    proto = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(ret_type, " "), name), "("), params_str), ");\n");
+    impl_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(ret_type, " "), name), "("), params_str), ") "), body_str), "\n");
 }
     if (strlen(proto) > 0LL) {
     (void)(StringBuilder_append(&(self->func_decls), proto));
@@ -11086,12 +11529,12 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     while (mi < ArrayList_Int_length(&(stmt.trait_methods))) {
     StmtNode m_node = ArrayList_StmtNode_get(self->stmt_pool, ArrayList_Int_get(&(stmt.trait_methods), mi));
     if (mi > 0LL) {
-    method_names = __kai_std_str_concat_alloc(method_names, ", ");
+    method_names = concatAlloc(method_names, ", ");
 }
-    method_names = __kai_std_str_concat_alloc(method_names, m_node.func_name);
+    method_names = concatAlloc(method_names, m_node.func_name);
     mi = (mi + 1LL);
 }
-    const char* comment = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("/* trait ", stmt.trait_name), ": "), method_names), " */\n");
+    const char* comment = concatAlloc(concatAlloc(concatAlloc(concatAlloc("/* trait ", stmt.trait_name), ": "), method_names), " */\n");
     (void)(StringBuilder_append(&(self->struct_decls), comment));
     return "";
 }
@@ -11102,10 +11545,10 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     int64_t j = 0LL;
     while (j < ArrayList_Str_length(&(stmt.error_variants))) {
     const char* vname = ArrayList_Str_get(&(stmt.error_variants), j);
-    enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "    "), name), "_"), vname), " = "), int_to_str((j + 1LL))), ",\n");
+    enum_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(enum_str, "    "), name), "_"), vname), " = "), int_to_str((j + 1LL))), ",\n");
     j = (j + 1LL);
 }
-    enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "} "), name), ";\n");
+    enum_str = concatAlloc(concatAlloc(concatAlloc(enum_str, "} "), name), ";\n");
     (void)(StringBuilder_append(&(self->struct_decls), enum_str));
     return "";
 }
@@ -11131,41 +11574,41 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     int64_t j = 0LL;
     while (j < ArrayList_Variant_length(&(stmt.enum_variants))) {
     Variant v = ArrayList_Variant_get(&(stmt.enum_variants), j);
-    enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "    "), name), "_"), v.vname), ",\n");
+    enum_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(enum_str, "    "), name), "_"), v.vname), ",\n");
     j = (j + 1LL);
 }
-    enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "} "), name), ";\n");
+    enum_str = concatAlloc(concatAlloc(concatAlloc(enum_str, "} "), name), ";\n");
 } else {
-    const char* tags_name = __kai_std_str_concat_alloc(name, "_tags");
+    const char* tags_name = concatAlloc(name, "_tags");
     enum_str = "typedef enum {\n";
     int64_t j = 0LL;
     while (j < ArrayList_Variant_length(&(stmt.enum_variants))) {
     Variant v = ArrayList_Variant_get(&(stmt.enum_variants), j);
-    enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "    "), name), "_"), v.vname), "_TAG,\n");
+    enum_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(enum_str, "    "), name), "_"), v.vname), "_TAG,\n");
     j = (j + 1LL);
 }
-    enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "} "), tags_name), ";\n");
-    enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "typedef struct "), name), " "), name), ";\n");
-    enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "struct "), name), " {\n");
-    enum_str = __kai_std_str_concat_alloc(enum_str, "    uint8_t tag;\n");
-    enum_str = __kai_std_str_concat_alloc(enum_str, "    union {\n");
+    enum_str = concatAlloc(concatAlloc(concatAlloc(enum_str, "} "), tags_name), ";\n");
+    enum_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(enum_str, "typedef struct "), name), " "), name), ";\n");
+    enum_str = concatAlloc(concatAlloc(concatAlloc(enum_str, "struct "), name), " {\n");
+    enum_str = concatAlloc(enum_str, "    uint8_t tag;\n");
+    enum_str = concatAlloc(enum_str, "    union {\n");
     int64_t k = 0LL;
     while (k < ArrayList_Variant_length(&(stmt.enum_variants))) {
     Variant v = ArrayList_Variant_get(&(stmt.enum_variants), k);
     if (ArrayList_Param_length(&(v.params)) > 0LL) {
-    enum_str = __kai_std_str_concat_alloc(enum_str, "        struct {\n");
+    enum_str = concatAlloc(enum_str, "        struct {\n");
     int64_t p_idx = 0LL;
     while (p_idx < ArrayList_Param_length(&(v.params))) {
     Param p = ArrayList_Param_get(&(v.params), p_idx);
-    enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "            "), Codegen_map_type(self, p.ptype)), " "), p.name), ";\n");
+    enum_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(enum_str, "            "), Codegen_map_type(self, p.ptype)), " "), p.name), ";\n");
     p_idx = (p_idx + 1LL);
 }
-    enum_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(enum_str, "        } "), v.vname), ";\n");
+    enum_str = concatAlloc(concatAlloc(concatAlloc(enum_str, "        } "), v.vname), ";\n");
 }
     k = (k + 1LL);
 }
-    enum_str = __kai_std_str_concat_alloc(enum_str, "    } payload;\n");
-    enum_str = __kai_std_str_concat_alloc(enum_str, "};\n");
+    enum_str = concatAlloc(enum_str, "    } payload;\n");
+    enum_str = concatAlloc(enum_str, "};\n");
 }
     (void)(StringBuilder_append(&(self->struct_decls), enum_str));
     return "";
@@ -11183,7 +11626,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     int64_t method_stmt_idx = ArrayList_Int_get(&(stmt.impl_methods), idx);
     StmtNode method_node = ArrayList_StmtNode_get(self->stmt_pool, method_stmt_idx);
     const char* method_name = method_node.func_name;
-    bool is_init = ((((strcmp(method_name, "init") == 0) || (strcmp(method_node.func_return_type, struct_name) == 0)) || (strcmp(method_node.func_return_type, __kai_std_str_concat_alloc("*", struct_name)) == 0)) || (strcmp(method_node.func_return_type, __kai_std_str_concat_alloc("&", struct_name)) == 0));
+    bool is_init = ((((strcmp(method_name, "init") == 0) || (strcmp(method_node.func_return_type, struct_name) == 0)) || (strcmp(method_node.func_return_type, concatAlloc("*", struct_name)) == 0)) || (strcmp(method_node.func_return_type, concatAlloc("&", struct_name)) == 0));
     const char* ret_type = "";
     if (is_init) {
     ret_type = mapped_struct_name;
@@ -11192,23 +11635,23 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 }
     const char* params_str = "";
     if (!is_init) {
-    params_str = __kai_std_str_concat_alloc(mapped_struct_name, "* self");
+    params_str = concatAlloc(mapped_struct_name, "* self");
 }
     int64_t p_idx = 0LL;
     while (p_idx < ArrayList_Param_length(&(method_node.func_params))) {
     Param p = ArrayList_Param_get(&(method_node.func_params), p_idx);
     if (strcmp(p.name, "self") != 0) {
     if (strlen(params_str) > 0LL) {
-    params_str = __kai_std_str_concat_alloc(params_str, ", ");
+    params_str = concatAlloc(params_str, ", ");
 }
-    params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
+    params_str = concatAlloc(concatAlloc(concatAlloc(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
 }
     p_idx = (p_idx + 1LL);
 }
     if (strlen(params_str) == 0LL) {
     params_str = "void";
 }
-    const char* mangled_fn_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(mapped_struct_name, "_"), method_name);
+    const char* mangled_fn_name = concatAlloc(concatAlloc(mapped_struct_name, "_"), method_name);
     const char* old_fn = self->cur_func_name;
     const char* old_ret = self->cur_return_type;
     bool old_init = self->cur_method_is_init;
@@ -11223,7 +11666,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     if (is_init) {
     type_map_put(&(self->var_types), "self", struct_name);
 } else {
-    type_map_put(&(self->var_types), "self", __kai_std_str_concat_alloc("*", struct_name));
+    type_map_put(&(self->var_types), "self", concatAlloc("*", struct_name));
 }
     int64_t p_reg = 0LL;
     while (p_reg < ArrayList_Param_length(&(method_node.func_params))) {
@@ -11240,8 +11683,8 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     if (is_init) {
     body_str = Codegen_add_init_return(self, body_str, mapped_struct_name);
 }
-    const char* proto = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), mangled_fn_name), "("), params_str), ");\n");
-    const char* impl_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), mangled_fn_name), "("), params_str), ") "), body_str), "\n");
+    const char* proto = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(ret_type, " "), mangled_fn_name), "("), params_str), ");\n");
+    const char* impl_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(ret_type, " "), mangled_fn_name), "("), params_str), ") "), body_str), "\n");
     (void)(StringBuilder_append(&(self->func_decls), proto));
     (void)(StringBuilder_append(&(self->output), impl_str));
     self->cur_func_name = old_fn;
@@ -11257,21 +11700,21 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     if (((strlen(cond_val) > 1LL) && ((cond_val)[0LL] == ((char)(40LL)))) && ((cond_val)[(strlen(cond_val) - 1LL)] == ((char)(41LL)))) {
     cond_str = cond_val;
 } else {
-    cond_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", cond_val), ")");
+    cond_str = concatAlloc(concatAlloc("(", cond_val), ")");
 }
-    const char* if_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if ", cond_str), " "), Codegen_gen_stmt(self, stmt.if_then));
+    const char* if_str = concatAlloc(concatAlloc(concatAlloc("if ", cond_str), " "), Codegen_gen_stmt(self, stmt.if_then));
     if (stmt.if_else >= 0LL) {
     StmtNode else_node = ArrayList_StmtNode_get(self->stmt_pool, stmt.if_else);
     if ((else_node.kind == StmtKind_sk_block) && (ArrayList_Int_length(&(else_node.block_stmts)) == 1LL)) {
     int64_t single_stmt_idx = ArrayList_Int_get(&(else_node.block_stmts), 0LL);
     StmtNode single_stmt = ArrayList_StmtNode_get(self->stmt_pool, single_stmt_idx);
     if (single_stmt.kind == StmtKind_sk_if) {
-    if_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_str, " else "), Codegen_gen_stmt(self, single_stmt_idx));
+    if_str = concatAlloc(concatAlloc(if_str, " else "), Codegen_gen_stmt(self, single_stmt_idx));
 } else {
-    if_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_str, " else "), Codegen_gen_stmt(self, stmt.if_else));
+    if_str = concatAlloc(concatAlloc(if_str, " else "), Codegen_gen_stmt(self, stmt.if_else));
 }
 } else {
-    if_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_str, " else "), Codegen_gen_stmt(self, stmt.if_else));
+    if_str = concatAlloc(concatAlloc(if_str, " else "), Codegen_gen_stmt(self, stmt.if_else));
 }
 }
     return if_str;
@@ -11292,12 +11735,12 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     int64_t single_stmt_idx = ArrayList_Int_get(&(else_node.block_stmts), 0LL);
     StmtNode single_stmt = ArrayList_StmtNode_get(self->stmt_pool, single_stmt_idx);
     if (single_stmt.kind == StmtKind_sk_if_let) {
-    else_str = __kai_std_str_concat_alloc(" else ", Codegen_gen_stmt(self, single_stmt_idx));
+    else_str = concatAlloc(" else ", Codegen_gen_stmt(self, single_stmt_idx));
 } else {
-    else_str = __kai_std_str_concat_alloc(" else ", Codegen_gen_stmt(self, stmt.iflet_else));
+    else_str = concatAlloc(" else ", Codegen_gen_stmt(self, stmt.iflet_else));
 }
 } else {
-    else_str = __kai_std_str_concat_alloc(" else ", Codegen_gen_stmt(self, stmt.iflet_else));
+    else_str = concatAlloc(" else ", Codegen_gen_stmt(self, stmt.iflet_else));
 }
 }
     while (ArrayList_StrMapEntry_length(&(self->var_types)) > old_var_len) {
@@ -11305,18 +11748,18 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 }
     const char* if_code = "";
     if (Codegen_is_pointer_type(self, unwrapped_type)) {
-    if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if ((", cond_val), ") != NULL) {\n");
-    if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_code, "    "), unwrapped_ctype), " "), stmt.iflet_var), " = "), cond_val), ";\n");
-    if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_code, "    "), then_str), "\n");
-    if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_code, "}"), else_str);
+    if_code = concatAlloc(concatAlloc("if ((", cond_val), ") != NULL) {\n");
+    if_code = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(if_code, "    "), unwrapped_ctype), " "), stmt.iflet_var), " = "), cond_val), ";\n");
+    if_code = concatAlloc(concatAlloc(concatAlloc(if_code, "    "), then_str), "\n");
+    if_code = concatAlloc(concatAlloc(if_code, "}"), else_str);
 } else {
     if_code = "{\n";
-    if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_code, "    "), cond_ctype), " _kai_opt = "), cond_val), ";\n");
-    if_code = __kai_std_str_concat_alloc(if_code, "    if (_kai_opt.has_value) {\n");
-    if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_code, "        "), unwrapped_ctype), " "), stmt.iflet_var), " = _kai_opt.value;\n");
-    if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_code, "        "), then_str), "\n");
-    if_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(if_code, "    }"), else_str), "\n");
-    if_code = __kai_std_str_concat_alloc(if_code, "}");
+    if_code = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(if_code, "    "), cond_ctype), " _kai_opt = "), cond_val), ";\n");
+    if_code = concatAlloc(if_code, "    if (_kai_opt.has_value) {\n");
+    if_code = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(if_code, "        "), unwrapped_ctype), " "), stmt.iflet_var), " = _kai_opt.value;\n");
+    if_code = concatAlloc(concatAlloc(concatAlloc(if_code, "        "), then_str), "\n");
+    if_code = concatAlloc(concatAlloc(concatAlloc(if_code, "    }"), else_str), "\n");
+    if_code = concatAlloc(if_code, "}");
 }
     return if_code;
 }
@@ -11326,14 +11769,14 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     if (((strlen(cond_val) > 1LL) && ((cond_val)[0LL] == ((char)(40LL)))) && ((cond_val)[(strlen(cond_val) - 1LL)] == ((char)(41LL)))) {
     cond_str = cond_val;
 } else {
-    cond_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", cond_val), ")");
+    cond_str = concatAlloc(concatAlloc("(", cond_val), ")");
 }
     if (stmt.while_body >= 0LL) {
     StmtNode body_stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt.while_body);
     body_stmt.block_is_loop_body = true;
     ArrayList_StmtNode_set(self->stmt_pool, stmt.while_body, body_stmt);
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("while ", cond_str), " "), Codegen_gen_stmt(self, stmt.while_body));
+    return concatAlloc(concatAlloc(concatAlloc("while ", cond_str), " "), Codegen_gen_stmt(self, stmt.while_body));
 }
     if (stmt.kind == StmtKind_sk_for) {
     const char* iter_var = stmt.for_var;
@@ -11351,9 +11794,9 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     cmp_asc = "<=";
     cmp_desc = ">=";
 }
-    const char* for_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("for (int64_t ", iter_var), " = "), start), "; ");
-    for_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(for_str, "("), start), " <= "), end), ") ? ("), iter_var), " "), cmp_asc), " "), end), ") : ("), iter_var), " "), cmp_desc), " "), end), "); ");
-    for_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(for_str, "("), start), " <= "), end), ") ? ++"), iter_var), " : --"), iter_var), ") "), body);
+    const char* for_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc("for (int64_t ", iter_var), " = "), start), "; ");
+    for_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(for_str, "("), start), " <= "), end), ") ? ("), iter_var), " "), cmp_asc), " "), end), ") : ("), iter_var), " "), cmp_desc), " "), end), "); ");
+    for_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(for_str, "("), start), " <= "), end), ") ? ++"), iter_var), " : --"), iter_var), ") "), body);
     return for_str;
 }
     if (stmt.kind == StmtKind_sk_return) {
@@ -11380,7 +11823,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     int64_t di = 0LL;
     while (di < ArrayList_DropVarEntry_length(&(b_node.block_drop_vars))) {
     DropVarEntry entry = ArrayList_DropVarEntry_get(&(b_node.block_drop_vars), di);
-    ArrayList_Str_push(&(drop_calls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(entry.base_type, "_drop(&"), entry.name), ");"));
+    ArrayList_Str_push(&(drop_calls), concatAlloc(concatAlloc(concatAlloc(entry.base_type, "_drop(&"), entry.name), ");"));
     di = (di + 1LL);
 }
     bi = (bi - 1LL);
@@ -11406,17 +11849,17 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     const char* expr_ty = Codegen_get_expr_type(self, stmt.return_value);
     int64_t expr_excl_pos = Codegen_str_find(self, expr_ty, ((char)(33LL)));
     if (expr_excl_pos >= 0LL) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return ", val_str), ";");
+    return concatAlloc(concatAlloc("return ", val_str), ";");
 }
     if (is_error_variant) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return (", result_ctype), "){ .tag = "), val_str), " };");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("return (", result_ctype), "){ .tag = "), val_str), " };");
 }
     if (strcmp(val_payload_type, "Void") == 0) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return (", result_ctype), "){ .tag = 0 };");
+    return concatAlloc(concatAlloc("return (", result_ctype), "){ .tag = 0 };");
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return (", result_ctype), "){ .tag = 0, .value = "), val_str), " };");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("return (", result_ctype), "){ .tag = 0, .value = "), val_str), " };");
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return ", Codegen_gen_expr_with_expected_type(self, stmt.return_value, self->cur_return_type)), ";");
+    return concatAlloc(concatAlloc("return ", Codegen_gen_expr_with_expected_type(self, stmt.return_value, self->cur_return_type)), ";");
 }
     return "return;";
 }
@@ -11424,13 +11867,13 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     const char* val_str = Codegen_gen_expr_with_expected_type(self, stmt.return_value, self->cur_return_type);
     const char* val_type = Codegen_get_expr_type(self, stmt.return_value);
     if ((strcmp(val_type, "Void") == 0) || (strcmp(val_type, "NoneType") == 0)) {
-    const char* res = __kai_std_str_concat_alloc(val_str, "; ");
+    const char* res = concatAlloc(val_str, "; ");
     int64_t ci = 0LL;
     while (ci < ArrayList_Str_length(&(drop_calls))) {
-    res = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res, ArrayList_Str_get(&(drop_calls), ci)), " ");
+    res = concatAlloc(concatAlloc(res, ArrayList_Str_get(&(drop_calls), ci)), " ");
     ci = (ci + 1LL);
 }
-    return __kai_std_str_concat_alloc(res, "return;");
+    return concatAlloc(res, "return;");
 }
     int64_t ret_excl_pos = Codegen_str_find(self, self->cur_return_type, ((char)(33LL)));
     const char* mapped_type = Codegen_map_type(self, self->cur_return_type);
@@ -11453,65 +11896,65 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     if (expr_excl_pos >= 0LL) {
     ret_expr = raw_val;
 } else if (is_error_variant) {
-    ret_expr = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_type), "){ .tag = "), raw_val), " }");
+    ret_expr = concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", mapped_type), "){ .tag = "), raw_val), " }");
 } else if (strcmp(val_payload_type, "Void") == 0) {
-    ret_expr = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_type), "){ .tag = 0 }");
+    ret_expr = concatAlloc(concatAlloc("(", mapped_type), "){ .tag = 0 }");
 } else {
-    ret_expr = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_type), "){ .tag = 0, .value = "), raw_val), " }");
+    ret_expr = concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", mapped_type), "){ .tag = 0, .value = "), raw_val), " }");
 }
     const char* res_str = "{\n";
-    res_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res_str, "    "), mapped_type), " __ret_val = "), ret_expr), ";\n");
+    res_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(res_str, "    "), mapped_type), " __ret_val = "), ret_expr), ";\n");
     int64_t ci = 0LL;
     while (ci < ArrayList_Str_length(&(drop_calls))) {
-    res_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res_str, "    "), ArrayList_Str_get(&(drop_calls), ci)), "\n");
+    res_str = concatAlloc(concatAlloc(concatAlloc(res_str, "    "), ArrayList_Str_get(&(drop_calls), ci)), "\n");
     ci = (ci + 1LL);
 }
-    res_str = __kai_std_str_concat_alloc(res_str, "    return __ret_val;\n");
-    res_str = __kai_std_str_concat_alloc(res_str, "}");
+    res_str = concatAlloc(res_str, "    return __ret_val;\n");
+    res_str = concatAlloc(res_str, "}");
     return res_str;
 }
     const char* res_str = "{\n";
-    res_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res_str, "    "), mapped_type), " __ret_val = "), val_str), ";\n");
+    res_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(res_str, "    "), mapped_type), " __ret_val = "), val_str), ";\n");
     int64_t ci = 0LL;
     while (ci < ArrayList_Str_length(&(drop_calls))) {
-    res_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res_str, "    "), ArrayList_Str_get(&(drop_calls), ci)), "\n");
+    res_str = concatAlloc(concatAlloc(concatAlloc(res_str, "    "), ArrayList_Str_get(&(drop_calls), ci)), "\n");
     ci = (ci + 1LL);
 }
-    res_str = __kai_std_str_concat_alloc(res_str, "    return __ret_val;\n");
-    res_str = __kai_std_str_concat_alloc(res_str, "}");
+    res_str = concatAlloc(res_str, "    return __ret_val;\n");
+    res_str = concatAlloc(res_str, "}");
     return res_str;
 } else {
     const char* res_str = "{\n";
     int64_t ci = 0LL;
     while (ci < ArrayList_Str_length(&(drop_calls))) {
-    res_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res_str, "    "), ArrayList_Str_get(&(drop_calls), ci)), "\n");
+    res_str = concatAlloc(concatAlloc(concatAlloc(res_str, "    "), ArrayList_Str_get(&(drop_calls), ci)), "\n");
     ci = (ci + 1LL);
 }
-    res_str = __kai_std_str_concat_alloc(res_str, "    return;\n");
-    res_str = __kai_std_str_concat_alloc(res_str, "}");
+    res_str = concatAlloc(res_str, "    return;\n");
+    res_str = concatAlloc(res_str, "}");
     return res_str;
 }
 }
     if (stmt.kind == StmtKind_sk_expr) {
-    return __kai_std_str_concat_alloc(Codegen_gen_expr(self, stmt.expr_stmt), ";");
+    return concatAlloc(Codegen_gen_expr(self, stmt.expr_stmt), ";");
 }
     if (stmt.kind == StmtKind_sk_print) {
     int64_t arg = stmt.print_value;
     const char* val = Codegen_gen_expr(self, arg);
     const char* arg_type = Codegen_get_expr_type(self, arg);
     if (strcmp(arg_type, "Int") == 0) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_print_int(", val), ");");
+    return concatAlloc(concatAlloc("__kai_print_int(", val), ");");
 }
     if (strcmp(arg_type, "Float") == 0) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_print_float(", val), ");");
+    return concatAlloc(concatAlloc("__kai_print_float(", val), ");");
 }
     if (strcmp(arg_type, "Char") == 0) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%c\\n\", (char)(", val), "));");
+    return concatAlloc(concatAlloc("printf(\"%c\\n\", (char)(", val), "));");
 }
     if (strcmp(arg_type, "Bool") == 0) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%s\\n\", (", val), ") ? \"true\" : \"false\");");
+    return concatAlloc(concatAlloc("printf(\"%s\\n\", (", val), ") ? \"true\" : \"false\");");
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%s\\n\", ", val), ");");
+    return concatAlloc(concatAlloc("printf(\"%s\\n\", ", val), ");");
 }
     if (stmt.kind == StmtKind_sk_unsafe) {
     return Codegen_gen_stmt(self, stmt.unsafe_body);
@@ -11527,15 +11970,15 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     while (i < ArrayList_Param_length(&(stmt.extern_params))) {
     Param p = ArrayList_Param_get(&(stmt.extern_params), i);
     if (i > 0LL) {
-    params_str = __kai_std_str_concat_alloc(params_str, ", ");
+    params_str = concatAlloc(params_str, ", ");
 }
-    params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
+    params_str = concatAlloc(concatAlloc(concatAlloc(params_str, Codegen_map_type(self, p.ptype)), " "), p.name);
     i = (i + 1LL);
 }
     if (strlen(params_str) == 0LL) {
     params_str = "void";
 }
-    const char* proto = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("extern ", ret_type), " "), name), "("), params_str), ");\n");
+    const char* proto = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("extern ", ret_type), " "), name), "("), params_str), ");\n");
     (void)(StringBuilder_append(&(self->func_decls), proto));
     return "";
 }
@@ -11554,11 +11997,11 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     const char* res_str = "{\n";
     int64_t ci = 0LL;
     while (ci < ArrayList_Str_length(&(drop_calls))) {
-    res_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res_str, "    "), ArrayList_Str_get(&(drop_calls), ci)), "\n");
+    res_str = concatAlloc(concatAlloc(concatAlloc(res_str, "    "), ArrayList_Str_get(&(drop_calls), ci)), "\n");
     ci = (ci + 1LL);
 }
-    res_str = __kai_std_str_concat_alloc(res_str, "    break;\n");
-    res_str = __kai_std_str_concat_alloc(res_str, "}");
+    res_str = concatAlloc(res_str, "    break;\n");
+    res_str = concatAlloc(res_str, "}");
     return res_str;
 }
     if (stmt.kind == StmtKind_sk_continue) {
@@ -11569,11 +12012,11 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     const char* res_str = "{\n";
     int64_t ci = 0LL;
     while (ci < ArrayList_Str_length(&(drop_calls))) {
-    res_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res_str, "    "), ArrayList_Str_get(&(drop_calls), ci)), "\n");
+    res_str = concatAlloc(concatAlloc(concatAlloc(res_str, "    "), ArrayList_Str_get(&(drop_calls), ci)), "\n");
     ci = (ci + 1LL);
 }
-    res_str = __kai_std_str_concat_alloc(res_str, "    continue;\n");
-    res_str = __kai_std_str_concat_alloc(res_str, "}");
+    res_str = concatAlloc(res_str, "    continue;\n");
+    res_str = concatAlloc(res_str, "}");
     return res_str;
 }
     if (stmt.kind == StmtKind_sk_match) {
@@ -11608,7 +12051,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 } else if (pat_node.lit_value.tag == TokenValue_tv_str_TAG) {
     const char* v = pat_node.lit_value.payload.tv_str.v;
 
-    lit_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("\"", Codegen_escape_string(self, v)), "\"");
+    lit_str = concatAlloc(concatAlloc("\"", Codegen_escape_string(self, v)), "\"");
 } else if (pat_node.lit_value.tag == TokenValue_tv_bool_TAG) {
     bool v = pat_node.lit_value.payload.tv_bool.v;
 
@@ -11631,12 +12074,12 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 } else if (v == ((char)(39LL))) {
     lit_str = "'\\''";
 } else {
-    lit_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("'", char_to_str(v)), "'");
+    lit_str = concatAlloc(concatAlloc("'", char_to_str(v)), "'");
 }
 } else {
     lit_str = "0";
 } 
-    cond = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(expr_val, " == "), lit_str);
+    cond = concatAlloc(concatAlloc(expr_val, " == "), lit_str);
 } else if (pat_node.kind == PatternKind_pk_variant) {
     const char* var_name = pat_node.variant_name;
     const char* base_type = mapped_expr_type;
@@ -11647,9 +12090,9 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     base_type = __kai_str_sub(base_type, 1LL, strlen(base_type));
 }
     if (Codegen_enum_has_payload(self, expr_type)) {
-    cond = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(expr_val, op), "tag == "), base_type), "_"), var_name), "_TAG");
+    cond = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(expr_val, op), "tag == "), base_type), "_"), var_name), "_TAG");
 } else {
-    cond = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(expr_val, " == "), base_type), "_"), var_name);
+    cond = concatAlloc(concatAlloc(concatAlloc(concatAlloc(expr_val, " == "), base_type), "_"), var_name);
 }
     if (ArrayList_Str_length(&(pat_node.bindings)) > 0LL) {
     const char* bind_name = ArrayList_Str_get(&(pat_node.bindings), 0LL);
@@ -11687,7 +12130,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     field_name = "v";
 }
     const char* mapped_bind_type = Codegen_map_type(self, bind_type);
-    bindings_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", mapped_bind_type), " "), bind_name), " = "), expr_val), op), "payload."), var_name), "."), field_name), ";\n");
+    bindings_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("    ", mapped_bind_type), " "), bind_name), " = "), expr_val), op), "payload."), var_name), "."), field_name), ";\n");
 }
 }
 } else if (pat_node.kind == PatternKind_pk_else) {
@@ -11695,18 +12138,18 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 }
     const char* prefix = "";
     if (case_idx == 0LL) {
-    prefix = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", cond), ")");
+    prefix = concatAlloc(concatAlloc("if (", cond), ")");
 } else if (strcmp(cond, "true") == 0) {
     prefix = "else";
 } else {
-    prefix = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("else if (", cond), ")");
+    prefix = concatAlloc(concatAlloc("else if (", cond), ")");
 }
     const char* full_block = block_str;
     if (strlen(bindings_str) > 0LL) {
     int64_t body_len = strlen(block_str);
-    full_block = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("{\n", bindings_str), __kai_str_sub(block_str, 1LL, body_len));
+    full_block = concatAlloc(concatAlloc("{\n", bindings_str), __kai_str_sub(block_str, 1LL, body_len));
 }
-    match_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(match_str, prefix), " "), full_block), " ");
+    match_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(match_str, prefix), " "), full_block), " ");
     case_idx = (case_idx + 1LL);
 }
     return match_str;
@@ -11781,17 +12224,17 @@ const char* Codegen_escape_string(Codegen* self, const char* s) {
     while (i < strlen(s)) {
     char c = (s)[i];
     if (c == ((char)(10LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\n");
+    res = concatAlloc(res, "\\n");
 } else if (c == ((char)(13LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\r");
+    res = concatAlloc(res, "\\r");
 } else if (c == ((char)(9LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\t");
+    res = concatAlloc(res, "\\t");
 } else if (c == ((char)(92LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\\\");
+    res = concatAlloc(res, "\\\\");
 } else if (c == ((char)(34LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\\"");
+    res = concatAlloc(res, "\\\"");
 } else {
-    res = __kai_std_str_concat_alloc(res, char_to_str(c));
+    res = concatAlloc(res, char_to_str(c));
 }
     i = (i + 1LL);
 }
@@ -11822,7 +12265,7 @@ ArrayList_Str Codegen__collect_loop_drops(Codegen* self) {
     int64_t di = 0LL;
     while (di < ArrayList_DropVarEntry_length(&(b_node.block_drop_vars))) {
     DropVarEntry entry = ArrayList_DropVarEntry_get(&(b_node.block_drop_vars), di);
-    ArrayList_Str_push(&(drop_calls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(entry.base_type, "_drop(&"), entry.name), ");"));
+    ArrayList_Str_push(&(drop_calls), concatAlloc(concatAlloc(concatAlloc(entry.base_type, "_drop(&"), entry.name), ");"));
     di = (di + 1LL);
 }
     if (b_node.block_is_loop_body) {
@@ -11865,14 +12308,14 @@ void Codegen_emit_struct_body_with_deps(Codegen* self, int64_t stmt_idx, ArrayLi
 }
     fi = (fi + 1LL);
 }
-    const char* struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", name), " {\n");
+    const char* struct_str = concatAlloc(concatAlloc("struct ", name), " {\n");
     int64_t i = 0LL;
     while (i < ArrayList_StructField_length(&(stmt.struct_fields))) {
     StructField f = ArrayList_StructField_get(&(stmt.struct_fields), i);
-    struct_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_str, "    "), Codegen_map_type(self, f.ftype)), " "), f.name), ";\n");
+    struct_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(struct_str, "    "), Codegen_map_type(self, f.ftype)), " "), f.name), ";\n");
     i = (i + 1LL);
 }
-    struct_str = __kai_std_str_concat_alloc(struct_str, "};\n");
+    struct_str = concatAlloc(struct_str, "};\n");
     (void)(StringBuilder_append(&(self->struct_decls), struct_str));
     int64_t ti = 0LL;
     while (ti < ArrayList_Int_length(&(stmt.struct_trait_impls))) {
@@ -11902,7 +12345,7 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
     StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, fd_i);
     if ((stmt.kind == StmtKind_sk_struct_decl) && (ArrayList_Str_length(&(stmt.struct_type_params)) == 0LL)) {
     const char* name = Codegen_map_type(self, stmt.struct_name);
-    (void)(StringBuilder_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", name), " "), name), ";\n")));
+    (void)(StringBuilder_append(&(self->struct_decls), concatAlloc(concatAlloc(concatAlloc(concatAlloc("typedef struct ", name), " "), name), ";\n")));
 }
     fd_i = (fd_i + 1LL);
 }
@@ -12028,9 +12471,9 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
 }
 }
     if ((!has_slash) && (!dot_start)) {
-    StringBuilder_append(&(result), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include <", hdr), ">\n"));
+    StringBuilder_append(&(result), concatAlloc(concatAlloc("#include <", hdr), ">\n"));
 } else {
-    StringBuilder_append(&(result), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include \"", hdr), "\"\n"));
+    StringBuilder_append(&(result), concatAlloc(concatAlloc("#include \"", hdr), "\"\n"));
 }
 }
     ci = (ci + 1LL);
@@ -12096,7 +12539,7 @@ const char* StrBuf_to_str(StrBuf* self) {
     const char* result = "";
     int64_t i = 0LL;
     while (i < ArrayList_Str_length(&(self->parts))) {
-    result = __kai_std_str_concat_alloc(result, ArrayList_Str_get(&(self->parts), i));
+    result = concatAlloc(result, ArrayList_Str_get(&(self->parts), i));
     i = (i + 1LL);
 }
     return result;
@@ -12132,7 +12575,7 @@ int64_t cgb_strlist_find(ArrayList_Str* arr, const char* key) {
     return (-1LL);
 }
 const char* CodegenBuilder_add_init_return(CodegenBuilder* self, const char* body_str, const char* struct_name) {
-    const char* self_decl = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", struct_name), " self = ("), struct_name), "){0};\n");
+    const char* self_decl = concatAlloc(concatAlloc(concatAlloc(concatAlloc("    ", struct_name), " self = ("), struct_name), "){0};\n");
     const char* content = body_str;
     if ((strlen(content) >= 3LL) && ((content)[0LL] == ((char)(123LL)))) {
     int64_t end_pos = (strlen(content) - 1LL);
@@ -12189,9 +12632,9 @@ const char* CodegenBuilder_add_init_return(CodegenBuilder* self, const char* bod
 }
 }
     if (ends_with_return) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("{\n", self_decl), content), "}");
+    return concatAlloc(concatAlloc(concatAlloc("{\n", self_decl), content), "}");
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("{\n", self_decl), content), "    return self;\n}");
+    return concatAlloc(concatAlloc(concatAlloc("{\n", self_decl), content), "    return self;\n}");
 }
 CodegenBuilder CodegenBuilder_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_pool, ArrayList_ExprNode* expr_pool, ArrayList_PatternNode* pattern_pool, ImportResolver* import_resolver) {
     CodegenBuilder self = (CodegenBuilder){0};
@@ -12330,16 +12773,16 @@ const char* CodegenBuilder_get_expr_type(CodegenBuilder* self, int64_t expr_idx)
     char first_char = (name)[0LL];
     if ((first_char >= ((char)(65LL))) && (first_char <= ((char)(90LL)))) {
     if (ArrayList_Str_length(&(expr.ident_type_args)) > 0LL) {
-    const char* full_name = __kai_std_str_concat_alloc(name, "<");
+    const char* full_name = concatAlloc(name, "<");
     int64_t tai = 0LL;
     while (tai < ArrayList_Str_length(&(expr.ident_type_args))) {
     if (tai > 0LL) {
-    full_name = __kai_std_str_concat_alloc(full_name, ", ");
+    full_name = concatAlloc(full_name, ", ");
 }
-    full_name = __kai_std_str_concat_alloc(full_name, ArrayList_Str_get(&(expr.ident_type_args), tai));
+    full_name = concatAlloc(full_name, ArrayList_Str_get(&(expr.ident_type_args), tai));
     tai = (tai + 1LL);
 }
-    full_name = __kai_std_str_concat_alloc(full_name, ">");
+    full_name = concatAlloc(full_name, ">");
     return full_name;
 }
     return name;
@@ -12393,16 +12836,16 @@ const char* CodegenBuilder_get_expr_type(CodegenBuilder* self, int64_t expr_idx)
 }
     if (is_struct) {
     if (ArrayList_Str_length(&(expr.func_type_args)) > 0LL) {
-    const char* unmangled = __kai_std_str_concat_alloc(name, "<");
+    const char* unmangled = concatAlloc(name, "<");
     int64_t tai = 0LL;
     while (tai < ArrayList_Str_length(&(expr.func_type_args))) {
     if (tai > 0LL) {
-    unmangled = __kai_std_str_concat_alloc(unmangled, ", ");
+    unmangled = concatAlloc(unmangled, ", ");
 }
-    unmangled = __kai_std_str_concat_alloc(unmangled, ArrayList_Str_get(&(expr.func_type_args), tai));
+    unmangled = concatAlloc(unmangled, ArrayList_Str_get(&(expr.func_type_args), tai));
     tai = (tai + 1LL);
 }
-    unmangled = __kai_std_str_concat_alloc(unmangled, ">");
+    unmangled = concatAlloc(unmangled, ">");
     return unmangled;
 }
     return name;
@@ -12541,7 +12984,7 @@ const char* CodegenBuilder_get_expr_type(CodegenBuilder* self, int64_t expr_idx)
     while (ci < strlen(rec_type)) {
     char c = (rec_type)[ci];
     if ((c != ((char)(42LL))) && (c != ((char)(38LL)))) {
-    clean_type = __kai_std_str_concat_alloc(clean_type, cgb_char_to_str(c));
+    clean_type = concatAlloc(clean_type, cgb_char_to_str(c));
 }
     ci = (ci + 1LL);
 }
@@ -12549,7 +12992,7 @@ const char* CodegenBuilder_get_expr_type(CodegenBuilder* self, int64_t expr_idx)
     clean_type = __kai_str_sub(clean_type, 4LL, strlen(clean_type));
 }
     clean_type = CodegenBuilder_map_type(self, clean_type);
-    const char* key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(clean_type, "_"), expr.meth_name);
+    const char* key = concatAlloc(concatAlloc(clean_type, "_"), expr.meth_name);
     int64_t fidx = cgb_map_find(&(self->func_types), key);
     if (fidx >= 0LL) {
     return ArrayList_CgbMapEntry_get(&(self->func_types), fidx).value;
@@ -12557,7 +13000,7 @@ const char* CodegenBuilder_get_expr_type(CodegenBuilder* self, int64_t expr_idx)
     return "Void";
 }
     if (expr.kind == ExprKind_ek_borrow) {
-    return __kai_std_str_concat_alloc("&", CodegenBuilder_get_expr_type(self, expr.borrow_expr));
+    return concatAlloc("&", CodegenBuilder_get_expr_type(self, expr.borrow_expr));
 }
     if (expr.kind == ExprKind_ek_deref) {
     const char* base_type = CodegenBuilder_get_expr_type(self, expr.deref_expr);
@@ -12602,12 +13045,12 @@ const char* CodegenBuilder_get_expr_type(CodegenBuilder* self, int64_t expr_idx)
     int64_t j = 0LL;
     while (j < ArrayList_Str_length(&(types))) {
     if (j > 0LL) {
-    res = __kai_std_str_concat_alloc(res, ", ");
+    res = concatAlloc(res, ", ");
 }
-    res = __kai_std_str_concat_alloc(res, ArrayList_Str_get(&(types), j));
+    res = concatAlloc(res, ArrayList_Str_get(&(types), j));
     j = (j + 1LL);
 }
-    res = __kai_std_str_concat_alloc(res, ")");
+    res = concatAlloc(res, ")");
     return res;
 }
     if (expr.kind == ExprKind_ek_asm) {
@@ -12644,17 +13087,17 @@ const char* CodegenBuilder_escape_string(CodegenBuilder* self, const char* s) {
     while (i < strlen(s)) {
     char c = (s)[i];
     if (c == ((char)(10LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\n");
+    res = concatAlloc(res, "\\n");
 } else if (c == ((char)(13LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\r");
+    res = concatAlloc(res, "\\r");
 } else if (c == ((char)(9LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\t");
+    res = concatAlloc(res, "\\t");
 } else if (c == ((char)(92LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\\\");
+    res = concatAlloc(res, "\\\\");
 } else if (c == ((char)(34LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\\"");
+    res = concatAlloc(res, "\\\"");
 } else {
-    res = __kai_std_str_concat_alloc(res, cgb_char_to_str(c));
+    res = concatAlloc(res, cgb_char_to_str(c));
 }
     i = (i + 1LL);
 }
@@ -12678,15 +13121,15 @@ const char* CodegenBuilder_cgb_clean_type_for_mangling(CodegenBuilder* self, con
     while (i < strlen(s)) {
     char c = (s)[i];
     if (c == ((char)(42LL))) {
-    result = __kai_std_str_concat_alloc(result, "ptr");
+    result = concatAlloc(result, "ptr");
 } else if (c == ((char)(38LL))) {
-    result = __kai_std_str_concat_alloc(result, "ref");
+    result = concatAlloc(result, "ref");
 } else if (c == ((char)(32LL))) {
-    result = __kai_std_str_concat_alloc(result, "_");
+    result = concatAlloc(result, "_");
 } else if (((((((c == ((char)(60LL))) || (c == ((char)(62LL)))) || (c == ((char)(44LL)))) || (c == ((char)(33LL)))) || (c == ((char)(63LL)))) || (c == ((char)(40LL)))) || (c == ((char)(41LL)))) {
-    result = __kai_std_str_concat_alloc(result, "_");
+    result = concatAlloc(result, "_");
 } else {
-    result = __kai_std_str_concat_alloc(result, cgb_char_to_str(c));
+    result = concatAlloc(result, cgb_char_to_str(c));
 }
     i = (i + 1LL);
 }
@@ -12702,13 +13145,13 @@ void CodegenBuilder_monomorphize_struct(CodegenBuilder* self, const char* struct
     return;
 }
     StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt_idx);
-    StrBuf_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", concrete_name), " "), concrete_name), ";\n"));
-    StrBuf_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", concrete_name), " {\n"));
+    StrBuf_append(&(self->struct_decls), concatAlloc(concatAlloc(concatAlloc(concatAlloc("typedef struct ", concrete_name), " "), concrete_name), ";\n"));
+    StrBuf_append(&(self->struct_decls), concatAlloc(concatAlloc("struct ", concrete_name), " {\n"));
     int64_t fi = 0LL;
     while (fi < ArrayList_StructField_length(&(stmt.struct_fields))) {
     StructField f = ArrayList_StructField_get(&(stmt.struct_fields), fi);
     const char* resolved_ftype = CodegenBuilder_substitute_type_params(self, f.ftype, &(stmt.struct_type_params), type_args);
-    StrBuf_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", CodegenBuilder_map_type(self, resolved_ftype)), " "), f.name), ";\n"));
+    StrBuf_append(&(self->struct_decls), concatAlloc(concatAlloc(concatAlloc(concatAlloc("    ", CodegenBuilder_map_type(self, resolved_ftype)), " "), f.name), ";\n"));
     fi = (fi + 1LL);
 }
     StrBuf_append(&(self->struct_decls), "};\n");
@@ -12724,8 +13167,8 @@ void CodegenBuilder_monomorphize_methods_for_struct(CodegenBuilder* self, const 
     int64_t m_idx = ArrayList_Int_get(&(s.impl_methods), j);
     StmtNode m_node = ArrayList_StmtNode_get(self->stmt_pool, m_idx);
     const char* method_name = m_node.func_name;
-    bool is_init = ((((strcmp(method_name, "init") == 0) || (strcmp(m_node.func_return_type, base_struct_name) == 0)) || (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("*", base_struct_name)) == 0)) || (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("&", base_struct_name)) == 0));
-    const char* mangled_fn = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(concrete_name, "_"), method_name);
+    bool is_init = ((((strcmp(method_name, "init") == 0) || (strcmp(m_node.func_return_type, base_struct_name) == 0)) || (strcmp(m_node.func_return_type, concatAlloc("*", base_struct_name)) == 0)) || (strcmp(m_node.func_return_type, concatAlloc("&", base_struct_name)) == 0));
+    const char* mangled_fn = concatAlloc(concatAlloc(concrete_name, "_"), method_name);
     const char* ret = m_node.func_return_type;
     if (ArrayList_Str_length(param_names) > 0LL) {
     ret = CodegenBuilder_substitute_type_params(self, ret, param_names, type_args);
@@ -12736,7 +13179,7 @@ void CodegenBuilder_monomorphize_methods_for_struct(CodegenBuilder* self, const 
     const char* ret_type = CodegenBuilder_map_type(self, ret);
     const char* params_str = "";
     if (!is_init) {
-    params_str = __kai_std_str_concat_alloc(concrete_name, "* self");
+    params_str = concatAlloc(concrete_name, "* self");
 }
     int64_t pi = 0LL;
     while (pi < ArrayList_Param_length(&(m_node.func_params))) {
@@ -12749,13 +13192,13 @@ void CodegenBuilder_monomorphize_methods_for_struct(CodegenBuilder* self, const 
 }
     if (!is_self) {
     if (strlen(params_str) > 0LL) {
-    params_str = __kai_std_str_concat_alloc(params_str, ", ");
+    params_str = concatAlloc(params_str, ", ");
 }
     const char* ptype = p.ptype;
     if (ArrayList_Str_length(param_names) > 0LL) {
     ptype = CodegenBuilder_substitute_type_params(self, ptype, param_names, type_args);
 }
-    params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, CodegenBuilder_map_type(self, ptype)), " "), p.name);
+    params_str = concatAlloc(concatAlloc(concatAlloc(params_str, CodegenBuilder_map_type(self, ptype)), " "), p.name);
 }
     pi = (pi + 1LL);
 }
@@ -12765,7 +13208,7 @@ void CodegenBuilder_monomorphize_methods_for_struct(CodegenBuilder* self, const 
     cgb_map_put(&(self->func_types), mangled_fn, ret);
     ArrayList_Str mono_params = ArrayList_Str_init(self->allocator);
     if (!is_init) {
-    ArrayList_Str_push(&(mono_params), __kai_std_str_concat_alloc(concrete_name, "* self"));
+    ArrayList_Str_push(&(mono_params), concatAlloc(concrete_name, "* self"));
 }
     int64_t pi_mono = 0LL;
     while (pi_mono < ArrayList_Param_length(&(m_node.func_params))) {
@@ -12781,7 +13224,7 @@ void CodegenBuilder_monomorphize_methods_for_struct(CodegenBuilder* self, const 
     if (ArrayList_Str_length(param_names) > 0LL) {
     ptype = CodegenBuilder_substitute_type_params(self, ptype, param_names, type_args);
 }
-    ArrayList_Str_push(&(mono_params), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(CodegenBuilder_map_type(self, ptype), " "), p.name));
+    ArrayList_Str_push(&(mono_params), concatAlloc(concatAlloc(CodegenBuilder_map_type(self, ptype), " "), p.name));
 }
     pi_mono = (pi_mono + 1LL);
 }
@@ -12812,7 +13255,7 @@ void CodegenBuilder_monomorphize_methods_for_struct(CodegenBuilder* self, const 
     if (is_init) {
     cgb_map_put(&(self->var_types), "self", concrete_name);
 } else {
-    cgb_map_put(&(self->var_types), "self", __kai_std_str_concat_alloc("*", concrete_name));
+    cgb_map_put(&(self->var_types), "self", concatAlloc("*", concrete_name));
 }
     int64_t pi2 = 0LL;
     while (pi2 < ArrayList_Param_length(&(m_node.func_params))) {
@@ -12840,7 +13283,7 @@ void CodegenBuilder_monomorphize_methods_for_struct(CodegenBuilder* self, const 
     self->cur_method_is_init = is_init;
     CCodeBuilder saved_builder = self->builder;
     self->builder = CCodeBuilder_init(self->allocator);
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), mangled_fn), "("), params_str), ")"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(ret_type, " "), mangled_fn), "("), params_str), ")"));
     CodegenBuilder_gen_stmt(self, body_idx);
     const char* body_str = CCodeBuilder_to_str(&(self->builder));
     if (is_init) {
@@ -12853,7 +13296,7 @@ void CodegenBuilder_monomorphize_methods_for_struct(CodegenBuilder* self, const 
 }
     const char* header = __kai_str_sub(body_str, 0LL, brace_pos);
     const char* raw_body = __kai_str_sub(body_str, brace_pos, strlen(body_str));
-    body_str = __kai_std_str_concat_alloc(header, CodegenBuilder_add_init_return(self, raw_body, concrete_name));
+    body_str = concatAlloc(header, CodegenBuilder_add_init_return(self, raw_body, concrete_name));
 }
     StrBuf_append(&(self->monomorphized_bodies), body_str);
     self->builder = saved_builder;
@@ -12932,10 +13375,10 @@ const char* CodegenBuilder_substitute_type_params(CodegenBuilder* self, const ch
     mi = (mi + 1LL);
 }
     if (matches) {
-    new_res = __kai_std_str_concat_alloc(new_res, arg);
+    new_res = concatAlloc(new_res, arg);
     ri = (ri + pn_len);
 } else {
-    new_res = __kai_std_str_concat_alloc(new_res, cgb_char_to_str((result)[ri]));
+    new_res = concatAlloc(new_res, cgb_char_to_str((result)[ri]));
     ri = (ri + 1LL);
 }
 }
@@ -12962,7 +13405,7 @@ const char* CodegenBuilder_map_type(CodegenBuilder* self, const char* resolved_t
 }
 }
     if ((strlen(orig) > 0LL) && ((orig)[0LL] == ((char)(40LL)))) {
-    const char* clean_name = __kai_std_str_concat_alloc("Tuple_", CodegenBuilder_cgb_clean_type_for_mangling(self, orig));
+    const char* clean_name = concatAlloc("Tuple_", CodegenBuilder_cgb_clean_type_for_mangling(self, orig));
     if (cgb_strlist_find(&(self->monomorphized_types), clean_name) < 0LL) {
     ArrayList_Str_push(&(self->monomorphized_types), clean_name);
     const char* inner_types = __kai_str_sub(orig, 1LL, (strlen(orig) - 1LL));
@@ -12993,11 +13436,11 @@ const char* CodegenBuilder_map_type(CodegenBuilder* self, const char* resolved_t
     ts_end = (ts_end - 1LL);
 }
     ArrayList_Str_push(&(types_list), __kai_str_sub(inner_types, ts_start, ts_end));
-    StrBuf_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", clean_name), " "), clean_name), ";\n"));
-    StrBuf_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", clean_name), " {\n"));
+    StrBuf_append(&(self->struct_decls), concatAlloc(concatAlloc(concatAlloc(concatAlloc("typedef struct ", clean_name), " "), clean_name), ";\n"));
+    StrBuf_append(&(self->struct_decls), concatAlloc(concatAlloc("struct ", clean_name), " {\n"));
     int64_t ti = 0LL;
     while (ti < ArrayList_Str_length(&(types_list))) {
-    StrBuf_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", CodegenBuilder_map_type(self, ArrayList_Str_get(&(types_list), ti))), " f"), cgb_int_to_str(ti)), ";\n"));
+    StrBuf_append(&(self->struct_decls), concatAlloc(concatAlloc(concatAlloc(concatAlloc("    ", CodegenBuilder_map_type(self, ArrayList_Str_get(&(types_list), ti))), " f"), cgb_int_to_str(ti)), ";\n"));
     ti = (ti + 1LL);
 }
     StrBuf_append(&(self->struct_decls), "};\n");
@@ -13083,7 +13526,7 @@ const char* CodegenBuilder_map_type(CodegenBuilder* self, const char* resolved_t
 }
     const char* base = inner;
     if ((strlen(base) > 0LL) && ((base)[0LL] == ((char)(40LL)))) {
-    const char* clean_name = __kai_std_str_concat_alloc("Tuple_", CodegenBuilder_cgb_clean_type_for_mangling(self, base));
+    const char* clean_name = concatAlloc("Tuple_", CodegenBuilder_cgb_clean_type_for_mangling(self, base));
     if (cgb_strlist_find(&(self->monomorphized_types), clean_name) < 0LL) {
     ArrayList_Str_push(&(self->monomorphized_types), clean_name);
     const char* inner_types = __kai_str_sub(base, 1LL, (strlen(base) - 1LL));
@@ -13114,11 +13557,11 @@ const char* CodegenBuilder_map_type(CodegenBuilder* self, const char* resolved_t
     ts_end = (ts_end - 1LL);
 }
     ArrayList_Str_push(&(types_list), __kai_str_sub(inner_types, ts_start, ts_end));
-    StrBuf_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", clean_name), " "), clean_name), ";\n"));
-    StrBuf_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", clean_name), " {\n"));
+    StrBuf_append(&(self->struct_decls), concatAlloc(concatAlloc(concatAlloc(concatAlloc("typedef struct ", clean_name), " "), clean_name), ";\n"));
+    StrBuf_append(&(self->struct_decls), concatAlloc(concatAlloc("struct ", clean_name), " {\n"));
     int64_t ti = 0LL;
     while (ti < ArrayList_Str_length(&(types_list))) {
-    StrBuf_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", CodegenBuilder_map_type(self, ArrayList_Str_get(&(types_list), ti))), " f"), cgb_int_to_str(ti)), ";\n"));
+    StrBuf_append(&(self->struct_decls), concatAlloc(concatAlloc(concatAlloc(concatAlloc("    ", CodegenBuilder_map_type(self, ArrayList_Str_get(&(types_list), ti))), " f"), cgb_int_to_str(ti)), ";\n"));
     ti = (ti + 1LL);
 }
     StrBuf_append(&(self->struct_decls), "};\n");
@@ -13134,7 +13577,7 @@ const char* CodegenBuilder_map_type(CodegenBuilder* self, const char* resolved_t
     const char* mapped = CodegenBuilder_map_type(self, entry.value);
     int64_t pi2 = 0LL;
     while (pi2 < ptr_count) {
-    mapped = __kai_std_str_concat_alloc(mapped, "*");
+    mapped = concatAlloc(mapped, "*");
     pi2 = (pi2 + 1LL);
 }
     return mapped;
@@ -13186,14 +13629,14 @@ const char* CodegenBuilder_map_type(CodegenBuilder* self, const char* resolved_t
     const char* err_type = __kai_str_sub(base, (excl_pos + 1LL), strlen(base));
     const char* clean_val = CodegenBuilder_cgb_clean_type_for_mangling(self, val_type);
     const char* clean_err = CodegenBuilder_cgb_clean_type_for_mangling(self, err_type);
-    const char* concrete_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("Result_", clean_val), "_"), clean_err);
+    const char* concrete_name = concatAlloc(concatAlloc(concatAlloc("Result_", clean_val), "_"), clean_err);
     if (cgb_strlist_find(&(self->monomorphized_types), concrete_name) < 0LL) {
     ArrayList_Str_push(&(self->monomorphized_types), concrete_name);
-    StrBuf_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", concrete_name), " "), concrete_name), ";\n"));
-    StrBuf_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", concrete_name), " {\n"));
+    StrBuf_append(&(self->struct_decls), concatAlloc(concatAlloc(concatAlloc(concatAlloc("typedef struct ", concrete_name), " "), concrete_name), ";\n"));
+    StrBuf_append(&(self->struct_decls), concatAlloc(concatAlloc("struct ", concrete_name), " {\n"));
     StrBuf_append(&(self->struct_decls), "    int64_t tag;\n");
     if (strcmp(val_type, "Void") != 0) {
-    StrBuf_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", CodegenBuilder_map_type(self, val_type)), " value;\n"));
+    StrBuf_append(&(self->struct_decls), concatAlloc(concatAlloc("    ", CodegenBuilder_map_type(self, val_type)), " value;\n"));
 }
     StrBuf_append(&(self->struct_decls), "};\n");
 }
@@ -13206,13 +13649,13 @@ const char* CodegenBuilder_map_type(CodegenBuilder* self, const char* resolved_t
     base = CodegenBuilder_map_type(self, val_type);
 } else {
     const char* clean_val2 = CodegenBuilder_cgb_clean_type_for_mangling(self, val_type);
-    const char* concrete_name = __kai_std_str_concat_alloc("Optional_", clean_val2);
+    const char* concrete_name = concatAlloc("Optional_", clean_val2);
     if (cgb_strlist_find(&(self->monomorphized_types), concrete_name) < 0LL) {
     ArrayList_Str_push(&(self->monomorphized_types), concrete_name);
-    StrBuf_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef struct ", concrete_name), " "), concrete_name), ";\n"));
-    StrBuf_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", concrete_name), " {\n"));
+    StrBuf_append(&(self->struct_decls), concatAlloc(concatAlloc(concatAlloc(concatAlloc("typedef struct ", concrete_name), " "), concrete_name), ";\n"));
+    StrBuf_append(&(self->struct_decls), concatAlloc(concatAlloc("struct ", concrete_name), " {\n"));
     StrBuf_append(&(self->struct_decls), "    bool has_value;\n");
-    StrBuf_append(&(self->struct_decls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", CodegenBuilder_map_type(self, val_type)), " value;\n"));
+    StrBuf_append(&(self->struct_decls), concatAlloc(concatAlloc("    ", CodegenBuilder_map_type(self, val_type)), " value;\n"));
     StrBuf_append(&(self->struct_decls), "};\n");
 }
     base = concrete_name;
@@ -13240,9 +13683,9 @@ const char* CodegenBuilder_map_type(CodegenBuilder* self, const char* resolved_t
     const char* clean_arg = CodegenBuilder_cgb_clean_type_for_mangling(self, arg);
     ArrayList_Str_push(&(args_list), arg);
     if (strlen(concrete_name) > 0LL) {
-    concrete_name = __kai_std_str_concat_alloc(concrete_name, "_");
+    concrete_name = concatAlloc(concrete_name, "_");
 }
-    concrete_name = __kai_std_str_concat_alloc(concrete_name, clean_arg);
+    concrete_name = concatAlloc(concrete_name, clean_arg);
     start2 = (end2 + 1LL);
 }
     const char* struct_idx_str = cgb_map_get(&(self->generic_struct_decls), base_name);
@@ -13268,7 +13711,7 @@ const char* CodegenBuilder_map_type(CodegenBuilder* self, const char* resolved_t
     const char* result = base;
     int64_t pi = 0LL;
     while (pi < ptr_count) {
-    result = __kai_std_str_concat_alloc(result, "*");
+    result = concatAlloc(result, "*");
     pi = (pi + 1LL);
 }
     return result;
@@ -13336,17 +13779,17 @@ const char* CodegenBuilder_format_cond(CodegenBuilder* self, const char* cond) {
     if (CodegenBuilder_is_fully_parenthesized(self, cond)) {
     return cond;
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", cond), ")");
+    return concatAlloc(concatAlloc("(", cond), ")");
 }
 const char* CodegenBuilder_cgb_replace_format_specifiers(CodegenBuilder* self, const char* s) {
     const char* result = "";
     int64_t i = 0LL;
     while (i < strlen(s)) {
     if ((((i < (strlen(s) - 2LL)) && ((s)[i] == ((char)(37LL)))) && ((s)[(i + 1LL)] == ((char)(108LL)))) && ((s)[(i + 2LL)] == ((char)(100LL)))) {
-    result = __kai_std_str_concat_alloc(result, "%\" PRId64 \"");
+    result = concatAlloc(result, "%\" PRId64 \"");
     i = (i + 3LL);
 } else {
-    result = __kai_std_str_concat_alloc(result, cgb_char_to_str((s)[i]));
+    result = concatAlloc(result, cgb_char_to_str((s)[i]));
     i = (i + 1LL);
 }
 }
@@ -13493,7 +13936,7 @@ const char* CodegenBuilder_gen_expr_with_expected_type(CodegenBuilder* self, int
     if (CodegenBuilder_is_pointer_type(self, val_type)) {
     return "NULL";
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", CodegenBuilder_map_type(self, expected_type)), "){0}");
+    return concatAlloc(concatAlloc("(", CodegenBuilder_map_type(self, expected_type)), "){0}");
 }
     return "NULL";
 }
@@ -13501,13 +13944,13 @@ const char* CodegenBuilder_gen_expr_with_expected_type(CodegenBuilder* self, int
     if ((strlen(actual_type) > 0LL) && ((actual_type)[0LL] == ((char)(42LL)))) {
     const char* pointer_target = __kai_str_sub(actual_type, 1LL, strlen(actual_type));
     if (strcmp(pointer_target, expected_type) == 0) {
-    return __kai_std_str_concat_alloc("*", gen_val);
+    return concatAlloc("*", gen_val);
 }
 }
     if ((strlen(expected_type) > 0LL) && ((expected_type)[0LL] == ((char)(63LL)))) {
     const char* val_type = __kai_str_sub(expected_type, 1LL, strlen(expected_type));
     if ((!CodegenBuilder_is_pointer_type(self, val_type)) && (strcmp(actual_type, val_type) == 0)) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", CodegenBuilder_map_type(self, expected_type)), "){ .has_value = true, .value = "), gen_val), " }");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", CodegenBuilder_map_type(self, expected_type)), "){ .has_value = true, .value = "), gen_val), " }");
 }
 }
     int64_t excl_pos = (-1LL);
@@ -13533,12 +13976,12 @@ const char* CodegenBuilder_gen_expr_with_expected_type(CodegenBuilder* self, int
     return gen_val;
 }
     if ((strcmp(actual_type, "Void") == 0) && (strcmp(val_payload, "Void") != 0)) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_type), "){ .tag = "), gen_val), " }");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", mapped_type), "){ .tag = "), gen_val), " }");
 }
     if (strcmp(val_payload, "Void") == 0) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_type), "){ .tag = 0 }");
+    return concatAlloc(concatAlloc("(", mapped_type), "){ .tag = 0 }");
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_type), "){ .tag = 0, .value = "), gen_val), " }");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", mapped_type), "){ .tag = 0, .value = "), gen_val), " }");
 }
     return gen_val;
 }
@@ -13578,7 +14021,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     if (expr.lit_value.tag == TokenValue_tv_str_TAG) {
     const char* v = expr.lit_value.payload.tv_str.v;
 
-    val_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("\"", CodegenBuilder_cgb_replace_format_specifiers(self, CodegenBuilder_escape_string(self, v))), "\"");
+    val_str = concatAlloc(concatAlloc("\"", CodegenBuilder_cgb_replace_format_specifiers(self, CodegenBuilder_escape_string(self, v))), "\"");
 } else {
 } 
     return CodegenBuilder_push_expr(self, cexpr_new_str(val_str));
@@ -13609,7 +14052,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
 } else if (v == ((char)(39LL))) {
     lit_str = "'\\''";
 } else {
-    lit_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("'", cgb_char_to_str(v)), "'");
+    lit_str = concatAlloc(concatAlloc("'", cgb_char_to_str(v)), "'");
 }
 } else {
 } 
@@ -13635,22 +14078,22 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     if (((strlen(lhs_type) > 0LL) && ((lhs_type)[0LL] == ((char)(63LL)))) && ((strcmp(right, "NULL") == 0) || (strcmp(right, "((void*)0)") == 0))) {
     const char* val_type = __kai_str_sub(lhs_type, 1LL, strlen(lhs_type));
     if (CodegenBuilder_is_pointer_type(self, val_type)) {
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", left), " "), op), " NULL)")));
+    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", left), " "), op), " NULL)")));
 }
     if (strcmp(op, "==") == 0) {
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(!", left), ".has_value)")));
+    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc("(!", left), ".has_value)")));
 }
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", left), ".has_value)")));
+    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc("(", left), ".has_value)")));
 }
     if (((strlen(rhs_type) > 0LL) && ((rhs_type)[0LL] == ((char)(63LL)))) && ((strcmp(left, "NULL") == 0) || (strcmp(left, "((void*)0)") == 0))) {
     const char* val_type = __kai_str_sub(rhs_type, 1LL, strlen(rhs_type));
     if (CodegenBuilder_is_pointer_type(self, val_type)) {
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(NULL ", op), " "), right), ")")));
+    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc(concatAlloc(concatAlloc("(NULL ", op), " "), right), ")")));
 }
     if (strcmp(op, "==") == 0) {
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(!", right), ".has_value)")));
+    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc("(!", right), ".has_value)")));
 }
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", right), ".has_value)")));
+    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc("(", right), ".has_value)")));
 }
 }
     if (strcmp(lhs_type, "Str") == 0) {
@@ -13658,7 +14101,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     ArrayList_Int str_args = ArrayList_Int_init(self->allocator);
     ArrayList_Int_push(&(str_args), left_idx);
     ArrayList_Int_push(&(str_args), right_idx);
-    return CodegenBuilder_push_expr(self, cexpr_new_call("__kai_std_str_concat_alloc", str_args));
+    return CodegenBuilder_push_expr(self, cexpr_new_call("concatAlloc", str_args));
 }
     if (strcmp(op, "==") == 0) {
     ArrayList_Int cmp_args = ArrayList_Int_init(self->allocator);
@@ -13775,12 +14218,12 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     int64_t tai = 0LL;
     while (tai < ArrayList_Str_length(&(expr.func_type_args))) {
     const char* clean = CodegenBuilder_cgb_clean_type_for_mangling(self, ArrayList_Str_get(&(expr.func_type_args), tai));
-    fn_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fn_name, "_"), clean);
+    fn_name = concatAlloc(concatAlloc(fn_name, "_"), clean);
     tai = (tai + 1LL);
 }
-    fn_name = __kai_std_str_concat_alloc(fn_name, "_init");
+    fn_name = concatAlloc(fn_name, "_init");
 } else {
-    fn_name = __kai_std_str_concat_alloc(name, "_init");
+    fn_name = concatAlloc(name, "_init");
 }
 }
     ArrayList_Int call_args = ArrayList_Int_init(self->allocator);
@@ -13790,7 +14233,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     if (is_struct) {
     p_idx = (ai + 1LL);
 }
-    const char* p_key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fn_name, "_param_"), cgb_int_to_str(p_idx));
+    const char* p_key = concatAlloc(concatAlloc(fn_name, "_param_"), cgb_int_to_str(p_idx));
     const char* expected_type = cgb_map_get(&(self->func_param_types), p_key);
     const char* arg_str = CodegenBuilder_gen_expr_with_expected_type(self, ArrayList_Int_get(&(expr.func_args), ai), expected_type);
     ArrayList_Int_push(&(call_args), CodegenBuilder_push_expr(self, cexpr_new_ident(arg_str)));
@@ -13831,7 +14274,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     vi = (vi + 1LL);
 }
     if (has_payload) {
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", ename), "){ .tag = "), ename), "_"), var_name), "_TAG }")));
+    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", ename), "){ .tag = "), ename), "_"), var_name), "_TAG }")));
 }
     bool any_payload = false;
     vi = 0LL;
@@ -13843,13 +14286,13 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     vi = (vi + 1LL);
 }
     if (any_payload) {
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", ename), "){ .tag = "), ename), "_"), var_name), "_TAG }")));
+    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", ename), "){ .tag = "), ename), "_"), var_name), "_TAG }")));
 }
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ename, "_"), var_name)));
+    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc(ename, "_"), var_name)));
 }
     if ((s.kind == StmtKind_sk_error_decl) && (strcmp(s.error_name, ident) == 0)) {
     const char* ename = CodegenBuilder_map_type(self, ident);
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ename, "_"), expr.field_name)));
+    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc(ename, "_"), expr.field_name)));
 }
     ei = (ei + 1LL);
 }
@@ -13875,7 +14318,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     while (ci < strlen(rec_type)) {
     char c = (rec_type)[ci];
     if ((c != ((char)(42LL))) && (c != ((char)(38LL)))) {
-    clean_type = __kai_std_str_concat_alloc(clean_type, cgb_char_to_str(c));
+    clean_type = concatAlloc(clean_type, cgb_char_to_str(c));
 }
     ci = (ci + 1LL);
 }
@@ -13890,7 +14333,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     is_constructor = true;
 }
 }
-    const char* func_name = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(clean_type, "_"), expr.meth_name);
+    const char* func_name = concatAlloc(concatAlloc(clean_type, "_"), expr.meth_name);
     const char* args_str = "";
     if ((!is_constructor) && (strcmp(expr.meth_name, "init") != 0)) {
     const char* rec_val = CodegenBuilder_gen_expr_str(self, expr.meth_expr);
@@ -13899,28 +14342,28 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     if ((strlen(rec_inferred) > 0LL) && ((((rec_inferred)[0LL] == ((char)(42LL))) || ((rec_inferred)[0LL] == ((char)(38LL)))) || is_self_ptr)) {
     args_str = rec_val;
 } else {
-    args_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("&(", rec_val), ")");
+    args_str = concatAlloc(concatAlloc("&(", rec_val), ")");
 }
 }
     int64_t ai = 0LL;
     while (ai < ArrayList_Int_length(&(expr.meth_args))) {
     if (strlen(args_str) > 0LL) {
-    args_str = __kai_std_str_concat_alloc(args_str, ", ");
+    args_str = concatAlloc(args_str, ", ");
 }
-    const char* p_key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(func_name, "_param_"), cgb_int_to_str((ai + 1LL)));
+    const char* p_key = concatAlloc(concatAlloc(func_name, "_param_"), cgb_int_to_str((ai + 1LL)));
     const char* expected_type = cgb_map_get(&(self->func_param_types), p_key);
-    args_str = __kai_std_str_concat_alloc(args_str, CodegenBuilder_gen_expr_with_expected_type(self, ArrayList_Int_get(&(expr.meth_args), ai), expected_type));
+    args_str = concatAlloc(args_str, CodegenBuilder_gen_expr_with_expected_type(self, ArrayList_Int_get(&(expr.meth_args), ai), expected_type));
     ai = (ai + 1LL);
 }
     if ((strcmp(expr.meth_name, "init") == 0) && (!is_constructor)) {
     const char* rec_val = CodegenBuilder_gen_expr_str(self, expr.meth_expr);
     const char* rec_inferred = CodegenBuilder_get_expr_type(self, expr.meth_expr);
     if ((strlen(rec_inferred) > 0LL) && (((rec_inferred)[0LL] == ((char)(42LL))) || ((rec_inferred)[0LL] == ((char)(38LL))))) {
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("*(", rec_val), ") = "), func_name), "("), args_str), ")")));
+    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("*(", rec_val), ") = "), func_name), "("), args_str), ")")));
 }
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(rec_val, " = "), func_name), "("), args_str), ")")));
+    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(rec_val, " = "), func_name), "("), args_str), ")")));
 }
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(func_name, "("), args_str), ")")));
+    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc(concatAlloc(func_name, "("), args_str), ")")));
 }
     if (expr.kind == ExprKind_ek_slice) {
     int64_t base_idx = CodegenBuilder_gen_expr(self, expr.slice_expr);
@@ -13979,16 +14422,16 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     while (i < ArrayList_FieldInit_length(&(expr.struct_fields))) {
     FieldInit f = ArrayList_FieldInit_get(&(expr.struct_fields), i);
     if (i > 0LL) {
-    fields_str = __kai_std_str_concat_alloc(fields_str, ", ");
+    fields_str = concatAlloc(fields_str, ", ");
 }
-    fields_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(fields_str, "."), f.name), " = "), CodegenBuilder_gen_expr_str(self, f.value));
+    fields_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(fields_str, "."), f.name), " = "), CodegenBuilder_gen_expr_str(self, f.value));
     i = (i + 1LL);
 }
     const char* payload_str = "";
     if (strlen(fields_str) > 0LL) {
-    payload_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(", .", variant_name), " = { "), fields_str), " }");
+    payload_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(", .", variant_name), " = { "), fields_str), " }");
 }
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", enum_name), "){ .tag = "), enum_name), "_"), variant_name), "_TAG"), payload_str), " }")));
+    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", enum_name), "){ .tag = "), enum_name), "_"), variant_name), "_TAG"), payload_str), " }")));
 }
     const char* struct_name = CodegenBuilder_map_type(self, expr.struct_name);
     ArrayList_Str fields = ArrayList_Str_init(self->allocator);
@@ -14012,7 +14455,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     si = (si + 1LL);
 }
     const char* val_str = CodegenBuilder_gen_expr_with_expected_type(self, f.value, field_type);
-    ArrayList_Str_push(&(fields), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(".", f.name), " = "), val_str));
+    ArrayList_Str_push(&(fields), concatAlloc(concatAlloc(concatAlloc(".", f.name), " = "), val_str));
     i = (i + 1LL);
 }
     CType ct = ctype_new(struct_name, 0LL, false, false);
@@ -14034,7 +14477,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     inner_ty = __kai_str_sub(expr.inferred_type, 2LL, strlen(expr.inferred_type));
 }
     const char* mapped_inner = CodegenBuilder_map_type(self, inner_ty);
-    CType ct = ctype_new(__kai_std_str_concat_alloc(mapped_inner, "[]"), 0LL, false, false);
+    CType ct = ctype_new(concatAlloc(mapped_inner, "[]"), 0LL, false, false);
     return CodegenBuilder_push_expr(self, cexpr_new_compound(ct, field_strs));
 }
     if (expr.kind == ExprKind_ek_tuple) {
@@ -14044,12 +14487,12 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     int64_t i = 0LL;
     while (i < ArrayList_Int_length(&(expr.tup_elements))) {
     if (i > 0LL) {
-    elems_str = __kai_std_str_concat_alloc(elems_str, ", ");
+    elems_str = concatAlloc(elems_str, ", ");
 }
-    elems_str = __kai_std_str_concat_alloc(elems_str, CodegenBuilder_gen_expr_str(self, ArrayList_Int_get(&(expr.tup_elements), i)));
+    elems_str = concatAlloc(elems_str, CodegenBuilder_gen_expr_str(self, ArrayList_Int_get(&(expr.tup_elements), i)));
     i = (i + 1LL);
 }
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", mapped_ty), "){ "), elems_str), " }")));
+    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", mapped_ty), "){ "), elems_str), " }")));
 }
     return CodegenBuilder_push_expr(self, cexpr_new_ident("NULL"));
 }
@@ -14061,9 +14504,9 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     incl = "true";
 }
     ArrayList_Str fields = ArrayList_Str_init(self->allocator);
-    ArrayList_Str_push(&(fields), __kai_std_str_concat_alloc(".start = ", CodegenBuilder_expr_to_str(self, start_idx)));
-    ArrayList_Str_push(&(fields), __kai_std_str_concat_alloc(".end = ", CodegenBuilder_expr_to_str(self, end_idx)));
-    ArrayList_Str_push(&(fields), __kai_std_str_concat_alloc(".is_inclusive = ", incl));
+    ArrayList_Str_push(&(fields), concatAlloc(".start = ", CodegenBuilder_expr_to_str(self, start_idx)));
+    ArrayList_Str_push(&(fields), concatAlloc(".end = ", CodegenBuilder_expr_to_str(self, end_idx)));
+    ArrayList_Str_push(&(fields), concatAlloc(".is_inclusive = ", incl));
     CType ct = ctype_new("Range", 0LL, false, false);
     return CodegenBuilder_push_expr(self, cexpr_new_compound(ct, fields));
 }
@@ -14077,16 +14520,16 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     StrInterpPart part = ArrayList_StrInterpPart_get(&(expr.interp_parts), i);
     const char* part_str = "";
     if (part.kind == 0LL) {
-    part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("\"", CodegenBuilder_escape_string(self, part.str_val)), "\"");
+    part_str = concatAlloc(concatAlloc("\"", CodegenBuilder_escape_string(self, part.str_val)), "\"");
 } else {
     const char* expr_val = CodegenBuilder_gen_expr_str(self, part.expr_idx);
     const char* expr_type = CodegenBuilder_get_expr_type(self, part.expr_idx);
     if (strcmp(expr_type, "Int") == 0) {
-    part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cgb_int_to_str(", expr_val), ")");
+    part_str = concatAlloc(concatAlloc("cgb_int_to_str(", expr_val), ")");
 } else if (strcmp(expr_type, "Char") == 0) {
-    part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("cgb_char_to_str(", expr_val), ")");
+    part_str = concatAlloc(concatAlloc("cgb_char_to_str(", expr_val), ")");
 } else if (strcmp(expr_type, "Bool") == 0) {
-    part_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", expr_val), ") ? \"true\" : \"false\")");
+    part_str = concatAlloc(concatAlloc("((", expr_val), ") ? \"true\" : \"false\")");
 } else {
     part_str = expr_val;
 }
@@ -14094,7 +14537,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     if (i == 0LL) {
     result = part_str;
 } else {
-    result = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_std_str_concat_alloc(", result), ", "), part_str), ")");
+    result = concatAlloc(concatAlloc(concatAlloc(concatAlloc("concatAlloc(", result), ", "), part_str), ")");
 }
     i = (i + 1LL);
 }
@@ -14110,13 +14553,13 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     const char* val_type = __kai_str_sub(inner_ty, 0LL, excl_pos);
     const char* result_ctype = CodegenBuilder_map_type(self, inner_ty);
     const char* ret_ctype = CodegenBuilder_map_type(self, self->cur_return_type);
-    const char* try_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("({ ", result_ctype), " _kai_res = ("), inner), "); ");
-    try_code = __kai_std_str_concat_alloc(try_code, "if (_kai_res.tag != 0) { ");
-    try_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(try_code, ret_ctype), " _kai_err_ret; _kai_err_ret.tag = _kai_res.tag; return _kai_err_ret; } ");
+    const char* try_code = concatAlloc(concatAlloc(concatAlloc(concatAlloc("({ ", result_ctype), " _kai_res = ("), inner), "); ");
+    try_code = concatAlloc(try_code, "if (_kai_res.tag != 0) { ");
+    try_code = concatAlloc(concatAlloc(try_code, ret_ctype), " _kai_err_ret; _kai_err_ret.tag = _kai_res.tag; return _kai_err_ret; } ");
     if (strcmp(val_type, "Void") == 0) {
-    try_code = __kai_std_str_concat_alloc(try_code, "0; })");
+    try_code = concatAlloc(try_code, "0; })");
 } else {
-    try_code = __kai_std_str_concat_alloc(try_code, "_kai_res.value; })");
+    try_code = concatAlloc(try_code, "_kai_res.value; })");
 }
     return CodegenBuilder_push_expr(self, cexpr_new_ident(try_code));
 }
@@ -14166,22 +14609,22 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
 }
     const char* catch_code = "({ ";
     if (CodegenBuilder_is_pointer_type(self, val_type)) {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_opt = ("), inner), "); ");
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_cv; ");
-    catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } ");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(concatAlloc(catch_code, val_ctype), " _kai_opt = ("), inner), "); ");
+    catch_code = concatAlloc(concatAlloc(catch_code, val_ctype), " _kai_cv; ");
+    catch_code = concatAlloc(catch_code, "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } ");
     if (fallback_is_stmt2) {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
 } else {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
 }
 } else {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, cond_ctype), " _kai_opt = ("), inner), "); ");
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_cv; ");
-    catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } ");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(concatAlloc(catch_code, cond_ctype), " _kai_opt = ("), inner), "); ");
+    catch_code = concatAlloc(concatAlloc(catch_code, val_ctype), " _kai_cv; ");
+    catch_code = concatAlloc(catch_code, "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } ");
     if (fallback_is_stmt2) {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
 } else {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
 }
 }
     return CodegenBuilder_push_expr(self, cexpr_new_ident(catch_code));
@@ -14230,25 +14673,25 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
 } else {
     fallback_code = "0";
 }
-    const char* catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("({ ", result_ctype), " _kai_cr = ("), inner), "); ");
+    const char* catch_code = concatAlloc(concatAlloc(concatAlloc(concatAlloc("({ ", result_ctype), " _kai_cr = ("), inner), "); ");
     if (strcmp(val_type, "Void") == 0) {
-    catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_cr.tag != 0) { ");
+    catch_code = concatAlloc(catch_code, "if (_kai_cr.tag != 0) { ");
     if (strlen(expr.catch_var) > 0LL) {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
 }
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, fallback_code), " } 0; })");
+    catch_code = concatAlloc(concatAlloc(catch_code, fallback_code), " } 0; })");
 } else {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, val_ctype), " _kai_cv; ");
-    catch_code = __kai_std_str_concat_alloc(catch_code, "if (_kai_cr.tag != 0) { ");
+    catch_code = concatAlloc(concatAlloc(catch_code, val_ctype), " _kai_cv; ");
+    catch_code = concatAlloc(catch_code, "if (_kai_cr.tag != 0) { ");
     if (strlen(expr.catch_var) > 0LL) {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
 }
     if (fallback_is_stmt) {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, fallback_code), " __builtin_unreachable(); ");
+    catch_code = concatAlloc(concatAlloc(catch_code, fallback_code), " __builtin_unreachable(); ");
 } else {
-    catch_code = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(catch_code, "_kai_cv = ("), fallback_code), "); ");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "_kai_cv = ("), fallback_code), "); ");
 }
-    catch_code = __kai_std_str_concat_alloc(catch_code, "} else { _kai_cv = _kai_cr.value; } _kai_cv; })");
+    catch_code = concatAlloc(catch_code, "} else { _kai_cv = _kai_cr.value; } _kai_cv; })");
 }
     return CodegenBuilder_push_expr(self, cexpr_new_ident(catch_code));
 }
@@ -14263,21 +14706,21 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     AsmOutput out = ArrayList_AsmOutput_get(&(expr.asm_outputs), i);
     if (strlen(out.type_name) > 0LL) {
     const char* mapped_type = CodegenBuilder_map_type(self, out.type_name);
-    const char* var_name = __kai_std_str_concat_alloc("asm_ret_", cgb_int_to_str(i));
+    const char* var_name = concatAlloc("asm_ret_", cgb_int_to_str(i));
     if (strlen(decls_str) > 0LL) {
-    decls_str = __kai_std_str_concat_alloc(decls_str, " ");
+    decls_str = concatAlloc(decls_str, " ");
 }
-    decls_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(decls_str, mapped_type), " "), var_name), ";");
+    decls_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(decls_str, mapped_type), " "), var_name), ";");
     if (strlen(out_ops_str) > 0LL) {
-    out_ops_str = __kai_std_str_concat_alloc(out_ops_str, ", ");
+    out_ops_str = concatAlloc(out_ops_str, ", ");
 }
-    out_ops_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(out_ops_str, "["), out.name), "] \""), out.constraint), "\" ("), var_name), ")");
+    out_ops_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(out_ops_str, "["), out.name), "] \""), out.constraint), "\" ("), var_name), ")");
 } else if (out.expr_idx >= 0LL) {
     const char* val_str = CodegenBuilder_gen_expr_str(self, out.expr_idx);
     if (strlen(out_ops_str) > 0LL) {
-    out_ops_str = __kai_std_str_concat_alloc(out_ops_str, ", ");
+    out_ops_str = concatAlloc(out_ops_str, ", ");
 }
-    out_ops_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(out_ops_str, "["), out.name), "] \""), out.constraint), "\" ("), val_str), ")");
+    out_ops_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(out_ops_str, "["), out.name), "] \""), out.constraint), "\" ("), val_str), ")");
 }
     i = (i + 1LL);
 }
@@ -14287,18 +14730,18 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     AsmInput inp = ArrayList_AsmInput_get(&(expr.asm_inputs), j);
     const char* val_str = CodegenBuilder_gen_expr_str(self, inp.expr_idx);
     if (strlen(in_ops_str) > 0LL) {
-    in_ops_str = __kai_std_str_concat_alloc(in_ops_str, ", ");
+    in_ops_str = concatAlloc(in_ops_str, ", ");
 }
-    in_ops_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(in_ops_str, "["), inp.name), "] \""), inp.constraint), "\" ("), val_str), ")");
+    in_ops_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(in_ops_str, "["), inp.name), "] \""), inp.constraint), "\" ("), val_str), ")");
     j = (j + 1LL);
 }
     const char* clobs_str = "";
     int64_t k = 0LL;
     while (k < ArrayList_Str_length(&(expr.asm_clobbers))) {
     if (strlen(clobs_str) > 0LL) {
-    clobs_str = __kai_std_str_concat_alloc(clobs_str, ", ");
+    clobs_str = concatAlloc(clobs_str, ", ");
 }
-    clobs_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(clobs_str, "\""), ArrayList_Str_get(&(expr.asm_clobbers), k)), "\"");
+    clobs_str = concatAlloc(concatAlloc(concatAlloc(clobs_str, "\""), ArrayList_Str_get(&(expr.asm_clobbers), k)), "\"");
     k = (k + 1LL);
 }
     const char* volatile_prefix = "";
@@ -14310,15 +14753,15 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     while (c_idx < strlen(expr.asm_code)) {
     char c = (expr.asm_code)[c_idx];
     if (c == ((char)(10LL))) {
-    escaped_asm = __kai_std_str_concat_alloc(escaped_asm, "\\n\\t");
+    escaped_asm = concatAlloc(escaped_asm, "\\n\\t");
 } else if (c == ((char)(34LL))) {
-    escaped_asm = __kai_std_str_concat_alloc(escaped_asm, "\\\"");
+    escaped_asm = concatAlloc(escaped_asm, "\\\"");
 } else {
-    escaped_asm = __kai_std_str_concat_alloc(escaped_asm, cgb_char_to_str(c));
+    escaped_asm = concatAlloc(escaped_asm, cgb_char_to_str(c));
 }
     c_idx = (c_idx + 1LL);
 }
-    const char* asm_stmt = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__asm__ ", volatile_prefix), " (\""), escaped_asm), "\"");
+    const char* asm_stmt = concatAlloc(concatAlloc(concatAlloc(concatAlloc("__asm__ ", volatile_prefix), " (\""), escaped_asm), "\"");
     if (((strlen(out_ops_str) > 0LL) || (strlen(in_ops_str) > 0LL)) || (strlen(clobs_str) > 0LL)) {
     if (strlen(out_ops_str) == 0LL) {
     out_ops_str = " ";
@@ -14329,17 +14772,17 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     if (strlen(clobs_str) == 0LL) {
     clobs_str = " ";
 }
-    asm_stmt = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(asm_stmt, " : "), out_ops_str);
-    asm_stmt = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(asm_stmt, " : "), in_ops_str);
-    asm_stmt = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(asm_stmt, " : "), clobs_str);
+    asm_stmt = concatAlloc(concatAlloc(asm_stmt, " : "), out_ops_str);
+    asm_stmt = concatAlloc(concatAlloc(asm_stmt, " : "), in_ops_str);
+    asm_stmt = concatAlloc(concatAlloc(asm_stmt, " : "), clobs_str);
 }
-    asm_stmt = __kai_std_str_concat_alloc(asm_stmt, ");");
-    const char* res = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("({\n", decls_str), "\n");
-    res = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res, "    "), asm_stmt), "\n");
+    asm_stmt = concatAlloc(asm_stmt, ");");
+    const char* res = concatAlloc(concatAlloc("({\n", decls_str), "\n");
+    res = concatAlloc(concatAlloc(concatAlloc(res, "    "), asm_stmt), "\n");
     if (ArrayList_AsmOutput_length(&(expr.asm_outputs)) == 1LL) {
     AsmOutput out0 = ArrayList_AsmOutput_get(&(expr.asm_outputs), 0LL);
     if (strlen(out0.type_name) > 0LL) {
-    res = __kai_std_str_concat_alloc(res, "    asm_ret_0;\n");
+    res = concatAlloc(res, "    asm_ret_0;\n");
 }
 } else if (ArrayList_AsmOutput_length(&(expr.asm_outputs)) > 1LL) {
     const char* types_str = "";
@@ -14351,27 +14794,27 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     all_typed = false;
 }
     if (strlen(types_str) > 0LL) {
-    types_str = __kai_std_str_concat_alloc(types_str, ", ");
+    types_str = concatAlloc(types_str, ", ");
 }
-    types_str = __kai_std_str_concat_alloc(types_str, out.type_name);
+    types_str = concatAlloc(types_str, out.type_name);
     ti = (ti + 1LL);
 }
     if (all_typed) {
-    const char* tuple_type = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", types_str), ")");
+    const char* tuple_type = concatAlloc(concatAlloc("(", types_str), ")");
     const char* mapped_tuple = CodegenBuilder_map_type(self, tuple_type);
     const char* vals_str = "";
     int64_t vi = 0LL;
     while (vi < ArrayList_AsmOutput_length(&(expr.asm_outputs))) {
     if (strlen(vals_str) > 0LL) {
-    vals_str = __kai_std_str_concat_alloc(vals_str, ", ");
+    vals_str = concatAlloc(vals_str, ", ");
 }
-    vals_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(vals_str, "asm_ret_"), cgb_int_to_str(vi));
+    vals_str = concatAlloc(concatAlloc(vals_str, "asm_ret_"), cgb_int_to_str(vi));
     vi = (vi + 1LL);
 }
-    res = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(res, "    ("), mapped_tuple), "){ "), vals_str), " };\n");
+    res = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(res, "    ("), mapped_tuple), "){ "), vals_str), " };\n");
 }
 }
-    res = __kai_std_str_concat_alloc(res, "})");
+    res = concatAlloc(res, "})");
     return CodegenBuilder_push_expr(self, cexpr_new_ident(res));
 }
     return CodegenBuilder_push_expr(self, cexpr_new_ident(""));
@@ -14399,7 +14842,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     int64_t var_value = stmt.vardecl_value;
     bool is_discard = ((var_value >= 0LL) && ((strcmp(var_name, "_") == 0) || ((strlen(var_type) == 0LL) && ((strcmp(CodegenBuilder_get_expr_type(self, var_value), "Void") == 0) || (strcmp(CodegenBuilder_get_expr_type(self, var_value), "NoneType") == 0)))));
     if (is_discard) {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(void)(", CodegenBuilder_gen_expr_str(self, var_value)), ");"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc("(void)(", CodegenBuilder_gen_expr_str(self, var_value)), ");"));
     cgb_map_put(&(self->var_types), var_name, "Void");
     return;
 }
@@ -14408,17 +14851,17 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     const char* ctype = CodegenBuilder_map_type(self, val_type);
     cgb_map_put(&(self->var_types), var_name, val_type);
     if (var_value >= 0LL) {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ctype, " "), var_name), " = "), CodegenBuilder_gen_expr_str(self, var_value)), ";"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(ctype, " "), var_name), " = "), CodegenBuilder_gen_expr_str(self, var_value)), ";"));
 } else {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ctype, " "), var_name), ";"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc(concatAlloc(ctype, " "), var_name), ";"));
 }
 } else {
     const char* ctype = CodegenBuilder_map_type(self, var_type);
     cgb_map_put(&(self->var_types), var_name, var_type);
     if (var_value >= 0LL) {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ctype, " "), var_name), " = "), CodegenBuilder_gen_expr_str(self, var_value)), ";"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(ctype, " "), var_name), " = "), CodegenBuilder_gen_expr_str(self, var_value)), ";"));
 } else {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ctype, " "), var_name), ";"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc(concatAlloc(ctype, " "), var_name), ";"));
 }
 }
     return;
@@ -14431,7 +14874,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     if (strlen(stmt.assign_op) > 0LL) {
     op = stmt.assign_op;
 }
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(target, " "), op), " "), rhs), ";"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(target, " "), op), " "), rhs), ";"));
     return;
 }
     if (stmt.kind == StmtKind_sk_return) {
@@ -14460,7 +14903,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     int64_t di = 0LL;
     while (di < ArrayList_DropVarEntry_length(&(b_node.block_drop_vars))) {
     DropVarEntry entry = ArrayList_DropVarEntry_get(&(b_node.block_drop_vars), di);
-    ArrayList_Str_push(&(drop_calls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(entry.base_type, "_drop(&"), entry.name), ");"));
+    ArrayList_Str_push(&(drop_calls), concatAlloc(concatAlloc(concatAlloc(entry.base_type, "_drop(&"), entry.name), ");"));
     di = (di + 1LL);
 }
     bi = (bi - 1LL);
@@ -14471,10 +14914,10 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     if (self->cur_method_is_init) {
     ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, stmt.return_value);
     if ((expr.kind != ExprKind_ek_identifier) && (expr.kind != ExprKind_ek_literal)) {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(val, ";"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(val, ";"));
 }
 } else {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return ", val), ";"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc("return ", val), ";"));
 }
 } else {
     CCodeBuilder_emit_line(&(self->builder), "return;");
@@ -14483,7 +14926,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     const char* val_str = CodegenBuilder_gen_expr_with_expected_type(self, stmt.return_value, self->cur_return_type);
     const char* val_type = CodegenBuilder_get_expr_type(self, stmt.return_value);
     if ((strcmp(val_type, "Void") == 0) || (strcmp(val_type, "NoneType") == 0)) {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(val_str, ";"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(val_str, ";"));
     int64_t ci = 0LL;
     while (ci < ArrayList_Str_length(&(drop_calls))) {
     CCodeBuilder_emit_line(&(self->builder), ArrayList_Str_get(&(drop_calls), ci));
@@ -14492,7 +14935,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     CCodeBuilder_emit_line(&(self->builder), "return;");
 } else {
     CCodeBuilder_begin_block(&(self->builder));
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("int64_t __ret_val = ", val_str), ";"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc("int64_t __ret_val = ", val_str), ";"));
     int64_t ci = 0LL;
     while (ci < ArrayList_Str_length(&(drop_calls))) {
     CCodeBuilder_emit_line(&(self->builder), ArrayList_Str_get(&(drop_calls), ci));
@@ -14515,7 +14958,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
 }
     if (stmt.kind == StmtKind_sk_if) {
     const char* cond = CodegenBuilder_gen_expr_str(self, stmt.if_cond);
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc("if ", CodegenBuilder_format_cond(self, cond)));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc("if ", CodegenBuilder_format_cond(self, cond)));
     CodegenBuilder_gen_stmt(self, stmt.if_then);
     if (stmt.if_else >= 0LL) {
     CodegenBuilder_gen_else_chain(self, stmt.if_else);
@@ -14531,17 +14974,17 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     int64_t old_var_len = ArrayList_CgbMapEntry_length(&(self->var_types));
     cgb_map_put(&(self->var_types), stmt.iflet_var, unwrapped_type);
     if (CodegenBuilder_is_pointer_type(self, unwrapped_type)) {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if ((", cond_val), ") != NULL)"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc("if ((", cond_val), ") != NULL)"));
     CCodeBuilder_begin_block(&(self->builder));
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(unwrapped_ctype, " "), stmt.iflet_var), " = "), cond_val), ";"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(unwrapped_ctype, " "), stmt.iflet_var), " = "), cond_val), ";"));
     CodegenBuilder_gen_stmt(self, stmt.iflet_then);
     CCodeBuilder_end_block(&(self->builder));
 } else {
     CCodeBuilder_begin_block(&(self->builder));
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(cond_ctype, " _kai_opt = "), cond_val), ";"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc(concatAlloc(cond_ctype, " _kai_opt = "), cond_val), ";"));
     CCodeBuilder_emit_line(&(self->builder), "if (_kai_opt.has_value)");
     CCodeBuilder_begin_block(&(self->builder));
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(unwrapped_ctype, " "), stmt.iflet_var), " = _kai_opt.value;"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc(concatAlloc(unwrapped_ctype, " "), stmt.iflet_var), " = _kai_opt.value;"));
     CodegenBuilder_gen_stmt(self, stmt.iflet_then);
     CCodeBuilder_end_block(&(self->builder));
     CCodeBuilder_end_block(&(self->builder));
@@ -14563,7 +15006,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
 }
     if (stmt.kind == StmtKind_sk_while) {
     const char* cond = CodegenBuilder_gen_expr_str(self, stmt.while_cond);
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc("while ", CodegenBuilder_format_cond(self, cond)));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc("while ", CodegenBuilder_format_cond(self, cond)));
     if (stmt.while_body >= 0LL) {
     StmtNode body_stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt.while_body);
     body_stmt.block_is_loop_body = true;
@@ -14587,7 +15030,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     cmp_asc = "<=";
     cmp_desc = ">=";
 }
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("for (int64_t ", iter_var), " = "), start), "; ("), start), " <= "), end), ") ? ("), iter_var), " "), cmp_asc), " "), end), ") : ("), iter_var), " "), cmp_desc), " "), end), "); ("), start), " <= "), end), ") ? ++"), iter_var), " : --"), iter_var), ")"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("for (int64_t ", iter_var), " = "), start), "; ("), start), " <= "), end), ") ? ("), iter_var), " "), cmp_asc), " "), end), ") : ("), iter_var), " "), cmp_desc), " "), end), "); ("), start), " <= "), end), ") ? ++"), iter_var), " : --"), iter_var), ")"));
     CodegenBuilder_gen_stmt(self, stmt.for_body);
     return;
 }
@@ -14618,7 +15061,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     int64_t di = 0LL;
     while (di < ArrayList_DropVarEntry_length(&(b_node.block_drop_vars))) {
     DropVarEntry entry = ArrayList_DropVarEntry_get(&(b_node.block_drop_vars), di);
-    ArrayList_Str_push(&(drop_calls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(entry.base_type, "_drop(&"), entry.name), ");"));
+    ArrayList_Str_push(&(drop_calls), concatAlloc(concatAlloc(concatAlloc(entry.base_type, "_drop(&"), entry.name), ");"));
     di = (di + 1LL);
 }
     if (b_node.block_is_loop_body) {
@@ -14672,7 +15115,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     int64_t di = 0LL;
     while (di < ArrayList_DropVarEntry_length(&(b_node.block_drop_vars))) {
     DropVarEntry entry = ArrayList_DropVarEntry_get(&(b_node.block_drop_vars), di);
-    ArrayList_Str_push(&(drop_calls), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(entry.base_type, "_drop(&"), entry.name), ");"));
+    ArrayList_Str_push(&(drop_calls), concatAlloc(concatAlloc(concatAlloc(entry.base_type, "_drop(&"), entry.name), ");"));
     di = (di + 1LL);
 }
     if (b_node.block_is_loop_body) {
@@ -14704,15 +15147,15 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     const char* val = CodegenBuilder_gen_expr_str(self, arg);
     const char* arg_type = CodegenBuilder_get_expr_type(self, arg);
     if (strcmp(arg_type, "Int") == 0) {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_print_int(", val), ");"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc("__kai_print_int(", val), ");"));
 } else if (strcmp(arg_type, "Float") == 0) {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("__kai_print_float(", val), ");"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc("__kai_print_float(", val), ");"));
 } else if (strcmp(arg_type, "Char") == 0) {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%c\\n\", (char)(", val), "));"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc("printf(\"%c\\n\", (char)(", val), "));"));
 } else if (strcmp(arg_type, "Bool") == 0) {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%s\\n\", (", val), ") ? \"true\" : \"false\");"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc("printf(\"%s\\n\", (", val), ") ? \"true\" : \"false\");"));
 } else {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("printf(\"%s\\n\", ", val), ");"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc("printf(\"%s\\n\", ", val), ");"));
 }
     return;
 }
@@ -14754,7 +15197,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
 } else if (pat_node.lit_value.tag == TokenValue_tv_str_TAG) {
     const char* v = pat_node.lit_value.payload.tv_str.v;
 
-    lit_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("\"", CodegenBuilder_escape_string(self, v)), "\"");
+    lit_str = concatAlloc(concatAlloc("\"", CodegenBuilder_escape_string(self, v)), "\"");
 } else if (pat_node.lit_value.tag == TokenValue_tv_bool_TAG) {
     bool v = pat_node.lit_value.payload.tv_bool.v;
 
@@ -14777,12 +15220,12 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
 } else if (v == ((char)(39LL))) {
     lit_str = "'\\''";
 } else {
-    lit_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("'", cgb_char_to_str(v)), "'");
+    lit_str = concatAlloc(concatAlloc("'", cgb_char_to_str(v)), "'");
 }
 } else {
     lit_str = "0";
 } 
-    cond = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(expr_val, " == "), lit_str);
+    cond = concatAlloc(concatAlloc(expr_val, " == "), lit_str);
 } else if (pat_node.kind == PatternKind_pk_variant) {
     const char* var_name = pat_node.variant_name;
     const char* base_type = mapped_expr_type;
@@ -14818,9 +15261,9 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
 }
 }
     if (has_payload) {
-    cond = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(expr_val, op), "tag == "), base_type), "_"), var_name), "_TAG");
+    cond = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(expr_val, op), "tag == "), base_type), "_"), var_name), "_TAG");
 } else {
-    cond = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(expr_val, " == "), base_type), "_"), var_name);
+    cond = concatAlloc(concatAlloc(concatAlloc(concatAlloc(expr_val, " == "), base_type), "_"), var_name);
 }
     if (ArrayList_Str_length(&(pat_node.bindings)) > 0LL) {
     const char* bind_name = ArrayList_Str_get(&(pat_node.bindings), 0LL);
@@ -14851,7 +15294,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
 }
     if (strlen(bind_type) > 0LL) {
     const char* mapped_bind_type = CodegenBuilder_map_type(self, bind_type);
-    bindings_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(mapped_bind_type, " "), bind_name), " = "), expr_val), op), var_name), "."), field_name), ";");
+    bindings_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(mapped_bind_type, " "), bind_name), " = "), expr_val), op), var_name), "."), field_name), ";");
 }
 }
 }
@@ -14859,11 +15302,11 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     cond = "true";
 }
     if (case_idx == 0LL) {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc("if ", CodegenBuilder_format_cond(self, cond)));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc("if ", CodegenBuilder_format_cond(self, cond)));
 } else if (strcmp(cond, "true") == 0) {
     CCodeBuilder_append_to_last_line(&(self->builder), " else");
 } else {
-    CCodeBuilder_append_to_last_line(&(self->builder), __kai_std_str_concat_alloc(" else if ", CodegenBuilder_format_cond(self, cond)));
+    CCodeBuilder_append_to_last_line(&(self->builder), concatAlloc(" else if ", CodegenBuilder_format_cond(self, cond)));
 }
     if (strlen(bindings_str) > 0LL) {
     CCodeBuilder_begin_block(&(self->builder));
@@ -14927,7 +15370,7 @@ void CodegenBuilder_gen_else_chain(CodegenBuilder* self, int64_t else_idx) {
     StmtNode single_stmt = ArrayList_StmtNode_get(self->stmt_pool, single_stmt_idx);
     if (single_stmt.kind == StmtKind_sk_if) {
     const char* inner_cond = CodegenBuilder_gen_expr_str(self, single_stmt.if_cond);
-    CCodeBuilder_append_to_last_line(&(self->builder), __kai_std_str_concat_alloc(" else if ", CodegenBuilder_format_cond(self, inner_cond)));
+    CCodeBuilder_append_to_last_line(&(self->builder), concatAlloc(" else if ", CodegenBuilder_format_cond(self, inner_cond)));
     CodegenBuilder_gen_stmt(self, single_stmt.if_then);
     if (single_stmt.if_else >= 0LL) {
     CodegenBuilder_gen_else_chain(self, single_stmt.if_else);
@@ -14959,7 +15402,7 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, i1);
     if ((stmt.kind == StmtKind_sk_struct_decl) && (ArrayList_Str_length(&(stmt.struct_type_params)) == 0LL)) {
     const char* cname = CodegenBuilder_map_type(self, stmt.struct_name);
-    CDeclNode struct_decl = (CDeclNode){ .is_function = false, .func_ret = ctype_void(), .func_name = "", .func_params = ArrayList_Str_init(self->allocator), .func_vararg = false, .func_body = ArrayList_Int_init(self->allocator), .is_extern = false, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .is_struct = false, .struct_name = "", .struct_fields = ArrayList_Str_init(self->allocator), .is_enum = false, .enum_name = "", .enum_variants = ArrayList_Str_init(self->allocator), .is_tagged_enum = false, .tagged_name = "", .tagged_variants = ArrayList_Str_init(self->allocator), .is_tagged_union_struct = false, .is_typedef = true, .typedef_alias = cname, .typedef_def = ctype_new(__kai_std_str_concat_alloc("struct ", cname), 0LL, false, false) };
+    CDeclNode struct_decl = (CDeclNode){ .is_function = false, .func_ret = ctype_void(), .func_name = "", .func_params = ArrayList_Str_init(self->allocator), .func_vararg = false, .func_body = ArrayList_Int_init(self->allocator), .is_extern = false, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .is_struct = false, .struct_name = "", .struct_fields = ArrayList_Str_init(self->allocator), .is_enum = false, .enum_name = "", .enum_variants = ArrayList_Str_init(self->allocator), .is_tagged_enum = false, .tagged_name = "", .tagged_variants = ArrayList_Str_init(self->allocator), .is_tagged_union_struct = false, .is_typedef = true, .typedef_alias = cname, .typedef_def = ctype_new(concatAlloc("struct ", cname), 0LL, false, false) };
     CCodeBuilder local_builder = (CCodeBuilder){ .alloc = self->allocator, .lines = ArrayList_Str_init(self->allocator), .indent_level = 0LL };
     local_builder = CCodeBuilder_init(self->allocator);
     CPrinter printer = (CPrinter){ .builder = &(local_builder), .expr_pool = &(self->c_exprs), .stmt_pool = &(self->c_stmts) };
@@ -14983,7 +15426,7 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     int64_t vi2 = 0LL;
     while (vi2 < ArrayList_Variant_length(&(stmt.enum_variants))) {
     Variant v = ArrayList_Variant_get(&(stmt.enum_variants), vi2);
-    ArrayList_Str_push(&(variants_list), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", cename), "_"), v.vname), ","));
+    ArrayList_Str_push(&(variants_list), concatAlloc(concatAlloc(concatAlloc(concatAlloc("    ", cename), "_"), v.vname), ","));
     vi2 = (vi2 + 1LL);
 }
     CDeclNode enum_decl = (CDeclNode){ .is_function = false, .func_ret = ctype_void(), .func_name = "", .func_params = ArrayList_Str_init(self->allocator), .func_vararg = false, .func_body = ArrayList_Int_init(self->allocator), .is_extern = false, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .is_struct = false, .struct_name = "", .struct_fields = ArrayList_Str_init(self->allocator), .is_enum = true, .enum_name = cename, .enum_variants = variants_list, .is_tagged_enum = false, .tagged_name = "", .tagged_variants = ArrayList_Str_init(self->allocator), .is_tagged_union_struct = false, .is_typedef = false, .typedef_alias = "", .typedef_def = ctype_void() };
@@ -14993,12 +15436,12 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     CPrinter_print_decl(&(printer), enum_decl);
     StrBuf_append(&(self->type_defs), CCodeBuilder_to_str(&(local_builder)));
 } else {
-    const char* tags_name = __kai_std_str_concat_alloc(cename, "_tags");
+    const char* tags_name = concatAlloc(cename, "_tags");
     ArrayList_Str variants_list = ArrayList_Str_init(self->allocator);
     int64_t vi3 = 0LL;
     while (vi3 < ArrayList_Variant_length(&(stmt.enum_variants))) {
     Variant v = ArrayList_Variant_get(&(stmt.enum_variants), vi3);
-    ArrayList_Str_push(&(variants_list), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", cename), "_"), v.vname), "_TAG,"));
+    ArrayList_Str_push(&(variants_list), concatAlloc(concatAlloc(concatAlloc(concatAlloc("    ", cename), "_"), v.vname), "_TAG,"));
     vi3 = (vi3 + 1LL);
 }
     CDeclNode enum_decl = (CDeclNode){ .is_function = false, .func_ret = ctype_void(), .func_name = "", .func_params = ArrayList_Str_init(self->allocator), .func_vararg = false, .func_body = ArrayList_Int_init(self->allocator), .is_extern = false, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .is_struct = false, .struct_name = "", .struct_fields = ArrayList_Str_init(self->allocator), .is_enum = true, .enum_name = tags_name, .enum_variants = variants_list, .is_tagged_enum = false, .tagged_name = "", .tagged_variants = ArrayList_Str_init(self->allocator), .is_tagged_union_struct = false, .is_typedef = false, .typedef_alias = "", .typedef_def = ctype_void() };
@@ -15007,7 +15450,7 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     CPrinter printer = (CPrinter){ .builder = &(local_builder), .expr_pool = &(self->c_exprs), .stmt_pool = &(self->c_stmts) };
     CPrinter_print_decl(&(printer), enum_decl);
     StrBuf_append(&(self->type_defs), CCodeBuilder_to_str(&(local_builder)));
-    CDeclNode struct_decl = (CDeclNode){ .is_function = false, .func_ret = ctype_void(), .func_name = "", .func_params = ArrayList_Str_init(self->allocator), .func_vararg = false, .func_body = ArrayList_Int_init(self->allocator), .is_extern = false, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .is_struct = false, .struct_name = "", .struct_fields = ArrayList_Str_init(self->allocator), .is_enum = false, .enum_name = "", .enum_variants = ArrayList_Str_init(self->allocator), .is_tagged_enum = false, .tagged_name = "", .tagged_variants = ArrayList_Str_init(self->allocator), .is_tagged_union_struct = false, .is_typedef = true, .typedef_alias = cename, .typedef_def = ctype_new(__kai_std_str_concat_alloc("struct ", cename), 0LL, false, false) };
+    CDeclNode struct_decl = (CDeclNode){ .is_function = false, .func_ret = ctype_void(), .func_name = "", .func_params = ArrayList_Str_init(self->allocator), .func_vararg = false, .func_body = ArrayList_Int_init(self->allocator), .is_extern = false, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .is_struct = false, .struct_name = "", .struct_fields = ArrayList_Str_init(self->allocator), .is_enum = false, .enum_name = "", .enum_variants = ArrayList_Str_init(self->allocator), .is_tagged_enum = false, .tagged_name = "", .tagged_variants = ArrayList_Str_init(self->allocator), .is_tagged_union_struct = false, .is_typedef = true, .typedef_alias = cename, .typedef_def = ctype_new(concatAlloc("struct ", cename), 0LL, false, false) };
     CCodeBuilder local_builder2 = (CCodeBuilder){ .alloc = self->allocator, .lines = ArrayList_Str_init(self->allocator), .indent_level = 0LL };
     local_builder2 = CCodeBuilder_init(self->allocator);
     CPrinter printer2 = (CPrinter){ .builder = &(local_builder2), .expr_pool = &(self->c_exprs), .stmt_pool = &(self->c_stmts) };
@@ -15021,7 +15464,7 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     int64_t vi5 = 0LL;
     while (vi5 < ArrayList_Str_length(&(stmt.error_variants))) {
     const char* vname = ArrayList_Str_get(&(stmt.error_variants), vi5);
-    ArrayList_Str_push(&(variants_list), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("    ", cename), "_"), vname), " = "), cgb_int_to_str((vi5 + 1LL))), ","));
+    ArrayList_Str_push(&(variants_list), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("    ", cename), "_"), vname), " = "), cgb_int_to_str((vi5 + 1LL))), ","));
     vi5 = (vi5 + 1LL);
 }
     CDeclNode enum_decl = (CDeclNode){ .is_function = false, .func_ret = ctype_void(), .func_name = "", .func_params = ArrayList_Str_init(self->allocator), .func_vararg = false, .func_body = ArrayList_Int_init(self->allocator), .is_extern = false, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .is_struct = false, .struct_name = "", .struct_fields = ArrayList_Str_init(self->allocator), .is_enum = true, .enum_name = cename, .enum_variants = variants_list, .is_tagged_enum = false, .tagged_name = "", .tagged_variants = ArrayList_Str_init(self->allocator), .is_tagged_union_struct = false, .is_typedef = false, .typedef_alias = "", .typedef_def = ctype_void() };
@@ -15054,18 +15497,18 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     while (pi2 < ArrayList_Param_length(&(stmt.func_params))) {
     Param p = ArrayList_Param_get(&(stmt.func_params), pi2);
     if (pi2 > 0LL) {
-    params_str = __kai_std_str_concat_alloc(params_str, ", ");
+    params_str = concatAlloc(params_str, ", ");
 }
     const char* ctype = CodegenBuilder_map_type(self, p.ptype);
-    params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, ctype), " "), p.name);
+    params_str = concatAlloc(concatAlloc(concatAlloc(params_str, ctype), " "), p.name);
     pi2 = (pi2 + 1LL);
 }
-    const char* func_type_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, ":"), stmt.func_return_type);
+    const char* func_type_str = concatAlloc(concatAlloc(params_str, ":"), stmt.func_return_type);
     cgb_map_put(&(self->func_types), stmt.func_name, func_type_str);
     int64_t p_i = 0LL;
     while (p_i < ArrayList_Param_length(&(stmt.func_params))) {
     Param p = ArrayList_Param_get(&(stmt.func_params), p_i);
-    const char* p_key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(stmt.func_name, "_param_"), cgb_int_to_str(p_i));
+    const char* p_key = concatAlloc(concatAlloc(stmt.func_name, "_param_"), cgb_int_to_str(p_i));
     cgb_map_put(&(self->func_param_types), p_key, p.ptype);
     p_i = (p_i + 1LL);
 }
@@ -15076,7 +15519,7 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     int64_t p_i = 0LL;
     while (p_i < ArrayList_Param_length(&(stmt.extern_params))) {
     Param p = ArrayList_Param_get(&(stmt.extern_params), p_i);
-    const char* p_key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(stmt.extern_name, "_param_"), cgb_int_to_str(p_i));
+    const char* p_key = concatAlloc(concatAlloc(stmt.extern_name, "_param_"), cgb_int_to_str(p_i));
     cgb_map_put(&(self->func_param_types), p_key, p.ptype);
     p_i = (p_i + 1LL);
 }
@@ -15089,8 +15532,8 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     int64_t m_idx = ArrayList_Int_get(&(stmt.impl_methods), j);
     StmtNode m_node = ArrayList_StmtNode_get(self->stmt_pool, m_idx);
     const char* method_name = m_node.func_name;
-    bool is_init = ((((strcmp(method_name, "init") == 0) || (strcmp(m_node.func_return_type, struct_name) == 0)) || (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("*", struct_name)) == 0)) || (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("&", struct_name)) == 0));
-    const char* key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(struct_name, "_"), method_name);
+    bool is_init = ((((strcmp(method_name, "init") == 0) || (strcmp(m_node.func_return_type, struct_name) == 0)) || (strcmp(m_node.func_return_type, concatAlloc("*", struct_name)) == 0)) || (strcmp(m_node.func_return_type, concatAlloc("&", struct_name)) == 0));
+    const char* key = concatAlloc(concatAlloc(struct_name, "_"), method_name);
     const char* ret = m_node.func_return_type;
     if (is_init) {
     ret = struct_name;
@@ -15099,7 +15542,7 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     int64_t p_i = 0LL;
     while (p_i < ArrayList_Param_length(&(m_node.func_params))) {
     Param p = ArrayList_Param_get(&(m_node.func_params), p_i);
-    const char* p_key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(key, "_param_"), cgb_int_to_str(p_i));
+    const char* p_key = concatAlloc(concatAlloc(key, "_param_"), cgb_int_to_str(p_i));
     cgb_map_put(&(self->func_param_types), p_key, p.ptype);
     p_i = (p_i + 1LL);
 }
@@ -15135,10 +15578,10 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     while (pi2 < ArrayList_Param_length(&(stmt.func_params))) {
     Param p = ArrayList_Param_get(&(stmt.func_params), pi2);
     if (pi2 > 0LL) {
-    params_str = __kai_std_str_concat_alloc(params_str, ", ");
+    params_str = concatAlloc(params_str, ", ");
 }
     const char* ctype = CodegenBuilder_map_type(self, p.ptype);
-    params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, ctype), " "), p.name);
+    params_str = concatAlloc(concatAlloc(concatAlloc(params_str, ctype), " "), p.name);
     cgb_map_put(&(self->var_types), p.name, p.ptype);
     pi2 = (pi2 + 1LL);
 }
@@ -15154,7 +15597,7 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
 }
     const char* decl_ret = ret_type;
     const char* decl_params = params_str;
-    const char* impl_header = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), stmt.func_name), "("), params_str), ")");
+    const char* impl_header = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(ret_type, " "), stmt.func_name), "("), params_str), ")");
     if (is_main) {
     decl_ret = "int";
     decl_params = "int argc, char** argv";
@@ -15165,7 +15608,7 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     int64_t pi3 = 0LL;
     while (pi3 < ArrayList_Param_length(&(stmt.func_params))) {
     Param p = ArrayList_Param_get(&(stmt.func_params), pi3);
-    ArrayList_Str_push(&(params_list), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(CodegenBuilder_map_type(self, p.ptype), " "), p.name));
+    ArrayList_Str_push(&(params_list), concatAlloc(concatAlloc(CodegenBuilder_map_type(self, p.ptype), " "), p.name));
     pi3 = (pi3 + 1LL);
 }
     CDeclNode func_decl = cdecl_new_func(stmt.func_name, decl_ret, params_list, false, false);
@@ -15195,9 +15638,9 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     while (pi3 < ArrayList_Param_length(&(stmt.extern_params))) {
     Param p = ArrayList_Param_get(&(stmt.extern_params), pi3);
     if (pi3 > 0LL) {
-    params_str = __kai_std_str_concat_alloc(params_str, ", ");
+    params_str = concatAlloc(params_str, ", ");
 }
-    params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, CodegenBuilder_map_type(self, p.ptype)), " "), p.name);
+    params_str = concatAlloc(concatAlloc(concatAlloc(params_str, CodegenBuilder_map_type(self, p.ptype)), " "), p.name);
     pi3 = (pi3 + 1LL);
 }
     const char* ret_type = CodegenBuilder_map_type(self, stmt.extern_return);
@@ -15205,7 +15648,7 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     int64_t pi4 = 0LL;
     while (pi4 < ArrayList_Param_length(&(stmt.extern_params))) {
     Param p = ArrayList_Param_get(&(stmt.extern_params), pi4);
-    ArrayList_Str_push(&(ex_params), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(CodegenBuilder_map_type(self, p.ptype), " "), p.name));
+    ArrayList_Str_push(&(ex_params), concatAlloc(concatAlloc(CodegenBuilder_map_type(self, p.ptype), " "), p.name));
     pi4 = (pi4 + 1LL);
 }
     CDeclNode ext_decl = cdecl_new_func(stmt.extern_name, ret_type, ex_params, true, false);
@@ -15229,13 +15672,13 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     int64_t m_idx = ArrayList_Int_get(&(stmt.impl_methods), j);
     StmtNode m_node = ArrayList_StmtNode_get(self->stmt_pool, m_idx);
     const char* method_name = m_node.func_name;
-    bool is_init = ((((strcmp(method_name, "init") == 0) || (strcmp(m_node.func_return_type, struct_name) == 0)) || (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("*", struct_name)) == 0)) || (strcmp(m_node.func_return_type, __kai_std_str_concat_alloc("&", struct_name)) == 0));
+    bool is_init = ((((strcmp(method_name, "init") == 0) || (strcmp(m_node.func_return_type, struct_name) == 0)) || (strcmp(m_node.func_return_type, concatAlloc("*", struct_name)) == 0)) || (strcmp(m_node.func_return_type, concatAlloc("&", struct_name)) == 0));
     self->var_types = ArrayList_CgbMapEntry_init(self->allocator);
     self->block_stack = ArrayList_Int_init(self->allocator);
     const char* params_str = "";
     if (!is_init) {
-    params_str = __kai_std_str_concat_alloc(mapped_name, "* self");
-    cgb_map_put(&(self->var_types), "self", __kai_std_str_concat_alloc("*", struct_name));
+    params_str = concatAlloc(mapped_name, "* self");
+    cgb_map_put(&(self->var_types), "self", concatAlloc("*", struct_name));
 } else {
     cgb_map_put(&(self->var_types), "self", struct_name);
 }
@@ -15250,10 +15693,10 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
 }
     if (!is_self) {
     if (strlen(params_str) > 0LL) {
-    params_str = __kai_std_str_concat_alloc(params_str, ", ");
+    params_str = concatAlloc(params_str, ", ");
 }
     const char* ctype = CodegenBuilder_map_type(self, p.ptype);
-    params_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(params_str, ctype), " "), p.name);
+    params_str = concatAlloc(concatAlloc(concatAlloc(params_str, ctype), " "), p.name);
     cgb_map_put(&(self->var_types), p.name, p.ptype);
 }
     pi2 = (pi2 + 1LL);
@@ -15266,13 +15709,13 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     ret = struct_name;
 }
     const char* ret_type = CodegenBuilder_map_type(self, ret);
-    const char* mangled_fn = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(mapped_name, "_"), method_name);
+    const char* mangled_fn = concatAlloc(concatAlloc(mapped_name, "_"), method_name);
     self->cur_func_name = mangled_fn;
     self->cur_return_type = ret;
     self->cur_method_is_init = is_init;
     ArrayList_Str impl_params = ArrayList_Str_init(self->allocator);
     if (!is_init) {
-    ArrayList_Str_push(&(impl_params), __kai_std_str_concat_alloc(mapped_name, "* self"));
+    ArrayList_Str_push(&(impl_params), concatAlloc(mapped_name, "* self"));
 }
     int64_t pi3 = 0LL;
     while (pi3 < ArrayList_Param_length(&(m_node.func_params))) {
@@ -15284,7 +15727,7 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
 }
 }
     if (!is_self2) {
-    ArrayList_Str_push(&(impl_params), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(CodegenBuilder_map_type(self, p.ptype), " "), p.name));
+    ArrayList_Str_push(&(impl_params), concatAlloc(concatAlloc(CodegenBuilder_map_type(self, p.ptype), " "), p.name));
 }
     pi3 = (pi3 + 1LL);
 }
@@ -15301,7 +15744,7 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     if (body_idx >= 0LL) {
     StmtNode body_stmt = ArrayList_StmtNode_get(self->stmt_pool, body_idx);
     if (body_stmt.kind == StmtKind_sk_block) {
-    CCodeBuilder_emit_line(&(self->builder), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_type, " "), mangled_fn), "("), params_str), ")"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(ret_type, " "), mangled_fn), "("), params_str), ")"));
     CodegenBuilder_gen_stmt(self, body_idx);
     const char* body_str = CCodeBuilder_to_str(&(self->builder));
     if (is_init) {
@@ -15314,7 +15757,7 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
 }
     const char* header = __kai_str_sub(body_str, 0LL, brace_pos);
     const char* raw_body = __kai_str_sub(body_str, brace_pos, strlen(body_str));
-    body_str = __kai_std_str_concat_alloc(header, CodegenBuilder_add_init_return(self, raw_body, mapped_name));
+    body_str = concatAlloc(header, CodegenBuilder_add_init_return(self, raw_body, mapped_name));
 }
     StrBuf_append(&(self->output_body), body_str);
     CCodeBuilder_clear(&(self->builder));
@@ -15355,13 +15798,13 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     int64_t pi3 = 0LL;
     while (pi3 < ArrayList_Param_length(&(v.params))) {
     if (pi3 > 0LL) {
-    variant_str = __kai_std_str_concat_alloc(variant_str, " ");
+    variant_str = concatAlloc(variant_str, " ");
 }
     Param p = ArrayList_Param_get(&(v.params), pi3);
-    variant_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(variant_str, CodegenBuilder_map_type(self, p.ptype)), " "), p.name), ";");
+    variant_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(variant_str, CodegenBuilder_map_type(self, p.ptype)), " "), p.name), ";");
     pi3 = (pi3 + 1LL);
 }
-    variant_str = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(variant_str, " } "), v.vname), ";");
+    variant_str = concatAlloc(concatAlloc(concatAlloc(variant_str, " } "), v.vname), ";");
     ArrayList_Str_push(&(variants_list), variant_str);
 }
     vi4 = (vi4 + 1LL);
@@ -15415,7 +15858,7 @@ void CodegenBuilder_emit_struct_body_with_deps(CodegenBuilder* self, int64_t stm
     int64_t fi2 = 0LL;
     while (fi2 < ArrayList_StructField_length(&(stmt.struct_fields))) {
     StructField f = ArrayList_StructField_get(&(stmt.struct_fields), fi2);
-    ArrayList_Str_push(&(fields), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(CodegenBuilder_map_type(self, f.ftype), " "), f.name), ";"));
+    ArrayList_Str_push(&(fields), concatAlloc(concatAlloc(concatAlloc(CodegenBuilder_map_type(self, f.ftype), " "), f.name), ";"));
     fi2 = (fi2 + 1LL);
 }
     CDeclNode body_decl = (CDeclNode){ .is_function = false, .func_ret = ctype_void(), .func_name = "", .func_params = ArrayList_Str_init(self->allocator), .func_vararg = false, .func_body = ArrayList_Int_init(self->allocator), .is_extern = false, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .is_struct = true, .struct_name = cname, .struct_fields = fields, .is_enum = false, .enum_name = "", .enum_variants = ArrayList_Str_init(self->allocator), .is_tagged_enum = false, .tagged_name = "", .tagged_variants = ArrayList_Str_init(self->allocator), .is_tagged_union_struct = false, .is_typedef = false, .typedef_alias = "", .typedef_def = ctype_void() };
@@ -15432,7 +15875,7 @@ void CodegenBuilder_emit_struct_body_with_deps(CodegenBuilder* self, int64_t stm
     while (j < ArrayList_Int_length(&(impl_node.impl_methods))) {
     int64_t m_idx = ArrayList_Int_get(&(impl_node.impl_methods), j);
     StmtNode m_node = ArrayList_StmtNode_get(self->stmt_pool, m_idx);
-    const char* key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(stmt.struct_name, "_"), m_node.func_name);
+    const char* key = concatAlloc(concatAlloc(stmt.struct_name, "_"), m_node.func_name);
     const char* ret = m_node.func_return_type;
     if (strcmp(m_node.func_name, "init") == 0) {
     ret = stmt.struct_name;
@@ -15441,7 +15884,7 @@ void CodegenBuilder_emit_struct_body_with_deps(CodegenBuilder* self, int64_t stm
     int64_t p_i = 0LL;
     while (p_i < ArrayList_Param_length(&(m_node.func_params))) {
     Param p = ArrayList_Param_get(&(m_node.func_params), p_i);
-    const char* p_key = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(key, "_param_"), cgb_int_to_str(p_i));
+    const char* p_key = concatAlloc(concatAlloc(key, "_param_"), cgb_int_to_str(p_i));
     cgb_map_put(&(self->func_param_types), p_key, p.ptype);
     p_i = (p_i + 1LL);
 }
@@ -15493,10 +15936,10 @@ void CCodeBuilder_emit_line(CCodeBuilder* self, const char* code) {
     const char* indent_str = "";
     int64_t i = 0LL;
     while (i < self->indent_level) {
-    indent_str = __kai_std_str_concat_alloc(indent_str, "    ");
+    indent_str = concatAlloc(indent_str, "    ");
     i = (i + 1LL);
 }
-    ArrayList_Str_push(&(self->lines), __kai_std_str_concat_alloc(indent_str, code));
+    ArrayList_Str_push(&(self->lines), concatAlloc(indent_str, code));
 }
 void CCodeBuilder_emit_blank(CCodeBuilder* self) {
     ArrayList_Str_push(&(self->lines), "");
@@ -15508,14 +15951,14 @@ void CCodeBuilder_append_to_last_line(CCodeBuilder* self, const char* suffix) {
     if (ArrayList_Str_length(&(self->lines)) > 0LL) {
     int64_t idx = (ArrayList_Str_length(&(self->lines)) - 1LL);
     const char* last = ArrayList_Str_get(&(self->lines), idx);
-    ArrayList_Str_set(&(self->lines), idx, __kai_std_str_concat_alloc(last, suffix));
+    ArrayList_Str_set(&(self->lines), idx, concatAlloc(last, suffix));
 }
 }
 void CCodeBuilder_emit_include(CCodeBuilder* self, const char* header, bool is_system) {
     if (is_system) {
-    ArrayList_Str_push(&(self->lines), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include <", header), ">"));
+    ArrayList_Str_push(&(self->lines), concatAlloc(concatAlloc("#include <", header), ">"));
 } else {
-    ArrayList_Str_push(&(self->lines), __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include \"", header), "\""));
+    ArrayList_Str_push(&(self->lines), concatAlloc(concatAlloc("#include \"", header), "\""));
 }
 }
 void CCodeBuilder_emit_directive(CCodeBuilder* self, const char* code) {
@@ -15542,12 +15985,12 @@ const char* CCodeBuilder_to_str(CCodeBuilder* self) {
     int64_t i = 0LL;
     while (i < ArrayList_Str_length(&(self->lines))) {
     if (i > 0LL) {
-    result = __kai_std_str_concat_alloc(result, "\n");
+    result = concatAlloc(result, "\n");
 }
-    result = __kai_std_str_concat_alloc(result, ArrayList_Str_get(&(self->lines), i));
+    result = concatAlloc(result, ArrayList_Str_get(&(self->lines), i));
     i = (i + 1LL);
 }
-    result = __kai_std_str_concat_alloc(result, "\n");
+    result = concatAlloc(result, "\n");
     return result;
 }
 int64_t CCodeBuilder_line_count(CCodeBuilder* self) {
@@ -15559,17 +16002,17 @@ const char* cb_escape_string(const char* s) {
     while (i < strlen(s)) {
     char c = (s)[i];
     if (c == ((char)(10LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\n");
+    res = concatAlloc(res, "\\n");
 } else if (c == ((char)(13LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\r");
+    res = concatAlloc(res, "\\r");
 } else if (c == ((char)(9LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\t");
+    res = concatAlloc(res, "\\t");
 } else if (c == ((char)(92LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\\\");
+    res = concatAlloc(res, "\\\\");
 } else if (c == ((char)(34LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\\"");
+    res = concatAlloc(res, "\\\"");
 } else {
-    res = __kai_std_str_concat_alloc(res, cgb_char_to_str(c));
+    res = concatAlloc(res, cgb_char_to_str(c));
 }
     i = (i + 1LL);
 }
@@ -15581,11 +16024,11 @@ const char* cb_escape_asm(const char* s) {
     while (i < strlen(s)) {
     char c = (s)[i];
     if (c == ((char)(10LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\n\\t");
+    res = concatAlloc(res, "\\n\\t");
 } else if (c == ((char)(34LL))) {
-    res = __kai_std_str_concat_alloc(res, "\\\"");
+    res = concatAlloc(res, "\\\"");
 } else {
-    res = __kai_std_str_concat_alloc(res, cgb_char_to_str(c));
+    res = concatAlloc(res, cgb_char_to_str(c));
 }
     i = (i + 1LL);
 }
@@ -15682,17 +16125,17 @@ const char* ctype_to_str(CType t) {
     result = "const ";
 }
     if (t.is_unsigned) {
-    result = __kai_std_str_concat_alloc(result, "unsigned ");
+    result = concatAlloc(result, "unsigned ");
 }
-    result = __kai_std_str_concat_alloc(result, t.base);
+    result = concatAlloc(result, t.base);
     int64_t i = 0LL;
     while (i < t.pointer) {
-    result = __kai_std_str_concat_alloc(result, "*");
+    result = concatAlloc(result, "*");
     i = (i + 1LL);
 }
     int64_t j = 0LL;
     while (j < ArrayList_Str_length(&(t.array_sizes))) {
-    result = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(result, "["), ArrayList_Str_get(&(t.array_sizes), j)), "]");
+    result = concatAlloc(concatAlloc(concatAlloc(result, "["), ArrayList_Str_get(&(t.array_sizes), j)), "]");
     j = (j + 1LL);
 }
     return result;
@@ -15857,7 +16300,7 @@ const char* CPrinter_print_expr(CPrinter* self, int64_t idx) {
 }
     CExprNode node = ArrayList_CExprNode_get(self->expr_pool, idx);
     if (node.kind == CExprKind_ck_int_lit) {
-    return __kai_std_str_concat_alloc(node.int_val, "LL");
+    return concatAlloc(node.int_val, "LL");
 }
     if (node.kind == CExprKind_ck_float_lit) {
     return node.float_val;
@@ -15880,62 +16323,62 @@ const char* CPrinter_print_expr(CPrinter* self, int64_t idx) {
     if (node.kind == CExprKind_ck_binary) {
     const char* left = CPrinter_print_expr(self, node.binop_left);
     const char* right = CPrinter_print_expr(self, node.binop_right);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", left), " "), node.binop_op), " "), right), ")");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", left), " "), node.binop_op), " "), right), ")");
 }
     if (node.kind == CExprKind_ck_unary) {
     const char* operand = CPrinter_print_expr(self, node.unop_operand);
     if (node.is_prefix) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", node.unop_op), operand), ")");
+    return concatAlloc(concatAlloc(concatAlloc("(", node.unop_op), operand), ")");
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", operand), node.unop_op), ")");
+    return concatAlloc(concatAlloc(concatAlloc("(", operand), node.unop_op), ")");
 }
     if (node.kind == CExprKind_ck_call) {
     const char* args_str = "";
     int64_t i = 0LL;
     while (i < ArrayList_Int_length(&(node.call_args))) {
     if (i > 0LL) {
-    args_str = __kai_std_str_concat_alloc(args_str, ", ");
+    args_str = concatAlloc(args_str, ", ");
 }
-    args_str = __kai_std_str_concat_alloc(args_str, CPrinter_print_expr(self, ArrayList_Int_get(&(node.call_args), i)));
+    args_str = concatAlloc(args_str, CPrinter_print_expr(self, ArrayList_Int_get(&(node.call_args), i)));
     i = (i + 1LL);
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(node.callee_name, "("), args_str), ")");
+    return concatAlloc(concatAlloc(concatAlloc(node.callee_name, "("), args_str), ")");
 }
     if (node.kind == CExprKind_ck_field) {
     const char* base = CPrinter_print_expr(self, node.field_expr);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(base, "."), node.field_name);
+    return concatAlloc(concatAlloc(base, "."), node.field_name);
 }
     if (node.kind == CExprKind_ck_arrow) {
     const char* base = CPrinter_print_expr(self, node.field_expr);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(base, "->"), node.field_name);
+    return concatAlloc(concatAlloc(base, "->"), node.field_name);
 }
     if (node.kind == CExprKind_ck_index) {
     const char* base = CPrinter_print_expr(self, node.idx_expr);
     const char* idx = CPrinter_print_expr(self, node.idx_index);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(base, "["), idx), "]");
+    return concatAlloc(concatAlloc(concatAlloc(base, "["), idx), "]");
 }
     if (node.kind == CExprKind_ck_cast) {
     const char* base = CPrinter_print_expr(self, node.cast_expr);
     const char* target = ctype_to_str(node.cast_type);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("((", target), ")("), base), "))");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("((", target), ")("), base), "))");
 }
     if (node.kind == CExprKind_ck_ternary) {
     const char* cond = CPrinter_print_expr(self, node.tern_cond);
     const char* then_expr = CPrinter_print_expr(self, node.tern_then);
     const char* else_expr = CPrinter_print_expr(self, node.tern_else);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", cond), " ? "), then_expr), " : "), else_expr), ")");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", cond), " ? "), then_expr), " : "), else_expr), ")");
 }
     if (node.kind == CExprKind_ck_sizeof_type) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("sizeof(", ctype_to_str(node.sizeof_type)), ")");
+    return concatAlloc(concatAlloc("sizeof(", ctype_to_str(node.sizeof_type)), ")");
 }
     if (node.kind == CExprKind_ck_sizeof_expr) {
     const char* base = CPrinter_print_expr(self, node.sizeof_expr);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("sizeof(", base), ")");
+    return concatAlloc(concatAlloc("sizeof(", base), ")");
 }
     if (node.kind == CExprKind_ck_assign) {
     const char* target = CPrinter_print_expr(self, node.assign_target);
     const char* val = CPrinter_print_expr(self, node.assign_value);
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", target), " "), node.assign_op), " "), val), ")");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", target), " "), node.assign_op), " "), val), ")");
 }
     if (node.kind == CExprKind_ck_compound) {
     const char* type_str = ctype_to_str(node.compound_type);
@@ -15943,15 +16386,15 @@ const char* CPrinter_print_expr(CPrinter* self, int64_t idx) {
     int64_t ci = 0LL;
     while (ci < ArrayList_Str_length(&(node.compound_fields))) {
     if (ci > 0LL) {
-    fields_str = __kai_std_str_concat_alloc(fields_str, ", ");
+    fields_str = concatAlloc(fields_str, ", ");
 }
-    fields_str = __kai_std_str_concat_alloc(fields_str, ArrayList_Str_get(&(node.compound_fields), ci));
+    fields_str = concatAlloc(fields_str, ArrayList_Str_get(&(node.compound_fields), ci));
     ci = (ci + 1LL);
 }
     if (strlen(fields_str) > 0LL) {
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", type_str), "){ "), fields_str), " }");
+    return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", type_str), "){ "), fields_str), " }");
 }
-    return __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("(", type_str), "){0}");
+    return concatAlloc(concatAlloc("(", type_str), "){0}");
 }
     if (node.kind == CExprKind_ck_stmt_expr) {
     CCodeBuilder temp_builder = CCodeBuilder_init(self->builder->alloc);
@@ -15964,7 +16407,7 @@ const char* CPrinter_print_expr(CPrinter* self, int64_t idx) {
     si = (si + 1LL);
 }
     if (node.stmt_result >= 0LL) {
-    CCodeBuilder_emit_line(&(temp_builder), __kai_std_str_concat_alloc(CPrinter_print_expr(self, node.stmt_result), ";"));
+    CCodeBuilder_emit_line(&(temp_builder), concatAlloc(CPrinter_print_expr(self, node.stmt_result), ";"));
 }
     CCodeBuilder_dedent(&(temp_builder));
     CCodeBuilder_emit_line(&(temp_builder), "})");
@@ -15987,17 +16430,17 @@ void CPrinter_print_stmt(CPrinter* self, int64_t idx) {
     CCodeBuilder_end_block(self->builder);
 }
     if (node.kind == CStmtKind_cs_expr) {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(CPrinter_print_expr(self, node.expr_stmt), ";"));
+    CCodeBuilder_emit_line(self->builder, concatAlloc(CPrinter_print_expr(self, node.expr_stmt), ";"));
 }
     if (node.kind == CStmtKind_cs_if) {
     const char* cond = CPrinter_print_expr(self, node.if_cond);
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("if (", cond), ")"));
+    CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc("if (", cond), ")"));
     CPrinter_print_stmt(self, node.if_then);
     if (node.if_else >= 0LL) {
     CStmtNode else_node = ArrayList_CStmtNode_get(self->stmt_pool, node.if_else);
     if (else_node.kind == CStmtKind_cs_if) {
     const char* inner_cond = CPrinter_print_expr(self, else_node.if_cond);
-    CCodeBuilder_append_to_last_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(" else if (", inner_cond), ")"));
+    CCodeBuilder_append_to_last_line(self->builder, concatAlloc(concatAlloc(" else if (", inner_cond), ")"));
     CPrinter_print_stmt(self, else_node.if_then);
     if (else_node.if_else >= 0LL) {
     CPrinter_print_stmt(self, else_node.if_else);
@@ -16010,13 +16453,13 @@ void CPrinter_print_stmt(CPrinter* self, int64_t idx) {
 }
     if (node.kind == CStmtKind_cs_while) {
     const char* cond = CPrinter_print_expr(self, node.while_cond);
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("while (", cond), ")"));
+    CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc("while (", cond), ")"));
     CPrinter_print_stmt(self, node.while_body);
 }
     if (node.kind == CStmtKind_cs_return) {
     if (node.return_val >= 0LL) {
     const char* val = CPrinter_print_expr(self, node.return_val);
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("return ", val), ";"));
+    CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc("return ", val), ";"));
 } else {
     CCodeBuilder_emit_line(self->builder, "return;");
 }
@@ -16031,20 +16474,20 @@ void CPrinter_print_stmt(CPrinter* self, int64_t idx) {
     const char* type_str = ctype_to_str(node.var_type);
     if (node.var_init >= 0LL) {
     const char* init_val = CPrinter_print_expr(self, node.var_init);
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(type_str, " "), node.var_name), " = "), init_val), ";"));
+    CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(type_str, " "), node.var_name), " = "), init_val), ";"));
 } else {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(type_str, " "), node.var_name), ";"));
+    CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc(concatAlloc(type_str, " "), node.var_name), ";"));
 }
 }
 }
 void CPrinter_print_decl(CPrinter* self, CDeclNode decl) {
     if (decl.is_typedef) {
     const char* def_str = ctype_to_str(decl.typedef_def);
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("typedef ", def_str), " "), decl.typedef_alias), ";"));
+    CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc(concatAlloc(concatAlloc("typedef ", def_str), " "), decl.typedef_alias), ";"));
     return;
 }
     if (decl.is_struct) {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", decl.struct_name), " {"));
+    CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc("struct ", decl.struct_name), " {"));
     CCodeBuilder_indent(self->builder);
     int64_t i = 0LL;
     while (i < ArrayList_Str_length(&(decl.struct_fields))) {
@@ -16064,11 +16507,11 @@ void CPrinter_print_decl(CPrinter* self, CDeclNode decl) {
     i = (i + 1LL);
 }
     CCodeBuilder_dedent(self->builder);
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("} ", decl.enum_name), ";"));
+    CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc("} ", decl.enum_name), ";"));
     return;
 }
     if (decl.is_tagged_union_struct) {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("struct ", decl.struct_name), " {"));
+    CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc("struct ", decl.struct_name), " {"));
     CCodeBuilder_indent(self->builder);
     CCodeBuilder_emit_line(self->builder, "uint8_t tag;");
     CCodeBuilder_emit_line(self->builder, "union {");
@@ -16089,26 +16532,26 @@ void CPrinter_print_decl(CPrinter* self, CDeclNode decl) {
     int64_t i = 0LL;
     while (i < ArrayList_Str_length(&(decl.func_params))) {
     if (i > 0LL) {
-    params_str = __kai_std_str_concat_alloc(params_str, ", ");
+    params_str = concatAlloc(params_str, ", ");
 }
-    params_str = __kai_std_str_concat_alloc(params_str, ArrayList_Str_get(&(decl.func_params), i));
+    params_str = concatAlloc(params_str, ArrayList_Str_get(&(decl.func_params), i));
     i = (i + 1LL);
 }
     if (decl.func_vararg) {
     if (strlen(params_str) > 0LL) {
-    params_str = __kai_std_str_concat_alloc(params_str, ", ...");
+    params_str = concatAlloc(params_str, ", ...");
 } else {
     params_str = "...";
 }
 }
     const char* ret_str = ctype_to_str(decl.func_ret);
-    const char* header = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(ret_str, " "), decl.func_name), "("), params_str), ")");
+    const char* header = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(ret_str, " "), decl.func_name), "("), params_str), ")");
     if (decl.is_extern) {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("extern ", header), ";"));
+    CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc("extern ", header), ";"));
     return;
 }
     if (ArrayList_Int_length(&(decl.func_body)) == 0LL) {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(header, ";"));
+    CCodeBuilder_emit_line(self->builder, concatAlloc(header, ";"));
 } else {
     CCodeBuilder_emit_line(self->builder, header);
     CCodeBuilder_begin_block(self->builder);
@@ -16203,9 +16646,9 @@ void CPrinter_emit_runtime_preamble(CPrinter* self, ArrayList_Str* cimport_heade
 }
 }
     if ((!has_slash) && (!dot_start)) {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include <", hdr), ">"));
+    CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc("#include <", hdr), ">"));
 } else {
-    CCodeBuilder_emit_line(self->builder, __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("#include \"", hdr), "\""));
+    CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc("#include \"", hdr), "\""));
 }
 }
     ci = (ci + 1LL);
@@ -16913,18 +17356,18 @@ int64_t run_fix(const char* fix_mode, const char* fix_file, bool json) {
     while (pi < patch_count) {
     if (ArrayList_Int_get(&(patch_lines_arr), pi) == line_num3) {
     found_patch = true;
-    modified_source = __kai_std_str_concat_alloc(modified_source, ArrayList_Str_get(&(patch_new_arr), pi));
+    modified_source = concatAlloc(modified_source, ArrayList_Str_get(&(patch_new_arr), pi));
 }
     pi = (pi + 1LL);
 }
     if (!found_patch) {
-    modified_source = __kai_std_str_concat_alloc(modified_source, line_text);
+    modified_source = concatAlloc(modified_source, line_text);
 }
     offset = (line_end + 1LL);
     if (offset > src_len_val) {
     break;
 }
-    modified_source = __kai_std_str_concat_alloc(modified_source, "\n");
+    modified_source = concatAlloc(modified_source, "\n");
     line_num3 = (line_num3 + 1LL);
 }
     Result_Bool_IoError write_res = write_string(fix_file, modified_source);
@@ -17273,7 +17716,7 @@ int64_t run_patch(int64_t argc, char** argv) {
     const char* op_name = operation;
     {
     if (strcmp(op_name, "addMain") == 0LL) {
-    modified = __kai_std_str_concat_alloc(source, "\nfn main() Int {\n    printf(\"hello\\n\")\n    return 0\n}\n");
+    modified = concatAlloc(source, "\nfn main() Int {\n    printf(\"hello\\n\")\n    return 0\n}\n");
 } else if (strcmp(op_name, "addFn") == 0LL) {
     const char* fn_name = op_arg1;
     if (strlen(fn_name) == 0LL) {
@@ -17296,7 +17739,7 @@ int64_t run_patch(int64_t argc, char** argv) {
     printf("Usage: kai patch <file> --op addFn <name>\n");
     return 1LL;
 }
-    modified = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(source, "\nfn "), fn_name), "() Void {\n\n}\n");
+    modified = concatAlloc(concatAlloc(concatAlloc(source, "\nfn "), fn_name), "() Void {\n\n}\n");
 } else if (strcmp(op_name, "setConst") == 0LL) {
     const char* const_name = op_arg1;
     const char* const_val = op_arg2;
@@ -17322,7 +17765,7 @@ int64_t run_patch(int64_t argc, char** argv) {
     printf("Usage: kai patch <file> --op setConst <name> <value>\n");
     return 1LL;
 }
-    const char* pattern = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("const ", const_name), " = ");
+    const char* pattern = concatAlloc(concatAlloc("const ", const_name), " = ");
     int64_t pattern_len = strlen(pattern);
     int64_t src_len = strlen(source);
     bool found_const = false;
@@ -17352,7 +17795,7 @@ int64_t run_patch(int64_t argc, char** argv) {
 }
     const char* before = substring(source, 0LL, (pos_c + pattern_len));
     const char* after = substring(source, end, src_len);
-    modified = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(before, const_val), after);
+    modified = concatAlloc(concatAlloc(before, const_val), after);
     found_const = true;
     break;
 }
@@ -17417,7 +17860,7 @@ int64_t run_patch(int64_t argc, char** argv) {
     if (strlen(param_type) == 0LL) {
     param_type = "Int";
 }
-    const char* search = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("fn ", fn_name), "(");
+    const char* search = concatAlloc(concatAlloc("fn ", fn_name), "(");
     int64_t search_len = strlen(search);
     int64_t src_len = strlen(source);
     bool found_fn = false;
@@ -17463,9 +17906,9 @@ int64_t run_patch(int64_t argc, char** argv) {
     pi = (pi + 1LL);
 }
     if (has_params) {
-    modified = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(prefix, ", "), param_name), ": "), param_type), suffix);
+    modified = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(prefix, ", "), param_name), ": "), param_type), suffix);
 } else {
-    modified = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(prefix, param_name), ": "), param_type), suffix);
+    modified = concatAlloc(concatAlloc(concatAlloc(concatAlloc(prefix, param_name), ": "), param_type), suffix);
 }
     found_fn = true;
     break;
@@ -17504,7 +17947,7 @@ int64_t run_patch(int64_t argc, char** argv) {
     if (strlen(ret_type) == 0LL) {
     ret_type = "Void";
 }
-    const char* search = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("fn ", fn_name), "(");
+    const char* search = concatAlloc(concatAlloc("fn ", fn_name), "(");
     int64_t search_len = strlen(search);
     int64_t src_len = strlen(source);
     bool found_fn = false;
@@ -17558,7 +18001,7 @@ int64_t run_patch(int64_t argc, char** argv) {
     if (ret_end > ret_start) {
     const char* before = substring(source, 0LL, ret_start);
     const char* after = substring(source, ret_end, src_len);
-    modified = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(before, ret_type), after);
+    modified = concatAlloc(concatAlloc(before, ret_type), after);
 } else {
     modified = source;
 }
@@ -17568,7 +18011,7 @@ int64_t run_patch(int64_t argc, char** argv) {
     pos = (pos + 1LL);
 }
     if (!found_fn) {
-    modified = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(source, "\nfn "), fn_name), "() "), ret_type), " {\n\n}\n");
+    modified = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(source, "\nfn "), fn_name), "() "), ret_type), " {\n\n}\n");
 }
 } else if (strcmp(op_name, "appendStmt") == 0LL) {
     const char* stmt_text = op_arg1;
@@ -17591,7 +18034,7 @@ int64_t run_patch(int64_t argc, char** argv) {
     printf("Error: appendStmt requires <text>\n");
     return 1LL;
 }
-    modified = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(source, "\n"), stmt_text), "\n");
+    modified = concatAlloc(concatAlloc(concatAlloc(source, "\n"), stmt_text), "\n");
 } else {
     printf("Error: Unknown operation '%s'\n", op_name);
     printf("Supported: addMain, addFn, addParam, upsertFunction, appendStmt, setConst, replaceText\n");
@@ -17904,21 +18347,21 @@ int64_t run_init(int64_t argc, char** argv) {
 }
     i = (i + 1LL);
 }
-    const char* src_dir = __kai_std_str_concat_alloc(project_path, "/src");
+    const char* src_dir = concatAlloc(project_path, "/src");
     if (!mkdir_p(src_dir)) {
     printf("Error: Could not create directory '%s'\n", src_dir);
     return 1LL;
 }
     if (strcmp(template, "lib") == 0) {
-    const char* main_content = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc("// ", project_path), "\n// Library entry point\n\n");
-    Result_Bool_IoError write_res = write_string(__kai_std_str_concat_alloc(src_dir, "/lib.kai"), main_content);
+    const char* main_content = concatAlloc(concatAlloc("// ", project_path), "\n// Library entry point\n\n");
+    Result_Bool_IoError write_res = write_string(concatAlloc(src_dir, "/lib.kai"), main_content);
     if (write_res.tag != 0LL) {
     printf("Error: Could not write lib.kai\n");
     return 1LL;
 }
 } else {
-    const char* main_content = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc("// ", project_path), "\n// Imports\nimport std.io.print\n\n// Entry point\n\nfn main() Int {\n    printf(\"Hello! from "), project_path), "\\n\")\n    return 0\n}\n");
-    Result_Bool_IoError write_res = write_string(__kai_std_str_concat_alloc(src_dir, "/main.kai"), main_content);
+    const char* main_content = concatAlloc(concatAlloc(concatAlloc(concatAlloc("// ", project_path), "\n// Imports\nimport std.io.print\n\n// Entry point\n\nfn main() Int {\n    printf(\"Hello! from "), project_path), "\\n\")\n    return 0\n}\n");
+    Result_Bool_IoError write_res = write_string(concatAlloc(src_dir, "/main.kai"), main_content);
     if (write_res.tag != 0LL) {
     printf("Error: Could not write main.kai\n");
     return 1LL;
@@ -17962,7 +18405,7 @@ int64_t run_skills(int64_t argc, char** argv) {
     {
     topic = (const char*)((argv)[3LL]);
 }
-    const char* skill_path = __kai_std_str_concat_alloc(__kai_std_str_concat_alloc(__kai_std_str_concat_alloc(exe_dir, "/skill-data/"), topic), ".md");
+    const char* skill_path = concatAlloc(concatAlloc(concatAlloc(exe_dir, "/skill-data/"), topic), ".md");
     Result_Str_IoError res = read_to_string(&(allocator), skill_path);
     if (res.tag != 0LL) {
     printf("skill not found: '%s'\n", topic);
@@ -17990,4 +18433,47 @@ int64_t run_explain(int64_t argc, char** argv) {
     printf("  %s\n", info.description);
     printf("  Suggested fix: %s\n", info.fix);
     return 0LL;
+}
+int64_t run_build(int64_t argc, char** argv) {
+    KaiAllocator allocator = KaiAllocator_new();
+    Result_Str_IoError s = read_to_string(&(allocator), "build.kai");
+    if (s.tag != 0LL) {
+    printf("Error: build.kai not found in the current directory.\n");
+    return 1LL;
+}
+    const char* compiler_path = "kai";
+    {
+    compiler_path = (const char*)((argv)[0LL]);
+}
+    const char* wrapper_code = concatAlloc(concatAlloc("import Builder from std.build\nimport build from build\nimport concatAlloc from std.lib.str\n\nfn main(argc: Int, argv: **Char) Int {\n    var allocator = KaiAllocator_new()\n    var b = Builder(&allocator, argc, argv)\n    b.compiler_path = \"", compiler_path), "\"\n    build(&b as *Builder)\n    if !b.run() {\n        return 1\n    }\n    return 0\n}\n");
+    Result_Bool_IoError write_res = write_string("_build_wrapper.kai", wrapper_code);
+    if (write_res.tag != 0LL) {
+    printf("Error: Could not write temporary build wrapper.\n");
+    return 1LL;
+}
+    const char* compile_cmd = concatAlloc(compiler_path, " _build_wrapper.kai -o _build_wrapper");
+    {
+    int64_t status = system((char*)(compile_cmd));
+    if (status != 0LL) {
+    printf("Error: Failed to compile build.kai wrapper.\n");
+    system((char*)("rm -f _build_wrapper.kai _build_wrapper.c CC_build_wrapper.c _build_wrapper CC_build_wrapper"));
+    return status;
+}
+}
+    const char* run_cmd = "./_build_wrapper";
+    int64_t i = 2LL;
+    while (i < argc) {
+    {
+    run_cmd = concatAlloc(concatAlloc(run_cmd, " "), (const char*)((argv)[i]));
+}
+    i = (i + 1LL);
+}
+    int64_t run_status = 0LL;
+    {
+    run_status = system((char*)(run_cmd));
+}
+    {
+    system((char*)("rm -f _build_wrapper.kai _build_wrapper.c CC_build_wrapper.c _build_wrapper CC_build_wrapper"));
+}
+    return run_status;
 }

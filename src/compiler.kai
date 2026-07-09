@@ -1,6 +1,7 @@
 import KaiAllocator from std.core.allocator
 import read_to_string from std.io.file
 import write_string from std.io.file
+import concatAlloc from std.lib.str
 
 import Lexer from lexer
 import Parser from parser
@@ -19,16 +20,19 @@ import run_graph from graph
 import run_init from init
 import run_skills from skills
 import run_explain from explain
+import run_build from build_cmd
 
 extern fn system(cmd: *Char) -> Int
 extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
 
 fn main(argc: Int, argv: **Char) -> Int {
+    let _ = concatAlloc("", "")
     if argc < 2 {
         printf("Usage: kai <command> [options]\n")
         printf("Commands:\n")
         printf("  init [path]     Create a new Kai project\n")
+        printf("  build [args]    Build the project using build.kai\n")
         printf("  check <file>    Type-check only (no code generation)\n")
         printf("  run <file>      Compile and run a .kai file\n")
         printf("  <file>          Compile and run (shorthand)\n")
@@ -54,6 +58,7 @@ fn main(argc: Int, argv: **Char) -> Int {
         if strcmp(first_arg, "explain") == 0 { return run_explain(argc, argv) }
         if strcmp(first_arg, "skills") == 0 { return run_skills(argc, argv) }
         if strcmp(first_arg, "init") == 0 { return run_init(argc, argv) }
+        if strcmp(first_arg, "build") == 0 { return run_build(argc, argv) }
         if strcmp(first_arg, "patch") == 0 { return run_patch(argc, argv) }
         if strcmp(first_arg, "fix") == 0 {
             var fix_mode = "plan"

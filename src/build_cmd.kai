@@ -1,0 +1,63 @@
+import KaiAllocator from std.core.allocator
+import read_to_string from std.io.file
+import write_string from std.io.file
+
+extern fn system(cmd: *Char) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+
+fn run_build(argc: Int, argv: **Char) -> Int {
+    var allocator = KaiAllocator_new()
+
+    // 1. Verify build.kai exists
+    let s = read_to_string(&allocator, "build.kai")
+    if s.tag != 0 {
+        printf("Error: build.kai not found in the current directory.\n")
+        return 1
+    }
+
+    var compiler_path = "kai"
+    unsafe {
+        compiler_path = argv[0] as Str
+    }
+
+    // 2. Generate the temporary wrapper
+    let wrapper_code = "import Builder from std.build\nimport build from build\nimport concatAlloc from std.lib.str\n\nfn main(argc: Int, argv: **Char) Int {\n    var allocator = KaiAllocator_new()\n    var b = Builder(&allocator, argc, argv)\n    b.compiler_path = \"" + compiler_path + "\"\n    build(&b as *Builder)\n    if !b.run() {\n        return 1\n    }\n    return 0\n}\n"
+    
+    let write_res = write_string("_build_wrapper.kai", wrapper_code)
+    if write_res.tag != 0 {
+        printf("Error: Could not write temporary build wrapper.\n")
+        return 1
+    }
+    
+    let compile_cmd = compiler_path + " _build_wrapper.kai -o _build_wrapper"
+    unsafe {
+        let status = system(compile_cmd as *Char)
+        if status != 0 {
+            printf("Error: Failed to compile build.kai wrapper.\n")
+            system("rm -f _build_wrapper.kai _build_wrapper.c CC_build_wrapper.c _build_wrapper CC_build_wrapper" as *Char)
+            return status
+        }
+    }
+
+    // 4. Run the compiled wrapper with arguments
+    var run_cmd = "./_build_wrapper"
+    var i = 2
+    while i < argc {
+        unsafe {
+            run_cmd = run_cmd + " " + (argv[i] as Str)
+        }
+        i = i + 1
+    }
+
+    var run_status = 0
+    unsafe {
+        run_status = system(run_cmd as *Char)
+    }
+
+    // 5. Clean up temporary files
+    unsafe {
+        system("rm -f _build_wrapper.kai _build_wrapper.c CC_build_wrapper.c _build_wrapper CC_build_wrapper" as *Char)
+    }
+
+    return run_status
+}

@@ -329,6 +329,7 @@ fn emit_runtime_preamble(self, cimport_headers: *ArrayList<Str>) {
     self.builder.emit_line("}")
     self.builder.emit_blank()
 
+
     //== Phase: User C FFI imports (non-baseline headers)
     var ci = 0
     var has_cimports = false

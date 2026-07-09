@@ -7,13 +7,14 @@ extern fn atoll(s: Str) -> Int
 extern fn strlen(s: Str) -> Int
 extern fn malloc(size: Int) -> *Char
 
-fn __kai_std_str_concat_alloc(left: Str, right: Str) -> Str {
+fn concatAlloc(left: Str, right: Str) -> Str {
     let left_len = strlen(left)
     let right_len = strlen(right)
     let total = left_len + right_len + 1
     let buf = malloc(total)
     if buf != (0 as *Char) {
         let _ = __kai_std_str_concat(buf, left, right)
+        buf[total - 1] = Char(0)
     }
     return buf as Str
 }

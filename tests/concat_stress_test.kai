@@ -27,7 +27,7 @@ fn main() -> Int {
     while i < 99999 {
         let left = "String Part A "
         let right = "String Part B"
-        let res = left + right // compiles to __kai_std_str_concat_alloc
+        let res = left + right // compiles to concatAlloc
         
         // Quick verification of length
         assert(strlen(res as Str) == 27, "Concatenation length mismatch")
@@ -42,7 +42,7 @@ fn main() -> Int {
     while i < 200000 {
         let left = "String Part A "
         let right = "String Part B"
-        let res = left + right // compiles to __kai_std_str_concat_alloc
+        let res = left + right // compiles to concatAlloc
         
         // Quick verification of length
         assert(strlen(res as Str) == 27, "Concatenation length mismatch")

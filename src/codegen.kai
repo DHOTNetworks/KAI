@@ -34,28 +34,7 @@ extern fn strstr(haystack: Str, needle: Str) -> *Char
 extern fn malloc(size: Int) -> *Char
 
 
-//== Runtime String Concatenation Helper
-
-fn __kai_std_str_concat_alloc(left: Str, right: Str) -> Str {
-    let left_len = length(left)
-    let right_len = length(right)
-    let total = left_len + right_len + 1
-    let buf = malloc(total)
-    if buf != (0 as *Char) {
-        var i = 0
-        while i < left_len {
-            buf[i] = left[i]
-            i = i + 1
-        }
-        var j = 0
-        while j < right_len {
-            buf[left_len + j] = right[j]
-            j = j + 1
-        }
-        buf[total - 1] = Char(0)
-    }
-    return buf as Str
-}
+extern fn concatAlloc(left: Str, right: Str) -> Str
 
 //== Type Map Entry (simple key-value pair for type/function lookups)
 
@@ -1425,7 +1404,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             if i == 0 {
                 result = part_str
             } else {
-                result = "__kai_std_str_concat_alloc(" + result + ", " + part_str + ")"
+                result = "concatAlloc(" + result + ", " + part_str + ")"
             }
             i = i + 1
         }
@@ -1468,7 +1447,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         let lhs_node = self.expr_pool.get(expr.binop_left)
         if lhs_type == "Str" {
             if op == "+" {
-                return "__kai_std_str_concat_alloc(" + lhs + ", " + rhs + ")"
+                return "concatAlloc(" + lhs + ", " + rhs + ")"
             }
             if op == "==" {
                 return "(strcmp(" + lhs + ", " + rhs + ") == 0)"
@@ -3277,6 +3256,7 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     result.append("    return buf;\n")
     result.append("}\n")
     result.append("\n")
+
 
     //== Phase 4: User C FFI imports (non-baseline headers)
     var ci = 0

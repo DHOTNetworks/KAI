@@ -1399,7 +1399,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
                 var str_args = ArrayList<Int>(self.allocator)
                 str_args.push(left_idx)
                 str_args.push(right_idx)
-                return self.push_expr(cexpr_new_call("__kai_std_str_concat_alloc", str_args))
+                return self.push_expr(cexpr_new_call("concatAlloc", str_args))
             }
             if op == "==" {
                 var cmp_args = ArrayList<Int>(self.allocator)
@@ -1832,7 +1832,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
             if i == 0 {
                 result = part_str
             } else {
-                result = "__kai_std_str_concat_alloc(" + result + ", " + part_str + ")"
+                result = "concatAlloc(" + result + ", " + part_str + ")"
             }
             i = i + 1
         }

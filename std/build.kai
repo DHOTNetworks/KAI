@@ -1,0 +1,322 @@
+import ArrayList from std.core.array
+import KaiAllocator from std.core.allocator
+import concatAlloc from std.lib.str
+
+extern fn system(cmd: *Char) -> Int
+extern fn strcmp(s1: Str, s2: Str) -> Int
+extern fn printf(format: *Void) Str
+
+struct Step {
+    name: Str
+    // 0 = compile_exe, 1 = compile_lib, 2 = run_exe, 3 = command
+    kind: Int
+    
+    // Dependencies
+    dependencies: ArrayList<Int>
+    
+    // Properties for CompileStep
+    source_file: Str
+    output_name: Str
+    opt_level: Str // e.g. "-O2"
+    opt_level_set: Bool
+    use_builder: Bool
+    use_builder_set: Bool
+    
+    // Properties for RunStep
+    run_exe_step_idx: Int
+    run_args: ArrayList<Str>
+    
+    // Properties for CommandStep
+    cmd_str: Str
+}
+
+struct Builder {
+    allocator: *KaiAllocator
+    steps: ArrayList<Step>
+    default_steps: ArrayList<Int>
+    opt_level: Str
+    use_builder: Bool
+    target_step_name: Str
+    compiler_path: Str
+}
+
+impl Builder {
+    fn init(self, allocator: *KaiAllocator, argc: Int, argv: **Char) {
+        self.allocator = allocator
+        self.steps = ArrayList<Step>(allocator)
+        self.default_steps = ArrayList<Int>(allocator)
+        self.opt_level = "-O2"
+        self.use_builder = false
+        self.target_step_name = ""
+        self.compiler_path = "kai"
+
+        // Parse arguments passed to the build script
+        var i = 1
+        while i < argc {
+            unsafe {
+                let arg = argv[i] as Str
+                if strcmp(arg, "-O0") == 0 { self.opt_level = "-O0" }
+                else if strcmp(arg, "-O1") == 0 { self.opt_level = "-O1" }
+                else if strcmp(arg, "-O2") == 0 { self.opt_level = "-O2" }
+                else if strcmp(arg, "-O3") == 0 { self.opt_level = "-O3" }
+                else if strcmp(arg, "-Os") == 0 { self.opt_level = "-Os" }
+                else if strcmp(arg, "-CC") == 0 { self.use_builder = true }
+                else {
+                    if strlen(arg) > 0 && arg[0] != Char(45) {
+                        self.target_step_name = arg
+                    }
+                }
+            }
+            i = i + 1
+        }
+    }
+
+    fn add_executable(self, name: Str, source_file: Str) -> Int {
+        var step = Step(
+            name: name,
+            kind: 0,
+            dependencies: ArrayList<Int>(self.allocator),
+            source_file: source_file,
+            output_name: name,
+            opt_level: "-O2",
+            opt_level_set: false,
+            use_builder: false,
+            use_builder_set: false,
+            run_exe_step_idx: -1,
+            run_args: ArrayList<Str>(self.allocator),
+            cmd_str: ""
+        )
+        let idx = self.steps.length()
+        self.steps.push(step)
+        return idx
+    }
+
+    fn add_library(self, name: Str, source_file: Str) -> Int {
+        var step = Step(
+            name: name,
+            kind: 1,
+            dependencies: ArrayList<Int>(self.allocator),
+            source_file: source_file,
+            output_name: name,
+            opt_level: "-O2",
+            opt_level_set: false,
+            use_builder: false,
+            use_builder_set: false,
+            run_exe_step_idx: -1,
+            run_args: ArrayList<Str>(self.allocator),
+            cmd_str: ""
+        )
+        let idx = self.steps.length()
+        self.steps.push(step)
+        return idx
+    }
+
+    fn add_run(self, compile_step_idx: Int) -> Int {
+        let comp = self.steps.get(compile_step_idx)
+        var step = Step(
+            name: "run",
+            kind: 2,
+            dependencies: ArrayList<Int>(self.allocator),
+            source_file: "",
+            output_name: "",
+            opt_level: "",
+            opt_level_set: false,
+            use_builder: false,
+            use_builder_set: false,
+            run_exe_step_idx: compile_step_idx,
+            run_args: ArrayList<Str>(self.allocator),
+            cmd_str: ""
+        )
+        // A run step implicitly depends on the compilation step
+        step.dependencies.push(compile_step_idx)
+        let idx = self.steps.length()
+        self.steps.push(step)
+        return idx
+    }
+
+    fn add_system_command(self, name: Str, cmd_str: Str) -> Int {
+        var step = Step(
+            name: name,
+            kind: 3,
+            dependencies: ArrayList<Int>(self.allocator),
+            source_file: "",
+            output_name: "",
+            opt_level: "",
+            opt_level_set: false,
+            use_builder: false,
+            use_builder_set: false,
+            run_exe_step_idx: -1,
+            run_args: ArrayList<Str>(self.allocator),
+            cmd_str: cmd_str
+        )
+        let idx = self.steps.length()
+        self.steps.push(step)
+        return idx
+    }
+
+    fn depend_on(self, step_idx: Int, dep_idx: Int) {
+        var step = self.steps.get(step_idx)
+        step.dependencies.push(dep_idx)
+        self.steps.set(step_idx, step)
+    }
+
+    fn set_opt_level(self, step_idx: Int, level: Str) {
+        var step = self.steps.get(step_idx)
+        step.opt_level = level
+        step.opt_level_set = true
+        self.steps.set(step_idx, step)
+    }
+
+    fn set_use_builder(self, step_idx: Int, val: Bool) {
+        var step = self.steps.get(step_idx)
+        step.use_builder = val
+        step.use_builder_set = true
+        self.steps.set(step_idx, step)
+    }
+
+    fn set_output_name(self, step_idx: Int, out_name: Str) {
+        var step = self.steps.get(step_idx)
+        step.output_name = out_name
+        self.steps.set(step_idx, step)
+    }
+
+    fn add_run_arg(self, step_idx: Int, arg: Str) {
+        var step = self.steps.get(step_idx)
+        step.run_args.push(arg)
+        self.steps.set(step_idx, step)
+    }
+
+    fn mark_default(self, step_idx: Int) {
+        self.default_steps.push(step_idx)
+    }
+
+    fn execute_step(self, step_idx: Int, executed: *ArrayList<Bool>) -> Bool {
+        if executed.get(step_idx) {
+            return true
+        }
+
+        let step = self.steps.get(step_idx)
+        
+        // Execute dependencies first
+        var i = 0
+        while i < step.dependencies.length() {
+            let dep = step.dependencies.get(i)
+            if !self.execute_step(dep, executed) {
+                return false
+            }
+            i = i + 1
+        }
+
+        printf("Executing step: %s\n", step.name)
+
+        var opt = self.opt_level
+        if step.opt_level_set {
+            opt = step.opt_level
+        }
+        var use_b = self.use_builder
+        if step.use_builder_set {
+            use_b = step.use_builder
+        }
+
+        if step.kind == 0 { // compile exe
+            var cmd = self.compiler_path + " " + step.source_file + " -o " + step.output_name + " " + opt
+            if use_b {
+                cmd = cmd + " -CC"
+            }
+            unsafe {
+                let status = system(cmd as *Char)
+                if status != 0 {
+                    printf("Error: compile step '%s' failed with status %d\n", step.name, status)
+                    return false
+                }
+            }
+        } else if step.kind == 1 { // compile lib (-c)
+            var cmd = self.compiler_path + " " + step.source_file + " -c -o " + step.output_name + " " + opt
+            if use_b {
+                cmd = cmd + " -CC"
+            }
+            unsafe {
+                let status = system(cmd as *Char)
+                if status != 0 {
+                    printf("Error: compile library step '%s' failed with status %d\n", step.name, status)
+                    return false
+                }
+            }
+        } else if step.kind == 2 { // run exe
+            let comp_step = self.steps.get(step.run_exe_step_idx)
+            var cmd = "./" + comp_step.output_name
+            var ai = 0
+            while ai < step.run_args.length() {
+                cmd = cmd + " " + step.run_args.get(ai)
+                ai = ai + 1
+            }
+            unsafe {
+                let status = system(cmd as *Char)
+                if status != 0 {
+                    printf("Error: run step '%s' failed with status %d\n", step.name, status)
+                    return false
+                }
+            }
+        } else if step.kind == 3 { // command
+            unsafe {
+                let status = system(step.cmd_str as *Char)
+                if status != 0 {
+                    printf("Error: command step '%s' failed with status %d\n", step.name, status)
+                    return false
+                }
+            }
+        }
+
+        executed.set(step_idx, true)
+        return true
+    }
+
+    fn run(self) -> Bool {
+        var executed = ArrayList<Bool>(self.allocator)
+        var i = 0
+        while i < self.steps.length() {
+            executed.push(false)
+            i = i + 1
+        }
+
+        // If target step name was specified, find it and execute it specifically
+        if strlen(self.target_step_name) > 0 {
+            var found_idx = -1
+            var idx = 0
+            while idx < self.steps.length() {
+                let s = self.steps.get(idx)
+                if strcmp(s.name, self.target_step_name) == 0 {
+                    found_idx = idx
+                }
+                idx = idx + 1
+            }
+            if found_idx == -1 {
+                printf("Error: step '%s' not found\n", self.target_step_name)
+                return false
+            }
+            return self.execute_step(found_idx, &executed)
+        }
+
+        // Otherwise, run default steps
+        if self.default_steps.length() == 0 {
+            // Run all steps if none marked default
+            var j = 0
+            while j < self.steps.length() {
+                if !self.execute_step(j, &executed) {
+                    return false
+                }
+                j = j + 1
+            }
+        } else {
+            var j = 0
+            while j < self.default_steps.length() {
+                let target = self.default_steps.get(j)
+                if !self.execute_step(target, &executed) {
+                    return false
+                }
+                j = j + 1
+            }
+        }
+        return true
+    }
+}
