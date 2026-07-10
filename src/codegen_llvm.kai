@@ -1,0 +1,1935 @@
+cimport "std/llvm/core.h"
+
+import ArrayList from std.core.array
+import Allocator from std.core.allocator
+import KaiAllocator from std.core.allocator
+import length from std.core.string
+import strlen from std.core.string
+import Str from std.core.string
+import ImportResolver from imports
+import StmtNode from ast_nodes
+import ExprNode from ast_nodes
+import PatternNode from ast_nodes
+import StmtKind from ast_nodes
+import ExprKind from ast_nodes
+import PatternKind from ast_nodes
+import TokenValue from token_defs
+import int_to_str from std.core.string
+import std.llvm.core
+
+extern fn malloc(size: Int) -> *Char
+extern fn free(ptr: *Char)
+
+
+let LLVMObjectFile = 1
+let LLVMCodeGenLevelDefault = 2
+let LLVMRelocDefault = 0
+let LLVMCodeModelDefault = 0
+let LLVMPrintMessageAction = 1
+
+struct LLVMCodegen {
+    allocator: *KaiAllocator
+    stmt_pool: *ArrayList<StmtNode>
+    expr_pool: *ArrayList<ExprNode>
+    pattern_pool: *ArrayList<PatternNode>
+    import_resolver: *ImportResolver
+
+    ctx: *Void
+    module: *Void
+    builder: *Void
+    cur_func: *Void
+    cur_block: *Void
+    last_was_term: Bool
+
+    int1_type: *Void
+    int8_type: *Void
+    ptr_type: *Void
+    int32_type: *Void
+    int64_type: *Void
+    float_type: *Void
+    double_type: *Void
+    void_type: *Void
+
+    tmp_target: *Void
+    tmp_err: *Char
+
+    str_counter: Int
+
+    func_type_names: ArrayList<Str>
+    func_type_returns: ArrayList<Str>
+    func_param_counts: ArrayList<Int>
+    func_type_param_types: ArrayList<Str>
+
+    func_cache_names: ArrayList<Str>
+    func_cache_vals: ArrayList<Int>
+    func_cache_types: ArrayList<Int>
+
+    local_alloca_names: ArrayList<Str>
+    local_alloca_vals: ArrayList<Int>
+    local_alloca_types: ArrayList<Int>
+
+    loop_cond_block: *Void
+    loop_merge_block: *Void
+
+    struct_cache_names: ArrayList<Str>
+    struct_cache_types: ArrayList<Int>
+    struct_cache_field_counts: ArrayList<Int>
+
+    enum_cache_names: ArrayList<Str>
+    enum_cache_types: ArrayList<Int>
+    enum_has_payload: ArrayList<Bool>
+
+    tuple_cache_names: ArrayList<Str>
+    tuple_cache_types: ArrayList<Int>
+    tuple_cache_field_counts: ArrayList<Int>
+
+    str_type: *Void
+}
+
+impl LLVMCodegen {
+
+fn init(self, allocator: *KaiAllocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, import_resolver: *ImportResolver) {
+    self.allocator = allocator
+    self.stmt_pool = stmt_pool
+    self.expr_pool = expr_pool
+    self.pattern_pool = pattern_pool
+    self.import_resolver = import_resolver
+    self.ctx = LLVMContextCreate()
+    self.module = LLVMModuleCreateWithNameInContext("kai_module", self.ctx)
+    self.builder = LLVMCreateBuilderInContext(self.ctx)
+    self.cur_func = (0 as *Void)
+    self.cur_block = (0 as *Void)
+    self.last_was_term = false
+    self.int1_type = LLVMInt1TypeInContext(self.ctx)
+    self.int8_type = LLVMInt8TypeInContext(self.ctx)
+    self.ptr_type = LLVMPointerType(self.int8_type, 0)
+    self.int32_type = LLVMInt32TypeInContext(self.ctx)
+    self.int64_type = LLVMInt64TypeInContext(self.ctx)
+    self.float_type = LLVMFloatTypeInContext(self.ctx)
+    self.double_type = LLVMDoubleTypeInContext(self.ctx)
+    self.void_type = LLVMVoidTypeInContext(self.ctx)
+    self.tmp_target = (0 as *Void)
+    self.tmp_err = (0 as *Char)
+    self.str_counter = 0
+    self.func_type_names = ArrayList<Str>(allocator)
+    self.func_type_returns = ArrayList<Str>(allocator)
+    self.func_param_counts = ArrayList<Int>(allocator)
+    self.func_type_param_types = ArrayList<Str>(allocator)
+    self.func_cache_names = ArrayList<Str>(allocator)
+    self.func_cache_vals = ArrayList<Int>(allocator)
+    self.func_cache_types = ArrayList<Int>(allocator)
+    self.local_alloca_names = ArrayList<Str>(allocator)
+    self.local_alloca_vals = ArrayList<Int>(allocator)
+    self.local_alloca_types = ArrayList<Int>(allocator)
+    self.loop_cond_block = (0 as *Void)
+    self.loop_merge_block = (0 as *Void)
+
+    self.struct_cache_names = ArrayList<Str>(allocator)
+    self.struct_cache_types = ArrayList<Int>(allocator)
+    self.struct_cache_field_counts = ArrayList<Int>(allocator)
+
+    self.enum_cache_names = ArrayList<Str>(allocator)
+    self.enum_cache_types = ArrayList<Int>(allocator)
+    self.enum_has_payload = ArrayList<Bool>(allocator)
+
+    self.tuple_cache_names = ArrayList<Str>(allocator)
+    self.tuple_cache_types = ArrayList<Int>(allocator)
+    self.tuple_cache_field_counts = ArrayList<Int>(allocator)
+
+    // Create fat-pointer Str type: { ptr, i64 }
+    self.str_type = LLVMStructCreateNamed(self.ctx, "Str")
+    var str_fields = ArrayList<Int>(allocator)
+    str_fields.push((self.ptr_type as Int))   // .ptr — i8*
+    str_fields.push((self.int64_type as Int)) // .len — byte count
+    LLVMStructSetBody(self.str_type, str_fields.data as *Void, 2, false)
+}
+
+fn build_func_types(self) {
+    var i = 0
+    while i < self.stmt_pool.length() {
+        let stmt = self.stmt_pool.get(i)
+        if stmt.kind == StmtKind.sk_func_decl {
+            self.func_type_names.push(stmt.func_name)
+            self.func_type_returns.push(stmt.func_return_type)
+            self.func_param_counts.push(stmt.func_params.length())
+            // Build param types string
+            var pts = ""
+            var pi = 0
+            while pi < stmt.func_params.length() {
+                if pi > 0 { pts = pts + "," }
+                pts = pts + stmt.func_params.get(pi).ptype
+                pi = pi + 1
+            }
+            self.func_type_param_types.push(pts)
+        }
+        if stmt.kind == StmtKind.sk_extern {
+            self.func_type_names.push(stmt.extern_name)
+            self.func_type_returns.push(stmt.extern_return)
+            self.func_param_counts.push(stmt.extern_params.length())
+            var pts = ""
+            var pi = 0
+            while pi < stmt.extern_params.length() {
+                if pi > 0 { pts = pts + "," }
+                pts = pts + stmt.extern_params.get(pi).ptype
+                pi = pi + 1
+            }
+            self.func_type_param_types.push(pts)
+        }
+        // Handle impl block methods
+        if stmt.kind == StmtKind.sk_impl_block {
+            var mi = 0
+            while mi < stmt.impl_methods.length() {
+                let method_idx = stmt.impl_methods.get(mi)
+                let method_stmt = self.stmt_pool.get(method_idx)
+                if method_stmt.kind == StmtKind.sk_func_decl {
+                    self.func_type_names.push(method_stmt.func_name)
+                    self.func_type_returns.push(method_stmt.func_return_type)
+                    self.func_param_counts.push(method_stmt.func_params.length())
+                    var pts = ""
+                    var pi = 0
+                    while pi < method_stmt.func_params.length() {
+                        if pi > 0 { pts = pts + "," }
+                        pts = pts + method_stmt.func_params.get(pi).ptype
+                        pi = pi + 1
+                    }
+                    self.func_type_param_types.push(pts)
+                }
+                mi = mi + 1
+            }
+        }
+        // Handle struct methods
+        if stmt.kind == StmtKind.sk_struct_decl {
+            var mi = 0
+            while mi < stmt.struct_methods.length() {
+                let method_idx = stmt.struct_methods.get(mi)
+                let method_stmt = self.stmt_pool.get(method_idx)
+                if method_stmt.kind == StmtKind.sk_func_decl {
+                    self.func_type_names.push(method_stmt.func_name)
+                    self.func_type_returns.push(method_stmt.func_return_type)
+                    self.func_param_counts.push(method_stmt.func_params.length())
+                    var pts = ""
+                    var pi = 0
+                    while pi < method_stmt.func_params.length() {
+                        if pi > 0 { pts = pts + "," }
+                        pts = pts + method_stmt.func_params.get(pi).ptype
+                        pi = pi + 1
+                    }
+                    self.func_type_param_types.push(pts)
+                }
+                mi = mi + 1
+            }
+        }
+        i = i + 1
+    }
+}
+
+fn build_type_caches(self) {
+    var i = 0
+    while i < self.stmt_pool.length() {
+        let stmt = self.stmt_pool.get(i)
+
+        // Struct types
+        if stmt.kind == StmtKind.sk_struct_decl {
+            if stmt.struct_type_params.length() > 0 { i = i + 1; continue }
+            let sname = stmt.struct_name
+            let field_count = stmt.struct_fields.length()
+            let named_ty = LLVMStructCreateNamed(self.ctx, sname)
+            if field_count > 0 {
+                var field_types = ArrayList<Int>(self.allocator)
+                var fi = 0
+                while fi < field_count {
+                    let f = stmt.struct_fields.get(fi)
+                    let fty = self.map_type(f.ftype)
+                    if fty == self.void_type || fty == (0 as *Void) {
+                        field_types.push((self.int64_type as Int))
+                    } else {
+                        field_types.push((fty as Int))
+                    }
+                    fi = fi + 1
+                }
+                LLVMStructSetBody(named_ty, field_types.data as *Void, field_count, false)
+            }
+            self.struct_cache_names.push(sname)
+            self.struct_cache_types.push((named_ty as Int))
+            self.struct_cache_field_counts.push(field_count)
+        }
+
+        // Enum types (with payload => tagged union struct)
+        if stmt.kind == StmtKind.sk_enum_decl {
+            if stmt.enum_type_params.length() > 0 { i = i + 1; continue }
+            let ename = stmt.enum_name
+            var has_payload = false
+            var vi = 0
+            while vi < stmt.enum_variants.length() {
+                let v = stmt.enum_variants.get(vi)
+                if v.params.length() > 0 { has_payload = true }
+                vi = vi + 1
+            }
+            if has_payload {
+                // Create struct { i8 tag, [N x i8] payload } or similar
+                // For simplicity: struct { i8 tag, [8 x i64] payload } — big enough for any variant
+                // Actually, create proper union: struct { i8 tag, union { struct { fields } vname; ... } }
+                // LLVM doesn't support anonymous unions in structs directly via C API
+                // So we use struct { i8 tag, [16 x i64] payload } as a workaround
+                let named_ty = LLVMStructCreateNamed(self.ctx, ename)
+                var field_types = ArrayList<Int>(self.allocator)
+                field_types.push((self.int8_type as Int))  // tag
+                // Use a large payload array
+                let payload_ty = LLVMArrayType(self.int64_type, 16)
+                field_types.push((payload_ty as Int))
+                LLVMStructSetBody(named_ty, field_types.data as *Void, 2, false)
+                self.enum_cache_names.push(ename)
+                self.enum_cache_types.push((named_ty as Int))
+                self.enum_has_payload.push(true)
+            } else {
+                // No-payload enum: use Int (Int64) for the enum value
+                self.enum_cache_names.push(ename)
+                self.enum_cache_types.push((self.int64_type as Int))
+                self.enum_has_payload.push(false)
+            }
+        }
+
+        i = i + 1
+    }
+
+    // Add built-in Range type to struct cache
+    let range_ty = LLVMStructCreateNamed(self.ctx, "Range")
+    var range_fields = ArrayList<Int>(self.allocator)
+    range_fields.push((self.int64_type as Int))  // start
+    range_fields.push((self.int64_type as Int))  // end
+    range_fields.push((self.int1_type as Int))   // is_inclusive
+    LLVMStructSetBody(range_ty, range_fields.data as *Void, 3, false)
+    self.struct_cache_names.push("Range")
+    self.struct_cache_types.push((range_ty as Int))
+    self.struct_cache_field_counts.push(3)
+}
+
+fn get_func_return_type(self, name: Str) -> Str {
+    var i = 0
+    while i < self.func_type_names.length() {
+        if self.func_type_names.get(i) == name {
+            return self.func_type_returns.get(i)
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+fn get_func_param_count(self, name: Str) -> Int {
+    var i = 0
+    while i < self.func_type_names.length() {
+        if self.func_type_names.get(i) == name {
+            return self.func_param_counts.get(i)
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+fn get_func_param_types(self, name: Str) -> Str {
+    var i = 0
+    while i < self.func_type_names.length() {
+        if self.func_type_names.get(i) == name {
+            return self.func_type_param_types.get(i)
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+fn get_cached_func_type(self, name: Str) -> *Void {
+    var i = 0
+    while i < self.func_cache_names.length() {
+        if self.func_cache_names.get(i) == name {
+            return (self.func_cache_types.get(i) as *Void)
+        }
+        i = i + 1
+    }
+    return (0 as *Void)
+}
+
+fn c_abi_type(self, tname: Str) -> *Void {
+    if tname == "Str" { return self.ptr_type }
+    return self.map_type(tname)
+}
+
+fn build_llvm_func_type_from_params(self, ret: *Void, param_types_str: Str, is_vararg: Bool) -> *Void {
+    let param_count = self.get_func_param_count_by_types_str(param_types_str)
+    if param_count == 0 {
+        return kai_func_type_0(ret)
+    }
+    var param_type_array = ArrayList<Int>(self.allocator)
+    var start = 0
+    var pi = 0
+    while pi < strlen(param_types_str) {
+        if param_types_str[pi] == Char(44) { // comma
+            let tname = param_types_str[start..pi]
+            let t = self.c_abi_type(tname)
+            if t == (0 as *Void) || t == self.void_type {
+                param_type_array.push((self.int64_type as Int))
+            } else {
+                param_type_array.push((t as Int))
+            }
+            start = pi + 1
+        }
+        pi = pi + 1
+    }
+    if start < strlen(param_types_str) {
+        let tname = param_types_str[start..strlen(param_types_str)]
+        let t = self.c_abi_type(tname)
+        if t == (0 as *Void) || t == self.void_type {
+            param_type_array.push((self.int64_type as Int))
+        } else {
+            param_type_array.push((t as Int))
+        }
+    }
+    let count = param_type_array.length()
+    if count == 0 {
+        return kai_func_type_0(ret)
+    }
+    if count == 1 {
+        return kai_func_type_1(ret, (param_type_array.get(0) as *Void), is_vararg)
+    }
+    if count == 2 {
+        return kai_func_type_2(ret, (param_type_array.get(0) as *Void), (param_type_array.get(1) as *Void), is_vararg)
+    }
+    // For 3+ params, use the general LLVMFunctionType with array
+    return LLVMFunctionType(ret, param_type_array.data as *Void, count, is_vararg)
+}
+
+fn get_func_param_count_by_types_str(self, param_types_str: Str) -> Int {
+    if strlen(param_types_str) == 0 { return 0 }
+    var count = 1
+    var i = 0
+    while i < strlen(param_types_str) {
+        if param_types_str[i] == Char(44) { count = count + 1 }
+        i = i + 1
+    }
+    return count
+}
+
+fn lookup_or_create_func(self, name: Str) -> *Void {
+    var i = 0
+    while i < self.func_cache_names.length() {
+        if self.func_cache_names.get(i) == name {
+            return (self.func_cache_vals.get(i) as *Void)
+        }
+        i = i + 1
+    }
+    let existing = LLVMGetNamedFunction(self.module, name)
+    if existing != (0 as *Void) {
+        self.func_cache_names.push(name)
+        self.func_cache_vals.push((existing as Int))
+        let existing_ty = LLVMTypeOf(existing)
+        let elem_ty = LLVMGetElementType(existing_ty)
+        self.func_cache_types.push((elem_ty as Int))
+        return existing
+    }
+    let ret_type_str = self.get_func_return_type(name)
+    let llvm_ret = self.c_abi_type(ret_type_str)
+    let is_vararg = (name == "printf")
+    let param_types_str = self.get_func_param_types(name)
+    var fn_type: *Void = (0 as *Void)
+    if is_vararg {
+        let ptype = self.map_type("*Char")
+        fn_type = kai_func_type_1(llvm_ret, ptype, true)
+    } else if strlen(param_types_str) > 0 {
+        fn_type = self.build_llvm_func_type_from_params(llvm_ret, param_types_str, false)
+    } else {
+        fn_type = kai_func_type_0(llvm_ret)
+    }
+    if fn_type == (0 as *Void) {
+        fn_type = kai_func_type_1(llvm_ret, self.ptr_type, false)
+    }
+    let fn_val = LLVMAddFunction(self.module, name, fn_type)
+    self.func_cache_names.push(name)
+    self.func_cache_vals.push((fn_val as Int))
+    self.func_cache_types.push((fn_type as Int))
+    return fn_val
+}
+
+fn foreach_method(self, stmt_idx: Int, decl_only: Bool) {
+    let stmt = self.stmt_pool.get(stmt_idx)
+    if stmt.kind == StmtKind.sk_impl_block {
+        var mi = 0
+        while mi < stmt.impl_methods.length() {
+            let method_idx = stmt.impl_methods.get(mi)
+            let method_stmt = self.stmt_pool.get(method_idx)
+            if method_stmt.kind == StmtKind.sk_func_decl {
+                if decl_only {
+                    self.emit_func_decl(method_idx)
+                } else {
+                    let fn_val = self.lookup_or_create_func(method_stmt.func_name)
+                    self.emit_func_body(method_idx, fn_val)
+                }
+            }
+            mi = mi + 1
+        }
+    }
+    if stmt.kind == StmtKind.sk_struct_decl {
+        var mi = 0
+        while mi < stmt.struct_methods.length() {
+            let method_idx = stmt.struct_methods.get(mi)
+            let method_stmt = self.stmt_pool.get(method_idx)
+            if method_stmt.kind == StmtKind.sk_func_decl {
+                if decl_only {
+                    self.emit_func_decl(method_idx)
+                } else {
+                    let fn_val = self.lookup_or_create_func(method_stmt.func_name)
+                    self.emit_func_body(method_idx, fn_val)
+                }
+            }
+            mi = mi + 1
+        }
+    }
+}
+
+fn generate(self, top_stmt_idx: Int, obj_path: Str) -> Bool {
+    self.build_func_types()
+    self.build_type_caches()
+
+    // Phase 1: Forward declarations
+    var i = 0
+    while i < self.stmt_pool.length() {
+        let stmt = self.stmt_pool.get(i)
+        if stmt.kind == StmtKind.sk_func_decl {
+            self.emit_func_decl(i)
+        }
+        if stmt.kind == StmtKind.sk_extern {
+            self.lookup_or_create_func(stmt.extern_name)
+        }
+        if stmt.kind == StmtKind.sk_impl_block || stmt.kind == StmtKind.sk_struct_decl {
+            self.foreach_method(i, true)
+        }
+        i = i + 1
+    }
+
+    // Phase 2: Function bodies
+    i = 0
+    while i < self.stmt_pool.length() {
+        let stmt = self.stmt_pool.get(i)
+        if stmt.kind == StmtKind.sk_func_decl {
+            let fn_val = self.lookup_or_create_func(stmt.func_name)
+            self.emit_func_body(i, fn_val)
+        }
+        if stmt.kind == StmtKind.sk_impl_block || stmt.kind == StmtKind.sk_struct_decl {
+            self.foreach_method(i, false)
+        }
+        i = i + 1
+    }
+
+    return self.emit_object(obj_path)
+}
+
+fn emit_func_decl(self, stmt_idx: Int) {
+    let stmt = self.stmt_pool.get(stmt_idx)
+    let _ = self.lookup_or_create_func(stmt.func_name)
+}
+
+fn emit_func_body(self, stmt_idx: Int, fn_val: *Void) {
+    let stmt = self.stmt_pool.get(stmt_idx)
+    if fn_val == (0 as *Void) { return }
+    self.cur_func = fn_val
+    self.cur_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "entry")
+    LLVMPositionBuilderAtEnd(self.builder, self.cur_block)
+    self.last_was_term = false
+    self.local_alloca_names = ArrayList<Str>(self.allocator)
+    self.local_alloca_vals = ArrayList<Int>(self.allocator)
+    self.local_alloca_types = ArrayList<Int>(self.allocator)
+    self.loop_cond_block = (0 as *Void)
+    self.loop_merge_block = (0 as *Void)
+
+    var pi = 0
+    while pi < stmt.func_params.length() {
+        let param = stmt.func_params.get(pi)
+        let param_val = LLVMGetParam(self.cur_func, pi)
+        let param_llvm_type = self.map_type(param.ptype)
+        let alloca_val = LLVMBuildAlloca(self.builder, param_llvm_type, param.name)
+        LLVMBuildStore(self.builder, param_val, alloca_val)
+        self.local_alloca_names.push(param.name)
+        self.local_alloca_vals.push((alloca_val as Int))
+        self.local_alloca_types.push((param_llvm_type as Int))
+        pi = pi + 1
+    }
+
+    self.gen_stmt(stmt.func_body)
+    if !self.last_was_term {
+        let ret_type = self.map_type(stmt.func_return_type)
+        if ret_type == self.void_type || ret_type == (0 as *Void) {
+            LLVMBuildRetVoid(self.builder)
+        } else {
+            LLVMBuildRet(self.builder, LLVMConstInt(ret_type, 0, false))
+        }
+    }
+}
+
+fn map_type(self, type_name: Str) -> *Void {
+    // Check struct cache
+    var si = 0
+    while si < self.struct_cache_names.length() {
+        if self.struct_cache_names.get(si) == type_name {
+            return (self.struct_cache_types.get(si) as *Void)
+        }
+        si = si + 1
+    }
+    // Check enum cache
+    var ei = 0
+    while ei < self.enum_cache_names.length() {
+        if self.enum_cache_names.get(ei) == type_name {
+            return (self.enum_cache_types.get(ei) as *Void)
+        }
+        ei = ei + 1
+    }
+    if type_name == "Int" || type_name == "Int64" || type_name == "UInt8" || type_name == "UInt64" || type_name == "UInt32" || type_name == "UInt16" { return self.int64_type }
+    if type_name == "Int32" || type_name == "Int16" { return self.int32_type }
+    if type_name == "Int8" { return self.int8_type }
+    if type_name == "Bool" { return self.int1_type }
+    if type_name == "Float" { return self.double_type }
+    if type_name == "Str" { return self.str_type }
+    if type_name == "*Char" { return self.ptr_type }
+    if type_name == "Char" { return self.int8_type }
+    if type_name == "*Void" { return self.ptr_type }
+    if strlen(type_name) > 0 && type_name[0] == Char(42) {
+        return self.ptr_type
+    }
+    if type_name == "Void" || strlen(type_name) == 0 { return self.void_type }
+    // For any unknown type that starts with uppercase (likely a struct/enum not yet cached),
+    // or any other type, return int64_type as fallback
+    return self.int64_type
+}
+
+fn map_tuple_type(self, tuple_type_str: Str) -> *Void {
+    // Check tuple cache first
+    var ti = 0
+    while ti < self.tuple_cache_names.length() {
+        if self.tuple_cache_names.get(ti) == tuple_type_str {
+            return (self.tuple_cache_types.get(ti) as *Void)
+        }
+        ti = ti + 1
+    }
+    // Parse (Type1, Type2, ...) format
+    let len = strlen(tuple_type_str)
+    if len < 2 || tuple_type_str[0] != Char(40) || tuple_type_str[len - 1] != Char(41) {
+        return self.void_type
+    }
+    var inner = tuple_type_str[1..len - 1]
+    var field_types = ArrayList<Int>(self.allocator)
+    var start = 0
+    var i = 0
+    while i < strlen(inner) {
+        if inner[i] == Char(44) {
+            let ty_name = inner[start..i]
+            let llvm_ty = self.map_type(ty_name)
+            if llvm_ty == self.void_type || llvm_ty == (0 as *Void) {
+                field_types.push((self.int64_type as Int))
+            } else {
+                field_types.push((llvm_ty as Int))
+            }
+            i = i + 2
+            start = i
+        } else {
+            i = i + 1
+        }
+    }
+    if start < strlen(inner) {
+        let ty_name = inner[start..strlen(inner)]
+        let llvm_ty = self.map_type(ty_name)
+        if llvm_ty == self.void_type || llvm_ty == (0 as *Void) {
+            field_types.push((self.int64_type as Int))
+        } else {
+            field_types.push((llvm_ty as Int))
+        }
+    }
+    if field_types.length() == 0 { return self.void_type }
+    let named_ty = LLVMStructCreateNamed(self.ctx, tuple_type_str)
+    LLVMStructSetBody(named_ty, field_types.data as *Void, field_types.length(), false)
+    self.tuple_cache_names.push(tuple_type_str)
+    self.tuple_cache_types.push((named_ty as Int))
+    self.tuple_cache_field_counts.push(field_types.length())
+    return named_ty
+}
+
+fn unwrap_str_for_c(self, val: *Void) -> *Void {
+    if val == (0 as *Void) { return val }
+    let val_ty = LLVMTypeOf(val)
+    if val_ty == self.str_type {
+        return kai_LLVMBuildExtractValue(self.builder, val, 0, ".c.ptr")
+    }
+    return val
+}
+
+fn to_bool(self, val: *Void) -> *Void {
+    if val == (0 as *Void) { return val }
+    let val_type = LLVMTypeOf(val)
+    if val_type == self.int1_type { return val }
+    if val_type == self.ptr_type || val_type == self.int8_type {
+        let zero = LLVMConstInt(self.ptr_type, 0, false)
+        let cmp = LLVMBuildICmp(self.builder, LLVMIntNE, val, zero, "")
+        return cmp
+    }
+    let zero = LLVMConstInt(self.int64_type, 0, false)
+    let cmp = LLVMBuildICmp(self.builder, LLVMIntNE, val, zero, "")
+    return cmp
+}
+
+fn ensure_reachable(self) {
+    if self.last_was_term {
+        self.cur_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "dead")
+        LLVMPositionBuilderAtEnd(self.builder, self.cur_block)
+        self.last_was_term = false
+    }
+}
+
+fn gen_stmt(self, stmt_idx: Int) {
+    if stmt_idx < 0 { return }
+    self.ensure_reachable()
+    let stmt = self.stmt_pool.get(stmt_idx)
+    if stmt.kind == StmtKind.sk_block {
+        var i = 0
+        while i < stmt.block_stmts.length() {
+            self.gen_stmt(stmt.block_stmts.get(i))
+            i = i + 1
+        }
+        return
+    }
+    if stmt.kind == StmtKind.sk_return {
+        if stmt.return_value >= 0 {
+            let val = self.gen_expr(stmt.return_value)
+            if val != (0 as *Void) {
+                LLVMBuildRet(self.builder, val)
+            } else {
+                LLVMBuildRetVoid(self.builder)
+            }
+        } else {
+            LLVMBuildRetVoid(self.builder)
+        }
+        self.last_was_term = true
+        return
+    }
+    if stmt.kind == StmtKind.sk_expr {
+        if stmt.expr_stmt >= 0 {
+            let _ = self.gen_expr(stmt.expr_stmt)
+        }
+        return
+    }
+    if stmt.kind == StmtKind.sk_var_decl {
+        var var_name = stmt.vardecl_name
+        var var_type_str = stmt.vardecl_type
+
+        // Void/discard pattern: let _ = expr or Void-typed variable
+        if var_name == "_" || var_type_str == "Void" || var_type_str == "NoneType" {
+            if stmt.vardecl_value >= 0 {
+                let _ = self.gen_expr(stmt.vardecl_value)
+            }
+            return
+        }
+
+        // Check if initializer is an array literal — handle specially
+        if stmt.vardecl_value >= 0 {
+            let init_expr = self.expr_pool.get(stmt.vardecl_value)
+            if init_expr.kind == ExprKind.ek_array {
+                var inner_type_str = "Int"
+                if strlen(init_expr.inferred_type) > 2 && init_expr.inferred_type[0] == Char(91) && init_expr.inferred_type[1] == Char(93) {
+                    inner_type_str = init_expr.inferred_type[2..strlen(init_expr.inferred_type)]
+                }
+                let inner_llvm_type = self.map_type(inner_type_str)
+                if inner_llvm_type == self.void_type || inner_llvm_type == (0 as *Void) {
+                    inner_llvm_type = self.int64_type
+                }
+                let count = init_expr.arr_elements.length()
+                var arr_type = inner_llvm_type
+                if count > 0 {
+                    arr_type = LLVMArrayType(inner_llvm_type, count)
+                }
+                let alloca_val = LLVMBuildAlloca(self.builder, arr_type, var_name)
+                if count > 0 {
+                    let el_ptr_ty = LLVMPointerType(inner_llvm_type, 0)
+                    let casted = LLVMBuildBitCast(self.builder, alloca_val, el_ptr_ty, "")
+                    var ai = 0
+                    while ai < count {
+                        let elem_val = self.gen_expr(init_expr.arr_elements.get(ai))
+                        if elem_val != (0 as *Void) {
+                            let indices = ArrayList<Int>(self.allocator)
+                            indices.push((LLVMConstInt(self.int64_type, ai, false) as Int))
+                            let gep = LLVMBuildGEP2(self.builder, inner_llvm_type, casted, indices.data as *Void, 1, "")
+                            LLVMBuildStore(self.builder, elem_val, gep)
+                        }
+                        ai = ai + 1
+                    }
+                }
+                self.local_alloca_names.push(var_name)
+                self.local_alloca_vals.push((alloca_val as Int))
+                self.local_alloca_types.push((arr_type as Int))
+                return
+            }
+        }
+
+        if strlen(var_type_str) == 0 {
+            if stmt.vardecl_value >= 0 {
+                var_type_str = self.get_expr_type(stmt.vardecl_value)
+            }
+            if strlen(var_type_str) == 0 {
+                var_type_str = "Int"
+            }
+        }
+        var var_type = self.map_type(var_type_str)
+        if var_type == self.void_type {
+            var_type = self.int64_type
+        }
+        let alloca_val = LLVMBuildAlloca(self.builder, var_type, var_name)
+        if stmt.vardecl_value >= 0 {
+            let init_val = self.gen_expr(stmt.vardecl_value)
+            if init_val != (0 as *Void) {
+                LLVMBuildStore(self.builder, init_val, alloca_val)
+            }
+        }
+        self.local_alloca_names.push(var_name)
+        self.local_alloca_vals.push((alloca_val as Int))
+        self.local_alloca_types.push((var_type as Int))
+        return
+    }
+    if stmt.kind == StmtKind.sk_assignment {
+        let val = self.gen_expr(stmt.assign_value)
+        if val != (0 as *Void) {
+            let target_expr = self.expr_pool.get(stmt.assign_target)
+            if target_expr.kind == ExprKind.ek_identifier {
+                let var_name = target_expr.ident_name
+                let alloca = self.find_alloca(var_name)
+                if alloca != (0 as *Void) {
+                    LLVMBuildStore(self.builder, val, alloca)
+                }
+            }
+        }
+        return
+    }
+    if stmt.kind == StmtKind.sk_for {
+        let start_val = self.gen_expr(stmt.for_start)
+        let end_val = self.gen_expr(stmt.for_end)
+        if start_val == (0 as *Void) || end_val == (0 as *Void) { return }
+        let var_name = stmt.for_var
+
+        let prev_alloca_len = self.local_alloca_names.length()
+
+        let alloca_val = LLVMBuildAlloca(self.builder, self.int64_type, var_name)
+        self.local_alloca_names.push(var_name)
+        self.local_alloca_vals.push((alloca_val as Int))
+        self.local_alloca_types.push((self.int64_type as Int))
+        LLVMBuildStore(self.builder, start_val, alloca_val)
+
+        let cond_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "for_cond")
+        let body_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "for_body")
+        let inc_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "for_inc")
+        let merge_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "for_merge")
+
+        let prev_cond = self.loop_cond_block
+        let prev_merge = self.loop_merge_block
+        self.loop_cond_block = cond_block
+        self.loop_merge_block = merge_block
+
+        LLVMBuildBr(self.builder, cond_block)
+
+        LLVMPositionBuilderAtEnd(self.builder, cond_block)
+        self.last_was_term = false
+        let cur_val = LLVMBuildLoad2(self.builder, self.int64_type, alloca_val, "")
+        if stmt.for_inclusive {
+            let cmp = LLVMBuildICmp(self.builder, LLVMIntSLE, cur_val, end_val, "")
+            LLVMBuildCondBr(self.builder, cmp, body_block, merge_block)
+        } else {
+            let cmp = LLVMBuildICmp(self.builder, LLVMIntSLT, cur_val, end_val, "")
+            LLVMBuildCondBr(self.builder, cmp, body_block, merge_block)
+        }
+
+        LLVMPositionBuilderAtEnd(self.builder, body_block)
+        self.last_was_term = false
+        self.gen_stmt(stmt.for_body)
+        if !self.last_was_term {
+            LLVMBuildBr(self.builder, inc_block)
+        }
+
+        LLVMPositionBuilderAtEnd(self.builder, inc_block)
+        self.last_was_term = false
+        let one = LLVMConstInt(self.int64_type, 1, false)
+        let inc_val = LLVMBuildLoad2(self.builder, self.int64_type, alloca_val, "")
+        let updated = LLVMBuildAdd(self.builder, inc_val, one, "")
+        LLVMBuildStore(self.builder, updated, alloca_val)
+        LLVMBuildBr(self.builder, cond_block)
+
+        self.loop_cond_block = prev_cond
+        self.loop_merge_block = prev_merge
+
+        // pop the loop variable from the alloca lists
+        while self.local_alloca_names.length() > prev_alloca_len {
+            let _ = self.local_alloca_names.pop()
+            let _ = self.local_alloca_vals.pop()
+            let _ = self.local_alloca_types.pop()
+        }
+
+        LLVMPositionBuilderAtEnd(self.builder, merge_block)
+        self.last_was_term = false
+        return
+    }
+    if stmt.kind == StmtKind.sk_break {
+        if self.loop_merge_block != (0 as *Void) {
+            LLVMBuildBr(self.builder, self.loop_merge_block)
+            self.last_was_term = true
+        }
+        return
+    }
+    if stmt.kind == StmtKind.sk_continue {
+        if self.loop_cond_block != (0 as *Void) {
+            LLVMBuildBr(self.builder, self.loop_cond_block)
+            self.last_was_term = true
+        }
+        return
+    }
+    if stmt.kind == StmtKind.sk_if_let {
+        let cond_val = self.gen_expr(stmt.iflet_expr)
+        let then_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "ifthen")
+        let merge_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "iflet_merge")
+
+        // Create alloca for the bound variable and store the condition value
+        var iflet_var_type = self.int64_type
+        var bound_type = LLVMTypeOf(cond_val)
+        if bound_type != (0 as *Void) {
+            iflet_var_type = bound_type
+        }
+        let iflet_alloca = LLVMBuildAlloca(self.builder, iflet_var_type, stmt.iflet_var)
+        LLVMBuildStore(self.builder, cond_val, iflet_alloca)
+        let prev_len = self.local_alloca_names.length()
+        self.local_alloca_names.push(stmt.iflet_var)
+        self.local_alloca_vals.push((iflet_alloca as Int))
+        self.local_alloca_types.push((iflet_var_type as Int))
+
+        if stmt.iflet_else >= 0 {
+            let else_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "iflelse")
+            let is_nonzero = self.to_bool(cond_val)
+            LLVMBuildCondBr(self.builder, is_nonzero, then_block, else_block)
+
+            LLVMPositionBuilderAtEnd(self.builder, then_block)
+            self.last_was_term = false
+            self.gen_stmt(stmt.iflet_then)
+            if !self.last_was_term {
+                LLVMBuildBr(self.builder, merge_block)
+            }
+
+            LLVMPositionBuilderAtEnd(self.builder, else_block)
+            self.last_was_term = false
+            self.gen_stmt(stmt.iflet_else)
+            if !self.last_was_term {
+                LLVMBuildBr(self.builder, merge_block)
+            }
+        } else {
+            let is_nonzero = self.to_bool(cond_val)
+            LLVMBuildCondBr(self.builder, is_nonzero, then_block, merge_block)
+
+            LLVMPositionBuilderAtEnd(self.builder, then_block)
+            self.last_was_term = false
+            self.gen_stmt(stmt.iflet_then)
+            if !self.last_was_term {
+                LLVMBuildBr(self.builder, merge_block)
+            }
+        }
+
+        // Pop the iflet variable from alloca lists (scope ended)
+        while self.local_alloca_names.length() > prev_len {
+            let _ = self.local_alloca_names.pop()
+            let _ = self.local_alloca_vals.pop()
+            let _ = self.local_alloca_types.pop()
+        }
+
+        LLVMPositionBuilderAtEnd(self.builder, merge_block)
+        self.last_was_term = false
+        return
+    }
+    if stmt.kind == StmtKind.sk_while {
+        let cond_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "while_cond")
+        let body_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "while_body")
+        let merge_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "while_merge")
+
+        let prev_cond = self.loop_cond_block
+        let prev_merge = self.loop_merge_block
+        self.loop_cond_block = cond_block
+        self.loop_merge_block = merge_block
+
+        LLVMBuildBr(self.builder, cond_block)
+
+        LLVMPositionBuilderAtEnd(self.builder, cond_block)
+        self.last_was_term = false
+        let cond_val = self.to_bool(self.gen_expr(stmt.while_cond))
+        LLVMBuildCondBr(self.builder, cond_val, body_block, merge_block)
+
+        LLVMPositionBuilderAtEnd(self.builder, body_block)
+        self.last_was_term = false
+        self.gen_stmt(stmt.while_body)
+        if !self.last_was_term {
+            LLVMBuildBr(self.builder, cond_block)
+        }
+
+        self.loop_cond_block = prev_cond
+        self.loop_merge_block = prev_merge
+
+        LLVMPositionBuilderAtEnd(self.builder, merge_block)
+        self.last_was_term = false
+        return
+    }
+    if stmt.kind == StmtKind.sk_if {
+        let cond_val = self.to_bool(self.gen_expr(stmt.if_cond))
+        let then_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "then")
+        let merge_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "if_merge")
+
+        if stmt.if_else >= 0 {
+            let else_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "else")
+            LLVMBuildCondBr(self.builder, cond_val, then_block, else_block)
+
+            LLVMPositionBuilderAtEnd(self.builder, then_block)
+            self.last_was_term = false
+            self.gen_stmt(stmt.if_then)
+            if !self.last_was_term {
+                LLVMBuildBr(self.builder, merge_block)
+            }
+
+            LLVMPositionBuilderAtEnd(self.builder, else_block)
+            self.last_was_term = false
+            self.gen_stmt(stmt.if_else)
+            if !self.last_was_term {
+                LLVMBuildBr(self.builder, merge_block)
+            }
+        } else {
+            LLVMBuildCondBr(self.builder, cond_val, then_block, merge_block)
+
+            LLVMPositionBuilderAtEnd(self.builder, then_block)
+            self.last_was_term = false
+            self.gen_stmt(stmt.if_then)
+            if !self.last_was_term {
+                LLVMBuildBr(self.builder, merge_block)
+            }
+        }
+
+        LLVMPositionBuilderAtEnd(self.builder, merge_block)
+        self.last_was_term = false
+        return
+    }
+    if stmt.kind == StmtKind.sk_defer {
+        self.gen_stmt(stmt.defer_body)
+        return
+    }
+    if stmt.kind == StmtKind.sk_print {
+        let val = self.gen_expr(stmt.print_value)
+        if val == (0 as *Void) { return }
+        let printf_fn = self.lookup_or_create_func("printf")
+        let val_type = LLVMTypeOf(val)
+        if val_type == self.int64_type {
+            let fmt_str = LLVMBuildGlobalStringPtr(self.builder, "%lld\n", ".fmt_int")
+            let p_char = self.map_type("*Char")
+            let fn_ty = kai_func_type_2(self.int64_type, p_char, self.int64_type, true)
+            let _ = kai_build_call_2(self.builder, fn_ty, printf_fn, fmt_str, val, "")
+        } else if val_type == self.double_type {
+            let fmt_str = LLVMBuildGlobalStringPtr(self.builder, "%f\n", ".fmt_float")
+            let p_char = self.map_type("*Char")
+            let fn_ty = kai_func_type_2(self.int64_type, p_char, self.double_type, true)
+            let _ = kai_build_call_2(self.builder, fn_ty, printf_fn, fmt_str, val, "")
+        } else if val != (0 as *Void) {
+            let fmt_str = LLVMBuildGlobalStringPtr(self.builder, "%s\n", ".fmt_str")
+            let p_char = self.map_type("*Char")
+            let fn_ty = kai_func_type_2(self.int64_type, p_char, self.ptr_type, true)
+            let _ = kai_build_call_2(self.builder, fn_ty, printf_fn, fmt_str, val, "")
+        }
+        return
+    }
+    if stmt.kind == StmtKind.sk_errdefer {
+        self.gen_stmt(stmt.errdefer_body)
+        return
+    }
+    if stmt.kind == StmtKind.sk_unsafe {
+        self.gen_stmt(stmt.unsafe_body)
+        return
+    }
+    if stmt.kind == StmtKind.sk_func_decl {
+        return
+    }
+    if stmt.kind == StmtKind.sk_extern {
+        return
+    }
+    if stmt.kind == StmtKind.sk_struct_decl {
+        return
+    }
+    if stmt.kind == StmtKind.sk_enum_decl {
+        return
+    }
+    if stmt.kind == StmtKind.sk_trait_decl {
+        return
+    }
+    if stmt.kind == StmtKind.sk_import {
+        return
+    }
+    if stmt.kind == StmtKind.sk_cimport {
+        return
+    }
+    if stmt.kind == StmtKind.sk_error_decl {
+        return
+    }
+    if stmt.kind == StmtKind.sk_none {
+        return
+    }
+    if stmt.kind == StmtKind.sk_impl_block {
+        // Emit method bodies inside impl blocks
+        var mi = 0
+        while mi < stmt.impl_methods.length() {
+            let method_idx = stmt.impl_methods.get(mi)
+            let method_stmt = self.stmt_pool.get(method_idx)
+            if method_stmt.kind == StmtKind.sk_func_decl {
+                let fn_val = self.lookup_or_create_func(method_stmt.func_name)
+                self.emit_func_body(method_idx, fn_val)
+            }
+            mi = mi + 1
+        }
+        return
+    }
+    if stmt.kind == StmtKind.sk_match {
+        let match_expr_val = self.gen_expr(stmt.match_expr)
+        let match_expr_node = self.expr_pool.get(stmt.match_expr)
+        let match_expr_type = self.get_expr_type(stmt.match_expr)
+        var clean_type = match_expr_type
+        while strlen(clean_type) > 0 && (clean_type[0] == Char(42) || clean_type[0] == Char(38)) {
+            clean_type = clean_type[1..strlen(clean_type)]
+        }
+        if strlen(clean_type) >= 4 && clean_type[0..4] == "mut " {
+            clean_type = clean_type[4..strlen(clean_type)]
+        }
+        let mapped_type = self.map_type(clean_type)
+        var llvm_match_type = mapped_type
+        if llvm_match_type == (0 as *Void) { llvm_match_type = self.int64_type }
+        var is_ptr = false
+        if strlen(match_expr_type) > 0 && (match_expr_type[0] == Char(42) || match_expr_type[0] == Char(38)) {
+            is_ptr = true
+        }
+        // For now: simple match as if-else chain
+        var case_idx = 0
+        while case_idx < stmt.match_cases.length() {
+            let case_node = stmt.match_cases.get(case_idx)
+            let pat_node = self.pattern_pool.get(case_node.pattern)
+            let then_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "match_then")
+            var merge_block: *Void = (0 as *Void)
+
+            if case_idx < stmt.match_cases.length() - 1 {
+                merge_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "match_next")
+            } else {
+                merge_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "match_end")
+            }
+
+            if pat_node.kind == PatternKind.pk_literal {
+                var lit_val: *Void = (0 as *Void)
+                match pat_node.lit_value {
+                    case .tv_int(v) => { lit_val = LLVMConstInt(self.int64_type, v, false) }
+                    case .tv_bool(v) => {
+                        if v { lit_val = LLVMConstInt(self.int1_type, 1, false) }
+                        else { lit_val = LLVMConstInt(self.int1_type, 0, false) }
+                    }
+                    case else => { lit_val = LLVMConstInt(self.int64_type, 0, false) }
+                }
+                let cmp = LLVMBuildICmp(self.builder, LLVMIntEQ, match_expr_val, lit_val, "")
+                LLVMBuildCondBr(self.builder, cmp, then_block, merge_block)
+            } else if pat_node.kind == PatternKind.pk_variant {
+                // Variant pattern: check tag
+                // For enums with payload, load tag from struct field 0
+                var has_payload_enum = false
+                var ei = 0
+                while ei < self.enum_cache_names.length() {
+                    if self.enum_cache_names.get(ei) == clean_type && self.enum_has_payload.get(ei) {
+                        has_payload_enum = true
+                    }
+                    ei = ei + 1
+                }
+                if has_payload_enum {
+                    let gep = LLVMBuildStructGEP2(self.builder, llvm_match_type, match_expr_val, 0, ".tag")
+                    let actual_tag = LLVMBuildLoad2(self.builder, self.int8_type, gep, "")
+                    let tag_val = LLVMConstInt(self.int8_type, case_idx, false)
+                    let cmp = LLVMBuildICmp(self.builder, LLVMIntEQ, actual_tag, tag_val, "")
+                    LLVMBuildCondBr(self.builder, cmp, then_block, merge_block)
+
+                    // Handle bindings (extract payload fields)
+                    var bi = 0
+                    while bi < pat_node.bindings.length() {
+                        let bind_name = pat_node.bindings.get(bi)
+                        if bind_name != "_" {
+                            let payload_gep = LLVMBuildStructGEP2(self.builder, llvm_match_type, match_expr_val, 1, ".payload")
+                            let payload_ptr = LLVMBuildLoad2(self.builder, LLVMArrayType(self.int64_type, 16), payload_gep, "")
+                            let _ = payload_ptr
+                            let bind_alloca = LLVMBuildAlloca(self.builder, self.int64_type, bind_name)
+                            LLVMBuildStore(self.builder, LLVMConstInt(self.int64_type, 0, false), bind_alloca)
+                            self.local_alloca_names.push(bind_name)
+                            self.local_alloca_vals.push((bind_alloca as Int))
+                            self.local_alloca_types.push((self.int64_type as Int))
+                        }
+                        bi = bi + 1
+                    }
+                } else {
+                    // No-payload enum: compare directly with int constant
+                    let tag_val = LLVMConstInt(self.int64_type, case_idx, false)
+                    let cmp = LLVMBuildICmp(self.builder, LLVMIntEQ, match_expr_val, tag_val, "")
+                    LLVMBuildCondBr(self.builder, cmp, then_block, merge_block)
+                }
+            } else if pat_node.kind == PatternKind.pk_else {
+                LLVMBuildBr(self.builder, then_block)
+            }
+
+            LLVMPositionBuilderAtEnd(self.builder, then_block)
+            self.last_was_term = false
+            self.gen_stmt(case_node.body)
+            if !self.last_was_term {
+                LLVMBuildBr(self.builder, merge_block)
+            }
+
+            LLVMPositionBuilderAtEnd(self.builder, merge_block)
+            self.last_was_term = false
+            case_idx = case_idx + 1
+        }
+        return
+    }
+}
+
+fn find_alloca(self, name: Str) -> *Void {
+    var i = 0
+    while i < self.local_alloca_names.length() {
+        if self.local_alloca_names.get(i) == name {
+            return (self.local_alloca_vals.get(i) as *Void)
+        }
+        i = i + 1
+    }
+    return (0 as *Void)
+}
+
+fn find_alloca_type(self, name: Str) -> *Void {
+    var i = 0
+    while i < self.local_alloca_names.length() {
+        if self.local_alloca_names.get(i) == name {
+            return (self.local_alloca_types.get(i) as *Void)
+        }
+        i = i + 1
+    }
+    return (0 as *Void)
+}
+
+fn get_expr_type(self, expr_idx: Int) -> Str {
+    if expr_idx < 0 { return "" }
+    let expr = self.expr_pool.get(expr_idx)
+    return expr.inferred_type
+}
+
+fn gen_expr(self, expr_idx: Int) -> *Void {
+    if expr_idx < 0 { return (0 as *Void) }
+    self.ensure_reachable()
+    let expr = self.expr_pool.get(expr_idx)
+    if expr.kind == ExprKind.ek_literal {
+        if expr.lit_vkind == "INT" {
+            var val: Int = 0
+            match expr.lit_value {
+                case .tv_int(v) => { val = v }
+                case .tv_str(v) => { val = self.str_to_int(v) }
+                case else => {}
+            }
+            return LLVMConstInt(self.int64_type, val, false)
+        }
+        if expr.lit_vkind == "FLOAT" {
+            var val: Float = 0.0
+            match expr.lit_value {
+                case .tv_float(v) => { val = v }
+                case .tv_str(v) => { val = self.str_to_float(v) }
+                case else => {}
+            }
+            return LLVMConstReal(self.double_type, val)
+        }
+        if expr.lit_vkind == "BOOL" {
+            var bval: Bool = false
+            match expr.lit_value {
+                case .tv_bool(v) => { bval = v }
+                case else => {}
+            }
+            if bval {
+                return LLVMConstInt(self.int1_type, 1, false)
+            }
+            return LLVMConstInt(self.int1_type, 0, false)
+        }
+        if expr.lit_vkind == "STRING" {
+            var sval: Str = ""
+            match expr.lit_value {
+                case .tv_str(v) => { sval = v }
+                case else => {}
+            }
+            let gname = ".str" + int_to_str(self.str_counter)
+            self.str_counter = self.str_counter + 1
+            let ptr_val = LLVMBuildGlobalStringPtr(self.builder, sval, gname)
+            // Build %Str{ ptr, len } fat-pointer struct value
+            let null_str = LLVMConstNull(self.str_type)
+            let with_ptr = kai_LLVMBuildInsertValue(self.builder, null_str, ptr_val, 0, ".str.ptr")
+            let len_val = LLVMConstInt(self.int64_type, strlen(sval), false)
+            return kai_LLVMBuildInsertValue(self.builder, with_ptr, len_val, 1, ".str")
+        }
+        if expr.lit_vkind == "NONE" {
+            return (0 as *Void)
+        }
+        return (0 as *Void)
+    }
+    if expr.kind == ExprKind.ek_identifier {
+        let alloca = self.find_alloca(expr.ident_name)
+        if alloca != (0 as *Void) {
+            var elem_ty = self.find_alloca_type(expr.ident_name)
+            if elem_ty == (0 as *Void) {
+                elem_ty = self.int64_type
+            }
+            // For array/struct types, return the pointer directly (no load)
+            // Exception: Str is a fat-pointer struct loaded by value
+            var is_aggregate = false
+            if elem_ty != self.str_type {
+                let ty_kind = LLVMGetTypeKind(elem_ty)
+                if ty_kind == LLVMArrayTypeKind || ty_kind == LLVMStructTypeKind {
+                    is_aggregate = true
+                }
+            }
+            if is_aggregate {
+                return alloca
+            }
+            return LLVMBuildLoad2(self.builder, elem_ty, alloca, expr.ident_name)
+        }
+        return (0 as *Void)
+    }
+    if expr.kind == ExprKind.ek_func_call {
+        let fn_val = self.lookup_or_create_func(expr.func_name)
+        if fn_val == (0 as *Void) { return (0 as *Void) }
+        let fn_ty = self.get_cached_func_type(expr.func_name)
+        if fn_ty == (0 as *Void) { return (0 as *Void) }
+        let fn_ret_ty = LLVMGetReturnType(fn_ty)
+        let arg_count = expr.func_args.length()
+        if arg_count == 0 {
+            return LLVMBuildCall2(self.builder, fn_ty, fn_val, (0 as *Void), 0, "")
+        }
+        let arg0 = self.unwrap_str_for_c(self.gen_expr(expr.func_args.get(0)))
+        if arg0 == (0 as *Void) { return (0 as *Void) }
+        if arg_count == 1 {
+            return kai_build_call_1(self.builder, fn_ty, fn_val, arg0, "")
+        }
+        let arg1 = self.unwrap_str_for_c(self.gen_expr(expr.func_args.get(1)))
+        if arg1 == (0 as *Void) { return (0 as *Void) }
+        if arg_count == 2 {
+            return kai_build_call_2(self.builder, fn_ty, fn_val, arg0, arg1, "")
+        }
+        let arg2 = self.unwrap_str_for_c(self.gen_expr(expr.func_args.get(2)))
+        if arg2 == (0 as *Void) { return (0 as *Void) }
+        if arg_count == 3 {
+            return kai_build_call_3(self.builder, fn_ty, fn_val, arg0, arg1, arg2, "")
+        }
+        let arg3 = self.unwrap_str_for_c(self.gen_expr(expr.func_args.get(3)))
+        if arg3 == (0 as *Void) { return (0 as *Void) }
+        if arg_count == 4 {
+            return kai_build_call_4(self.builder, fn_ty, fn_val, arg0, arg1, arg2, arg3, "")
+        }
+        return (0 as *Void)
+    }
+    if expr.kind == ExprKind.ek_unary_op {
+        let operand = self.gen_expr(expr.unop_operand)
+        if operand == (0 as *Void) { return (0 as *Void) }
+        if expr.unop_op == "!" {
+            let op_type = LLVMTypeOf(operand)
+            if op_type == self.int1_type {
+                let zero = LLVMConstInt(self.int1_type, 0, false)
+                let is_zero = LLVMBuildICmp(self.builder, LLVMIntEQ, operand, zero, "")
+                return LLVMBuildZExt(self.builder, is_zero, self.int64_type, "")
+            } else {
+                let zero = LLVMConstInt(self.int64_type, 0, false)
+                let is_zero = LLVMBuildICmp(self.builder, LLVMIntEQ, operand, zero, "")
+                return LLVMBuildZExt(self.builder, is_zero, self.int64_type, "")
+            }
+        }
+        if expr.unop_op == "-" {
+            return LLVMBuildNeg(self.builder, operand, "")
+        }
+        if expr.unop_op == "~" {
+            return LLVMBuildNot(self.builder, operand, "")
+        }
+        return (0 as *Void)
+    }
+    if expr.kind == ExprKind.ek_binary_op {
+        let lhs = self.gen_expr(expr.binop_left)
+        let rhs = self.gen_expr(expr.binop_right)
+        if lhs == (0 as *Void) || rhs == (0 as *Void) { return (0 as *Void) }
+        let op = expr.binop_op
+        let lhs_ty = LLVMTypeOf(lhs)
+        let is_float = lhs_ty == self.double_type
+        if is_float {
+            if op == "+" { return LLVMBuildFAdd(self.builder, lhs, rhs, "") }
+            if op == "-" { return LLVMBuildFSub(self.builder, lhs, rhs, "") }
+            if op == "*" { return LLVMBuildFMul(self.builder, lhs, rhs, "") }
+            if op == "/" { return LLVMBuildFDiv(self.builder, lhs, rhs, "") }
+            if op == "==" {
+                let cmp = LLVMBuildFCmp(self.builder, LLVMRealOEQ, lhs, rhs, "")
+                return LLVMBuildZExt(self.builder, cmp, self.int64_type, "")
+            }
+            if op == "!=" {
+                let cmp = LLVMBuildFCmp(self.builder, LLVMRealONE, lhs, rhs, "")
+                return LLVMBuildZExt(self.builder, cmp, self.int64_type, "")
+            }
+            if op == "<" {
+                let cmp = LLVMBuildFCmp(self.builder, LLVMRealOLT, lhs, rhs, "")
+                return LLVMBuildZExt(self.builder, cmp, self.int64_type, "")
+            }
+            if op == ">" {
+                let cmp = LLVMBuildFCmp(self.builder, LLVMRealOGT, lhs, rhs, "")
+                return LLVMBuildZExt(self.builder, cmp, self.int64_type, "")
+            }
+            if op == "<=" {
+                let cmp = LLVMBuildFCmp(self.builder, LLVMRealOLE, lhs, rhs, "")
+                return LLVMBuildZExt(self.builder, cmp, self.int64_type, "")
+            }
+            if op == ">=" {
+                let cmp = LLVMBuildFCmp(self.builder, LLVMRealOGE, lhs, rhs, "")
+                return LLVMBuildZExt(self.builder, cmp, self.int64_type, "")
+            }
+            return (0 as *Void)
+        }
+        if op == "+" { return LLVMBuildAdd(self.builder, lhs, rhs, "") }
+        if op == "-" { return LLVMBuildSub(self.builder, lhs, rhs, "") }
+        if op == "*" { return LLVMBuildMul(self.builder, lhs, rhs, "") }
+        if op == "/" { return LLVMBuildSDiv(self.builder, lhs, rhs, "") }
+        if op == "%" { return LLVMBuildSRem(self.builder, lhs, rhs, "") }
+        if op == "==" {
+            let cmp = LLVMBuildICmp(self.builder, LLVMIntEQ, lhs, rhs, "")
+            return LLVMBuildZExt(self.builder, cmp, self.int64_type, "")
+        }
+        if op == "!=" {
+            let cmp = LLVMBuildICmp(self.builder, LLVMIntNE, lhs, rhs, "")
+            return LLVMBuildZExt(self.builder, cmp, self.int64_type, "")
+        }
+        if op == "<" {
+            let cmp = LLVMBuildICmp(self.builder, LLVMIntSLT, lhs, rhs, "")
+            return LLVMBuildZExt(self.builder, cmp, self.int64_type, "")
+        }
+        if op == ">" {
+            let cmp = LLVMBuildICmp(self.builder, LLVMIntSGT, lhs, rhs, "")
+            return LLVMBuildZExt(self.builder, cmp, self.int64_type, "")
+        }
+        if op == "<=" {
+            let cmp = LLVMBuildICmp(self.builder, LLVMIntSLE, lhs, rhs, "")
+            return LLVMBuildZExt(self.builder, cmp, self.int64_type, "")
+        }
+        if op == ">=" {
+            let cmp = LLVMBuildICmp(self.builder, LLVMIntSGE, lhs, rhs, "")
+            return LLVMBuildZExt(self.builder, cmp, self.int64_type, "")
+        }
+        if op == "&&" {
+            let zero = LLVMConstInt(self.int64_type, 0, false)
+            let lhs_ne = LLVMBuildICmp(self.builder, LLVMIntNE, lhs, zero, "")
+            let rhs_ne = LLVMBuildICmp(self.builder, LLVMIntNE, rhs, zero, "")
+            let and = LLVMBuildAnd(self.builder, lhs_ne, rhs_ne, "")
+            return LLVMBuildZExt(self.builder, and, self.int64_type, "")
+        }
+        if op == "||" {
+            let zero = LLVMConstInt(self.int64_type, 0, false)
+            let lhs_ne = LLVMBuildICmp(self.builder, LLVMIntNE, lhs, zero, "")
+            let rhs_ne = LLVMBuildICmp(self.builder, LLVMIntNE, rhs, zero, "")
+            let or = LLVMBuildOr(self.builder, lhs_ne, rhs_ne, "")
+            return LLVMBuildZExt(self.builder, or, self.int64_type, "")
+        }
+        return (0 as *Void)
+    }
+    if expr.kind == ExprKind.ek_check {
+        return self.gen_expr(expr.check_expr)
+    }
+    if expr.kind == ExprKind.ek_borrow {
+        return self.gen_expr(expr.borrow_expr)
+    }
+    if expr.kind == ExprKind.ek_deref {
+        return self.gen_expr(expr.deref_expr)
+    }
+    if expr.kind == ExprKind.ek_try {
+        return self.gen_expr(expr.try_expr)
+    }
+    if expr.kind == ExprKind.ek_catch {
+        let inner = self.gen_expr(expr.catch_expr)
+        if expr.catch_fallback >= 0 {
+            let fallback = self.gen_expr(expr.catch_fallback)
+            let is_ok = self.to_bool(inner)
+            return LLVMBuildSelect(self.builder, is_ok, inner, fallback, "")
+        }
+        return inner
+    }
+    if expr.kind == ExprKind.ek_array {
+        var inner_type_str = "Int"
+        if strlen(expr.inferred_type) > 2 && expr.inferred_type[0] == Char(91) && expr.inferred_type[1] == Char(93) {
+            inner_type_str = expr.inferred_type[2..strlen(expr.inferred_type)]
+        }
+        let inner_llvm_type = self.map_type(inner_type_str)
+        if inner_llvm_type == self.void_type || inner_llvm_type == (0 as *Void) {
+            inner_llvm_type = self.int64_type
+        }
+        let count = expr.arr_elements.length()
+        if count == 0 {
+            return LLVMBuildAlloca(self.builder, inner_llvm_type, ".arr_empty")
+        }
+        let arr_type = LLVMArrayType(inner_llvm_type, count)
+        let arr_ptr = LLVMBuildAlloca(self.builder, arr_type, ".arr")
+        // Bitcast to element pointer for easier GEP
+        let el_ptr_ty = LLVMPointerType(inner_llvm_type, 0)
+        let casted = LLVMBuildBitCast(self.builder, arr_ptr, el_ptr_ty, "")
+        var ai = 0
+        while ai < count {
+            let elem_val = self.gen_expr(expr.arr_elements.get(ai))
+            if elem_val != (0 as *Void) {
+                let indices = ArrayList<Int>(self.allocator)
+                let idx_val = LLVMConstInt(self.int64_type, ai, false)
+                indices.push((idx_val as Int))
+                let gep = LLVMBuildGEP2(self.builder, inner_llvm_type, casted, indices.data as *Void, 1, "")
+                LLVMBuildStore(self.builder, elem_val, gep)
+            }
+            ai = ai + 1
+        }
+        return arr_ptr
+    }
+    if expr.kind == ExprKind.ek_index {
+        let base_val = self.gen_expr(expr.idx_expr)
+        if base_val == (0 as *Void) { return (0 as *Void) }
+        let idx_val = self.gen_expr(expr.idx_index)
+        if idx_val == (0 as *Void) { return (0 as *Void) }
+        let inner_type_str = "Int"
+        let base_expr = self.expr_pool.get(expr.idx_expr)
+        if strlen(base_expr.inferred_type) > 2 && base_expr.inferred_type[0] == Char(91) && base_expr.inferred_type[1] == Char(93) {
+            inner_type_str = base_expr.inferred_type[2..strlen(base_expr.inferred_type)]
+        } else if strlen(base_expr.inferred_type) > 0 && base_expr.inferred_type[0] == Char(42) {
+            inner_type_str = base_expr.inferred_type[1..strlen(base_expr.inferred_type)]
+        }
+        let inner_llvm_type = self.map_type(inner_type_str)
+        if inner_llvm_type == self.void_type || inner_llvm_type == (0 as *Void) {
+            inner_llvm_type = self.int64_type
+        }
+        // Bitcast the array pointer to element pointer, then GEP with single index
+        let el_ptr_ty = LLVMPointerType(inner_llvm_type, 0)
+        let casted = LLVMBuildBitCast(self.builder, base_val, el_ptr_ty, "")
+        let indices = ArrayList<Int>(self.allocator)
+        indices.push((idx_val as Int))
+        let gep = LLVMBuildGEP2(self.builder, inner_llvm_type, casted, indices.data as *Void, 1, "")
+        return LLVMBuildLoad2(self.builder, inner_llvm_type, gep, "")
+    }
+    if expr.kind == ExprKind.ek_range {
+        let range_ty = self.map_type("Range")
+        if range_ty == self.void_type || range_ty == (0 as *Void) { return (0 as *Void) }
+        let start_val = self.gen_expr(expr.range_start)
+        let end_val = self.gen_expr(expr.range_end)
+        if start_val == (0 as *Void) || end_val == (0 as *Void) { return (0 as *Void) }
+        var incl_int: Int = 0
+        if expr.range_inclusive { incl_int = 1 }
+        let incl_val = LLVMConstInt(self.int1_type, incl_int, false)
+        let alloca_val = LLVMBuildAlloca(self.builder, range_ty, ".range")
+        let start_gep = LLVMBuildStructGEP2(self.builder, range_ty, alloca_val, 0, ".start")
+        LLVMBuildStore(self.builder, start_val, start_gep)
+        let end_gep = LLVMBuildStructGEP2(self.builder, range_ty, alloca_val, 1, ".end")
+        LLVMBuildStore(self.builder, end_val, end_gep)
+        let incl_gep = LLVMBuildStructGEP2(self.builder, range_ty, alloca_val, 2, ".incl")
+        LLVMBuildStore(self.builder, incl_val, incl_gep)
+        return alloca_val
+    }
+    if expr.kind == ExprKind.ek_slice {
+        // Check if the base expression is Str (fat-pointer)
+        let base_type = self.get_expr_type(expr.slice_expr)
+        printf("DEBUG slice: base_type='%s' len=%ld str_type=%p\n", base_type, strlen(base_type), self.str_type)
+        if base_type == "Str" {
+            // materialize the %Str struct value into an alloca for field access
+            let base_str = self.gen_expr(expr.slice_expr)
+            if base_str == (0 as *Void) { return (0 as *Void) }
+            let str_alloca = LLVMBuildAlloca(self.builder, self.str_type, ".parent.str")
+            LLVMBuildStore(self.builder, base_str, str_alloca)
+            // GEP to .ptr field (index 0) and load
+            let ptr_gep = LLVMBuildStructGEP2(self.builder, self.str_type, str_alloca, 0, ".parent.ptr.gep")
+            let parent_ptr = LLVMBuildLoad2(self.builder, self.ptr_type, ptr_gep, ".parent.ptr")
+            // GEP to .len field (index 1) and load
+            let len_gep = LLVMBuildStructGEP2(self.builder, self.str_type, str_alloca, 1, ".parent.len.gep")
+            let parent_len = LLVMBuildLoad2(self.builder, self.int64_type, len_gep, ".parent.len")
+            // Lower bound
+            var lower_val = LLVMConstInt(self.int64_type, 0, false)
+            if expr.slice_lower >= 0 {
+                lower_val = self.gen_expr(expr.slice_lower)
+                if lower_val == (0 as *Void) { return (0 as *Void) }
+            }
+            // Upper bound: default to parent_len, clamp at parent_len
+            var upper_val = parent_len
+            if expr.slice_upper >= 0 {
+                upper_val = self.gen_expr(expr.slice_upper)
+                if upper_val == (0 as *Void) { return (0 as *Void) }
+                let cmp = LLVMBuildICmp(self.builder, LLVMIntSGT, upper_val, parent_len, "")
+                upper_val = LLVMBuildSelect(self.builder, cmp, parent_len, upper_val, ".upper.clamped")
+            }
+            // Ensure lower <= upper
+            let lower_gt_upper = LLVMBuildICmp(self.builder, LLVMIntSGT, lower_val, upper_val, "")
+            upper_val = LLVMBuildSelect(self.builder, lower_gt_upper, lower_val, upper_val, ".upper.fixed")
+            // GEP ptr by lower to get new pointer
+            let gep_indices = ArrayList<Int>(self.allocator)
+            gep_indices.push((lower_val as Int))
+            let new_ptr = LLVMBuildGEP2(self.builder, self.int8_type, parent_ptr, gep_indices.data as *Void, 1, ".slice.ptr")
+            // new_len = upper - lower
+            let new_len = LLVMBuildSub(self.builder, upper_val, lower_val, ".slice.len")
+            // Build new %Str struct via alloca + store
+            let result_alloca = LLVMBuildAlloca(self.builder, self.str_type, ".slice.str")
+            let res_ptr_gep = LLVMBuildStructGEP2(self.builder, self.str_type, result_alloca, 0, ".slice.ptr.gep")
+            LLVMBuildStore(self.builder, new_ptr, res_ptr_gep)
+            let res_len_gep = LLVMBuildStructGEP2(self.builder, self.str_type, result_alloca, 1, ".slice.len.gep")
+            LLVMBuildStore(self.builder, new_len, res_len_gep)
+            return LLVMBuildLoad2(self.builder, self.str_type, result_alloca, ".slice.str")
+        }
+        // Raw pointer (*Char, arrays, etc.): old GEP approach
+        let base = self.gen_expr(expr.slice_expr)
+        if base == (0 as *Void) { return (0 as *Void) }
+        var lower_val: *Void = LLVMConstInt(self.int64_type, 0, false)
+        if expr.slice_lower >= 0 {
+            lower_val = self.gen_expr(expr.slice_lower)
+            if lower_val == (0 as *Void) { return (0 as *Void) }
+        }
+        let indices = ArrayList<Int>(self.allocator)
+        indices.push((lower_val as Int))
+        return LLVMBuildGEP2(self.builder, self.int8_type, base, indices.data as *Void, 1, ".slice")
+    }
+    if expr.kind == ExprKind.ek_tuple {
+        if strlen(expr.inferred_type) > 0 {
+            let tuple_ty = self.map_tuple_type(expr.inferred_type)
+            if tuple_ty == self.void_type || tuple_ty == (0 as *Void) { return (0 as *Void) }
+            let alloca_val = LLVMBuildAlloca(self.builder, tuple_ty, ".tuple")
+            var ei = 0
+            while ei < expr.tup_elements.length() {
+                let elem_val = self.gen_expr(expr.tup_elements.get(ei))
+                if elem_val != (0 as *Void) {
+                    let gep = LLVMBuildStructGEP2(self.builder, tuple_ty, alloca_val, ei, ".elem")
+                    LLVMBuildStore(self.builder, elem_val, gep)
+                }
+                ei = ei + 1
+            }
+            return alloca_val
+        }
+        return (0 as *Void)
+    }
+    if expr.kind == ExprKind.ek_struct_init {
+        let struct_name = expr.struct_name
+        // Check if this is an enum variant constructor (struct_name contains ".")
+        var is_enum_variant = false
+        var dot_pos = -1
+        var ei = 0
+        while ei < strlen(struct_name) {
+            if struct_name[ei] == Char(46) { dot_pos = ei }
+            ei = ei + 1
+        }
+        if dot_pos >= 0 {
+            is_enum_variant = true
+        }
+        if is_enum_variant {
+            let enum_part = struct_name[0..dot_pos]
+            let variant_name = struct_name[(dot_pos + 1)..strlen(struct_name)]
+            let enum_val = LLVMConstInt(self.int8_type, 0, false) // placeholder tag
+            return enum_val
+        }
+        // Plain struct literal
+        let struct_ty = self.map_type(struct_name)
+        if struct_ty == self.void_type || struct_ty == (0 as *Void) {
+            return (0 as *Void)
+        }
+        let alloca_val = LLVMBuildAlloca(self.builder, struct_ty, ".struct")
+        var fi = 0
+        while fi < expr.struct_fields.length() {
+            let f = expr.struct_fields.get(fi)
+            let field_val = self.gen_expr(f.value)
+            if field_val != (0 as *Void) {
+                let gep = LLVMBuildStructGEP2(self.builder, struct_ty, alloca_val, fi, f.name)
+                LLVMBuildStore(self.builder, field_val, gep)
+            }
+            fi = fi + 1
+        }
+        return alloca_val
+    }
+    if expr.kind == ExprKind.ek_field_access {
+        let base_val = self.gen_expr(expr.field_expr)
+        if base_val == (0 as *Void) { return (0 as *Void) }
+        let base_type = self.get_expr_type(expr.field_expr)
+        // Find field index in struct definition
+        var field_idx = -1
+        var found_field = false
+        var si = 0
+        while si < self.stmt_pool.length() {
+            let s = self.stmt_pool.get(si)
+            if s.kind == StmtKind.sk_struct_decl && s.struct_name == base_type && s.struct_type_params.length() == 0 {
+                var fii = 0
+                while fii < s.struct_fields.length() {
+                    if s.struct_fields.get(fii).name == expr.field_name {
+                        field_idx = fii
+                        found_field = true
+                        break
+                    }
+                    fii = fii + 1
+                }
+                if found_field { break }
+            }
+            si = si + 1
+        }
+        if !found_field {
+            return (0 as *Void)
+        }
+        let struct_ty = self.map_type(base_type)
+        if struct_ty == (0 as *Void) || struct_ty == self.void_type {
+            return (0 as *Void)
+        }
+        let gep = LLVMBuildStructGEP2(self.builder, struct_ty, base_val, field_idx, expr.field_name)
+        // Determine field type for load
+        var field_type_str = "Int"
+        var si2 = 0
+        while si2 < self.stmt_pool.length() {
+            let s2 = self.stmt_pool.get(si2)
+            if s2.kind == StmtKind.sk_struct_decl && s2.struct_name == base_type && s2.struct_type_params.length() == 0 {
+                if field_idx >= 0 && field_idx < s2.struct_fields.length() {
+                    field_type_str = s2.struct_fields.get(field_idx).ftype
+                }
+                break
+            }
+            si2 = si2 + 1
+        }
+        let field_llvm_type = self.map_type(field_type_str)
+        if field_llvm_type == (0 as *Void) || field_llvm_type == self.void_type {
+            return LLVMBuildLoad2(self.builder, self.int64_type, gep, "")
+        }
+        return LLVMBuildLoad2(self.builder, field_llvm_type, gep, expr.field_name)
+    }
+    if expr.kind == ExprKind.ek_method_call {
+        let receiver_val = self.gen_expr(expr.meth_expr)
+        if receiver_val == (0 as *Void) { return (0 as *Void) }
+        let receiver_type = self.get_expr_type(expr.meth_expr)
+        var clean_type = receiver_type
+        while strlen(clean_type) > 0 && (clean_type[0] == Char(42) || clean_type[0] == Char(38)) {
+            clean_type = clean_type[1..strlen(clean_type)]
+        }
+        if strlen(clean_type) >= 4 && clean_type[0..4] == "mut " {
+            clean_type = clean_type[4..strlen(clean_type)]
+        }
+        let func_name = clean_type + "_" + expr.meth_name
+        let fn_val = self.lookup_or_create_func(func_name)
+        if fn_val == (0 as *Void) { return (0 as *Void) }
+        let fn_ty = self.get_cached_func_type(func_name)
+        if fn_ty == (0 as *Void) { return (0 as *Void) }
+        // Build args list: receiver + all method args
+        let total_args_count = 1 + expr.meth_args.length()
+        var arg_vals = ArrayList<Int>(self.allocator)
+        // Pass receiver as first arg (pointer to self) directly, no bitcast
+        arg_vals.push((receiver_val as Int))
+        var ai = 0
+        while ai < expr.meth_args.length() {
+            let av = self.gen_expr(expr.meth_args.get(ai))
+            if av != (0 as *Void) {
+                arg_vals.push((av as Int))
+            } else {
+                arg_vals.push((LLVMConstInt(self.int64_type, 0, false) as Int))
+            }
+            ai = ai + 1
+        }
+        if total_args_count == 1 {
+            return kai_build_call_1(self.builder, fn_ty, fn_val, (arg_vals.get(0) as *Void), "")
+        } else if total_args_count == 2 {
+            return kai_build_call_2(self.builder, fn_ty, fn_val, (arg_vals.get(0) as *Void), (arg_vals.get(1) as *Void), "")
+        } else if total_args_count == 3 {
+            return kai_build_call_3(self.builder, fn_ty, fn_val, (arg_vals.get(0) as *Void), (arg_vals.get(1) as *Void), (arg_vals.get(2) as *Void), "")
+        } else if total_args_count == 4 {
+            return kai_build_call_4(self.builder, fn_ty, fn_val, (arg_vals.get(0) as *Void), (arg_vals.get(1) as *Void), (arg_vals.get(2) as *Void), (arg_vals.get(3) as *Void), "")
+        }
+        return (0 as *Void)
+    }
+    if expr.kind == ExprKind.ek_asm {
+        // Build constraints string: outputs + inputs + clobbers
+        var constraints_str = ""
+        var oi = 0
+        while oi < expr.asm_outputs.length() {
+            let out = expr.asm_outputs.get(oi)
+            if strlen(constraints_str) > 0 { constraints_str = constraints_str + "," }
+            constraints_str = constraints_str + "=" + out.constraint
+            oi = oi + 1
+        }
+        var ii = 0
+        while ii < expr.asm_inputs.length() {
+            let inp = expr.asm_inputs.get(ii)
+            if strlen(constraints_str) > 0 { constraints_str = constraints_str + "," }
+            constraints_str = constraints_str + inp.constraint
+            ii = ii + 1
+        }
+        var ci = 0
+        while ci < expr.asm_clobbers.length() {
+            if strlen(constraints_str) > 0 { constraints_str = constraints_str + "," }
+            constraints_str = constraints_str + "~{" + expr.asm_clobbers.get(ci) + "}"
+            ci = ci + 1
+        }
+        // Generate input values first (and collect types)
+        let total_inputs = expr.asm_inputs.length()
+        var inp_vals = ArrayList<Int>(self.allocator)
+        var param_types = ArrayList<Int>(self.allocator)
+        var inp_idx = 0
+        while inp_idx < total_inputs {
+            let inp = expr.asm_inputs.get(inp_idx)
+            let iv = self.gen_expr(inp.expr_idx)
+            if iv == (0 as *Void) {
+                inp_vals.push((LLVMConstInt(self.int64_type, 0, false) as Int))
+                param_types.push((self.int64_type as Int))
+            } else {
+                inp_vals.push((iv as Int))
+                param_types.push((LLVMTypeOf(iv) as Int))
+            }
+            inp_idx = inp_idx + 1
+        }
+        // Determine return type from inferred_type or outputs
+        var ret_ty = self.void_type
+        if strlen(expr.inferred_type) > 0 {
+            let mt = self.map_type(expr.inferred_type)
+            if mt != self.void_type && mt != (0 as *Void) { ret_ty = mt }
+        } else if expr.asm_outputs.length() > 0 && strlen(expr.asm_outputs.get(0).type_name) > 0 {
+            let mt = self.map_type(expr.asm_outputs.get(0).type_name)
+            if mt != self.void_type && mt != (0 as *Void) { ret_ty = mt }
+        }
+        let fn_ty = LLVMFunctionType(ret_ty, param_types.data as *Void, total_inputs, false)
+        let asm_str = expr.asm_code
+        let asm_val = kai_LLVMGetInlineAsm(
+            fn_ty,
+            asm_str as *Char,
+            strlen(asm_str),
+            constraints_str as *Char,
+            strlen(constraints_str),
+            expr.asm_is_volatile,
+            false,
+            0,
+            false
+        )
+        if asm_val == (0 as *Void) { return (0 as *Void) }
+        // Call the asm with input values
+        if total_inputs == 0 {
+            return LLVMBuildCall2(self.builder, fn_ty, asm_val, (0 as *Void), 0, "")
+        } else if total_inputs == 1 {
+            return kai_build_call_1(self.builder, fn_ty, asm_val, (inp_vals.get(0) as *Void), "")
+        } else if total_inputs == 2 {
+            return kai_build_call_2(self.builder, fn_ty, asm_val, (inp_vals.get(0) as *Void), (inp_vals.get(1) as *Void), "")
+        } else if total_inputs == 3 {
+            return kai_build_call_3(self.builder, fn_ty, asm_val, (inp_vals.get(0) as *Void), (inp_vals.get(1) as *Void), (inp_vals.get(2) as *Void), "")
+        } else if total_inputs == 4 {
+            return kai_build_call_4(self.builder, fn_ty, asm_val, (inp_vals.get(0) as *Void), (inp_vals.get(1) as *Void), (inp_vals.get(2) as *Void), (inp_vals.get(3) as *Void), "")
+        }
+        return (0 as *Void)
+    }
+    if expr.kind == ExprKind.ek_str_interp {
+        if expr.interp_parts.length() == 0 {
+            return LLVMBuildGlobalStringPtr(self.builder, "", ".str_empty")
+        }
+        // Simple concatenation: for now, just concatenate string literal parts
+        var result_str = ""
+        var i = 0
+        while i < expr.interp_parts.length() {
+            let part = expr.interp_parts.get(i)
+            if part.kind == 0 {
+                result_str = result_str + part.str_val
+            } else {
+                // For expression parts, just emit the expression (simplified)
+                let expr_val = self.gen_expr(part.expr_idx)
+                let _ = expr_val
+            }
+            i = i + 1
+        }
+        let gname = ".str" + int_to_str(self.str_counter)
+        self.str_counter = self.str_counter + 1
+        let ptr_val = LLVMBuildGlobalStringPtr(self.builder, result_str, gname)
+        let null_str = LLVMConstNull(self.str_type)
+        let with_ptr = kai_LLVMBuildInsertValue(self.builder, null_str, ptr_val, 0, ".str.ptr")
+        let len_val = LLVMConstInt(self.int64_type, strlen(result_str), false)
+        return kai_LLVMBuildInsertValue(self.builder, with_ptr, len_val, 1, ".str")
+    }
+    if expr.kind == ExprKind.ek_none {
+        return (0 as *Void)
+    }
+    return (0 as *Void)
+}
+
+fn str_to_int(self, s: Str) -> Int {
+    var result: Int = 0
+    var i: Int = 0
+    var neg = false
+    if strlen(s) > 0 && s[0] == Char(45) {
+        neg = true
+        i = 1
+    }
+    while i < strlen(s) {
+        let c = s[i]
+        if c >= Char(48) && c <= Char(57) {
+            result = (result * 10) + ((c as Int) - 48)
+        }
+        i = i + 1
+    }
+    if neg { result = -result }
+    return result
+}
+
+fn str_to_float(self, s: Str) -> Float {
+    var result: Float = 0.0
+    var i: Int = 0
+    var neg = false
+    if strlen(s) > 0 && s[0] == Char(45) {
+        neg = true
+        i = 1
+    }
+    while i < strlen(s) && s[i] >= Char(48) && s[i] <= Char(57) {
+        result = (result * 10.0) + ((s[i] as Int - 48) as Float)
+        i = i + 1
+    }
+    if i < strlen(s) && s[i] == Char(46) {
+        i = i + 1
+        var divisor: Float = 10.0
+        while i < strlen(s) && s[i] >= Char(48) && s[i] <= Char(57) {
+            result = result + ((s[i] as Int - 48) as Float) / divisor
+            divisor = divisor * 10.0
+            i = i + 1
+        }
+    }
+    if neg { result = -result }
+    return result
+}
+
+fn dump_module(self) {
+    let ir = LLVMPrintModuleToString(self.module)
+    if ir != (0 as *Char) {
+        let f = fopen("/tmp/llvm_ir.ll", "w")
+        if f != (0 as *Void) {
+            fwrite(ir as *Void, 1, strlen(ir as Str), f)
+            fclose(f)
+        }
+        LLVMDisposeMessage(ir)
+    }
+}
+
+fn emit_object(self, obj_path: Str) -> Bool {
+    self.dump_module()
+    kai_LLVMInitializeAllTargetInfos()
+    kai_LLVMInitializeAllTargets()
+    kai_LLVMInitializeAllTargetMCs()
+    kai_LLVMInitializeAllAsmPrinters()
+    kai_LLVMInitializeAllAsmParsers()
+
+    self.tmp_target = (0 as *Void)
+    self.tmp_err = (0 as *Char)
+    LLVMSetTarget(self.module, LLVMGetDefaultTargetTriple() as Str)
+    LLVMGetTargetFromTriple(LLVMGetDefaultTargetTriple() as Str, &self.tmp_target as *Void, &self.tmp_err as *Void)
+    LLVMTargetMachineEmitToFile(
+        LLVMCreateTargetMachine(
+            self.tmp_target,
+            LLVMGetDefaultTargetTriple() as Str,
+            "",
+            "",
+            LLVMCodeGenLevelDefault,
+            LLVMRelocDefault,
+            LLVMCodeModelDefault
+        ),
+        self.module,
+        obj_path as *Char,
+        LLVMObjectFile,
+        &self.tmp_err
+    )
+
+    if self.tmp_err != (0 as *Char) {
+        LLVMDisposeMessage(self.tmp_err)
+    }
+    return true
+}
+
+}

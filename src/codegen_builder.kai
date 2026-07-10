@@ -379,6 +379,13 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
             // No colon found — whole value is the return type (for extern and impl methods)
             if strlen(func_type) > 0 { return func_type }
         }
+        var fsi = 0
+        while fsi < self.stmt_pool.length() {
+            let s = self.stmt_pool.get(fsi)
+            if s.kind == StmtKind.sk_extern && s.extern_name == name { return s.extern_return }
+            if s.kind == StmtKind.sk_func_decl && s.func_name == name { return s.func_return_type }
+            fsi = fsi + 1
+        }
         return "Void"
     }
     if expr.kind == ExprKind.ek_index {
@@ -476,7 +483,14 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
         }
         return "Void"
     }
-    if expr.kind == ExprKind.ek_struct_init { return expr.struct_name }
+    if expr.kind == ExprKind.ek_struct_init {
+        let sname = expr.struct_name
+        let dot_pos = self.str_find(sname, Char(46))
+        if dot_pos >= 0 {
+            return sname[0..dot_pos]
+        }
+        return sname
+    }
     if expr.kind == ExprKind.ek_method_call {
         let rec_type = self.get_expr_type(expr.meth_expr)
         var clean_type = ""
@@ -832,6 +846,29 @@ fn substitute_type_params(self, type_name: Str, param_names: *ArrayList<Str>, ar
     return result
 }
 
+fn extract_first_type_arg(self, type_name: Str) -> Str {
+    var start = -1
+    var end = -1
+    var i = 0
+    while i < strlen(type_name) {
+        let c = type_name[i]
+        if c == Char(60) {
+            start = i + 1
+        } else if c == Char(44) {
+            end = i
+            break
+        } else if c == Char(62) {
+            end = i
+            break
+        }
+        i = i + 1
+    }
+    if start >= 0 && end >= 0 {
+        return type_name[start..end]
+    }
+    return "Int"
+}
+
 fn map_type(self, resolved_type: Str) -> Str {
     var orig = resolved_type
     if strlen(orig) == 0 { return "void" }
@@ -1182,6 +1219,18 @@ fn is_standard_c_func(self, name: Str) -> Bool {
         var is_kai_llvm = false
         unsafe { if strcmp(sub8, "kai_LLVM") == 0 { is_kai_llvm = true } }
         if is_kai_llvm { return true }
+    }
+    if l >= 13 {
+        let sub13 = name[0..13]
+        var is_kai_func = false
+        unsafe { if strcmp(sub13, "kai_func_type") == 0 { is_kai_func = true } }
+        if is_kai_func { return true }
+    }
+    if l >= 14 {
+        let sub14 = name[0..14]
+        var is_kai_build = false
+        unsafe { if strcmp(sub14, "kai_build_call") == 0 { is_kai_build = true } }
+        if is_kai_build { return true }
     }
     if name == "atoll" { return true }
     if name == "malloc" { return true }
@@ -2493,6 +2542,10 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
 
             var cond = ""
             var bindings_str = ""
+            var has_non_underscore_bindings = false
+            var found_var = false
+            var matched_var = Variant(vname: "", params: empty_param_array())
+            var var_name = ""
 
             if pat_node.kind == PatternKind.pk_literal {
                 var lit_str = ""
@@ -2514,7 +2567,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
                 }
                 cond = expr_val + " == " + lit_str
             } else if pat_node.kind == PatternKind.pk_variant {
-                let var_name = pat_node.variant_name
+                var_name = pat_node.variant_name
                 var base_type = mapped_expr_type
                 if strlen(base_type) > 0 && (base_type[strlen(base_type) - 1] == Char(42) || base_type[strlen(base_type) - 1] == Char(38)) {
                     base_type = base_type[0..strlen(base_type) - 1]
@@ -2550,36 +2603,27 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
                 }
 
                 if pat_node.bindings.length() > 0 {
-                    let bind_name = pat_node.bindings.get(0)
-                    if bind_name != "_" {
-                        var bind_type = ""
-                        var field_name = ""
-                        if var_name == "ok" {
-                            bind_type = "Int"
-                            field_name = "value"
-                        } else if var_name == "err" {
-                            bind_type = "Int"
-                            field_name = "value"
-                        } else if var_name == "tv_int" {
-                            bind_type = "Int"
-                            field_name = "v"
-                        } else if var_name == "tv_float" {
-                            bind_type = "Float"
-                            field_name = "v"
-                        } else if var_name == "tv_bool" {
-                            bind_type = "Bool"
-                            field_name = "v"
-                        } else if var_name == "tv_char" {
-                            bind_type = "Char"
-                            field_name = "v"
-                        } else if var_name == "tv_str" {
-                            bind_type = "Str"
-                            field_name = "v"
+                    var bi = 0
+                    while bi < pat_node.bindings.length() {
+                        if pat_node.bindings.get(bi) != "_" {
+                            has_non_underscore_bindings = true
+                            break
                         }
-                        if strlen(bind_type) > 0 {
-                            let mapped_bind_type = self.map_type(bind_type)
-                            bindings_str = mapped_bind_type + " " + bind_name + " = " + expr_val + op + var_name + "." + field_name + ";"
+                        bi = bi + 1
+                    }
+                }
+                
+                if strlen(enum_idx_str) > 0 {
+                    let enum_stmt = self.stmt_pool.get(self.str_to_int(enum_idx_str))
+                    var vi = 0
+                    while vi < enum_stmt.enum_variants.length() {
+                        let v = enum_stmt.enum_variants.get(vi)
+                        if v.vname == var_name {
+                            found_var = true
+                            matched_var = v
+                            break
                         }
+                        vi = vi + 1
                     }
                 }
             } else if pat_node.kind == PatternKind.pk_else {
@@ -2594,9 +2638,38 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
                 self.builder.append_to_last_line(" else if " + self.format_cond(cond))
             }
 
-            if strlen(bindings_str) > 0 {
+            if has_non_underscore_bindings {
                 self.builder.begin_block()
-                self.builder.emit_line(bindings_str)
+                var bi = 0
+                while bi < pat_node.bindings.length() {
+                    let bind_name = pat_node.bindings.get(bi)
+                    if bind_name != "_" {
+                        var bind_type = "Void"
+                        var field_name = ""
+                        if found_var && bi < matched_var.params.length() {
+                            let param = matched_var.params.get(bi)
+                            bind_type = param.ptype
+                            field_name = param.name
+                        }
+                        if bind_type == "T" {
+                            var t_type = cgb_map_get(&self.current_type_map, "T")
+                            if strlen(t_type) == 0 {
+                                t_type = self.extract_first_type_arg(expr_type)
+                            }
+                            bind_type = t_type
+                        } else if bind_type == "E" {
+                            var e_type = cgb_map_get(&self.current_type_map, "E")
+                            if strlen(e_type) == 0 {
+                                e_type = "Int"
+                            }
+                            bind_type = e_type
+                        }
+                        let mapped_bind_type = self.map_type(bind_type)
+                        let single_binding = mapped_bind_type + " " + bind_name + " = " + expr_val + op + var_name + "." + field_name + ";"
+                        self.builder.emit_line(single_binding)
+                    }
+                    bi = bi + 1
+                }
                 self.gen_stmt(case_node.body)
                 self.builder.end_block()
             } else {

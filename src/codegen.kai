@@ -993,6 +993,13 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
         }
         let fn_t = type_map_get(&self.func_types, name)
         if length(fn_t) > 0 { return fn_t }
+        var si = 0
+        while si < self.stmt_pool.length() {
+            let s = self.stmt_pool.get(si)
+            if s.kind == StmtKind.sk_extern && s.extern_name == name { return s.extern_return }
+            if s.kind == StmtKind.sk_func_decl && s.func_name == name { return s.func_return_type }
+            si = si + 1
+        }
         return "Void"
     }
     
@@ -1097,7 +1104,12 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
     }
     
     if expr.kind == ExprKind.ek_struct_init {
-        return expr.struct_name
+        let sname = expr.struct_name
+        let dot_pos = self.str_find(sname, Char(46))
+        if dot_pos >= 0 {
+            return sname[0..dot_pos]
+        }
+        return sname
     }
     
     if expr.kind == ExprKind.ek_method_call {
@@ -2105,6 +2117,22 @@ fn is_standard_c_func(self, name: Str) -> Bool {
         }
         if is_kai_llvm { return true }
     }
+    if l >= 13 {
+        let sub13 = name[0..13]
+        var is_kai_func = false
+        unsafe {
+            if strcmp(sub13, "kai_func_type") == 0 { is_kai_func = true }
+        }
+        if is_kai_func { return true }
+    }
+    if l >= 14 {
+        let sub14 = name[0..14]
+        var is_kai_build = false
+        unsafe {
+            if strcmp(sub14, "kai_build_call") == 0 { is_kai_build = true }
+        }
+        if is_kai_build { return true }
+    }
 
     if name == "atoll" { return true }
     if name == "malloc" { return true }
@@ -2892,44 +2920,70 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
                     cond = expr_val + " == " + base_type + "_" + var_name
                 }
                 
-                if pat_node.bindings.length() > 0 {
-                    let bind_name = pat_node.bindings.get(0)
-                    if bind_name != "_" {
-                        var bind_type = ""
-                        var field_name = ""
-                        if var_name == "ok" {
-                            var t_type = type_map_get(&self.current_type_map, "T")
-                            if length(t_type) == 0 {
-                                t_type = self.extract_first_type_arg(expr_type)
-                            }
-                            bind_type = t_type
-                            field_name = "value"
-                        } else if var_name == "err" {
-                            var e_type = type_map_get(&self.current_type_map, "E")
-                            if length(e_type) == 0 {
-                                e_type = "Int"
-                            }
-                            bind_type = e_type
-                            field_name = "value"
-                        } else if var_name == "tv_int" {
-                            bind_type = "Int"
-                            field_name = "v"
-                        } else if var_name == "tv_float" {
-                            bind_type = "Float"
-                            field_name = "v"
-                        } else if var_name == "tv_bool" {
-                            bind_type = "Bool"
-                            field_name = "v"
-                        } else if var_name == "tv_char" {
-                            bind_type = "Char"
-                            field_name = "v"
-                        } else if var_name == "tv_str" {
-                            bind_type = "Str"
-                            field_name = "v"
+                var clean_enum_name = expr_type
+                var done_clean = false
+                while !done_clean {
+                    if length(clean_enum_name) > 0 && (clean_enum_name[0] == Char(42) || clean_enum_name[0] == Char(38)) {
+                        clean_enum_name = clean_enum_name[1..length(clean_enum_name)]
+                    } else {
+                        done_clean = true
+                    }
+                }
+                let underscore_pos = self.str_find(clean_enum_name, Char(95))
+                if underscore_pos >= 0 {
+                    clean_enum_name = clean_enum_name[0..underscore_pos]
+                }
+                let lt_pos = self.str_find(clean_enum_name, Char(60))
+                if lt_pos >= 0 {
+                    clean_enum_name = clean_enum_name[0..lt_pos]
+                }
+                let enum_idx_str = type_map_get(&self.enum_decls, clean_enum_name)
+                var found_var = false
+                var matched_var = Variant(vname: "", params: empty_param_array())
+                if length(enum_idx_str) > 0 {
+                    let enum_stmt = self.stmt_pool.get(self.str_to_int(enum_idx_str))
+                    var vi = 0
+                    while vi < enum_stmt.enum_variants.length() {
+                        let v = enum_stmt.enum_variants.get(vi)
+                        if v.vname == var_name {
+                            found_var = true
+                            matched_var = v
+                            break
                         }
-                        
-                        let mapped_bind_type = self.map_type(bind_type)
-                        bindings_str = "    " + mapped_bind_type + " " + bind_name + " = " + expr_val + op + "payload." + var_name + "." + field_name + ";\n"
+                        vi = vi + 1
+                    }
+                }
+                
+                if pat_node.bindings.length() > 0 {
+                    var bi = 0
+                    while bi < pat_node.bindings.length() {
+                        let bind_name = pat_node.bindings.get(bi)
+                        if bind_name != "_" {
+                            var bind_type = "Void"
+                            var field_name = ""
+                            if found_var && bi < matched_var.params.length() {
+                                let param = matched_var.params.get(bi)
+                                bind_type = param.ptype
+                                field_name = param.name
+                            }
+                            if bind_type == "T" {
+                                var t_type = type_map_get(&self.current_type_map, "T")
+                                if length(t_type) == 0 {
+                                    t_type = self.extract_first_type_arg(expr_type)
+                                }
+                                bind_type = t_type
+                            } else if bind_type == "E" {
+                                var e_type = type_map_get(&self.current_type_map, "E")
+                                if length(e_type) == 0 {
+                                    e_type = "Int"
+                                }
+                                bind_type = e_type
+                            }
+                            let mapped_bind_type = self.map_type(bind_type)
+                            let single_binding = "    " + mapped_bind_type + " " + bind_name + " = " + expr_val + op + "payload." + var_name + "." + field_name + ";\n"
+                            bindings_str = bindings_str + single_binding
+                        }
+                        bi = bi + 1
                     }
                 }
             } else if pat_node.kind == PatternKind.pk_else {
@@ -3218,6 +3272,11 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     result.append("#include <stdio.h>\n")
     result.append("#include <stdlib.h>\n")
     result.append("#include <string.h>\n")
+
+    // Compat: imported concatAlloc maps to __kai_std_str_concat_alloc
+    result.append("#ifndef __kai_std_str_concat_alloc\n")
+    result.append("#define __kai_std_str_concat_alloc concatAlloc\n")
+    result.append("#endif\n")
 
     //== Phase 2: get_exe_dir (delegates to std/os/os.h)
     result.append("#ifndef NO_GET_EXE_DIR\n")

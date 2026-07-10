@@ -1,0 +1,31 @@
+import std.io.print
+
+enum Shape {
+    case circle(radius: Int)
+    case rectangle(width: Int, height: Int)
+}
+
+fn get_shape_area(s: Shape) -> Int {
+    match s {
+        case .circle(r) => {
+            // 'r' is Int, we can do arithmetic
+            return r * r * 3
+        }
+        case .rectangle(w, h) => {
+            // 'w' and 'h' are Ints
+            return w * h
+        }
+    }
+}
+
+fn main() -> Int {
+    let s = Shape.rectangle(width: 5, height: 6)
+    let area = get_shape_area(s)
+    printf("Rectangle Area: %d\n", area)
+    
+    let c = Shape.circle(radius: 4)
+    let c_area = get_shape_area(c)
+    printf("Circle Area: %d\n", c_area)
+    
+    return 0
+}

@@ -8,9 +8,8 @@ import Parser from parser
 import TypeChecker from type_checker
 import Codegen from codegen
 import CodegenBuilder from codegen_builder
+import LLVMCodegen from codegen_llvm
 import length from std.core.string
-// LLVMCodegen temporarily disabled — needs rework
-// import LLVMCodegen from codegen_llvm
 import ImportResolver from imports
 
 import get_base_name from utils
@@ -46,6 +45,7 @@ fn main(argc: Int, argv: **Char) -> Int {
         printf("  -o <file>       Specify output binary name\n")
         printf("  -c              Emit C code only (no linking)\n")
         printf("  -CC             Use builder-based codegen (experimental)\n")
+        printf("  -llvm           Use LLVM backend (experimental)\n")
         printf("  -O0|-O1|-O2|-O3|-Os  Optimization level (default: -O2)\n")
         return 1
     }
@@ -103,6 +103,7 @@ fn main(argc: Int, argv: **Char) -> Int {
     var output_bin = ""
     var emit_c_only = false
     var use_builder = false
+    var use_llvm = false
     var opt_level = "-O2"
     var json_mode = false
     var check_only = false
@@ -116,6 +117,7 @@ fn main(argc: Int, argv: **Char) -> Int {
             if strcmp(arg, "run") == 0 { /* skip */ }
             else if strcmp(arg, "-c") == 0 { emit_c_only = true }
             else if strcmp(arg, "-CC") == 0 { use_builder = true }
+            else if strcmp(arg, "-llvm") == 0 { use_llvm = true }
             else if strcmp(arg, "-o") == 0 {
                 if i + 1 < argc { i = i + 1; output_bin = argv[i] as Str }
                 else { printf("Error: -o requires an argument\n"); return 1 }
@@ -144,12 +146,22 @@ fn main(argc: Int, argv: **Char) -> Int {
     var allocator = KaiAllocator_new()
 
     var exe_include_flag = ""
+    var exe_lib_flag = ""
     var exe_dir = ""
     unsafe {
         let buf = allocator.alloc(1024, 1) as *Char
         if get_exe_dir(buf, 1024) == 0 {
             exe_dir = buf as Str
             exe_include_flag = "-I" + exe_dir
+        }
+    }
+    // Detect LLVM library path
+    var llvm_lib_dir = "/opt/homebrew/opt/llvm@21/lib"
+    unsafe {
+        let f = fopen("/opt/homebrew/opt/llvm@21/lib/libLLVM.dylib", "r")
+        if f != (0 as *Void) {
+            fclose(f)
+            exe_lib_flag = "-L" + llvm_lib_dir
         }
     }
 
@@ -193,6 +205,16 @@ fn main(argc: Int, argv: **Char) -> Int {
         return 0
     }
 
+    if use_llvm {
+        var llvm_gen = LLVMCodegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, &resolver)
+        var obj_file = base + ".o"
+        if use_builder { obj_file = "CC" + obj_file }
+        let emit_ok = llvm_gen.generate(program_idx, obj_file)
+        if !emit_ok { return 5 }
+        if emit_c_only { return 0 }
+        let cmd = "clang " + obj_file + " " + exe_lib_flag + " -o " + bin_name + " -lLLVM"
+        unsafe { return system(cmd as *Char) }
+    }
     var output: Str = ""
     if use_builder {
         var builder_gen = CodegenBuilder(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, &resolver)

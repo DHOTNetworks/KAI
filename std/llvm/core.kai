@@ -62,6 +62,27 @@ let LLVMCodeModelKernel     = 4
 let LLVMCodeModelMedium     = 5
 let LLVMCodeModelLarge      = 6
 
+// LLVMTypeKind
+let LLVMVoidTypeKind = 0
+let LLVMHalfTypeKind = 1
+let LLVMFloatTypeKind = 2
+let LLVMDoubleTypeKind = 3
+let LLVMX86_FP80TypeKind = 4
+let LLVMFP128TypeKind = 5
+let LLVMPPC_FP128TypeKind = 6
+let LLVMLabelTypeKind = 7
+let LLVMIntegerTypeKind = 8
+let LLVMFunctionTypeKind = 9
+let LLVMStructTypeKind = 10
+let LLVMArrayTypeKind = 11
+let LLVMPointerTypeKind = 12
+let LLVMVectorTypeKind = 13
+let LLVMMetadataTypeKind = 14
+let LLVMX86_MMXTypeKind = 15
+let LLVMTokenTypeKind = 16
+let LLVMScalableVectorTypeKind = 17
+let LLVMBFloatTypeKind = 18
+
 // LLVMVerifierFailureAction
 let LLVMAbortProcessAction = 0
 let LLVMPrintMessageAction = 1
@@ -155,6 +176,9 @@ extern fn LLVMBuildFAdd(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
 extern fn LLVMBuildFSub(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
 extern fn LLVMBuildFMul(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
 extern fn LLVMBuildFDiv(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
+extern fn LLVMBuildNeg(b: *Void, val: *Void, name: Str) -> *Void
+extern fn LLVMBuildNot(b: *Void, val: *Void, name: Str) -> *Void
+extern fn LLVMBuildFNeg(b: *Void, val: *Void, name: Str) -> *Void
 
 // Memory
 extern fn LLVMBuildAlloca(b: *Void, ty: *Void, name: Str) -> *Void
@@ -231,11 +255,32 @@ extern fn LLVMBuildSelect(b: *Void, cond: *Void, then_val: *Void, else_val: *Voi
 extern fn LLVMAddGlobal(module: *Void, ty: *Void, name: Str) -> *Void
 extern fn LLVMSetInitializer(global_val: *Void, constant_val: *Void)
 extern fn LLVMConstNull(ty: *Void) -> *Void
+extern fn LLVMConstNamedStruct(struct_ty: *Void, constant_vals: *Void, count: Int) -> *Void
 extern fn LLVMDeleteFunction(fn_val: *Void)
 extern fn LLVMGetFirstBasicBlock(fn_val: *Void) -> *Void
 extern fn LLVMGetReturnType(fn_ty: *Void) -> *Void
 extern fn LLVMTypeOf(val: *Void) -> *Void
 extern fn LLVMGetElementType(ty: *Void) -> *Void
 
+// Type query functions
+extern fn LLVMGetTypeKind(ty: *Void) -> Int
+
 // Memory release function to avoid string leaks
 extern fn LLVMDisposeMessage(message: *Char)
+
+// Aggregate value construction wrappers
+extern fn kai_LLVMConstNamedStruct(struct_ty: *Void, constant_vals: *Void, count: Int) -> *Void
+extern fn kai_LLVMBuildExtractValue(b: *Void, agg_val: *Void, index: Int, name: Str) -> *Void
+extern fn kai_LLVMBuildInsertValue(b: *Void, agg_val: *Void, elt_val: *Void, index: Int, name: Str) -> *Void
+
+// Inline assembly
+extern fn kai_LLVMGetInlineAsm(ft: *Void, asm_str: *Char, asm_len: Int, constraints: *Char, constraints_len: Int, has_side_effects: Bool, is_align_stack: Bool, dialect: Int, can_throw: Bool) -> *Void
+
+// Convenience wrappers (see core.h)
+extern fn kai_func_type_0(ret: *Void) -> *Void
+extern fn kai_func_type_1(ret: *Void, p0: *Void, is_vararg: Bool) -> *Void
+extern fn kai_func_type_2(ret: *Void, p0: *Void, p1: *Void, is_vararg: Bool) -> *Void
+extern fn kai_build_call_1(b: *Void, fn_ty: *Void, fn_val: *Void, arg0: *Void, name: Str) -> *Void
+extern fn kai_build_call_2(b: *Void, fn_ty: *Void, fn_val: *Void, arg0: *Void, arg1: *Void, name: Str) -> *Void
+extern fn kai_build_call_3(b: *Void, fn_ty: *Void, fn_val: *Void, arg0: *Void, arg1: *Void, arg2: *Void, name: Str) -> *Void
+extern fn kai_build_call_4(b: *Void, fn_ty: *Void, fn_val: *Void, arg0: *Void, arg1: *Void, arg2: *Void, arg3: *Void, name: Str) -> *Void
