@@ -3915,7 +3915,7 @@ char __kai_std_str_to_upper_byte(char byte) {
 }
 const char* __kai_std_str_copy(char* buffer, const char* text) {
     int64_t len = strlen((const char*)(text));
-    if (len > 1000000LL) {
+    if (len > 100000000LL) {
     return NULL;
 }
     int64_t index = 0LL;
@@ -3923,12 +3923,13 @@ const char* __kai_std_str_copy(char* buffer, const char* text) {
     (buffer)[index] = (text)[index];
     index = (index + 1LL);
 }
+    (buffer)[len] = ((char)(0LL));
     return __kai_str_sub(buffer, 0, len);
 }
 const char* __kai_std_str_concat(char* buffer, const char* left, const char* right) {
     int64_t left_len = strlen((const char*)(left));
     int64_t right_len = strlen((const char*)(right));
-    if ((left_len > 1000000LL) || (right_len > (1000000LL - left_len))) {
+    if ((left_len > 100000000LL) || (right_len > (100000000LL - left_len))) {
     return NULL;
 }
     int64_t index = 0LL;
@@ -3941,11 +3942,12 @@ const char* __kai_std_str_concat(char* buffer, const char* left, const char* rig
     (buffer)[(left_len + right_index)] = (right)[right_index];
     right_index = (right_index + 1LL);
 }
+    (buffer)[(left_len + right_len)] = ((char)(0LL));
     return __kai_str_sub(buffer, 0, (left_len + right_len));
 }
 const char* __kai_std_str_repeat(char* buffer, const char* text, int64_t count) {
     int64_t len = strlen((const char*)(text));
-    if ((count > 0LL) && (len > (1000000LL / count))) {
+    if ((count > 0LL) && (len > (100000000LL / count))) {
     return NULL;
 }
     int64_t out = 0LL;
@@ -3959,6 +3961,7 @@ const char* __kai_std_str_repeat(char* buffer, const char* text, int64_t count) 
 }
     repetition = (repetition + 1LL);
 }
+    (buffer)[out] = ((char)(0LL));
     return __kai_str_sub(buffer, 0, out);
 }
 const char* __kai_std_str_replace(char* buffer, const char* text, const char* old, const char* replacement) {
@@ -3971,7 +3974,7 @@ const char* __kai_std_str_replace(char* buffer, const char* text, const char* ol
     int64_t write = 0LL;
     while (read < text_len) {
     if ((old_len <= (text_len - read)) && __kai_std_str_starts_with(__kai_str_sub(text, read, strlen(text)), old)) {
-    if (strlen((const char*)(replacement)) > (1000000LL - write)) {
+    if (strlen((const char*)(replacement)) > (100000000LL - write)) {
     return NULL;
 }
     int64_t new_index = 0LL;
@@ -3982,7 +3985,7 @@ const char* __kai_std_str_replace(char* buffer, const char* text, const char* ol
 }
     read = (read + old_len);
 } else {
-    if (write >= 1000000LL) {
+    if (write >= 100000000LL) {
     return NULL;
 }
     (buffer)[write] = (text)[read];
@@ -3990,11 +3993,12 @@ const char* __kai_std_str_replace(char* buffer, const char* text, const char* ol
     read = (read + 1LL);
 }
 }
+    (buffer)[write] = ((char)(0LL));
     return __kai_str_sub(buffer, 0, write);
 }
 const char* __kai_std_str_to_lower_ascii(char* buffer, const char* text) {
     int64_t len = strlen((const char*)(text));
-    if (len > 1000000LL) {
+    if (len > 100000000LL) {
     return NULL;
 }
     int64_t index = 0LL;
@@ -4002,11 +4006,12 @@ const char* __kai_std_str_to_lower_ascii(char* buffer, const char* text) {
     (buffer)[index] = __kai_std_str_to_lower_byte((text)[index]);
     index = (index + 1LL);
 }
+    (buffer)[len] = ((char)(0LL));
     return __kai_str_sub(buffer, 0, len);
 }
 const char* __kai_std_str_to_upper_ascii(char* buffer, const char* text) {
     int64_t len = strlen((const char*)(text));
-    if (len > 1000000LL) {
+    if (len > 100000000LL) {
     return NULL;
 }
     int64_t index = 0LL;
@@ -4014,11 +4019,12 @@ const char* __kai_std_str_to_upper_ascii(char* buffer, const char* text) {
     (buffer)[index] = __kai_std_str_to_upper_byte((text)[index]);
     index = (index + 1LL);
 }
+    (buffer)[len] = ((char)(0LL));
     return __kai_str_sub(buffer, 0, len);
 }
 const char* __kai_std_str_reverse(char* buffer, const char* text) {
     int64_t len = strlen((const char*)(text));
-    if (len > 1000000LL) {
+    if (len > 100000000LL) {
     return NULL;
 }
     int64_t index = 0LL;
@@ -4026,6 +4032,7 @@ const char* __kai_std_str_reverse(char* buffer, const char* text) {
     (buffer)[index] = (text)[((len - 1LL) - index)];
     index = (index + 1LL);
 }
+    (buffer)[len] = ((char)(0LL));
     return __kai_str_sub(buffer, 0, len);
 }
 int64_t __kai_std_str_count_byte(const char* text, char byte) {
@@ -16281,11 +16288,13 @@ void CodegenBuilder_emit_struct_body_with_deps(CodegenBuilder* self, int64_t stm
 const char* CodegenBuilder_generate(CodegenBuilder* self, int64_t top_stmt_idx) {
     CodegenBuilder_build_func_types(self);
     StrBuf result = StrBuf_init(self->allocator);
+    result = StrBuf_init(self->allocator);
     CCodeBuilder preamble_builder = (CCodeBuilder){ .alloc = self->allocator, .lines = ArrayList_Str_init(self->allocator), .indent_level = 0LL };
     preamble_builder = CCodeBuilder_init(self->allocator);
     CPrinter preamble_printer = (CPrinter){ .builder = &(preamble_builder), .expr_pool = &(self->c_exprs), .stmt_pool = &(self->c_stmts) };
     CPrinter_emit_runtime_preamble(&(preamble_printer), &(self->import_resolver->cimport_headers));
-    StrBuf_append(&(result), CCodeBuilder_to_str(&(preamble_builder)));
+    const char* preamble_str = CCodeBuilder_to_str(&(preamble_builder));
+    StrBuf_append(&(result), preamble_str);
     StrBuf_append(&(result), "\n");
     StrBuf_append(&(result), StrBuf_to_str(&(self->type_defs)));
     StrBuf_append(&(result), "\n");
@@ -16304,7 +16313,8 @@ const char* CodegenBuilder_generate(CodegenBuilder* self, int64_t top_stmt_idx) 
     if (strlen(monomorphized_str) > 0LL) {
     StrBuf_append(&(result), monomorphized_str);
 }
-    return StrBuf_to_str(&(result));
+    const char* _final_r = StrBuf_to_str(&(result));
+    return _final_r;
 }
 CCodeBuilder CCodeBuilder_init(KaiAllocator* allocator) {
     CCodeBuilder self = (CCodeBuilder){0};

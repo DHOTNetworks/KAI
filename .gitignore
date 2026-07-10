@@ -24,7 +24,7 @@ docs/
 compiler
 zero
 release/
-build.sh
+zig.sh
 kai-linux
 
 # Temporary

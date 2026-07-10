@@ -74,11 +74,11 @@ static inline int64_t kai_LLVMWriteBitcodeToFile(void* m, const char* path) {
 static inline void* kai_func_type_0(void* ret) {
     return (void*)LLVMFunctionType((LLVMTypeRef)ret, NULL, 0, 0);
 }
-static inline void* kai_func_type_1(void* ret, void* p0, int is_vararg) {
+static inline void* kai_func_type_1(void* ret, void* p0, bool is_vararg) {
     LLVMTypeRef params[1] = {(LLVMTypeRef)p0};
     return (void*)LLVMFunctionType((LLVMTypeRef)ret, params, 1, is_vararg);
 }
-static inline void* kai_func_type_2(void* ret, void* p0, void* p1, int is_vararg) {
+static inline void* kai_func_type_2(void* ret, void* p0, void* p1, bool is_vararg) {
     LLVMTypeRef params[2] = {(LLVMTypeRef)p0, (LLVMTypeRef)p1};
     return (void*)LLVMFunctionType((LLVMTypeRef)ret, params, 2, is_vararg);
 }

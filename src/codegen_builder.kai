@@ -3293,14 +3293,17 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     self.build_func_types()
 
     var result = StrBuf(self.allocator)
+    result.init(self.allocator)
+
     var preamble_builder = CCodeBuilder(alloc: self.allocator, lines: ArrayList<Str>(self.allocator), indent_level: 0)
     preamble_builder.init(self.allocator)
+
     var preamble_printer = CPrinter(builder: &preamble_builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
     preamble_printer.emit_runtime_preamble(&self.import_resolver.cimport_headers)
-    result.append(preamble_builder.to_str())
-    result.append("\n")
 
-    //== Phase: User struct/enum/trait declarations
+    let preamble_str = preamble_builder.to_str()
+    result.append(preamble_str)
+    result.append("\n")
     result.append(self.type_defs.to_str())
     result.append("\n")
     result.append(self.struct_decls.to_str())
@@ -3322,7 +3325,8 @@ fn generate(self, top_stmt_idx: Int) -> Str {
         result.append(monomorphized_str)
     }
 
-    return result.to_str()
+    let _final_r = result.to_str()
+    return _final_r
 }
 
 }
