@@ -1823,8 +1823,7 @@ impl TypeChecker {
         
         if expr.kind == ExprKind.ek_identifier {
             self.check_identifier(expr_idx)
-            expr.inferred_type = self.get_expr_type(expr_idx)
-            return
+                        return
         }
         if expr.kind == ExprKind.ek_binary_op {
             self.check_expr(expr.binop_left)
@@ -1865,8 +1864,7 @@ impl TypeChecker {
                     self.err("E0025", "type mismatch in comparison: '" + left_type + "' and '" + right_type + "' are not compatible", expr.line, expr.col)
                 }
             }
-            expr.inferred_type = self.get_expr_type(expr_idx)
-            return
+                        return
         }
         if expr.kind == ExprKind.ek_unary_op {
             self.check_expr(expr.unop_operand)
@@ -1885,8 +1883,7 @@ impl TypeChecker {
                     self.err("E0026", "operand of '~' must be an integer type, got '" + operand_type + "'", expr.line, expr.col)
                 }
             }
-            expr.inferred_type = self.get_expr_type(expr_idx)
-            return
+                        return
         }
         if expr.kind == ExprKind.ek_func_call {
             let name = expr.func_name
@@ -1951,8 +1948,7 @@ impl TypeChecker {
                 }
             }
             if name == "cast" || name == "as" || name == "size_of" || name == "free" || name == "Char" || name == "Int" || name == "Float" || name == "Bool" || name == "printf" || name == "fprintf" || name == "sprintf" || name == "snprintf" {
-                expr.inferred_type = self.get_expr_type(expr_idx)
-                return
+                                return
             }
             let func_idx = self.find_func_decl(name)
             if func_idx >= 0 {
@@ -1968,8 +1964,7 @@ impl TypeChecker {
                     self.err("E0005", "argument count mismatch for function '" + name + "': expected " + int_to_str(params.length()) + ", got " + int_to_str(expr.func_args.length()), expr.line, expr.col)
                 } else {
                     if type_params.length() > 0 {
-                        expr.inferred_type = self.get_expr_type(expr_idx)
-                        return
+                                                return
                     }
                     var arg_i = 0
                     while arg_i < expr.func_args.length() {
@@ -2012,14 +2007,12 @@ impl TypeChecker {
                     ui = ui + 1
                 }
             }
-            expr.inferred_type = self.get_expr_type(expr_idx)
-            return
+                        return
         }
         if expr.kind == ExprKind.ek_field_access {
             self.check_expr(expr.field_expr)
             self.check_field_access(expr_idx)
-            expr.inferred_type = self.get_expr_type(expr_idx)
-            return
+                        return
         }
         if expr.kind == ExprKind.ek_method_call {
             self.check_expr(expr.meth_expr)
@@ -2067,8 +2060,7 @@ impl TypeChecker {
             if self.is_imported_name(meth_name) {
                 self.mark_import_used(meth_name)
             }
-            expr.inferred_type = self.get_expr_type(expr_idx)
-            return
+                        return
         }
         if expr.kind == ExprKind.ek_index {
             self.check_expr(expr.idx_expr)
@@ -2085,8 +2077,7 @@ impl TypeChecker {
                     }
                 }
             }
-            expr.inferred_type = self.get_expr_type(expr_idx)
-            return
+                        return
         }
         if expr.kind == ExprKind.ek_slice {
             self.check_expr(expr.slice_expr)
@@ -2096,24 +2087,20 @@ impl TypeChecker {
             if expr.slice_upper >= 0 {
                 self.check_expr(expr.slice_upper)
             }
-            expr.inferred_type = self.get_expr_type(expr_idx)
-            return
+                        return
         }
         if expr.kind == ExprKind.ek_range {
             self.check_expr(expr.range_start)
             self.check_expr(expr.range_end)
-            expr.inferred_type = self.get_expr_type(expr_idx)
-            return
+                        return
         }
         if expr.kind == ExprKind.ek_borrow {
             self.check_expr(expr.borrow_expr)
-            expr.inferred_type = self.get_expr_type(expr_idx)
-            return
+                        return
         }
         if expr.kind == ExprKind.ek_deref {
             self.check_expr(expr.deref_expr)
-            expr.inferred_type = self.get_expr_type(expr_idx)
-            return
+                        return
         }
         if expr.kind == ExprKind.ek_struct_init {
             var i = 0
@@ -2140,8 +2127,7 @@ impl TypeChecker {
                     if !self.is_imported_name(enum_name) {
                         self.err("E0021", "undefined enum: '" + enum_name + "'", expr.line, expr.col)
                     }
-                    expr.inferred_type = self.get_expr_type(expr_idx)
-                    return
+                                        return
                 }
                 let decl = self.stmt_pool.get(enum_idx)
                 let var_name = substring(struct_name, dot_pos + 1, length(struct_name))
@@ -2159,8 +2145,7 @@ impl TypeChecker {
                 }
                 if !found_var {
                     self.err("E0021", "enum '" + enum_name + "' has no variant '" + var_name + "'", expr.line, expr.col)
-                    expr.inferred_type = self.get_expr_type(expr_idx)
-                    return
+                                        return
                 }
                 var fi = 0
                 while fi < expr.struct_fields.length() {
@@ -2184,16 +2169,14 @@ impl TypeChecker {
                     }
                     fi = fi + 1
                 }
-                expr.inferred_type = self.get_expr_type(expr_idx)
-                return
+                                return
             }
             let struct_idx = self.find_struct_decl(struct_name)
             if struct_idx < 0 {
                 if !self.is_imported_name(struct_name) {
                     self.err("E0021", "undefined struct: '" + struct_name + "'", expr.line, expr.col)
                 }
-                expr.inferred_type = self.get_expr_type(expr_idx)
-                return
+                                return
             }
             if self.is_imported_name(struct_name) {
                 self.mark_import_used(struct_name)
@@ -2220,8 +2203,7 @@ impl TypeChecker {
                     }
                     fi = fi + 1
                 }
-            expr.inferred_type = self.get_expr_type(expr_idx)
-            return
+                        return
         }
         if expr.kind == ExprKind.ek_try {
             self.check_expr(expr.try_expr)
@@ -2262,8 +2244,7 @@ impl TypeChecker {
                     }
                 }
             }
-            expr.inferred_type = self.get_expr_type(expr_idx)
-            return
+                        return
         }
         if expr.kind == ExprKind.ek_catch {
             self.check_expr(expr.catch_expr)
@@ -2278,8 +2259,7 @@ impl TypeChecker {
                 }
                 self.check_stmt(expr.catch_fallback)
                 self.exit_scope()
-                expr.inferred_type = self.get_expr_type(expr_idx)
-                return
+                                return
             }
             if length(inner_ty) > 0 && inner_ty[0] == Char(63) {
                 let val_type = substring(inner_ty, 1, length(inner_ty))
@@ -2293,8 +2273,7 @@ impl TypeChecker {
                 if !self.types_compatible(val_type, fallback_yields) {
                     self.err("E0018", "catch fallback type '" + fallback_yields + "' is not compatible with expected type '" + val_type + "'", expr.line, expr.col)
                 }
-                expr.inferred_type = self.get_expr_type(expr_idx)
-                return
+                                return
             }
             var excl_pos = -1
             var i = 0
@@ -2322,10 +2301,7 @@ impl TypeChecker {
                     self.err("E0018", "catch fallback type '" + fallback_yields + "' is not compatible with expected type '" + val_type + "'", expr.line, expr.col)
                 }
             }
-            expr.inferred_type = self.get_expr_type(expr_idx)
             return
         }
-        // Catch-all for expressions with no explicit branch (lit, array, asm, etc.)
-        expr.inferred_type = self.get_expr_type(expr_idx)
     }
 }

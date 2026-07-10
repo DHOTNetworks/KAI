@@ -768,9 +768,19 @@ fn gen_stmt(self, stmt_idx: Int) {
             if stmt.vardecl_value >= 0 {
                 var_type_str = self.get_expr_type(stmt.vardecl_value)
             }
-            if strlen(var_type_str) == 0 {
-                var_type_str = "Int"
+        }
+        var generated_init: *Void = (0 as *Void)
+        if strlen(var_type_str) == 0 && stmt.vardecl_value >= 0 {
+            generated_init = self.gen_expr(stmt.vardecl_value)
+            if generated_init != (0 as *Void) {
+                let init_llvm_ty = LLVMTypeOf(generated_init)
+                if init_llvm_ty == self.str_type {
+                    var_type_str = "Str"
+                }
             }
+        }
+        if strlen(var_type_str) == 0 {
+            var_type_str = "Int"
         }
         var var_type = self.map_type(var_type_str)
         if var_type == self.void_type {
@@ -778,7 +788,10 @@ fn gen_stmt(self, stmt_idx: Int) {
         }
         let alloca_val = LLVMBuildAlloca(self.builder, var_type, var_name)
         if stmt.vardecl_value >= 0 {
-            let init_val = self.gen_expr(stmt.vardecl_value)
+            var init_val = generated_init
+            if init_val == (0 as *Void) {
+                init_val = self.gen_expr(stmt.vardecl_value)
+            }
             if init_val != (0 as *Void) {
                 LLVMBuildStore(self.builder, init_val, alloca_val)
             }
@@ -1527,28 +1540,22 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
         return alloca_val
     }
     if expr.kind == ExprKind.ek_slice {
-        // Check if the base expression is Str (fat-pointer)
-        let base_type = self.get_expr_type(expr.slice_expr)
-        printf("DEBUG slice: base_type='%s' len=%ld str_type=%p\n", base_type, strlen(base_type), self.str_type)
-        if base_type == "Str" {
-            // materialize the %Str struct value into an alloca for field access
-            let base_str = self.gen_expr(expr.slice_expr)
-            if base_str == (0 as *Void) { return (0 as *Void) }
+        let base_val = self.gen_expr(expr.slice_expr)
+        if base_val == (0 as *Void) { return (0 as *Void) }
+        let base_llvm_ty = LLVMTypeOf(base_val)
+        if base_llvm_ty == self.str_type {
+            // Fat-pointer Str slice
             let str_alloca = LLVMBuildAlloca(self.builder, self.str_type, ".parent.str")
-            LLVMBuildStore(self.builder, base_str, str_alloca)
-            // GEP to .ptr field (index 0) and load
+            LLVMBuildStore(self.builder, base_val, str_alloca)
             let ptr_gep = LLVMBuildStructGEP2(self.builder, self.str_type, str_alloca, 0, ".parent.ptr.gep")
             let parent_ptr = LLVMBuildLoad2(self.builder, self.ptr_type, ptr_gep, ".parent.ptr")
-            // GEP to .len field (index 1) and load
             let len_gep = LLVMBuildStructGEP2(self.builder, self.str_type, str_alloca, 1, ".parent.len.gep")
             let parent_len = LLVMBuildLoad2(self.builder, self.int64_type, len_gep, ".parent.len")
-            // Lower bound
             var lower_val = LLVMConstInt(self.int64_type, 0, false)
             if expr.slice_lower >= 0 {
                 lower_val = self.gen_expr(expr.slice_lower)
                 if lower_val == (0 as *Void) { return (0 as *Void) }
             }
-            // Upper bound: default to parent_len, clamp at parent_len
             var upper_val = parent_len
             if expr.slice_upper >= 0 {
                 upper_val = self.gen_expr(expr.slice_upper)
@@ -1556,16 +1563,12 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
                 let cmp = LLVMBuildICmp(self.builder, LLVMIntSGT, upper_val, parent_len, "")
                 upper_val = LLVMBuildSelect(self.builder, cmp, parent_len, upper_val, ".upper.clamped")
             }
-            // Ensure lower <= upper
             let lower_gt_upper = LLVMBuildICmp(self.builder, LLVMIntSGT, lower_val, upper_val, "")
             upper_val = LLVMBuildSelect(self.builder, lower_gt_upper, lower_val, upper_val, ".upper.fixed")
-            // GEP ptr by lower to get new pointer
             let gep_indices = ArrayList<Int>(self.allocator)
             gep_indices.push((lower_val as Int))
             let new_ptr = LLVMBuildGEP2(self.builder, self.int8_type, parent_ptr, gep_indices.data as *Void, 1, ".slice.ptr")
-            // new_len = upper - lower
             let new_len = LLVMBuildSub(self.builder, upper_val, lower_val, ".slice.len")
-            // Build new %Str struct via alloca + store
             let result_alloca = LLVMBuildAlloca(self.builder, self.str_type, ".slice.str")
             let res_ptr_gep = LLVMBuildStructGEP2(self.builder, self.str_type, result_alloca, 0, ".slice.ptr.gep")
             LLVMBuildStore(self.builder, new_ptr, res_ptr_gep)
@@ -1573,9 +1576,7 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
             LLVMBuildStore(self.builder, new_len, res_len_gep)
             return LLVMBuildLoad2(self.builder, self.str_type, result_alloca, ".slice.str")
         }
-        // Raw pointer (*Char, arrays, etc.): old GEP approach
-        let base = self.gen_expr(expr.slice_expr)
-        if base == (0 as *Void) { return (0 as *Void) }
+        // Raw pointer / array slice
         var lower_val: *Void = LLVMConstInt(self.int64_type, 0, false)
         if expr.slice_lower >= 0 {
             lower_val = self.gen_expr(expr.slice_lower)
@@ -1583,7 +1584,7 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
         }
         let indices = ArrayList<Int>(self.allocator)
         indices.push((lower_val as Int))
-        return LLVMBuildGEP2(self.builder, self.int8_type, base, indices.data as *Void, 1, ".slice")
+        return LLVMBuildGEP2(self.builder, self.int8_type, base_val, indices.data as *Void, 1, ".slice")
     }
     if expr.kind == ExprKind.ek_tuple {
         if strlen(expr.inferred_type) > 0 {
@@ -1886,20 +1887,7 @@ fn str_to_float(self, s: Str) -> Float {
     return result
 }
 
-fn dump_module(self) {
-    let ir = LLVMPrintModuleToString(self.module)
-    if ir != (0 as *Char) {
-        let f = fopen("/tmp/llvm_ir.ll", "w")
-        if f != (0 as *Void) {
-            fwrite(ir as *Void, 1, strlen(ir as Str), f)
-            fclose(f)
-        }
-        LLVMDisposeMessage(ir)
-    }
-}
-
 fn emit_object(self, obj_path: Str) -> Bool {
-    self.dump_module()
     kai_LLVMInitializeAllTargetInfos()
     kai_LLVMInitializeAllTargets()
     kai_LLVMInitializeAllTargetMCs()
