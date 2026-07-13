@@ -2,6 +2,7 @@
 #define KAI_LLVM_CORE_H
 
 #include "../core/platform.h"
+#include <stdio.h>
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Target.h>
@@ -83,6 +84,9 @@ static inline void* kai_func_type_2(void* ret, void* p0, void* p1, bool is_varar
     return (void*)LLVMFunctionType((LLVMTypeRef)ret, params, 2, is_vararg);
 }
 
+static inline void* kai_build_call_0(void* b, void* fn_ty, void* fn_val, const char* name) {
+    return (void*)LLVMBuildCall2((LLVMBuilderRef)b, (LLVMTypeRef)fn_ty, (LLVMValueRef)fn_val, NULL, 0, name);
+}
 static inline void* kai_build_call_1(void* b, void* fn_ty, void* fn_val, void* arg0, const char* name) {
     LLVMValueRef args[1] = {(LLVMValueRef)arg0};
     return (void*)LLVMBuildCall2((LLVMBuilderRef)b, (LLVMTypeRef)fn_ty, (LLVMValueRef)fn_val, args, 1, name);
@@ -115,5 +119,46 @@ static inline void* kai_LLVMBuildExtractValue(void* b, void* agg_val, int64_t in
 static inline void* kai_LLVMBuildInsertValue(void* b, void* agg_val, void* elt_val, int64_t index, const char* name) {
     return (void*)LLVMBuildInsertValue((LLVMBuilderRef)b, (LLVMValueRef)agg_val, (LLVMValueRef)elt_val, (unsigned)index, name);
 }
+static inline int64_t kai_LLVMGetIntTypeWidth(void* IntegerTy) {
+    return (int64_t)LLVMGetIntTypeWidth((LLVMTypeRef)IntegerTy);
+}
+
+static inline void* kai_LLVMBuildStore(void* b, void* val, void* val_ptr) {
+    if (!val || !val_ptr) return NULL;
+    if (LLVMGetTypeKind(LLVMTypeOf((LLVMValueRef)val)) == LLVMVoidTypeKind) {
+        return NULL; // Skip storing void values to avoid LLVM assertions/crashes
+    }
+    return (void*)(LLVMBuildStore)((LLVMBuilderRef)b, (LLVMValueRef)val, (LLVMValueRef)val_ptr);
+}
+#define LLVMBuildStore(b, val, val_ptr) kai_LLVMBuildStore(b, val, val_ptr)
+
+static inline void* kai_LLVMBuildAlloca(void* b, void* ty, const char* name) {
+    LLVMBasicBlockRef current_block = LLVMGetInsertBlock((LLVMBuilderRef)b);
+    if (current_block) {
+        LLVMValueRef current_func = LLVMGetBasicBlockParent(current_block);
+        if (current_func) {
+            LLVMBasicBlockRef entry_block = LLVMGetEntryBasicBlock(current_func);
+            if (entry_block) {
+                LLVMValueRef first_instr = LLVMGetFirstInstruction(entry_block);
+                if (first_instr) {
+                    LLVMPositionBuilderBefore((LLVMBuilderRef)b, first_instr);
+                } else {
+                    LLVMPositionBuilderAtEnd((LLVMBuilderRef)b, entry_block);
+                }
+            }
+        }
+    }
+    LLVMValueRef alloca_val = (LLVMBuildAlloca)((LLVMBuilderRef)b, (LLVMTypeRef)ty, name);
+    if (current_block) {
+        LLVMPositionBuilderAtEnd((LLVMBuilderRef)b, current_block);
+    }
+    return (void*)alloca_val;
+}
+#define LLVMBuildAlloca(b, ty, name) kai_LLVMBuildAlloca(b, ty, name)
+
+static inline int64_t kai_fflush(void* stream) {
+    return (int64_t)fflush((FILE*)stream);
+}
 
 #endif // KAI_LLVM_CORE_H
+

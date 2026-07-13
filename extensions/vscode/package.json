@@ -1,0 +1,77 @@
+{
+  "name": "kai-language",
+  "displayName": "Kai Language",
+  "description": "Language support for the Kai programming language",
+  "version": "0.1.0",
+  "publisher": "kai-lang",
+  "license": "GPL-3.0",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DHOTNetworks/KAI.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Snippets"
+  ],
+  "keywords": [
+    "kai",
+    "language",
+    "syntax",
+    "highlighting"
+  ],
+  "activationEvents": [
+    "onLanguage:kai",
+    "onStartupFinished"
+  ],
+  "main": "./out/client/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "kai",
+        "aliases": [
+          "Kai",
+          "kai"
+        ],
+        "extensions": [
+          ".kai"
+        ],
+        "configuration": "./language-configuration/language-configuration.json",
+        "icon": {
+          "light": "./icons/kai.png",
+          "dark": "./icons/kai.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "kai",
+        "scopeName": "source.kai",
+        "path": "./syntaxes/kai.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "kai",
+        "path": "./snippets/kai.json"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -b client/tsconfig.json server/tsconfig.json",
+    "watch": "tsc -b -w client/tsconfig.json server/tsconfig.json",
+    "package": "vsce package --no-yarn"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

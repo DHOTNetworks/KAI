@@ -1,1 +1,3 @@
-*.kai linguist-language=Rust linguist-detectable=false
+*.kai linguist-language=Kai
+*.kai linguist-vendored=false
+*.kai linguist-detectable=true

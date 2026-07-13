@@ -1,0 +1,140 @@
+From 3bb6442ae077fcf3e46bf5539e057391c72e0029 Mon Sep 17 00:00:00 2001
+From: DHOTNetworks <dev@zephyria.site>
+Date: Mon, 13 Jul 2026 00:21:00 +0530
+Subject: [PATCH] Add Kai language support
+
+Add the Kai programming language definition and a sample file.
+
+- language_id: 1258698793
+- Scope: source.kai
+- Color: #A074C4
+- Extension: .kai
+
+Note: Grammar still needs to be added via:
+  script/add-grammar <grammar-url>
+
+This requires Docker. The TextMate grammar is at:
+  extensions/vscode/syntaxes/kai.tmLanguage.json
+---
+ lib/linguist/languages.yml | 10 +++++
+ samples/Kai/renderer.kai   | 87 ++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 97 insertions(+)
+ create mode 100644 samples/Kai/renderer.kai
+
+diff --git a/lib/linguist/languages.yml b/lib/linguist/languages.yml
+index 92b013df..90b9be30 100644
+--- a/lib/linguist/languages.yml
++++ b/lib/linguist/languages.yml
+@@ -3973,6 +3973,16 @@ KRL:
+   tm_scope: none
+   ace_mode: text
+   language_id: 186
++Kai:
++  type: programming
++  color: "#A074C4"
++  aliases:
++  - kai
++  extensions:
++  - ".kai"
++  tm_scope: source.kai
++  ace_mode: text
++  language_id: 1258698793
+ Kaitai Struct:
+   type: programming
+   aliases:
+diff --git a/samples/Kai/renderer.kai b/samples/Kai/renderer.kai
+new file mode 100644
+index 00000000..47f3d662
+--- /dev/null
++++ b/samples/Kai/renderer.kai
+@@ -0,0 +1,87 @@
++import ArrayList from std.core.array
++import Allocator from std.core.allocator
++import write_string from std.io.file
++import length from std.core.string
++
++struct Renderer {
++    allocator: *Allocator
++    lines: ArrayList<Str>
++    indent_level: Int
++}
++
++impl Renderer {
++    fn init(self, allocator: *Allocator) {
++        self.allocator = allocator
++        self.lines = ArrayList<Str>(allocator)
++        self.indent_level = 0
++    }
++
++    fn emit_line(self, text: Str) {
++        var prefix = ""
++        var i = 0
++        while i < self.indent_level {
++            prefix = prefix + "    "
++            i = i + 1
++        }
++        self.lines.push(prefix + text)
++    }
++
++    fn indent(self) {
++        self.indent_level = self.indent_level + 1
++    }
++
++    fn dedent(self) {
++        if self.indent_level > 0 {
++            self.indent_level = self.indent_level - 1
++        }
++    }
++
++    fn get_result(self) -> Str {
++        var result = ""
++        var i = 0
++        while i < self.lines.length {
++            if i > 0 { result = result + "\n" }
++            result = result + self.lines.get(i)
++            i = i + 1
++        }
++        return result
++    }
++}
++
++enum Option<T> {
++    case some(value: T)
++    case none
++}
++
++impl Option {
++    fn is_some(self) -> Bool {
++        match self {
++            case .some => return true
++            case else => return false
++        }
++    }
++
++    fn unwrap(self) -> T {
++        match self {
++            case .some(val) => return val
++            case else => unsafe {
++                extern fn exit(code: Int)
++                exit(1)
++            }
++        }
++    }
++}
++
++fn main() -> Int {
++    var alloc = Allocator_new()
++    var renderer = Renderer(allocator: &alloc, lines: ArrayList<Str>(&alloc), indent_level: 0)
++    renderer.init(&alloc)
++    renderer.emit_line("fn hello() -> Int {")
++    renderer.indent()
++    renderer.emit_line("return 42")
++    renderer.dedent()
++    renderer.emit_line("}")
++    let output = renderer.get_result()
++    printf("%s\n", output)
++    return 0
++}
+-- 
+2.50.1 (Apple Git-155)
+

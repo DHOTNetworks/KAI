@@ -37,7 +37,7 @@ fn tv_get_str(val: TokenValue) -> Str {
     match val {
         case .tv_str(s) => result = s
         case else => unsafe {
-            printf("error[E0101]: internal error: unexpected token value type\n")
+            printf("error[E0101]: internal error: unexpected token value type tag = %ld\n", val.tag)
             exit(1)
         }
     }

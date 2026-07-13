@@ -155,6 +155,9 @@ extern fn LLVMConstStringInContext(ctx: *Void, s: *Char, len: Int, dont_null_ter
 extern fn LLVMAddFunction(m: *Void, name: Str, ty: *Void) -> *Void
 extern fn LLVMGetNamedFunction(m: *Void, name: Str) -> *Void
 extern fn LLVMGetParam(f: *Void, index: Int) -> *Void
+extern fn LLVMPrintValueToString(val: *Void) -> *Char
+extern fn LLVMGetBasicBlockParent(bb: *Void) -> *Void
+extern fn LLVMGetValueName(val: *Void) -> *Char
 
 // ============================================================================
 // LLVM FFI Instruction Builder APIs
@@ -196,6 +199,9 @@ extern fn LLVMBuildSExt(b: *Void, val: *Void, dest_type: *Void, name: Str) -> *V
 extern fn LLVMBuildTrunc(b: *Void, val: *Void, dest_type: *Void, name: Str) -> *Void
 extern fn LLVMBuildFPToSI(b: *Void, val: *Void, dest_type: *Void, name: Str) -> *Void
 extern fn LLVMBuildSIToFP(b: *Void, val: *Void, dest_type: *Void, name: Str) -> *Void
+extern fn LLVMGetIntTypeWidth(IntegerTy: *Void) -> Int
+extern fn kai_LLVMGetIntTypeWidth(IntegerTy: *Void) -> Int
+extern fn LLVMSizeOf(ty: *Void) -> *Void
 
 // Calls & Structs
 extern fn LLVMBuildCall2(b: *Void, fn_ty: *Void, fn_val: *Void, args: *Void, num_args: Int, name: Str) -> *Void
@@ -259,8 +265,11 @@ extern fn LLVMConstNamedStruct(struct_ty: *Void, constant_vals: *Void, count: In
 extern fn LLVMDeleteFunction(fn_val: *Void)
 extern fn LLVMGetFirstBasicBlock(fn_val: *Void) -> *Void
 extern fn LLVMGetReturnType(fn_ty: *Void) -> *Void
+extern fn LLVMGetFunctionType(fn_val: *Void) -> *Void
 extern fn LLVMTypeOf(val: *Void) -> *Void
 extern fn LLVMGetElementType(ty: *Void) -> *Void
+// Context-based named type lookup — returns the named struct type if it exists in the context
+extern fn LLVMGetTypeByName2(ctx: *Void, name: Str) -> *Void
 
 // Type query functions
 extern fn LLVMGetTypeKind(ty: *Void) -> Int
@@ -280,7 +289,18 @@ extern fn kai_LLVMGetInlineAsm(ft: *Void, asm_str: *Char, asm_len: Int, constrai
 extern fn kai_func_type_0(ret: *Void) -> *Void
 extern fn kai_func_type_1(ret: *Void, p0: *Void, is_vararg: Bool) -> *Void
 extern fn kai_func_type_2(ret: *Void, p0: *Void, p1: *Void, is_vararg: Bool) -> *Void
+extern fn kai_build_call_0(b: *Void, fn_ty: *Void, fn_val: *Void, name: Str) -> *Void
 extern fn kai_build_call_1(b: *Void, fn_ty: *Void, fn_val: *Void, arg0: *Void, name: Str) -> *Void
 extern fn kai_build_call_2(b: *Void, fn_ty: *Void, fn_val: *Void, arg0: *Void, arg1: *Void, name: Str) -> *Void
 extern fn kai_build_call_3(b: *Void, fn_ty: *Void, fn_val: *Void, arg0: *Void, arg1: *Void, arg2: *Void, name: Str) -> *Void
 extern fn kai_build_call_4(b: *Void, fn_ty: *Void, fn_val: *Void, arg0: *Void, arg1: *Void, arg2: *Void, arg3: *Void, name: Str) -> *Void
+
+extern fn kai_fflush(stream: *Void) -> Int
+
+// Missing LLVM C API FFI declarations
+extern fn LLVMGetUndef(ty: *Void) -> *Void
+extern fn LLVMPrintTypeToString(ty: *Void) -> *Char
+extern fn LLVMSetTarget(m: *Void, triple: Str)
+extern fn LLVMDumpModule(m: *Void)
+extern fn LLVMBuildExtractValue(b: *Void, agg_val: *Void, index: Int, name: Str) -> *Void
+extern fn LLVMBuildInsertValue(b: *Void, agg_val: *Void, elt_val: *Void, index: Int, name: Str) -> *Void
