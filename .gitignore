@@ -30,3 +30,5 @@ kai-linux
 # Temporary
 CCkai*
 kai*
+*.o
+*.txt

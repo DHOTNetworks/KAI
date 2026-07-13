@@ -188,7 +188,6 @@ impl ImportResolver {
                 }
             }
         }
-
         if has_source {
             self.loaded_modules.push(module_key)
             var lexer = Lexer(self.allocator, source, resolved_path, self.pool)

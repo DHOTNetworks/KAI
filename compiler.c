@@ -18889,7 +18889,14 @@ void LLVMCodegen_gen_stmt(LLVMCodegen* self, int64_t stmt_idx) {
     const char* var_name = target_expr.ident_name;
     void* alloca = LLVMCodegen_find_alloca(self, var_name);
     if (alloca != (void*)(unsigned long long)(0LL)) {
-    LLVMBuildStore(self->builder, val, alloca);
+    void* var_type = LLVMCodegen_find_alloca_type(self, var_name);
+    void* store_val = val;
+    if (((var_type != (void*)(unsigned long long)(0LL)) && (LLVMGetTypeKind(var_type) == LLVMStructTypeKind)) && (var_type != self->str_type)) {
+    if (LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMPointerTypeKind) {
+    store_val = LLVMBuildLoad2(self->builder, var_type, val, "");
+}
+}
+    LLVMBuildStore(self->builder, store_val, alloca);
 }
 } else if (target_expr.kind == ExprKind_ek_field_access) {
     void* base_val = LLVMCodegen_gen_expr(self, target_expr.field_expr);
@@ -18926,7 +18933,14 @@ void LLVMCodegen_gen_stmt(LLVMCodegen* self, int64_t stmt_idx) {
     base_ptr = tmp;
 }
     void* gep = LLVMBuildStructGEP2(self->builder, struct_ty, base_ptr, field_idx, target_expr.field_name);
-    LLVMBuildStore(self->builder, val, gep);
+    void* field_llvm_ty = LLVMStructGetTypeAtIndex(struct_ty, field_idx);
+    void* store_val = val;
+    if ((LLVMGetTypeKind(field_llvm_ty) == LLVMStructTypeKind) && (field_llvm_ty != self->str_type)) {
+    if (LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMPointerTypeKind) {
+    store_val = LLVMBuildLoad2(self->builder, field_llvm_ty, val, "");
+}
+}
+    LLVMBuildStore(self->builder, store_val, gep);
 }
 }
 }
@@ -20531,11 +20545,22 @@ void* LLVMCodegen_gen_expr(LLVMCodegen* self, int64_t expr_idx) {
 }
     if (expr.kind == ExprKind_ek_method_call) {
     void* receiver_val = LLVMCodegen_gen_expr(self, expr.meth_expr);
-    if (receiver_val == (void*)(unsigned long long)(0LL)) {
+    bool is_static = false;
+    const char* clean_type = "";
+    ExprNode receiver_node = ArrayList_ExprNode_get(self->expr_pool, expr.meth_expr);
+    if (receiver_node.kind == ExprKind_ek_identifier) {
+    const char* name = receiver_node.ident_name;
+    if ((LLVMCodegen_find_alloca(self, name) == (void*)(unsigned long long)(0LL)) && (LLVMCodegen_find_alloca_by_idx(self, (-1LL), name) == (void*)(unsigned long long)(0LL))) {
+    is_static = true;
+    clean_type = name;
+}
+}
+    if ((!is_static) && (receiver_val == (void*)(unsigned long long)(0LL))) {
     return (void*)(unsigned long long)(0LL);
 }
+    if (!is_static) {
     const char* receiver_type = LLVMCodegen_get_expr_type(self, expr.meth_expr);
-    const char* clean_type = receiver_type;
+    clean_type = receiver_type;
     if (strlen(clean_type) == 0LL) {
     void* rec_ty = LLVMTypeOf(receiver_val);
     const char* ty_str = (const char*)(LLVMPrintTypeToString(rec_ty));
@@ -20551,6 +20576,7 @@ void* LLVMCodegen_gen_expr(LLVMCodegen* self, int64_t expr_idx) {
 }
     if (end_idx > start_idx) {
     clean_type = __kai_str_sub(ty_str, start_idx, end_idx);
+}
 }
 }
     while ((strlen(clean_type) > 0LL) && (((clean_type)[0LL] == ((char)(42LL))) || ((clean_type)[0LL] == ((char)(38LL))))) {
@@ -20571,8 +20597,16 @@ void* LLVMCodegen_gen_expr(LLVMCodegen* self, int64_t expr_idx) {
 }
     bool is_init = (strcmp(expr.meth_name, "init") == 0);
     ArrayList_Int arg_vals = ArrayList_Int_init(self->allocator);
-    if (!is_init) {
-    ArrayList_Int_push(&(arg_vals), (int64_t)(receiver_val));
+    if ((!is_init) && (!is_static)) {
+    void* receiver_ptr = receiver_val;
+    void* rec_llvm_ty = LLVMTypeOf(receiver_val);
+    int64_t rec_kind = LLVMGetTypeKind(rec_llvm_ty);
+    if (rec_kind == LLVMStructTypeKind) {
+    void* tmp = LLVMBuildAlloca(self->builder, rec_llvm_ty, ".tmp.receiver");
+    LLVMBuildStore(self->builder, receiver_val, tmp);
+    receiver_ptr = tmp;
+}
+    ArrayList_Int_push(&(arg_vals), (int64_t)(receiver_ptr));
 }
     const char* param_types_str = LLVMCodegen_get_func_param_types(self, func_name);
     int64_t ai = 0LL;

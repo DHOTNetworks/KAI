@@ -1562,7 +1562,14 @@ fn gen_stmt(self, stmt_idx: Int) {
                 let var_name = target_expr.ident_name
                 let alloca = self.find_alloca(var_name)
                 if alloca != (0 as *Void) {
-                    LLVMBuildStore(self.builder, val, alloca)
+                    let var_type = self.find_alloca_type(var_name)
+                    var store_val = val
+                    if var_type != (0 as *Void) && LLVMGetTypeKind(var_type) == LLVMStructTypeKind && var_type != self.str_type {
+                        if LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMPointerTypeKind {
+                            store_val = LLVMBuildLoad2(self.builder, var_type, val, "")
+                        }
+                    }
+                    LLVMBuildStore(self.builder, store_val, alloca)
                 }
             } else if target_expr.kind == ExprKind.ek_field_access {
                 // Struct field assignment: base.field = val
@@ -1602,7 +1609,14 @@ fn gen_stmt(self, stmt_idx: Int) {
                                 base_ptr = tmp
                             }
                             let gep = LLVMBuildStructGEP2(self.builder, struct_ty, base_ptr, field_idx, target_expr.field_name)
-                            LLVMBuildStore(self.builder, val, gep)
+                            let field_llvm_ty = LLVMStructGetTypeAtIndex(struct_ty, field_idx)
+                            var store_val = val
+                            if LLVMGetTypeKind(field_llvm_ty) == LLVMStructTypeKind && field_llvm_ty != self.str_type {
+                                if LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMPointerTypeKind {
+                                    store_val = LLVMBuildLoad2(self.builder, field_llvm_ty, val, "")
+                                }
+                            }
+                            LLVMBuildStore(self.builder, store_val, gep)
                         }
                     }
                 }
@@ -3222,25 +3236,38 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
         return LLVMBuildLoad2(self.builder, field_llvm_type, gep, expr.field_name)
     }
     if expr.kind == ExprKind.ek_method_call {
-        let receiver_val = self.gen_expr(expr.meth_expr)
-        if receiver_val == (0 as *Void) { return (0 as *Void) }
-        let receiver_type = self.get_expr_type(expr.meth_expr)
-        var clean_type = receiver_type
-        if strlen(clean_type) == 0 {
-            let rec_ty = LLVMTypeOf(receiver_val)
-            let ty_str = LLVMPrintTypeToString(rec_ty) as Str
-            var start_idx = 0
-            if strlen(ty_str) > 8 && ty_str[0..8] == "%struct." {
-                start_idx = 8
-            } else if strlen(ty_str) > 1 && ty_str[0] == Char(37) {
-                start_idx = 1
+        var receiver_val = self.gen_expr(expr.meth_expr)
+        var is_static = false
+        var clean_type = ""
+        let receiver_node = self.expr_pool.get(expr.meth_expr)
+        if receiver_node.kind == ExprKind.ek_identifier {
+            let name = receiver_node.ident_name
+            if self.find_alloca(name) == (0 as *Void) && self.find_alloca_by_idx(-1, name) == (0 as *Void) {
+                is_static = true
+                clean_type = name
             }
-            var end_idx = strlen(ty_str)
-            while end_idx > start_idx && (ty_str[end_idx - 1] == Char(42) || ty_str[end_idx - 1] == Char(38) || ty_str[end_idx - 1] == Char(32)) {
-                end_idx = end_idx - 1
-            }
-            if end_idx > start_idx {
-                clean_type = ty_str[start_idx..end_idx]
+        }
+        if !is_static && receiver_val == (0 as *Void) { return (0 as *Void) }
+
+        if !is_static {
+            let receiver_type = self.get_expr_type(expr.meth_expr)
+            clean_type = receiver_type
+            if strlen(clean_type) == 0 {
+                let rec_ty = LLVMTypeOf(receiver_val)
+                let ty_str = LLVMPrintTypeToString(rec_ty) as Str
+                var start_idx = 0
+                if strlen(ty_str) > 8 && ty_str[0..8] == "%struct." {
+                    start_idx = 8
+                } else if strlen(ty_str) > 1 && ty_str[0] == Char(37) {
+                    start_idx = 1
+                }
+                var end_idx = strlen(ty_str)
+                while end_idx > start_idx && (ty_str[end_idx - 1] == Char(42) || ty_str[end_idx - 1] == Char(38) || ty_str[end_idx - 1] == Char(32)) {
+                    end_idx = end_idx - 1
+                }
+                if end_idx > start_idx {
+                    clean_type = ty_str[start_idx..end_idx]
+                }
             }
         }
         while strlen(clean_type) > 0 && (clean_type[0] == Char(42) || clean_type[0] == Char(38)) {
@@ -3256,11 +3283,19 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
         let fn_ty = self.get_cached_func_type(func_name)
         if fn_ty == (0 as *Void) { return (0 as *Void) }
         let is_init = (expr.meth_name == "init")
-        // Build args list: receiver + all method args (except for init which doesn't pass receiver)
+        // Build args list: receiver + all method args (except for init/static which doesn't pass receiver)
         var arg_vals = ArrayList<Int>(self.allocator)
-        if !is_init {
+        if !is_init && !is_static {
             // Pass receiver as first arg (pointer to self)
-            arg_vals.push((receiver_val as Int))
+            var receiver_ptr = receiver_val
+            let rec_llvm_ty = LLVMTypeOf(receiver_val)
+            let rec_kind = LLVMGetTypeKind(rec_llvm_ty)
+            if rec_kind == LLVMStructTypeKind {
+                let tmp = LLVMBuildAlloca(self.builder, rec_llvm_ty, ".tmp.receiver")
+                LLVMBuildStore(self.builder, receiver_val, tmp)
+                receiver_ptr = tmp
+            }
+            arg_vals.push((receiver_ptr as Int))
         }
         let param_types_str = self.get_func_param_types(func_name)
         // Methods are never extern in Kai — always use native %Str ABI
