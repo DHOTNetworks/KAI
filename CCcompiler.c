@@ -562,11 +562,6 @@ struct Optional_Char {
     bool has_value;
     char value;
 };
-typedef struct Optional_Int Optional_Int;
-struct Optional_Int {
-    bool has_value;
-    int64_t value;
-};
 struct CAlloc {
     int64_t dummy;
     int64_t _pad;
@@ -1107,8 +1102,6 @@ struct LLVMCodegen {
     void* float_type;
     void* double_type;
     void* void_type;
-    void* tmp_target;
-    char* tmp_err;
     int64_t str_counter;
     ArrayList_Str func_type_names;
     ArrayList_Str func_type_returns;
@@ -1141,6 +1134,7 @@ struct LLVMCodegen {
     void* str_type;
     ArrayList_Str extern_func_names;
     ArrayList_Str kai_func_names;
+    ArrayList_Int global_decls;
 };
 struct ErrorInfo {
     const char* code;
@@ -1788,6 +1782,7 @@ LLVMCodegen LLVMCodegen_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_p
 void LLVMCodegen_build_func_types(LLVMCodegen* self);
 void LLVMCodegen_build_type_caches(LLVMCodegen* self);
 const char* LLVMCodegen_get_generic_mangled_name(LLVMCodegen* self, const char* name);
+const char* LLVMCodegen_resolve_mangled_func_name(LLVMCodegen* self, const char* name);
 const char* LLVMCodegen_get_func_return_type(LLVMCodegen* self, const char* name);
 int64_t LLVMCodegen_get_func_param_count(LLVMCodegen* self, const char* name);
 const char* LLVMCodegen_get_func_param_types(LLVMCodegen* self, const char* name);
@@ -1840,6 +1835,9 @@ const char* LLVMCodegen_substitute_type_params(LLVMCodegen* self, const char* ty
 bool LLVMCodegen_is_monomorphized_name(LLVMCodegen* self, const char* name);
 void LLVMCodegen_monomorphize_methods_for_struct(LLVMCodegen* self, const char* base_struct_name, const char* concrete_name, ArrayList_Str* param_names, ArrayList_Str* type_args);
 void LLVMCodegen_emit_func_body_mono(LLVMCodegen* self, int64_t stmt_idx, void* fn_val, const char* struct_name, ArrayList_Str* param_names, ArrayList_Str* type_args);
+void* LLVMCodegen_gen_expr_address(LLVMCodegen* self, int64_t expr_idx);
+bool LLVMCodegen_decl_name_matches(LLVMCodegen* self, const char* decl_name, const char* ident_name);
+bool llvm_str_eq(const char* a, const char* b);
 int64_t llvm_type_map_find(ArrayList_LLVMStrMapEntry* arr, const char* key);
 const char* llvm_type_map_get(ArrayList_LLVMStrMapEntry* arr, const char* key);
 void llvm_type_map_put(ArrayList_LLVMStrMapEntry* arr, const char* key, const char* value);
@@ -1875,8 +1873,8 @@ int64_t diag_column(const char* bytes, int64_t offset);
 const char* diag_line_text(const char* bytes, int64_t offset);
 int64_t diag_range_len(const char* bytes, int64_t start, int64_t end);
 const char* diag_range_text(const char* bytes, int64_t start, int64_t end);
-Optional_Int diag_write_span(char* buffer, int64_t offset, const char* bytes);
-Optional_Int diag_write_usize(char* buffer, int64_t offset, int64_t value);
+int64_t diag_write_span(char* buffer, int64_t offset, const char* bytes);
+int64_t diag_write_usize(char* buffer, int64_t offset, int64_t value);
 const char* diag_format_location(char* buffer, const char* path, int64_t line, int64_t column);
 const char* diag_format_offset_location(char* buffer, const char* path, const char* bytes, int64_t offset);
 int64_t run_patch(int64_t argc, char** argv);
@@ -2164,12 +2162,12 @@ int main(int argc, char** argv)
     if (use_llvm)
     {
         LLVMCodegen llvm_gen = LLVMCodegen_init((&allocator), parser.stmt_pool, parser.expr_pool, parser.pattern_pool, (&resolver), (&pool));
-        const char* obj_file = concatAlloc(base, ".o");
+        const char* ll_file = concatAlloc(base, ".ll");
         if (use_builder)
         {
-            obj_file = concatAlloc("CC", obj_file);
+            ll_file = concatAlloc("CC", ll_file);
         }
-        bool emit_ok = LLVMCodegen_generate(&(llvm_gen), program_idx, obj_file);
+        bool emit_ok = LLVMCodegen_generate(&(llvm_gen), program_idx, ll_file);
         if (!emit_ok)
         {
             return 5LL;
@@ -2178,7 +2176,7 @@ int main(int argc, char** argv)
         {
             return 0LL;
         }
-        const char* cmd = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("clang ", obj_file), " "), exe_dir), "/runtime_helpers.c "), exe_include_flag), " -I/opt/homebrew/opt/llvm@21/include "), exe_lib_flag), " -o "), bin_name), " -lLLVM");
+        const char* cmd = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("clang ", ll_file), " "), exe_dir), "/runtime_helpers.c "), exe_include_flag), " -I/opt/homebrew/opt/llvm@21/include "), exe_lib_flag), " -o "), bin_name), " -lLLVM");
         {
             return system(((char*)(cmd)));
         }
@@ -19189,8 +19187,6 @@ LLVMCodegen LLVMCodegen_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_p
     self.float_type = LLVMFloatTypeInContext(self.ctx);
     self.double_type = LLVMDoubleTypeInContext(self.ctx);
     self.void_type = LLVMVoidTypeInContext(self.ctx);
-    self.tmp_target = ((void*)(((unsigned long long)(0LL))));
-    self.tmp_err = ((char*)(((unsigned long long)(0LL))));
     self.str_counter = 0LL;
     self.func_type_names = ArrayList_Str_init(allocator);
     self.func_type_returns = ArrayList_Str_init(allocator);
@@ -19222,6 +19218,7 @@ LLVMCodegen LLVMCodegen_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_p
     self.method_indices = ArrayList_Int_init(allocator);
     self.extern_func_names = ArrayList_Str_init(allocator);
     self.kai_func_names = ArrayList_Str_init(allocator);
+    self.global_decls = ArrayList_Int_init(allocator);
     self.str_type = LLVMStructCreateNamed(self.ctx, "Str");
     ArrayList_Int str_fields = ArrayList_Int_init(allocator);
     ArrayList_Int_push(&(str_fields), ((int64_t)(((unsigned long long)(self.ptr_type)))));
@@ -19338,7 +19335,7 @@ LLVMCodegen LLVMCodegen_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_p
                         const char* mangled_name = concatAlloc(concatAlloc(stmt.impl_struct_name, "_"), method_stmt.func_name);
                         ArrayList_Str_push(&(self->func_type_names), mangled_name);
                         const char* ret = method_stmt.func_return_type;
-                        bool is_init = (strcmp(method_stmt.func_name, "init") == 0LL);
+                        bool is_init = ((((strcmp(method_stmt.func_name, "init") == 0LL) || (strcmp(method_stmt.func_return_type, stmt.impl_struct_name) == 0LL)) || (strcmp(method_stmt.func_return_type, concatAlloc("*", stmt.impl_struct_name)) == 0LL)) || (strcmp(method_stmt.func_return_type, concatAlloc("&", stmt.impl_struct_name)) == 0LL));
                         if (is_init)
                         {
                             ret = stmt.impl_struct_name;
@@ -19566,26 +19563,85 @@ const char* LLVMCodegen_get_generic_mangled_name(LLVMCodegen* self, const char* 
     }
     return name;
 }
-const char* LLVMCodegen_get_func_return_type(LLVMCodegen* self, const char* name)
+const char* LLVMCodegen_resolve_mangled_func_name(LLVMCodegen* self, const char* name)
 {
     int64_t i = 0LL;
     while (i < ArrayList_Str_length(&(self->func_type_names)))
     {
-        if (strcmp(ArrayList_Str_get(&(self->func_type_names), i), name) == 0LL)
+        if (llvm_str_eq(ArrayList_Str_get(&(self->func_type_names), i), name))
         {
-            return ArrayList_Str_get(&(self->func_type_returns), i);
+            return name;
         }
         i = (i + 1LL);
     }
-    const char* resolved = LLVMCodegen_get_generic_mangled_name(self, name);
-    if (strcmp(resolved, name) != 0LL)
+    const char* prefix = "";
+    bool has_func_name = false;
+    {
+        if (((void*)(self->cur_func_name)) != ((void*)(((unsigned long long)(0LL)))))
+        {
+            if (strlen(self->cur_func_name) > 0LL)
+            {
+                has_func_name = true;
+            }
+        }
+    }
+    if (has_func_name)
+    {
+        int64_t underscore_pos = LLVMCodegen_str_find(self, self->cur_func_name, ((char)(95LL)));
+        if (underscore_pos > 0LL)
+        {
+            prefix = __kai_str_sub(self->cur_func_name, 0LL, (underscore_pos + 1LL));
+        }
+    }
+    if (strlen(prefix) > 0LL)
     {
         i = 0LL;
         while (i < ArrayList_Str_length(&(self->func_type_names)))
         {
-            if (strcmp(ArrayList_Str_get(&(self->func_type_names), i), resolved) == 0LL)
+            const char* f_name = ArrayList_Str_get(&(self->func_type_names), i);
+            if (LLVMCodegen_decl_name_matches(self, f_name, name))
             {
-                return ArrayList_Str_get(&(self->func_type_returns), i);
+                if ((strlen(f_name) >= strlen(prefix)) && (strcmp(__kai_str_sub(f_name, 0LL, strlen(prefix)), prefix) == 0LL))
+                {
+                    return f_name;
+                }
+            }
+            i = (i + 1LL);
+        }
+    }
+    i = 0LL;
+    while (i < ArrayList_Str_length(&(self->func_type_names)))
+    {
+        const char* f_name = ArrayList_Str_get(&(self->func_type_names), i);
+        if (LLVMCodegen_decl_name_matches(self, f_name, name))
+        {
+            return f_name;
+        }
+        i = (i + 1LL);
+    }
+    return name;
+}
+const char* LLVMCodegen_get_func_return_type(LLVMCodegen* self, const char* name)
+{
+    const char* rname = LLVMCodegen_resolve_mangled_func_name(self, name);
+    int64_t i = 0LL;
+    while (i < ArrayList_Str_length(&(self->func_type_names)))
+    {
+        if (llvm_str_eq(ArrayList_Str_get(&(self->func_type_names), i), rname))
+        {
+            return concatAlloc(ArrayList_Str_get(&(self->func_type_returns), i), "");
+        }
+        i = (i + 1LL);
+    }
+    const char* resolved = LLVMCodegen_get_generic_mangled_name(self, rname);
+    if (strcmp(resolved, rname) != 0LL)
+    {
+        i = 0LL;
+        while (i < ArrayList_Str_length(&(self->func_type_names)))
+        {
+            if (llvm_str_eq(ArrayList_Str_get(&(self->func_type_names), i), resolved))
+            {
+                return concatAlloc(ArrayList_Str_get(&(self->func_type_returns), i), "");
             }
             i = (i + 1LL);
         }
@@ -19594,22 +19650,23 @@ const char* LLVMCodegen_get_func_return_type(LLVMCodegen* self, const char* name
 }
 int64_t LLVMCodegen_get_func_param_count(LLVMCodegen* self, const char* name)
 {
+    const char* rname = LLVMCodegen_resolve_mangled_func_name(self, name);
     int64_t i = 0LL;
     while (i < ArrayList_Str_length(&(self->func_type_names)))
     {
-        if (strcmp(ArrayList_Str_get(&(self->func_type_names), i), name) == 0LL)
+        if (llvm_str_eq(ArrayList_Str_get(&(self->func_type_names), i), rname))
         {
             return ArrayList_Int_get(&(self->func_param_counts), i);
         }
         i = (i + 1LL);
     }
-    const char* resolved = LLVMCodegen_get_generic_mangled_name(self, name);
-    if (strcmp(resolved, name) != 0LL)
+    const char* resolved = LLVMCodegen_get_generic_mangled_name(self, rname);
+    if (strcmp(resolved, rname) != 0LL)
     {
         i = 0LL;
         while (i < ArrayList_Str_length(&(self->func_type_names)))
         {
-            if (strcmp(ArrayList_Str_get(&(self->func_type_names), i), resolved) == 0LL)
+            if (llvm_str_eq(ArrayList_Str_get(&(self->func_type_names), i), resolved))
             {
                 return ArrayList_Int_get(&(self->func_param_counts), i);
             }
@@ -19620,24 +19677,25 @@ int64_t LLVMCodegen_get_func_param_count(LLVMCodegen* self, const char* name)
 }
 const char* LLVMCodegen_get_func_param_types(LLVMCodegen* self, const char* name)
 {
+    const char* rname = LLVMCodegen_resolve_mangled_func_name(self, name);
     int64_t i = 0LL;
     while (i < ArrayList_Str_length(&(self->func_type_names)))
     {
-        if (strcmp(ArrayList_Str_get(&(self->func_type_names), i), name) == 0LL)
+        if (llvm_str_eq(ArrayList_Str_get(&(self->func_type_names), i), rname))
         {
-            return ArrayList_Str_get(&(self->func_type_param_types), i);
+            return concatAlloc(ArrayList_Str_get(&(self->func_type_param_types), i), "");
         }
         i = (i + 1LL);
     }
-    const char* resolved = LLVMCodegen_get_generic_mangled_name(self, name);
-    if (strcmp(resolved, name) != 0LL)
+    const char* resolved = LLVMCodegen_get_generic_mangled_name(self, rname);
+    if (strcmp(resolved, rname) != 0LL)
     {
         i = 0LL;
         while (i < ArrayList_Str_length(&(self->func_type_names)))
         {
-            if (strcmp(ArrayList_Str_get(&(self->func_type_names), i), resolved) == 0LL)
+            if (llvm_str_eq(ArrayList_Str_get(&(self->func_type_names), i), resolved))
             {
-                return ArrayList_Str_get(&(self->func_type_param_types), i);
+                return concatAlloc(ArrayList_Str_get(&(self->func_type_param_types), i), "");
             }
             i = (i + 1LL);
         }
@@ -19646,10 +19704,11 @@ const char* LLVMCodegen_get_func_param_types(LLVMCodegen* self, const char* name
 }
 void* LLVMCodegen_get_cached_func_type(LLVMCodegen* self, const char* name)
 {
+    const char* rname = LLVMCodegen_resolve_mangled_func_name(self, name);
     int64_t i = 0LL;
     while (i < ArrayList_Str_length(&(self->func_cache_names)))
     {
-        if (strcmp(ArrayList_Str_get(&(self->func_cache_names), i), name) == 0LL)
+        if (llvm_str_eq(ArrayList_Str_get(&(self->func_cache_names), i), rname))
         {
             return ((void*)(((unsigned long long)(ArrayList_Int_get(&(self->func_cache_types), i)))));
         }
@@ -19753,6 +19812,50 @@ int64_t LLVMCodegen_get_func_param_count_by_types_str(LLVMCodegen* self, const c
 }
 bool LLVMCodegen_is_extern_func(LLVMCodegen* self, const char* name)
 {
+    if (((strcmp(name, "malloc") == 0LL) || (strcmp(name, "realloc") == 0LL)) || (strcmp(name, "calloc") == 0LL))
+    {
+        return true;
+    }
+    if ((((strcmp(name, "printf") == 0LL) || (strcmp(name, "fprintf") == 0LL)) || (strcmp(name, "sprintf") == 0LL)) || (strcmp(name, "snprintf") == 0LL))
+    {
+        return true;
+    }
+    if (((((((strcmp(name, "fopen") == 0LL) || (strcmp(name, "fread") == 0LL)) || (strcmp(name, "fwrite") == 0LL)) || (strcmp(name, "fclose") == 0LL)) || (strcmp(name, "fseek") == 0LL)) || (strcmp(name, "ftell") == 0LL)) || (strcmp(name, "rewind") == 0LL))
+    {
+        return true;
+    }
+    if ((strcmp(name, "strlen") == 0LL) || (strcmp(name, "strcmp") == 0LL))
+    {
+        return true;
+    }
+    if ((strcmp(name, "exit") == 0LL) || (strcmp(name, "system") == 0LL))
+    {
+        return true;
+    }
+    if ((((strcmp(name, "isdigit") == 0LL) || (strcmp(name, "isalpha") == 0LL)) || (strcmp(name, "isalnum") == 0LL)) || (strcmp(name, "isspace") == 0LL))
+    {
+        return true;
+    }
+    if ((strcmp(name, "toupper") == 0LL) || (strcmp(name, "tolower") == 0LL))
+    {
+        return true;
+    }
+    if (strcmp(name, "atoll") == 0LL)
+    {
+        return true;
+    }
+    if (strcmp(name, "sqrt") == 0LL)
+    {
+        return true;
+    }
+    if (((strcmp(name, "memset") == 0LL) || (strcmp(name, "memcpy") == 0LL)) || (strcmp(name, "memmove") == 0LL))
+    {
+        return true;
+    }
+    if (strcmp(name, "abort") == 0LL)
+    {
+        return true;
+    }
     int64_t ki = 0LL;
     while (ki < ArrayList_Str_length(&(self->kai_func_names)))
     {
@@ -19765,7 +19868,7 @@ bool LLVMCodegen_is_extern_func(LLVMCodegen* self, const char* name)
     int64_t i = 0LL;
     while (i < ArrayList_Str_length(&(self->extern_func_names)))
     {
-        if (strcmp(ArrayList_Str_get(&(self->extern_func_names), i), name) == 0LL)
+        if (llvm_str_eq(ArrayList_Str_get(&(self->extern_func_names), i), name))
         {
             return true;
         }
@@ -19778,7 +19881,7 @@ void* LLVMCodegen_lookup_or_create_func(LLVMCodegen* self, const char* name)
     int64_t i = 0LL;
     while (i < ArrayList_Str_length(&(self->func_cache_names)))
     {
-        if (strcmp(ArrayList_Str_get(&(self->func_cache_names), i), name) == 0LL)
+        if (llvm_str_eq(ArrayList_Str_get(&(self->func_cache_names), i), name))
         {
             return ((void*)(((unsigned long long)(ArrayList_Int_get(&(self->func_cache_vals), i)))));
         }
@@ -19965,6 +20068,13 @@ void LLVMCodegen_emit_runtime_helpers(LLVMCodegen* self)
 }
 bool LLVMCodegen_generate(LLVMCodegen* self, int64_t top_stmt_idx, const char* obj_path)
 {
+    StmtNode program = ArrayList_StmtNode_get(self->stmt_pool, top_stmt_idx);
+    int64_t di = 0LL;
+    while (di < ArrayList_Int_length(&(program.block_stmts)))
+    {
+        ArrayList_Int_push(&(self->global_decls), ArrayList_Int_get(&(program.block_stmts), di));
+        di = (di + 1LL);
+    }
     LLVMCodegen_build_func_types(self);
     LLVMCodegen_build_type_caches(self);
     LLVMCodegen_emit_runtime_helpers(self);
@@ -20111,7 +20221,7 @@ void LLVMCodegen_emit_func_body(LLVMCodegen* self, int64_t stmt_idx, void* fn_va
     self->local_alloca_decls = ArrayList_Int_init(self->allocator);
     self->loop_cond_block = ((void*)(((unsigned long long)(0LL))));
     self->loop_merge_block = ((void*)(((unsigned long long)(0LL))));
-    bool is_init = ((strcmp(stmt.func_name, "init") == 0LL) && (strlen(struct_name) > 0LL));
+    bool is_init = (((((strcmp(stmt.func_name, "init") == 0LL) || (strcmp(stmt.func_return_type, struct_name) == 0LL)) || (strcmp(stmt.func_return_type, concatAlloc("*", struct_name)) == 0LL)) || (strcmp(stmt.func_return_type, concatAlloc("&", struct_name)) == 0LL)) && (strlen(struct_name) > 0LL));
     self->cur_method_is_init = is_init;
     self->cur_self_alloca = ((void*)(((unsigned long long)(0LL))));
     self->cur_struct_type = ((void*)(((unsigned long long)(0LL))));
@@ -20324,7 +20434,7 @@ void* LLVMCodegen_map_type(LLVMCodegen* self, const char* type_name)
         void* cached_ty = ((void*)(((unsigned long long)(0LL))));
         while (si < ArrayList_Str_length(&(self->struct_cache_names)))
         {
-            if (strcmp(ArrayList_Str_get(&(self->struct_cache_names), si), concrete_name) == 0LL)
+            if (llvm_str_eq(ArrayList_Str_get(&(self->struct_cache_names), si), concrete_name))
             {
                 found = true;
                 cached_ty = ((void*)(((unsigned long long)(ArrayList_Int_get(&(self->struct_cache_types), si)))));
@@ -20402,7 +20512,7 @@ void* LLVMCodegen_map_type(LLVMCodegen* self, const char* type_name)
             int64_t si = 0LL;
             while (si < ArrayList_Str_length(&(self->struct_cache_names)))
             {
-                if (strcmp(ArrayList_Str_get(&(self->struct_cache_names), si), concrete_name) == 0LL)
+                if (llvm_str_eq(ArrayList_Str_get(&(self->struct_cache_names), si), concrete_name))
                 {
                     return ((void*)(((unsigned long long)(ArrayList_Int_get(&(self->struct_cache_types), si)))));
                 }
@@ -20420,7 +20530,7 @@ void* LLVMCodegen_map_type(LLVMCodegen* self, const char* type_name)
             int64_t ei = 0LL;
             while (ei < ArrayList_Str_length(&(self->enum_cache_names)))
             {
-                if (strcmp(ArrayList_Str_get(&(self->enum_cache_names), ei), concrete_name) == 0LL)
+                if (llvm_str_eq(ArrayList_Str_get(&(self->enum_cache_names), ei), concrete_name))
                 {
                     return ((void*)(((unsigned long long)(ArrayList_Int_get(&(self->enum_cache_types), ei)))));
                 }
@@ -20431,7 +20541,7 @@ void* LLVMCodegen_map_type(LLVMCodegen* self, const char* type_name)
     int64_t si = 0LL;
     while (si < ArrayList_Str_length(&(self->struct_cache_names)))
     {
-        if (strcmp(ArrayList_Str_get(&(self->struct_cache_names), si), resolved_type) == 0LL)
+        if (llvm_str_eq(ArrayList_Str_get(&(self->struct_cache_names), si), resolved_type))
         {
             return ((void*)(((unsigned long long)(ArrayList_Int_get(&(self->struct_cache_types), si)))));
         }
@@ -20440,7 +20550,7 @@ void* LLVMCodegen_map_type(LLVMCodegen* self, const char* type_name)
     int64_t ei = 0LL;
     while (ei < ArrayList_Str_length(&(self->enum_cache_names)))
     {
-        if (strcmp(ArrayList_Str_get(&(self->enum_cache_names), ei), resolved_type) == 0LL)
+        if (llvm_str_eq(ArrayList_Str_get(&(self->enum_cache_names), ei), resolved_type))
         {
             return ((void*)(((unsigned long long)(ArrayList_Int_get(&(self->enum_cache_types), ei)))));
         }
@@ -20513,7 +20623,7 @@ void* LLVMCodegen_map_tuple_type(LLVMCodegen* self, const char* tuple_type_str)
     int64_t ti = 0LL;
     while (ti < ArrayList_Str_length(&(self->tuple_cache_names)))
     {
-        if (strcmp(ArrayList_Str_get(&(self->tuple_cache_names), ti), tuple_type_str) == 0LL)
+        if (llvm_str_eq(ArrayList_Str_get(&(self->tuple_cache_names), ti), tuple_type_str))
         {
             return ((void*)(((unsigned long long)(ArrayList_Int_get(&(self->tuple_cache_types), ti)))));
         }
@@ -21374,7 +21484,7 @@ void LLVMCodegen_gen_stmt(LLVMCodegen* self, int64_t stmt_idx)
                 int64_t ei = 0LL;
                 while (ei < ArrayList_Str_length(&(self->enum_cache_names)))
                 {
-                    if ((strcmp(ArrayList_Str_get(&(self->enum_cache_names), ei), stripped_clean_type) == 0LL) && ArrayList_Bool_get(&(self->enum_has_payload), ei))
+                    if (llvm_str_eq(ArrayList_Str_get(&(self->enum_cache_names), ei), stripped_clean_type) && ArrayList_Bool_get(&(self->enum_has_payload), ei))
                     {
                         has_payload_enum = true;
                     }
@@ -21475,7 +21585,7 @@ void* LLVMCodegen_find_alloca_by_idx(LLVMCodegen* self, int64_t decl_idx, const 
     int64_t i = (ArrayList_Int_length(&(self->local_alloca_decls)) - 1LL);
     while (i >= 0LL)
     {
-        if ((ArrayList_Int_get(&(self->local_alloca_decls), i) == decl_idx) && (strcmp(ArrayList_Str_get(&(self->local_alloca_names), i), name) == 0LL))
+        if ((ArrayList_Int_get(&(self->local_alloca_decls), i) == decl_idx) && llvm_str_eq(ArrayList_Str_get(&(self->local_alloca_names), i), name))
         {
             return ((void*)(((unsigned long long)(ArrayList_Int_get(&(self->local_alloca_vals), i)))));
         }
@@ -21488,7 +21598,7 @@ void* LLVMCodegen_find_alloca_type_by_idx(LLVMCodegen* self, int64_t decl_idx, c
     int64_t i = (ArrayList_Int_length(&(self->local_alloca_decls)) - 1LL);
     while (i >= 0LL)
     {
-        if ((ArrayList_Int_get(&(self->local_alloca_decls), i) == decl_idx) && (strcmp(ArrayList_Str_get(&(self->local_alloca_names), i), name) == 0LL))
+        if ((ArrayList_Int_get(&(self->local_alloca_decls), i) == decl_idx) && llvm_str_eq(ArrayList_Str_get(&(self->local_alloca_names), i), name))
         {
             return ((void*)(((unsigned long long)(ArrayList_Int_get(&(self->local_alloca_types), i)))));
         }
@@ -21498,10 +21608,23 @@ void* LLVMCodegen_find_alloca_type_by_idx(LLVMCodegen* self, int64_t decl_idx, c
 }
 void* LLVMCodegen_find_alloca(LLVMCodegen* self, const char* name)
 {
+    if (llvm_str_eq(name, "self"))
+    {
+        {
+            printf("find_alloca: searching for self, local_alloca_names.length=%lld\n", ArrayList_Str_length(&(self->local_alloca_names)));
+            int64_t j = 0LL;
+            while (j < ArrayList_Str_length(&(self->local_alloca_names)))
+            {
+                printf("  local_alloca_names[%lld] = %s\n", j, ArrayList_Str_get(&(self->local_alloca_names), j));
+                j = (j + 1LL);
+            }
+            kai_fflush(stdout);
+        }
+    }
     int64_t i = (ArrayList_Str_length(&(self->local_alloca_names)) - 1LL);
     while (i >= 0LL)
     {
-        if (strcmp(ArrayList_Str_get(&(self->local_alloca_names), i), name) == 0LL)
+        if (llvm_str_eq(ArrayList_Str_get(&(self->local_alloca_names), i), name))
         {
             return ((void*)(((unsigned long long)(ArrayList_Int_get(&(self->local_alloca_vals), i)))));
         }
@@ -21514,7 +21637,7 @@ void* LLVMCodegen_find_alloca_type(LLVMCodegen* self, const char* name)
     int64_t i = (ArrayList_Str_length(&(self->local_alloca_names)) - 1LL);
     while (i >= 0LL)
     {
-        if (strcmp(ArrayList_Str_get(&(self->local_alloca_names), i), name) == 0LL)
+        if (llvm_str_eq(ArrayList_Str_get(&(self->local_alloca_names), i), name))
         {
             return ((void*)(((unsigned long long)(ArrayList_Int_get(&(self->local_alloca_types), i)))));
         }
@@ -21603,11 +21726,20 @@ const char* LLVMCodegen_get_expr_type(LLVMCodegen* self, int64_t expr_idx)
         int64_t vi = (ArrayList_Str_length(&(self->local_alloca_names)) - 1LL);
         while (vi >= 0LL)
         {
-            if (strcmp(ArrayList_Str_get(&(self->local_alloca_names), vi), expr.ident_name) == 0LL)
+            if (llvm_str_eq(ArrayList_Str_get(&(self->local_alloca_names), vi), expr.ident_name))
             {
-                return ArrayList_Str_get(&(self->local_alloca_type_strs), vi);
+                const char* ty_str = concatAlloc(ArrayList_Str_get(&(self->local_alloca_type_strs), vi), "");
+                {
+                    printf("get_expr_type: ident=%s found at vi=%lld, type_str=%s\n", expr.ident_name, vi, ty_str);
+                    kai_fflush(stdout);
+                }
+                return ty_str;
             }
             vi = (vi - 1LL);
+        }
+        {
+            printf("get_expr_type: ident=%s NOT found in allocas (length=%lld)\n", expr.ident_name, ArrayList_Str_length(&(self->local_alloca_names)));
+            kai_fflush(stdout);
         }
         if (LLVMCodegen_is_struct_type(self, expr.ident_name) || LLVMCodegen_is_enum_type(self, expr.ident_name))
         {
@@ -21642,7 +21774,7 @@ const char* LLVMCodegen_get_expr_type(LLVMCodegen* self, int64_t expr_idx)
         int64_t i = 0LL;
         while (i < ArrayList_Str_length(&(self->func_type_names)))
         {
-            if (strcmp(ArrayList_Str_get(&(self->func_type_names), i), lookup_name) == 0LL)
+            if (llvm_str_eq(ArrayList_Str_get(&(self->func_type_names), i), lookup_name))
             {
                 return ArrayList_Str_get(&(self->func_type_returns), i);
             }
@@ -21927,6 +22059,19 @@ void* LLVMCodegen_gen_expr(LLVMCodegen* self, int64_t expr_idx)
                 return alloca;
             }
             return LLVMBuildLoad2(self->builder, elem_ty, alloca, expr.ident_name);
+        }
+        int64_t si = 0LL;
+        while (si < ArrayList_StmtNode_length(self->stmt_pool))
+        {
+            StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, si);
+            if (stmt.kind == StmtKind_sk_var_decl)
+            {
+                if (LLVMCodegen_decl_name_matches(self, stmt.vardecl_name, expr.ident_name))
+                {
+                    return LLVMCodegen_gen_expr(self, stmt.vardecl_value);
+                }
+            }
+            si = (si + 1LL);
         }
         return ((void*)(((unsigned long long)(0LL))));
     }
@@ -22314,7 +22459,7 @@ void* LLVMCodegen_gen_expr(LLVMCodegen* self, int64_t expr_idx)
     }
     if (expr.kind == ExprKind_ek_borrow)
     {
-        return LLVMCodegen_gen_expr(self, expr.borrow_expr);
+        return LLVMCodegen_gen_expr_address(self, expr.borrow_expr);
     }
     if (expr.kind == ExprKind_ek_deref)
     {
@@ -22626,7 +22771,7 @@ void* LLVMCodegen_gen_expr(LLVMCodegen* self, int64_t expr_idx)
             int64_t ei_chk = 0LL;
             while (ei_chk < ArrayList_Str_length(&(self->enum_cache_names)))
             {
-                if (strcmp(ArrayList_Str_get(&(self->enum_cache_names), ei_chk), stripped_enum_part) == 0LL)
+                if (llvm_str_eq(ArrayList_Str_get(&(self->enum_cache_names), ei_chk), stripped_enum_part))
                 {
                     has_payload = ArrayList_Bool_get(&(self->enum_has_payload), ei_chk);
                 }
@@ -22742,7 +22887,7 @@ void* LLVMCodegen_gen_expr(LLVMCodegen* self, int64_t expr_idx)
             int64_t ei_chk = 0LL;
             while (ei_chk < ArrayList_Str_length(&(self->enum_cache_names)))
             {
-                if (strcmp(ArrayList_Str_get(&(self->enum_cache_names), ei_chk), stripped_enum_name) == 0LL)
+                if (llvm_str_eq(ArrayList_Str_get(&(self->enum_cache_names), ei_chk), stripped_enum_name))
                 {
                     has_payload = ArrayList_Bool_get(&(self->enum_has_payload), ei_chk);
                 }
@@ -22874,7 +23019,7 @@ void* LLVMCodegen_gen_expr(LLVMCodegen* self, int64_t expr_idx)
                 }
             }
         }
-        void* field_llvm_type = LLVMCodegen_map_type(self, field_type_str);
+        void* field_llvm_type = LLVMStructGetTypeAtIndex(struct_ty, field_idx);
         bool is_aggregate = false;
         if (((field_llvm_type != ((void*)(((unsigned long long)(0LL))))) && (field_llvm_type != self->void_type)) && (field_llvm_type != self->str_type))
         {
@@ -22960,7 +23105,8 @@ void* LLVMCodegen_gen_expr(LLVMCodegen* self, int64_t expr_idx)
         {
             return ((void*)(((unsigned long long)(0LL))));
         }
-        bool is_init = (strcmp(expr.meth_name, "init") == 0LL);
+        const char* ret_ty = LLVMCodegen_get_func_return_type(self, func_name);
+        bool is_init = ((((strcmp(expr.meth_name, "init") == 0LL) || (strcmp(ret_ty, clean_type) == 0LL)) || (strcmp(ret_ty, concatAlloc("*", clean_type)) == 0LL)) || (strcmp(ret_ty, concatAlloc("&", clean_type)) == 0LL));
         ArrayList_Int arg_vals = ArrayList_Int_init(self->allocator);
         if ((!is_init) && (!is_static))
         {
@@ -23208,6 +23354,10 @@ const char* LLVMCodegen_get_param_type_at_index(LLVMCodegen* self, const char* p
 }
 void* LLVMCodegen_prepare_arg(LLVMCodegen* self, void* arg_val, const char* param_type_str, bool callee_is_extern)
 {
+    if ((callee_is_extern && (arg_val != ((void*)(((unsigned long long)(0LL)))))) && (LLVMTypeOf(arg_val) == self->str_type))
+    {
+        return LLVMCodegen_unwrap_str_for_c(self, arg_val);
+    }
     bool is_str = (((strcmp(param_type_str, "Str") == 0LL) || (strcmp(param_type_str, "*Str") == 0LL)) || (strcmp(param_type_str, "&Str") == 0LL));
     if (is_str)
     {
@@ -23461,30 +23611,14 @@ bool LLVMCodegen_emit_object(LLVMCodegen* self, const char* obj_path)
             kai_fflush(stdout);
         }
     }
-    kai_LLVMInitializeAllTargetInfos();
-    kai_LLVMInitializeAllTargets();
-    kai_LLVMInitializeAllTargetMCs();
-    kai_LLVMInitializeAllAsmPrinters();
-    kai_LLVMInitializeAllAsmParsers();
-    self->tmp_target = ((void*)(((unsigned long long)(0LL))));
-    self->tmp_err = ((char*)(((unsigned long long)(0LL))));
     LLVMSetTarget(self->module, ((const char*)(LLVMGetDefaultTargetTriple())));
-    LLVMGetTargetFromTriple(((const char*)(LLVMGetDefaultTargetTriple())), ((void*)((&self->tmp_target))), ((void*)((&self->tmp_err))));
-    void* machine = LLVMCreateTargetMachine(self->tmp_target, ((const char*)(LLVMGetDefaultTargetTriple())), "", "", LLVMCodeGenLevelNone, LLVMRelocDefault, LLVMCodeModelDefault);
     char* ir_str = LLVMPrintModuleToString(self->module);
-    printf("%s\n", ir_str);
+    printf("emit_object: writing to path='%s'\n", obj_path);
     kai_fflush(stdout);
-    int64_t emit_res = LLVMTargetMachineEmitToFile(machine, self->module, ((char*)(obj_path)), LLVMObjectFile, (&self->tmp_err));
-    printf("LLVMTargetMachineEmitToFile returned: %d\n", emit_res);
+    Result_Bool_IoError write_res = write_string(obj_path, ((const char*)(ir_str)));
+    printf("emit_object: write_res.tag=%lld\n", write_res.tag);
     kai_fflush(stdout);
-    if (self->tmp_err != ((char*)(((unsigned long long)(0LL)))))
-    {
-        printf("LLVMTargetMachineEmitToFile error: %s\n", self->tmp_err);
-        kai_fflush(stdout);
-        LLVMDisposeMessage(self->tmp_err);
-    }
-    LLVMDisposeTargetMachine(machine);
-    return (emit_res == 0LL);
+    return (write_res.tag == 0LL);
 }
 const char* LLVMCodegen_trim_spaces(LLVMCodegen* self, const char* s)
 {
@@ -23878,7 +24012,7 @@ void LLVMCodegen_emit_func_body_mono(LLVMCodegen* self, int64_t stmt_idx, void* 
     self->local_alloca_decls = ArrayList_Int_init(self->allocator);
     self->loop_cond_block = ((void*)(((unsigned long long)(0LL))));
     self->loop_merge_block = ((void*)(((unsigned long long)(0LL))));
-    bool is_init = (strcmp(stmt.func_name, "init") == 0LL);
+    bool is_init = ((((strcmp(stmt.func_name, "init") == 0LL) || (strcmp(stmt.func_return_type, struct_name) == 0LL)) || (strcmp(stmt.func_return_type, concatAlloc("*", struct_name)) == 0LL)) || (strcmp(stmt.func_return_type, concatAlloc("&", struct_name)) == 0LL));
     self->cur_method_is_init = is_init;
     self->cur_self_alloca = ((void*)(((unsigned long long)(0LL))));
     self->cur_struct_type = ((void*)(((unsigned long long)(0LL))));
@@ -23962,12 +24096,150 @@ void LLVMCodegen_emit_func_body_mono(LLVMCodegen* self, int64_t stmt_idx, void* 
     }
     self->current_type_map = old_type_map;
 }
+void* LLVMCodegen_gen_expr_address(LLVMCodegen* self, int64_t expr_idx)
+{
+    ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
+    if (expr.kind == ExprKind_ek_identifier)
+    {
+        const char* name = expr.ident_name;
+        void* alloca = LLVMCodegen_find_alloca(self, name);
+        if (alloca == ((void*)(((unsigned long long)(0LL)))))
+        {
+            alloca = LLVMCodegen_find_alloca_by_idx(self, (-1LL), name);
+        }
+        return alloca;
+    }
+    if (expr.kind == ExprKind_ek_field_access)
+    {
+        void* base_val = LLVMCodegen_gen_expr(self, expr.field_expr);
+        if (base_val == ((void*)(((unsigned long long)(0LL)))))
+        {
+            return ((void*)(((unsigned long long)(0LL))));
+        }
+        const char* base_type = LLVMCodegen_get_expr_type(self, expr.field_expr);
+        const char* clean_base_type = base_type;
+        while ((strlen(clean_base_type) > 0LL) && ((clean_base_type[0LL] == ((char)(42LL))) || (clean_base_type[0LL] == ((char)(38LL)))))
+        {
+            clean_base_type = __kai_str_sub(clean_base_type, 1LL, strlen(clean_base_type));
+        }
+        if ((strlen(clean_base_type) >= 4LL) && (strcmp(__kai_str_sub(clean_base_type, 0LL, 4LL), "mut ") == 0LL))
+        {
+            clean_base_type = __kai_str_sub(clean_base_type, 4LL, strlen(clean_base_type));
+        }
+        void* struct_ty = LLVMCodegen_map_type(self, clean_base_type);
+        if ((struct_ty == ((void*)(((unsigned long long)(0LL))))) || (struct_ty == self->void_type))
+        {
+            return ((void*)(((unsigned long long)(0LL))));
+        }
+        void* base_ptr = base_val;
+        void* base_llvm_ty = LLVMTypeOf(base_val);
+        int64_t base_kind = LLVMGetTypeKind(base_llvm_ty);
+        if (base_kind == LLVMStructTypeKind)
+        {
+            void* tmp = LLVMBuildAlloca(self->builder, struct_ty, ".tmp.field");
+            LLVMBuildStore(self->builder, base_val, tmp);
+            base_ptr = tmp;
+        }
+        int64_t field_idx = (-1LL);
+        bool found_field = false;
+        int64_t struct_decl_idx = LLVMCodegen_find_struct_decl(self, clean_base_type);
+        if (struct_decl_idx >= 0LL)
+        {
+            StmtNode s = ArrayList_StmtNode_get(self->stmt_pool, struct_decl_idx);
+            int64_t fii = 0LL;
+            while (fii < ArrayList_StructField_length(&(s.struct_fields)))
+            {
+                if (strcmp(ArrayList_StructField_get(&(s.struct_fields), fii).name, expr.field_name) == 0LL)
+                {
+                    field_idx = fii;
+                    found_field = true;
+                    break;
+                }
+                fii = (fii + 1LL);
+            }
+        }
+        if (!found_field)
+        {
+            return ((void*)(((unsigned long long)(0LL))));
+        }
+        return LLVMBuildStructGEP2(self->builder, struct_ty, base_ptr, field_idx, expr.field_name);
+    }
+    if (expr.kind == ExprKind_ek_index)
+    {
+        void* base_val = LLVMCodegen_gen_expr(self, expr.idx_expr);
+        void* idx_val = LLVMCodegen_gen_expr(self, expr.idx_index);
+        if ((base_val == ((void*)(((unsigned long long)(0LL))))) || (idx_val == ((void*)(((unsigned long long)(0LL))))))
+        {
+            return ((void*)(((unsigned long long)(0LL))));
+        }
+        void* base_ty = LLVMTypeOf(base_val);
+        int64_t base_kind = LLVMGetTypeKind(base_ty);
+        if (base_kind == LLVMPointerTypeKind)
+        {
+            const char* el_type_str = LLVMCodegen_get_expr_type(self, expr.idx_expr);
+            void* el_ty = LLVMCodegen_map_type(self, el_type_str);
+            while ((strlen(el_type_str) > 0LL) && ((el_type_str[0LL] == ((char)(42LL))) || (el_type_str[0LL] == ((char)(38LL)))))
+            {
+                el_ty = LLVMCodegen_map_type(self, __kai_str_sub(el_type_str, 1LL, strlen(el_type_str)));
+            }
+            return LLVMBuildGEP2(self->builder, el_ty, base_val, ((void*)((&idx_val))), 1LL, "");
+        }
+    }
+    return LLVMCodegen_gen_expr(self, expr_idx);
+}
+bool LLVMCodegen_decl_name_matches(LLVMCodegen* self, const char* decl_name, const char* ident_name)
+{
+    int64_t dl = strlen(decl_name);
+    int64_t il = strlen(ident_name);
+    {
+        printf("decl_name_matches: decl_name=%s, ident_name=%s\n", decl_name, ident_name);
+        kai_fflush(stdout);
+    }
+    if (dl < il)
+    {
+        return false;
+    }
+    if (dl == il)
+    {
+        {
+            return (strcmp(decl_name, ident_name) == 0LL);
+        }
+    }
+    const char* suffix = __kai_str_sub(decl_name, (dl - il), dl);
+    {
+        if (strcmp(suffix, ident_name) != 0LL)
+        {
+            return false;
+        }
+    }
+    char prev_char = decl_name[((dl - il) - 1LL)];
+    return ((prev_char == ((char)(95LL))) || (prev_char == ((char)(46LL))));
+}
+bool llvm_str_eq(const char* a, const char* b)
+{
+    int64_t al = strlen(a);
+    int64_t bl = strlen(b);
+    if (al != bl)
+    {
+        return false;
+    }
+    int64_t i = 0LL;
+    while (i < al)
+    {
+        if (a[i] != b[i])
+        {
+            return false;
+        }
+        i = (i + 1LL);
+    }
+    return true;
+}
 int64_t llvm_type_map_find(ArrayList_LLVMStrMapEntry* arr, const char* key)
 {
     int64_t i = (ArrayList_LLVMStrMapEntry_length(arr) - 1LL);
     while (i >= 0LL)
     {
-        if (strcmp(ArrayList_LLVMStrMapEntry_get(arr, i).key, key) == 0LL)
+        if (llvm_str_eq(ArrayList_LLVMStrMapEntry_get(arr, i).key, key))
         {
             return i;
         }
@@ -23993,7 +24265,7 @@ int64_t llvm_strlist_find(ArrayList_Str* arr, const char* key)
     int64_t i = 0LL;
     while (i < ArrayList_Str_length(arr))
     {
-        if (strcmp(ArrayList_Str_get(arr, i), key) == 0LL)
+        if (llvm_str_eq(ArrayList_Str_get(arr, i), key))
         {
             return i;
         }
@@ -25103,29 +25375,30 @@ const char* diag_range_text(const char* bytes, int64_t start, int64_t end)
     }
     return substring(bytes, first, last);
 }
-Optional_Int diag_write_span(char* buffer, int64_t offset, const char* bytes)
+int64_t diag_write_span(char* buffer, int64_t offset, const char* bytes)
 {
     if (offset > 1000000LL)
     {
-        return (Optional_Int){0};
+        return (-1LL);
     }
-    if (strlen(((const char*)(bytes))) > (1000000LL - offset))
+    int64_t byte_len = strlen(((const char*)(bytes)));
+    if (byte_len > (1000000LL - offset))
     {
-        return (Optional_Int){0};
+        return (-1LL);
     }
     int64_t index = 0LL;
-    while (index < strlen(((const char*)(bytes))))
+    while (index < byte_len)
     {
         buffer[(offset + index)] = bytes[index];
         index = (index + 1LL);
     }
-    return (Optional_Int){ .has_value = true, .value = (offset + strlen(((const char*)(bytes)))) };
+    return (offset + byte_len);
 }
-Optional_Int diag_write_usize(char* buffer, int64_t offset, int64_t value)
+int64_t diag_write_usize(char* buffer, int64_t offset, int64_t value)
 {
     if (offset > 1000000LL)
     {
-        return (Optional_Int){0};
+        return (-1LL);
     }
     int64_t digits = 1LL;
     int64_t scan = value;
@@ -25136,7 +25409,7 @@ Optional_Int diag_write_usize(char* buffer, int64_t offset, int64_t value)
     }
     if ((offset + digits) > 1000000LL)
     {
-        return (Optional_Int){0};
+        return (-1LL);
     }
     int64_t cursor = (offset + digits);
     int64_t current = value;
@@ -25147,41 +25420,41 @@ Optional_Int diag_write_usize(char* buffer, int64_t offset, int64_t value)
         buffer[cursor] = (((char)(48LL)) + digit);
         current = (current / 10LL);
     }
-    return (Optional_Int){ .has_value = true, .value = (offset + digits) };
+    return (offset + digits);
 }
 const char* diag_format_location(char* buffer, const char* path, int64_t line, int64_t column)
 {
     int64_t offset = 0LL;
-    Optional_Int wrote_path = diag_write_span(buffer, offset, path);
-    if (!wrote_path.has_value)
+    int64_t wrote_path = diag_write_span(buffer, offset, path);
+    if (wrote_path < 0LL)
     {
-        return NULL;
+        return "";
     }
-    offset = ({ Optional_Int _kai_opt = (wrote_path); int64_t _kai_cv; if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } else { _kai_cv = (0LL); } _kai_cv; });
-    Optional_Int first_colon = diag_write_span(buffer, offset, ":");
-    if (!first_colon.has_value)
+    offset = wrote_path;
+    int64_t first_colon = diag_write_span(buffer, offset, ":");
+    if (first_colon < 0LL)
     {
-        return NULL;
+        return "";
     }
-    offset = ({ Optional_Int _kai_opt = (first_colon); int64_t _kai_cv; if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } else { _kai_cv = (0LL); } _kai_cv; });
-    Optional_Int wrote_line = diag_write_usize(buffer, offset, line);
-    if (!wrote_line.has_value)
+    offset = first_colon;
+    int64_t wrote_line = diag_write_usize(buffer, offset, line);
+    if (wrote_line < 0LL)
     {
-        return NULL;
+        return "";
     }
-    offset = ({ Optional_Int _kai_opt = (wrote_line); int64_t _kai_cv; if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } else { _kai_cv = (0LL); } _kai_cv; });
-    Optional_Int second_colon = diag_write_span(buffer, offset, ":");
-    if (!second_colon.has_value)
+    offset = wrote_line;
+    int64_t second_colon = diag_write_span(buffer, offset, ":");
+    if (second_colon < 0LL)
     {
-        return NULL;
+        return "";
     }
-    offset = ({ Optional_Int _kai_opt = (second_colon); int64_t _kai_cv; if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } else { _kai_cv = (0LL); } _kai_cv; });
-    Optional_Int wrote_column = diag_write_usize(buffer, offset, column);
-    if (wrote_column.has_value)
+    offset = second_colon;
+    int64_t wrote_column = diag_write_usize(buffer, offset, column);
+    if (wrote_column < 0LL)
     {
-        return substring(buffer, 0LL, ({ Optional_Int _kai_opt = (wrote_column); int64_t _kai_cv; if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } else { _kai_cv = (0LL); } _kai_cv; }));
+        return "";
     }
-    return NULL;
+    return substring(buffer, 0LL, wrote_column);
 }
 const char* diag_format_offset_location(char* buffer, const char* path, const char* bytes, int64_t offset)
 {

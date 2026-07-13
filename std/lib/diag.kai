@@ -77,24 +77,27 @@ fn diag_range_text(bytes: Str, start: Int, end: Int) -> Str {
     return substring(bytes, first, last)
 }
 
-fn diag_write_span(buffer: *Char, offset: Int, bytes: Str) -> ?Int {
+// Returns the new offset after writing, or -1 on failure.
+fn diag_write_span(buffer: *Char, offset: Int, bytes: Str) -> Int {
     if offset > 1000000 {
-        return none
+        return -1
     }
-    if strlen((bytes) as Str) > 1000000 - offset {
-        return none
+    let byte_len = strlen((bytes) as Str)
+    if byte_len > 1000000 - offset {
+        return -1
     }
     var index: Int = 0
-    while index < strlen((bytes) as Str) {
+    while index < byte_len {
         buffer[offset + index] = bytes[index]
         index = index + 1
     }
-    return offset + strlen((bytes) as Str)
+    return offset + byte_len
 }
 
-fn diag_write_usize(buffer: *Char, offset: Int, value: Int) -> ?Int {
+// Returns the new offset after writing the decimal representation, or -1 on failure.
+fn diag_write_usize(buffer: *Char, offset: Int, value: Int) -> Int {
     if offset > 1000000 {
-        return none
+        return -1
     }
     var digits: Int = 1
     var scan: Int = value
@@ -103,7 +106,7 @@ fn diag_write_usize(buffer: *Char, offset: Int, value: Int) -> ?Int {
         scan = scan / 10
     }
     if offset + digits > 1000000 {
-        return none
+        return -1
     }
     var cursor: Int = offset + digits
     var current: Int = value
@@ -116,35 +119,35 @@ fn diag_write_usize(buffer: *Char, offset: Int, value: Int) -> ?Int {
     return offset + digits
 }
 
-fn diag_format_location(buffer: *Char, path: Str, line: Int, column: Int) -> ?Str {
+fn diag_format_location(buffer: *Char, path: Str, line: Int, column: Int) -> Str {
     var offset: Int = 0
-    let wrote_path: ?Int = diag_write_span(buffer, offset, path)
-    if wrote_path == none {
-        return none
+    let wrote_path = diag_write_span(buffer, offset, path)
+    if wrote_path < 0 {
+        return ""
     }
-    offset = (wrote_path catch 0)
-    let first_colon: ?Int = diag_write_span(buffer, offset, ":")
-    if first_colon == none {
-        return none
+    offset = wrote_path
+    let first_colon = diag_write_span(buffer, offset, ":")
+    if first_colon < 0 {
+        return ""
     }
-    offset = (first_colon catch 0)
-    let wrote_line: ?Int = diag_write_usize(buffer, offset, line)
-    if wrote_line == none {
-        return none
+    offset = first_colon
+    let wrote_line = diag_write_usize(buffer, offset, line)
+    if wrote_line < 0 {
+        return ""
     }
-    offset = (wrote_line catch 0)
-    let second_colon: ?Int = diag_write_span(buffer, offset, ":")
-    if second_colon == none {
-        return none
+    offset = wrote_line
+    let second_colon = diag_write_span(buffer, offset, ":")
+    if second_colon < 0 {
+        return ""
     }
-    offset = (second_colon catch 0)
-    let wrote_column: ?Int = diag_write_usize(buffer, offset, column)
-    if wrote_column != none {
-        return substring(buffer, 0, (wrote_column catch 0))
+    offset = second_colon
+    let wrote_column = diag_write_usize(buffer, offset, column)
+    if wrote_column < 0 {
+        return ""
     }
-    return none
+    return substring(buffer, 0, wrote_column)
 }
 
-fn diag_format_offset_location(buffer: *Char, path: Str, bytes: Str, offset: Int) -> ?Str {
+fn diag_format_offset_location(buffer: *Char, path: Str, bytes: Str, offset: Int) -> Str {
     return diag_format_location(buffer, path, diag_line(bytes, offset), diag_column(bytes, offset))
 }

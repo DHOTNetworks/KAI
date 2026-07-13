@@ -209,12 +209,12 @@ fn main(argc: Int, argv: **Char) -> Int {
 
     if use_llvm {
         var llvm_gen = LLVMCodegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, &resolver, &pool)
-        var obj_file = base + ".o"
-        if use_builder { obj_file = "CC" + obj_file }
-        let emit_ok = llvm_gen.generate(program_idx, obj_file)
+        var ll_file = base + ".ll"
+        if use_builder { ll_file = "CC" + ll_file }
+        let emit_ok = llvm_gen.generate(program_idx, ll_file)
         if !emit_ok { return 5 }
         if emit_c_only { return 0 }
-        let cmd = "clang " + obj_file + " " + exe_dir + "/runtime_helpers.c " + exe_include_flag + " -I/opt/homebrew/opt/llvm@21/include " + exe_lib_flag + " -o " + bin_name + " -lLLVM"
+        let cmd = "clang " + ll_file + " " + exe_dir + "/runtime_helpers.c " + exe_include_flag + " -I/opt/homebrew/opt/llvm@21/include " + exe_lib_flag + " -o " + bin_name + " -lLLVM"
         unsafe { return system(cmd as *Char) }
     }
     var output: Str = ""
