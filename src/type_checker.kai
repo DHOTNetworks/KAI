@@ -22,6 +22,10 @@ import str_array_join from parser
 import std.io.print
 import get_source_line from utils
 import ImportResolver from imports
+import StringPool from string_pool
+import TypeArena from types
+import TypeKind from types
+import Type from types
 
 extern fn strlen(s: Str) -> Int
 
@@ -64,6 +68,8 @@ struct TypeChecker {
     source_file: Str
     source: Str
     import_resolver: *ImportResolver
+    pool: *StringPool
+    type_arena: TypeArena
     imported_names: ArrayList<Str>
     import_used: ArrayList<Bool>
     import_lines: ArrayList<Int>
@@ -82,7 +88,7 @@ struct TypeChecker {
 }
 
 impl TypeChecker {
-    fn init(self, allocator: *KaiAllocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, source_file: Str, source: Str, import_resolver: *ImportResolver) {
+    fn init(self, allocator: *KaiAllocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, source_file: Str, source: Str, import_resolver: *ImportResolver, pool: *StringPool) {
         self.allocator = allocator
         self.stmt_pool = stmt_pool
         self.expr_pool = expr_pool
@@ -95,6 +101,8 @@ impl TypeChecker {
         self.source_file = source_file
         self.source = source
         self.import_resolver = import_resolver
+        self.pool = pool
+        self.type_arena.init(allocator)
         self.imported_names = ArrayList<Str>(allocator)
         self.import_used = ArrayList<Bool>(allocator)
         self.import_lines = ArrayList<Int>(allocator)
@@ -192,10 +200,10 @@ impl TypeChecker {
         }
     }
 
-    fn define_symbol(self, name: Str, type_name: Str, is_mutable: Bool, kind: Str) {
+    fn define_symbol(self, name: Str, type_name: Str, is_mutable: Bool, kind: Str, decl_stmt_idx: Int) {
         if self.current_table_idx >= 0 {
             var table = self.symbol_tables.get(self.current_table_idx)
-            table.define(name, type_name, is_mutable, kind, "")
+            table.define(name, type_name, is_mutable, kind, "", decl_stmt_idx)
             self.symbol_tables.set(self.current_table_idx, table)
         }
     }
@@ -398,11 +406,12 @@ impl TypeChecker {
     fn int_literal_value(self, expr: ExprNode) -> Int {
         match expr.lit_value {
             case .tv_str(v) => {
-                let len = length(v)
+                let sval = self.pool.get(v)
+                let len = length(sval)
                 var res = 0
                 var pos = 0
                 while pos < len {
-                    let digit = substring(v, pos, pos + 1)
+                    let digit = substring(sval, pos, pos + 1)
                     if digit == "1" { res = res * 10 + 1 }
                     else if digit == "2" { res = res * 10 + 2 }
                     else if digit == "3" { res = res * 10 + 3 }
@@ -1278,7 +1287,7 @@ impl TypeChecker {
     }
 
     fn check_identifier(self, expr_idx: Int) {
-        let expr = self.expr_pool.get(expr_idx)
+        var expr = self.expr_pool.get(expr_idx)
         let name = expr.ident_name
         let table = self.symbol_tables.get(self.current_table_idx)
         let sym = table.lookup_symbol(name, &self.symbol_tables)
@@ -1288,6 +1297,8 @@ impl TypeChecker {
             } else if sym.moved {
                 self.err("E0009", "use of moved value: '" + name + "'", expr.line, expr.col)
             }
+            expr.resolved_symbol_idx = sym.decl_stmt_idx
+            self.expr_pool.set(expr_idx, expr)
         } else if !self.is_enum_or_error_type(name) && !self.is_builtin_type(name) && !self.is_imported_name(name) {
             self.err("E0019", "undefined identifier: '" + name + "'", expr.line, expr.col)
         }
@@ -1412,7 +1423,7 @@ impl TypeChecker {
                     self.err("E0001", "type mismatch in declaration of '" + stmt.vardecl_name + "': expected '" + var_type + "', got '" + val_type + "'", stmt.line, stmt.col)
                 }
             }
-            self.define_symbol(stmt.vardecl_name, var_type, stmt.vardecl_mut, "var")
+            self.define_symbol(stmt.vardecl_name, var_type, stmt.vardecl_mut, "var", stmt_idx)
             // Conservative alias propagation: if the initializer is a non-copy-type
             // identifier (or as-cast thereof), copy its current moved/freed status
             // to the new variable.
@@ -1518,7 +1529,7 @@ impl TypeChecker {
         if stmt.kind == StmtKind.sk_func_decl {
             let old_ret = self.current_func_ret_type
             self.current_func_ret_type = stmt.func_return_type
-            self.define_symbol(stmt.func_name, stmt.func_return_type, false, "func")
+            self.define_symbol(stmt.func_name, stmt.func_return_type, false, "func", stmt_idx)
             if stmt.func_type_params.length() > 0 {
                 return
             }
@@ -1526,7 +1537,7 @@ impl TypeChecker {
             var i = 0
             while i < stmt.func_params.length() {
                 let p = stmt.func_params.get(i)
-                self.define_symbol(p.name, p.ptype, false, "param")
+                self.define_symbol(p.name, p.ptype, false, "param", stmt_idx)
                 i = i + 1
             }
             self.check_stmt(stmt.func_body)
@@ -1588,7 +1599,7 @@ impl TypeChecker {
             // scope for then-branch only; else-branch doesn't see it)
             let snapshot = self.capture_tracking_state()
             self.enter_scope()
-            self.define_symbol(stmt.iflet_var, unwrapped_type, false, "var")
+            self.define_symbol(stmt.iflet_var, unwrapped_type, false, "var", stmt_idx)
             self.check_stmt(stmt.iflet_then)
             self.exit_scope()
             let then_state = self.capture_tracking_state()
@@ -1624,7 +1635,7 @@ impl TypeChecker {
             if length(iter_type) == 0 || iter_type == "Void" {
                 iter_type = "Int"
             }
-            self.define_symbol(stmt.for_var, iter_type, false, "var")
+            self.define_symbol(stmt.for_var, iter_type, false, "var", stmt_idx)
             self.check_stmt(stmt.for_body)
             self.exit_scope()
             self.loop_depth = self.loop_depth - 1
@@ -1695,7 +1706,7 @@ impl TypeChecker {
                         if found_variant && bi < matched_var.params.length() {
                             ptype = matched_var.params.get(bi).ptype
                         }
-                        self.define_symbol(pat.bindings.get(bi), ptype, false, "var")
+                        self.define_symbol(pat.bindings.get(bi), ptype, false, "var", stmt_idx)
                         bi = bi + 1
                     }
                 }
@@ -1717,17 +1728,17 @@ impl TypeChecker {
                 let m_idx = stmt.impl_methods.get(i)
                 let m = self.stmt_pool.get(m_idx)
                 let mangled_name = stmt.impl_struct_name + "_" + m.func_name
-                self.define_symbol(mangled_name, m.func_return_type, false, "func")
+                self.define_symbol(mangled_name, m.func_return_type, false, "func", m_idx)
                 
                 let old_ret = self.current_func_ret_type
                 self.current_func_ret_type = m.func_return_type
                 
                 self.enter_scope()
-                self.define_symbol("self", stmt.impl_struct_name, true, "param")
+                self.define_symbol("self", stmt.impl_struct_name, true, "param", m_idx)
                 var pi = 1
                 while pi < m.func_params.length() {
                     let p = m.func_params.get(pi)
-                    self.define_symbol(p.name, p.ptype, false, "param")
+                    self.define_symbol(p.name, p.ptype, false, "param", m_idx)
                     pi = pi + 1
                 }
                 self.check_stmt(m.func_body)
@@ -1744,7 +1755,7 @@ impl TypeChecker {
             return
         }
         if stmt.kind == StmtKind.sk_extern {
-            self.define_symbol(stmt.extern_name, stmt.extern_return, false, "func")
+            self.define_symbol(stmt.extern_name, stmt.extern_return, false, "func", stmt_idx)
             return
         }
         if stmt.kind == StmtKind.sk_import {
@@ -1818,6 +1829,15 @@ impl TypeChecker {
     }
 
     fn check_expr(self, expr_idx: Int) -> Void {
+        if expr_idx < 0 { return }
+        self.check_expr_inner(expr_idx)
+        var expr = self.expr_pool.get(expr_idx)
+        let ty_name = self.get_expr_type(expr_idx)
+        expr.type_id = self.map_type_to_id(ty_name)
+        self.expr_pool.set(expr_idx, expr)
+    }
+
+    fn check_expr_inner(self, expr_idx: Int) -> Void {
         if expr_idx < 0 { return }
         let expr = self.expr_pool.get(expr_idx)
         
@@ -2255,7 +2275,7 @@ impl TypeChecker {
             if inner_ty == "Void" {
                 self.enter_scope()
                 if length(expr.catch_var) > 0 {
-                    self.define_symbol(expr.catch_var, "Void", false, "var")
+                    self.define_symbol(expr.catch_var, "Void", false, "var", -1)
                 }
                 self.check_stmt(expr.catch_fallback)
                 self.exit_scope()
@@ -2265,7 +2285,7 @@ impl TypeChecker {
                 let val_type = substring(inner_ty, 1, length(inner_ty))
                 self.enter_scope()
                 if length(expr.catch_var) > 0 {
-                    self.define_symbol(expr.catch_var, "Void", false, "var")
+                    self.define_symbol(expr.catch_var, "Void", false, "var", -1)
                 }
                 self.check_stmt(expr.catch_fallback)
                 self.exit_scope()
@@ -2291,7 +2311,7 @@ impl TypeChecker {
                 
                 self.enter_scope()
                 if length(expr.catch_var) > 0 {
-                    self.define_symbol(expr.catch_var, error_set, false, "var")
+                    self.define_symbol(expr.catch_var, error_set, false, "var", -1)
                 }
                 self.check_stmt(expr.catch_fallback)
                 self.exit_scope()
@@ -2303,5 +2323,31 @@ impl TypeChecker {
             }
             return
         }
+    }
+
+    fn map_type_to_id(self, type_name: Str) -> Int {
+        if type_name == "Void" || length(type_name) == 0 { return 0 }
+        if type_name == "Int" { return 1 }
+        if type_name == "Float" { return 2 }
+        if type_name == "Bool" { return 3 }
+        if type_name == "Char" { return 4 }
+        if type_name == "Str" { return 5 }
+        
+        if length(type_name) > 0 && type_name[0] == Char(42) { // '*'
+            let element = type_name[1..length(type_name)]
+            let element_id = self.map_type_to_id(element)
+            return self.type_arena.intern_pointer(element_id)
+        }
+        return self.type_arena.intern_struct(type_name, -1)
+    }
+
+    fn get_expr_type_id(self, expr_idx: Int) -> Int {
+        if expr_idx < 0 { return 0 }
+        let expr = self.expr_pool.get(expr_idx)
+        if expr.type_id >= 0 {
+            return expr.type_id
+        }
+        let ty_name = self.get_expr_type(expr_idx)
+        return self.map_type_to_id(ty_name)
     }
 }

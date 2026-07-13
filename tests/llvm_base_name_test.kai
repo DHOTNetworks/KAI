@@ -1,0 +1,33 @@
+import prints from std.io.print
+import length from std.core.string
+
+fn get_base_name(path: Str) -> Str {
+    var last_slash = -1
+    var dot_pos = -1
+    var i = 0
+    let l = length(path)
+    while i < l {
+        let c = path[i]
+        if c == Char(47) {
+            last_slash = i
+        } else if c == Char(46) {
+            dot_pos = i
+        }
+        i = i + 1
+    }
+    var start = 0
+    if last_slash >= 0 {
+        start = last_slash + 1
+    }
+    var end = l
+    if dot_pos > last_slash {
+        end = dot_pos
+    }
+    return path[start..end]
+}
+
+fn main() -> Int {
+    let b = get_base_name("tests/plus_operator_test.kai")
+    prints(b)
+    return 0
+}

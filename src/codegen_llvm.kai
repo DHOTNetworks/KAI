@@ -17,6 +17,7 @@ import TokenValue from token_defs
 import int_to_str from std.core.string
 import char_to_str from std.core.string
 import std.llvm.core
+import StringPool from string_pool
 
 extern fn malloc(size: Int) -> *Char
 extern fn free(ptr: *Char)
@@ -40,6 +41,7 @@ struct LLVMCodegen {
     expr_pool: *ArrayList<ExprNode>
     pattern_pool: *ArrayList<PatternNode>
     import_resolver: *ImportResolver
+    pool: *StringPool
 
     ctx: *Void
     module: *Void
@@ -79,6 +81,7 @@ struct LLVMCodegen {
     local_alloca_vals: ArrayList<Int>
     local_alloca_types: ArrayList<Int>
     local_alloca_type_strs: ArrayList<Str>
+    local_alloca_decls: ArrayList<Int>
 
     loop_cond_block: *Void
     loop_merge_block: *Void
@@ -110,12 +113,13 @@ struct LLVMCodegen {
 
 impl LLVMCodegen {
 
-fn init(self, allocator: *KaiAllocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, import_resolver: *ImportResolver) {
+fn init(self, allocator: *KaiAllocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, import_resolver: *ImportResolver, pool: *StringPool) {
     self.allocator = allocator
     self.stmt_pool = stmt_pool
     self.expr_pool = expr_pool
     self.pattern_pool = pattern_pool
     self.import_resolver = import_resolver
+    self.pool = pool
     self.ctx = LLVMContextCreate()
     self.module = LLVMModuleCreateWithNameInContext("kai_module", self.ctx)
     self.builder = LLVMCreateBuilderInContext(self.ctx)
@@ -144,6 +148,7 @@ fn init(self, allocator: *KaiAllocator, stmt_pool: *ArrayList<StmtNode>, expr_po
     self.local_alloca_vals = ArrayList<Int>(allocator)
     self.local_alloca_types = ArrayList<Int>(allocator)
     self.local_alloca_type_strs = ArrayList<Str>(allocator)
+    self.local_alloca_decls = ArrayList<Int>(allocator)
     self.loop_cond_block = (0 as *Void)
     self.loop_merge_block = (0 as *Void)
 
@@ -940,6 +945,7 @@ fn emit_func_body(self, stmt_idx: Int, fn_val: *Void, struct_name: Str) {
     self.local_alloca_vals = ArrayList<Int>(self.allocator)
     self.local_alloca_types = ArrayList<Int>(self.allocator)
     self.local_alloca_type_strs = ArrayList<Str>(self.allocator)
+    self.local_alloca_decls = ArrayList<Int>(self.allocator)
     self.loop_cond_block = (0 as *Void)
     self.loop_merge_block = (0 as *Void)
 
@@ -968,6 +974,7 @@ fn emit_func_body(self, stmt_idx: Int, fn_val: *Void, struct_name: Str) {
             self.local_alloca_vals.push((alloca_val as Int))
             self.local_alloca_types.push((param_llvm_type as Int))
             self.local_alloca_type_strs.push(param_type_str)
+            self.local_alloca_decls.push(stmt_idx)
             pi = pi + 1
             continue
         }
@@ -992,6 +999,7 @@ fn emit_func_body(self, stmt_idx: Int, fn_val: *Void, struct_name: Str) {
         self.local_alloca_vals.push((alloca_val as Int))
         self.local_alloca_types.push((param_llvm_type as Int))
         self.local_alloca_type_strs.push(param_type_str)
+        self.local_alloca_decls.push(stmt_idx)
         pi = pi + 1
     }
 
@@ -1099,10 +1107,25 @@ fn coerce_return_value(self, val: *Void, ret_type_str: Str, actual_type_str: Str
     return val
 }
 
+fn strip_module_prefix(self, name: Str) -> Str {
+    var last_dot = -1
+    var i = 0
+    while i < length(name) {
+        if name[i] == Char(46) { // '.'
+            last_dot = i
+        }
+        i = i + 1
+    }
+    if last_dot >= 0 {
+        return name[last_dot + 1..length(name)]
+    }
+    return name
+}
+
 fn map_type(self, type_name: Str) -> *Void {
-    var resolved_type = type_name
+    var resolved_type = self.strip_module_prefix(type_name)
     if self.current_type_map.length() > 0 {
-        resolved_type = self.substitute_generic_type(type_name)
+        resolved_type = self.substitute_generic_type(resolved_type)
     }
 
     if strlen(resolved_type) > 0 && resolved_type[0] == Char(63) { // '?'
@@ -1456,6 +1479,7 @@ fn gen_stmt(self, stmt_idx: Int) {
                 var arr_type_str = stmt.vardecl_type
                 if strlen(arr_type_str) == 0 { arr_type_str = "[]" + inner_type_str }
                 self.local_alloca_type_strs.push(arr_type_str)
+                self.local_alloca_decls.push(stmt_idx)
                 return
             }
         }
@@ -1523,6 +1547,7 @@ fn gen_stmt(self, stmt_idx: Int) {
         self.local_alloca_vals.push((alloca_val as Int))
         self.local_alloca_types.push((var_type as Int))
         self.local_alloca_type_strs.push(var_type_str)
+        self.local_alloca_decls.push(stmt_idx)
         return
     }
     if stmt.kind == StmtKind.sk_assignment {
@@ -1631,6 +1656,7 @@ fn gen_stmt(self, stmt_idx: Int) {
         self.local_alloca_names.push(var_name)
         self.local_alloca_vals.push((alloca_val as Int))
         self.local_alloca_types.push((self.int64_type as Int))
+        self.local_alloca_decls.push(stmt_idx)
         LLVMBuildStore(self.builder, start_val, alloca_val)
 
         let cond_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "for_cond")
@@ -1719,6 +1745,7 @@ fn gen_stmt(self, stmt_idx: Int) {
         self.local_alloca_names.push(stmt.iflet_var)
         self.local_alloca_vals.push((iflet_alloca as Int))
         self.local_alloca_types.push((iflet_var_type as Int))
+        self.local_alloca_decls.push(stmt_idx)
 
         if stmt.iflet_else >= 0 {
             let else_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "iflelse")
@@ -1943,7 +1970,10 @@ fn gen_stmt(self, stmt_idx: Int) {
         if strlen(match_expr_type) > 0 && (match_expr_type[0] == Char(42) || match_expr_type[0] == Char(38)) {
             is_ptr = true
         }
-        // For now: simple match as if-else chain
+        // Simple match as if-else chain.
+        // match_end is the block all arm bodies jump to when done.
+        // merge_block (match_next) is where execution goes when a condition FAILS.
+        let match_end_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "match_end")
         var case_idx = 0
         while case_idx < stmt.match_cases.length() {
             let case_node = stmt.match_cases.get(case_idx)
@@ -1954,7 +1984,8 @@ fn gen_stmt(self, stmt_idx: Int) {
             if case_idx < stmt.match_cases.length() - 1 {
                 merge_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "match_next")
             } else {
-                merge_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "match_end")
+                // Last arm: if condition fails (shouldn't for else), also go to match_end
+                merge_block = match_end_block
             }
 
             if pat_node.kind == PatternKind.pk_literal {
@@ -1991,9 +2022,10 @@ fn gen_stmt(self, stmt_idx: Int) {
                 // Variant pattern: check tag
                 // For enums with payload, load tag from struct field 0
                 var has_payload_enum = false
+                let stripped_clean_type = self.strip_module_prefix(clean_type)
                 var ei = 0
                 while ei < self.enum_cache_names.length() {
-                    if self.enum_cache_names.get(ei) == clean_type && self.enum_has_payload.get(ei) {
+                    if self.enum_cache_names.get(ei) == stripped_clean_type && self.enum_has_payload.get(ei) {
                         has_payload_enum = true
                     }
                     ei = ei + 1
@@ -2060,6 +2092,7 @@ fn gen_stmt(self, stmt_idx: Int) {
                                 self.local_alloca_vals.push((bind_alloca as Int))
                                 self.local_alloca_types.push((p_llvm_ty as Int))
                                 self.local_alloca_type_strs.push(param.ptype)
+                                self.local_alloca_decls.push(stmt_idx)
                             }
                             bi = bi + 1
                         }
@@ -2078,15 +2111,40 @@ fn gen_stmt(self, stmt_idx: Int) {
             self.last_was_term = false
             self.gen_stmt(case_node.body)
             if !self.last_was_term {
-                LLVMBuildBr(self.builder, merge_block)
+                // After executing an arm body, always jump to match_end (not merge_block)
+                LLVMBuildBr(self.builder, match_end_block)
             }
 
+            // Position at merge_block for the next arm's condition check
             LLVMPositionBuilderAtEnd(self.builder, merge_block)
             self.last_was_term = false
             case_idx = case_idx + 1
         }
+        // After all arms, we're positioned at match_end_block already
         return
     }
+}
+
+fn find_alloca_by_idx(self, decl_idx: Int, name: Str) -> *Void {
+    var i = self.local_alloca_decls.length() - 1
+    while i >= 0 {
+        if self.local_alloca_decls.get(i) == decl_idx && self.local_alloca_names.get(i) == name {
+            return (self.local_alloca_vals.get(i) as *Void)
+        }
+        i = i - 1
+    }
+    return (0 as *Void)
+}
+
+fn find_alloca_type_by_idx(self, decl_idx: Int, name: Str) -> *Void {
+    var i = self.local_alloca_decls.length() - 1
+    while i >= 0 {
+        if self.local_alloca_decls.get(i) == decl_idx && self.local_alloca_names.get(i) == name {
+            return (self.local_alloca_types.get(i) as *Void)
+        }
+        i = i - 1
+    }
+    return (0 as *Void)
 }
 
 fn find_alloca(self, name: Str) -> *Void {
@@ -2314,7 +2372,7 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
             var val: Int = 0
             match expr.lit_value {
                 case .tv_int(v) => { val = v }
-                case .tv_str(v) => { val = self.str_to_int(v) }
+                case .tv_str(v) => { val = self.str_to_int(self.pool.get(v)) }
                 case else => {}
             }
             return LLVMConstInt(self.int64_type, val, false)
@@ -2323,7 +2381,7 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
             var val: Float = 0.0
             match expr.lit_value {
                 case .tv_float(v) => { val = v }
-                case .tv_str(v) => { val = self.str_to_float(v) }
+                case .tv_str(v) => { val = self.str_to_float(self.pool.get(v)) }
                 case else => {}
             }
             return LLVMConstReal(self.double_type, val)
@@ -2342,7 +2400,7 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
         if expr.lit_vkind == "STRING" {
             var sval: Str = ""
             match expr.lit_value {
-                case .tv_str(v) => { sval = v }
+                case .tv_str(v) => { sval = self.pool.get(v) }
                 case else => {}
             }
             let gname = ".str" + int_to_str(self.str_counter)
@@ -2369,9 +2427,17 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
         return (0 as *Void)
     }
     if expr.kind == ExprKind.ek_identifier {
-        let alloca = self.find_alloca(expr.ident_name)
+        var alloca = (0 as *Void)
+        var elem_ty = (0 as *Void)
+        if expr.resolved_symbol_idx >= 0 {
+            alloca = self.find_alloca_by_idx(expr.resolved_symbol_idx, expr.ident_name)
+            elem_ty = self.find_alloca_type_by_idx(expr.resolved_symbol_idx, expr.ident_name)
+        }
+        if alloca == (0 as *Void) {
+            alloca = self.find_alloca(expr.ident_name)
+            elem_ty = self.find_alloca_type(expr.ident_name)
+        }
         if alloca != (0 as *Void) {
-            var elem_ty = self.find_alloca_type(expr.ident_name)
             if elem_ty == (0 as *Void) {
                 elem_ty = self.int64_type
             }
@@ -2900,13 +2966,15 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
 
             // Check if this enum has payload
             var has_payload = false
+            let stripped_enum_part = self.strip_module_prefix(enum_part)
             var ei_chk = 0
             while ei_chk < self.enum_cache_names.length() {
-                if self.enum_cache_names.get(ei_chk) == enum_part {
+                if self.enum_cache_names.get(ei_chk) == stripped_enum_part {
                     has_payload = self.enum_has_payload.get(ei_chk)
                 }
                 ei_chk = ei_chk + 1
             }
+
 
             if !has_payload {
                 // No payload -> just return the tag index directly as a scalar int64
@@ -2968,9 +3036,17 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
         var fi = 0
         while fi < expr.struct_fields.length() {
             let f = expr.struct_fields.get(fi)
-            let field_val = self.gen_expr(f.value)
+            var field_val = self.gen_expr(f.value)
             if field_val != (0 as *Void) {
                 let gep = LLVMBuildStructGEP2(self.builder, struct_ty, alloca_val, fi, f.name)
+                let fv_kind = LLVMGetTypeKind(LLVMTypeOf(field_val))
+                let field_llvm_ty = LLVMStructGetTypeAtIndex(struct_ty, fi)
+                let field_kind = LLVMGetTypeKind(field_llvm_ty)
+                // If gen_expr returned a pointer-to-struct but the field expects a struct value,
+                // we need to load (dereference) the pointer first.
+                if fv_kind == LLVMPointerTypeKind && field_kind == LLVMStructTypeKind {
+                    field_val = LLVMBuildLoad2(self.builder, field_llvm_ty, field_val, "")
+                }
                 LLVMBuildStore(self.builder, field_val, gep)
             }
             fi = fi + 1
@@ -3012,9 +3088,10 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
             
             // Check if this enum has payload
             var has_payload = false
+            let stripped_enum_name = self.strip_module_prefix(enum_name)
             var ei_chk = 0
             while ei_chk < self.enum_cache_names.length() {
-                if self.enum_cache_names.get(ei_chk) == enum_name {
+                if self.enum_cache_names.get(ei_chk) == stripped_enum_name {
                     has_payload = self.enum_has_payload.get(ei_chk)
                 }
                 ei_chk = ei_chk + 1
@@ -3447,8 +3524,13 @@ fn gen_cast(self, val: *Void, dest_type: *Void) -> *Void {
     if src_kind == LLVMPointerTypeKind && dest_type == self.str_type {
         let undef_s: *Void = LLVMGetUndef(self.str_type)
         let with_p: *Void = LLVMBuildInsertValue(self.builder, undef_s, val, 0, "")
-        let len_zero = LLVMConstInt(self.int64_type, 0, false)
-        let with_l: *Void = LLVMBuildInsertValue(self.builder, with_p, len_zero, 1, "")
+        var fn_val = LLVMGetNamedFunction(self.module, "strlen")
+        let strlen_ty = kai_func_type_1(self.int64_type, self.ptr_type, false)
+        if fn_val == (0 as *Void) {
+            fn_val = LLVMAddFunction(self.module, "strlen", strlen_ty)
+        }
+        let len_val = kai_build_call_1(self.builder, strlen_ty, fn_val, val, "")
+        let with_l: *Void = LLVMBuildInsertValue(self.builder, with_p, len_val, 1, "")
         return with_l
     }
     // Str → ptr: extract the raw .ptr field from %Str
@@ -3658,16 +3740,18 @@ fn substitute_generic_type(self, name: Str) -> Str {
 }
 
 fn find_struct_decl(self, clean_name: Str) -> Int {
+    let stripped_clean = self.strip_module_prefix(clean_name)
     var si = 0
     while si < self.stmt_pool.length() {
         let s = self.stmt_pool.get(si)
         if s.kind == StmtKind.sk_struct_decl {
-            if s.struct_name == clean_name {
+            let decl_name = self.strip_module_prefix(s.struct_name)
+            if decl_name == stripped_clean {
                 return si
             }
             if s.struct_type_params.length() > 0 {
-                let prefix = s.struct_name + "_"
-                if strlen(clean_name) > strlen(prefix) && clean_name[0..strlen(prefix)] == prefix {
+                let prefix = decl_name + "_"
+                if strlen(stripped_clean) > strlen(prefix) && stripped_clean[0..strlen(prefix)] == prefix {
                     return si
                 }
             }
@@ -3678,16 +3762,18 @@ fn find_struct_decl(self, clean_name: Str) -> Int {
 }
 
 fn find_enum_decl(self, clean_name: Str) -> Int {
+    let stripped_clean = self.strip_module_prefix(clean_name)
     var si = 0
     while si < self.stmt_pool.length() {
         let s = self.stmt_pool.get(si)
         if s.kind == StmtKind.sk_enum_decl {
-            if s.enum_name == clean_name {
+            let decl_name = self.strip_module_prefix(s.enum_name)
+            if decl_name == stripped_clean {
                 return si
             }
             if s.enum_type_params.length() > 0 {
-                let prefix = s.enum_name + "_"
-                if strlen(clean_name) > strlen(prefix) && clean_name[0..strlen(prefix)] == prefix {
+                let prefix = decl_name + "_"
+                if strlen(stripped_clean) > strlen(prefix) && stripped_clean[0..strlen(prefix)] == prefix {
                     return si
                 }
             }
@@ -3912,6 +3998,7 @@ fn monomorphize_methods_for_struct(self, base_struct_name: Str, concrete_name: S
                     let saved_local_alloca_vals = self.local_alloca_vals
                     let saved_local_alloca_types = self.local_alloca_types
                     let saved_local_alloca_type_strs = self.local_alloca_type_strs
+                    let saved_local_alloca_decls = self.local_alloca_decls
                     let saved_loop_cond = self.loop_cond_block
                     let saved_loop_merge = self.loop_merge_block
                     let saved_ip = LLVMGetInsertBlock(self.builder)
@@ -3930,6 +4017,7 @@ fn monomorphize_methods_for_struct(self, base_struct_name: Str, concrete_name: S
                     self.local_alloca_vals = saved_local_alloca_vals
                     self.local_alloca_types = saved_local_alloca_types
                     self.local_alloca_type_strs = saved_local_alloca_type_strs
+                    self.local_alloca_decls = saved_local_alloca_decls
                     self.loop_cond_block = saved_loop_cond
                     self.loop_merge_block = saved_loop_merge
                     if saved_ip != (0 as *Void) {
@@ -3956,6 +4044,7 @@ fn emit_func_body_mono(self, stmt_idx: Int, fn_val: *Void, struct_name: Str, par
     self.local_alloca_vals = ArrayList<Int>(self.allocator)
     self.local_alloca_types = ArrayList<Int>(self.allocator)
     self.local_alloca_type_strs = ArrayList<Str>(self.allocator)
+    self.local_alloca_decls = ArrayList<Int>(self.allocator)
     self.loop_cond_block = (0 as *Void)
     self.loop_merge_block = (0 as *Void)
 
@@ -3994,6 +4083,7 @@ fn emit_func_body_mono(self, stmt_idx: Int, fn_val: *Void, struct_name: Str, par
             self.local_alloca_vals.push((alloca_val as Int))
             self.local_alloca_types.push((param_llvm_type as Int))
             self.local_alloca_type_strs.push(param_type_str)
+            self.local_alloca_decls.push(stmt_idx)
             pi = pi + 1
             continue
         }
@@ -4016,6 +4106,7 @@ fn emit_func_body_mono(self, stmt_idx: Int, fn_val: *Void, struct_name: Str, par
         self.local_alloca_vals.push((alloca_val as Int))
         self.local_alloca_types.push((param_llvm_type as Int))
         self.local_alloca_type_strs.push(param_type_str)
+        self.local_alloca_decls.push(stmt_idx)
         pi = pi + 1
     }
 

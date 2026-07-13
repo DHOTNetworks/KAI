@@ -6,6 +6,7 @@ import std.io.print
 
 import Lexer from lexer
 import Parser from parser
+import StringPool from string_pool
 
 extern fn strcmp(s1: Str, s2: Str) -> Int
 
@@ -52,13 +53,14 @@ fn run_graph(argc: Int, argv: **Char) -> Int {
     }
     let graph_source = src_res2.value as Str
 
-    var graph_lexer = Lexer(&graph_alloc, graph_source, graph_file)
+    var graph_pool = StringPool(&graph_alloc)
+    var graph_lexer = Lexer(&graph_alloc, graph_source, graph_file, &graph_pool)
     graph_lexer.lex()
     if graph_lexer.has_error {
         printf("Error: Lexer error in '%s'\n", graph_file)
         return 1
     }
-    var graph_parser = Parser(&graph_alloc, graph_file, graph_lexer.tokens, graph_source)
+    var graph_parser = Parser(&graph_alloc, graph_file, graph_lexer.tokens, graph_source, &graph_pool)
     let graph_program_idx = graph_parser.parse_program()
     if graph_program_idx < 0 {
         printf("Error: Parse error in '%s'\n", graph_file)

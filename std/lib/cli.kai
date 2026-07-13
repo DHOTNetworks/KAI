@@ -9,7 +9,7 @@ extern fn strcmp(s1: Str, s2: Str) -> Int
 extern fn atoll(s: Str) -> Int
 extern fn strlen(s: Str) -> Int
 
-cimport "tests/kai_args.h"
+cimport "std/lib/kai_args.h"
 extern fn args_init(argc: Int, argv: **Char)
 extern fn args_len() -> Int
 extern fn args_get(index: Int) -> ?Str

@@ -95,6 +95,8 @@ struct ExprNode {
     line: Int
     col: Int
     inferred_type: Str
+    resolved_symbol_idx: Int
+    type_id: Int
     lit_value: TokenValue
     lit_vkind: Str
     interp_parts: ArrayList<StrInterpPart>
@@ -279,6 +281,8 @@ fn new_expr_node(kind: ExprKind, line: Int, col: Int) -> ExprNode {
         line: line,
         col: col,
         inferred_type: "",
+        resolved_symbol_idx: -1,
+        type_id: -1,
         lit_value: TokenValue.tv_none,
         lit_vkind: "",
         interp_parts: empty_strinterp_array(),

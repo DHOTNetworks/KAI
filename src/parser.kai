@@ -32,10 +32,10 @@ import int_to_str from std.core.string
 extern fn exit(code: Int)
 extern fn system(cmd: *Char) -> Int
 
-fn tv_get_str(val: TokenValue) -> Str {
+fn tv_get_str(val: TokenValue, pool: *StringPool) -> Str {
     var result: Str = ""
     match val {
-        case .tv_str(s) => result = s
+        case .tv_str(id) => result = pool.get(id)
         case else => unsafe {
             printf("error[E0101]: internal error: unexpected token value type tag = %ld\n", val.tag)
             exit(1)
@@ -156,6 +156,7 @@ struct Parser {
     pattern_pool: *ArrayList<PatternNode>
     stmt_line: Int
     stmt_col: Int
+    pool: *StringPool
 
 }
 
@@ -180,8 +181,9 @@ fn parser_err(source_file: Str, source: Str, code: Str, msg: Str, line: Int, col
         }
     }
 }
+
 impl Parser {
-    fn init_with_pools(self, allocator: *KaiAllocator, source_file: Str, tokens: *ArrayList<Token>, expr_pool: *ArrayList<ExprNode>, stmt_pool: *ArrayList<StmtNode>, pattern_pool: *ArrayList<PatternNode>, source: Str) -> Parser {
+    fn init_with_pools(self, allocator: *KaiAllocator, source_file: Str, tokens: *ArrayList<Token>, expr_pool: *ArrayList<ExprNode>, stmt_pool: *ArrayList<StmtNode>, pattern_pool: *ArrayList<PatternNode>, source: Str, pool: *StringPool) -> Parser {
         self.allocator = allocator
         self.source_file = source_file
         self.source = source
@@ -195,10 +197,11 @@ impl Parser {
         self.pattern_pool = pattern_pool
         self.stmt_line = 0
         self.stmt_col = 0
+        self.pool = pool
         return self
 
     }
-    fn init(self, allocator: *KaiAllocator, source_file: Str, tokens: *ArrayList<Token>, source: Str) {
+    fn init(self, allocator: *KaiAllocator, source_file: Str, tokens: *ArrayList<Token>, source: Str, pool: *StringPool) {
         self.allocator = allocator
         self.source_file = source_file
         self.source = source
@@ -207,6 +210,7 @@ impl Parser {
         self.pending_gt = false
         self.pending_gt_line = 0
         self.pending_gt_col = 0
+        self.pool = pool
         unsafe {
             self.expr_pool = allocator.alloc(sizeof(ArrayList<ExprNode>), 8) as *ArrayList<ExprNode>
             self.stmt_pool = allocator.alloc(sizeof(ArrayList<StmtNode>), 8) as *ArrayList<StmtNode>
@@ -221,7 +225,7 @@ impl Parser {
     }
     fn peek(self, offset: Int) -> Token {
         if self.pending_gt && offset == 0 {
-            return Token(tok_type: TokenType.GT, value: TokenValue.tv_str(v: ">"), line: self.pending_gt_line, column: self.pending_gt_col)
+            return Token(tok_type: TokenType.GT, value: TokenValue.tv_str(v: self.pool.intern(">")), line: self.pending_gt_line, column: self.pending_gt_col)
         }
         let pos = self.cursor + offset
         if pos >= self.tokens.length() {
@@ -233,7 +237,7 @@ impl Parser {
     fn advance(self) -> Token {
         if self.pending_gt {
             self.pending_gt = false
-            return Token(tok_type: TokenType.GT, value: TokenValue.tv_str(v: ">"), line: self.pending_gt_line, column: self.pending_gt_col)
+            return Token(tok_type: TokenType.GT, value: TokenValue.tv_str(v: self.pool.intern(">")), line: self.pending_gt_line, column: self.pending_gt_col)
         }
         let tok = self.peek(0)
         if tok.tok_type != TokenType.EOF {
@@ -254,7 +258,7 @@ impl Parser {
         if self.pending_gt {
             if ttype == TokenType.GT {
                 self.pending_gt = false
-                return Token(tok_type: TokenType.GT, value: TokenValue.tv_str(v: ">"), line: self.pending_gt_line, column: self.pending_gt_col)
+                return Token(tok_type: TokenType.GT, value: TokenValue.tv_str(v: self.pool.intern(">")), line: self.pending_gt_line, column: self.pending_gt_col)
             }
             self.pending_gt = false
         }
@@ -264,7 +268,7 @@ impl Parser {
             self.pending_gt = true
             self.pending_gt_line = tok.line
             self.pending_gt_col = tok.column + 1
-            return Token(tok_type: TokenType.GT, value: TokenValue.tv_str(v: ">"), line: tok.line, column: tok.column)
+            return Token(tok_type: TokenType.GT, value: TokenValue.tv_str(v: self.pool.intern(">")), line: tok.line, column: tok.column)
         }
         if tok.tok_type == ttype {
             return self.advance()
@@ -862,7 +866,7 @@ impl Parser {
             let _ = self.expect(TokenType.RPAREN)
             return "(" + str_array_join(types, ", ") + ")"
         } else {
-            let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+            let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
             if self.peek(0).tok_type == TokenType.LT {
                 let _ = self.advance()
                 var type_args = ArrayList<Str>(self.allocator)
@@ -886,9 +890,9 @@ impl Parser {
             let _ = self.advance()
             var done = false
             while !done {
-                let tp_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                let tp_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
                 if self.match_token(TokenType.COLON) {
-                    type_params.push(tp_name + ":" + tv_get_str(self.expect(TokenType.IDENTIFIER).value))
+                    type_params.push(tp_name + ":" + tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool))
                 } else {
                     type_params.push(tp_name)
                 }
@@ -908,7 +912,7 @@ impl Parser {
             var names = ArrayList<Str>(self.allocator)
             var done = false
             while !done {
-                names.push(tv_get_str(self.expect(TokenType.IDENTIFIER).value))
+                names.push(tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool))
                 if !self.match_token(TokenType.COMMA) {
                     done = true
                 }
@@ -919,7 +923,7 @@ impl Parser {
             self.expect_end_of_statement()
             return self.st_var_decl(str_array_join(names, ","), "", val_expr, is_mutable)
         }
-        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
         var type_ann: Str = ""
         if self.match_token(TokenType.COLON) {
             type_ann = self.parse_type()
@@ -932,14 +936,14 @@ impl Parser {
     }
     fn parse_func_decl(self) -> Int {
         let _ = self.advance()
-        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
         let type_params = self.parse_generic_params()
         let _ = self.expect(TokenType.LPAREN)
         var params = ArrayList<Param>(self.allocator)
         if self.peek(0).tok_type != TokenType.RPAREN {
             var done = false
             while !done {
-                let param_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                let param_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
                 var param_type: Str = ""
                 if param_name == "self" && self.peek(0).tok_type != TokenType.COLON {
                     param_type = "self"
@@ -965,7 +969,7 @@ impl Parser {
         }
         var capability: Str = ""
         if self.match_token(TokenType.HASH) {
-            capability = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+            capability = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
         }
         self.expect_end_of_statement()
         let saved_line = self.stmt_line
@@ -978,7 +982,7 @@ impl Parser {
     }
     fn parse_struct_decl(self) -> Int {
         let _ = self.advance()
-        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
         let type_params = self.parse_generic_params()
         self.expect_end_of_statement()
         let _ = self.expect(TokenType.LBRACE)
@@ -991,7 +995,7 @@ impl Parser {
                 methods.push(self.parse_func_decl())
             } else if self.peek(0).tok_type == TokenType.IMPL {
                 let _ = self.advance()
-                let trait_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                let trait_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
                 self.expect_end_of_statement()
                 let _ = self.expect(TokenType.LBRACE)
                 var impl_methods = ArrayList<Int>(self.allocator)
@@ -1003,7 +1007,7 @@ impl Parser {
                 let _ = self.expect(TokenType.RBRACE)
                 trait_impls.push(self.st_impl(name, trait_name, impl_methods))
             } else {
-                let fname = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                let fname = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
                 let _ = self.expect(TokenType.COLON)
                 fields.push(StructField(name: fname, ftype: self.parse_type()))
                 self.expect_end_of_statement()
@@ -1016,13 +1020,13 @@ impl Parser {
     }
     fn parse_impl_block(self) -> Int {
         let _ = self.advance()
-        let first_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        let first_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
         var struct_name: Str = ""
         var trait_name: Str = ""
         if self.peek(0).tok_type == TokenType.FOR {
             let _ = self.advance()
             trait_name = first_name
-            struct_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+            struct_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
         } else {
             struct_name = first_name
         }
@@ -1040,7 +1044,7 @@ impl Parser {
     }
     fn parse_trait_decl(self) -> Int {
         let _ = self.advance()
-        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
         self.expect_end_of_statement()
         let _ = self.expect(TokenType.LBRACE)
         var methods = ArrayList<Int>(self.allocator)
@@ -1055,7 +1059,7 @@ impl Parser {
     }
     fn parse_enum_decl(self) -> Int {
         let _ = self.advance()
-        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
         let type_params = self.parse_generic_params()
         self.expect_end_of_statement()
         let _ = self.expect(TokenType.LBRACE)
@@ -1063,14 +1067,14 @@ impl Parser {
         self.consume_newlines()
         while self.peek(0).tok_type != TokenType.RBRACE && self.peek(0).tok_type != TokenType.EOF {
             let _ = self.expect(TokenType.CASE)
-            let v_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+            let v_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
             var v_params = ArrayList<Param>(self.allocator)
             var unnamed_count = 0
             if self.match_token(TokenType.LPAREN) {
                 if self.peek(0).tok_type != TokenType.RPAREN {
                     var done = false
                     while !done {
-                        let pname_or_type = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                        let pname_or_type = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
                         if self.peek(0).tok_type == TokenType.COLON {
                             let _ = self.advance()
                             v_params.push(Param(name: pname_or_type, ptype: self.parse_type()))
@@ -1099,7 +1103,7 @@ impl Parser {
     }
     fn parse_error_decl(self) -> Int {
         let _ = self.advance()
-        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
         self.expect_end_of_statement()
         let _ = self.expect(TokenType.LBRACE)
         var variants = ArrayList<Str>(self.allocator)
@@ -1108,7 +1112,7 @@ impl Parser {
             if self.match_token(TokenType.CASE) {
                 let _ = 0
             }
-            let v_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+            let v_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
             variants.push(v_name)
             self.expect_end_of_statement()
             self.consume_newlines()
@@ -1152,13 +1156,13 @@ impl Parser {
         let tok = self.peek(0)
         if tok.tok_type == TokenType.DOT {
             let _ = self.advance()
-            let v_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+            let v_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
             var bindings = ArrayList<Str>(self.allocator)
             if self.match_token(TokenType.LPAREN) {
                 if self.peek(0).tok_type != TokenType.RPAREN {
                     var done = false
                     while !done {
-                        bindings.push(tv_get_str(self.expect(TokenType.IDENTIFIER).value))
+                        bindings.push(tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool))
                         if !self.match_token(TokenType.COMMA) {
                             done = true
                         }
@@ -1206,13 +1210,13 @@ impl Parser {
     fn parse_extern_decl(self) -> Int {
         let _ = self.advance()
         let _ = self.expect(TokenType.FUNC)
-        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        let name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
         let _ = self.expect(TokenType.LPAREN)
         var params = ArrayList<Param>(self.allocator)
         if self.peek(0).tok_type != TokenType.RPAREN {
             var done = false
             while !done {
-                let param_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                let param_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
                 let _ = self.expect(TokenType.COLON)
                 params.push(Param(name: param_name, ptype: self.parse_type()))
                 if !self.match_token(TokenType.COMMA) {
@@ -1240,7 +1244,7 @@ impl Parser {
         let saved_col = self.stmt_col
         if self.peek(0).tok_type == TokenType.LET {
             let _ = self.advance()
-            let var_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+            let var_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
             let _ = self.expect(TokenType.ASSIGN)
             let cond_expr = self.parse_expression(0)
             self.expect_end_of_statement()
@@ -1297,7 +1301,7 @@ impl Parser {
     }
     fn parse_for_stmt(self) -> Int {
         let _ = self.advance()
-        let var_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        let var_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
         let _ = self.expect(TokenType.IN)
         let expr = self.parse_expression(0)
         let expr_node = self.expr_pool.get(expr)
@@ -1421,7 +1425,7 @@ impl Parser {
         var path = ArrayList<Str>(self.allocator)
         var done = false
         while !done {
-            path.push(tv_get_str(self.expect(TokenType.IDENTIFIER).value))
+            path.push(tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool))
             if !self.match_token(TokenType.DOT) {
                 done = true
             }
@@ -1432,13 +1436,13 @@ impl Parser {
     }
     fn parse_import_stmt_new(self) -> Int {
         let _ = self.advance()
-        let first_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+        let first_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
         if self.peek(0).tok_type == TokenType.FROM {
             let _ = self.advance()
             var path = ArrayList<Str>(self.allocator)
             var done = false
             while !done {
-                path.push(tv_get_str(self.expect(TokenType.IDENTIFIER).value))
+                path.push(tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool))
                 if !self.match_token(TokenType.DOT) {
                     done = true
                 }
@@ -1446,7 +1450,7 @@ impl Parser {
             var alias = first_name
             if self.peek(0).tok_type == TokenType.AS {
                 let _ = self.advance()
-                alias = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                alias = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
             }
             self.expect_end_of_statement()
             return self.st_import(path, alias)
@@ -1454,12 +1458,12 @@ impl Parser {
             var path = ArrayList<Str>(self.allocator)
             path.push(first_name)
             while self.match_token(TokenType.DOT) {
-                path.push(tv_get_str(self.expect(TokenType.IDENTIFIER).value))
+                path.push(tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool))
             }
             var alias: Str = ""
             if self.peek(0).tok_type == TokenType.AS {
                 let _ = self.advance()
-                alias = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                alias = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
             }
             self.expect_end_of_statement()
             return self.st_import(path, alias)
@@ -1469,11 +1473,11 @@ impl Parser {
     fn parse_cimport_stmt(self) -> Int {
         let _ = self.advance()
         let header_tok = self.expect(TokenType.STRING_LIT)
-        let header = tv_get_str(header_tok.value)
+        let header = tv_get_str(header_tok.value, self.pool)
         var alias = ""
         if self.peek(0).tok_type == TokenType.AS {
             let _ = self.advance()
-            alias = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+            alias = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
         }
         self.expect_end_of_statement()
         return self.st_cimport(header, alias)
@@ -1489,7 +1493,7 @@ impl Parser {
             } else {
                 let _ = self.advance()
                 if op_tok.tok_type == TokenType.DOT {
-                    let member_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                    let member_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
                     if self.peek(0).tok_type == TokenType.LPAREN {
                         let _ = self.advance()
                         if self.peek(0).tok_type == TokenType.IDENTIFIER && self.peek(1).tok_type == TokenType.COLON {
@@ -1497,7 +1501,7 @@ impl Parser {
                             if self.peek(0).tok_type != TokenType.RPAREN {
                                 var fields_done = false
                                 while !fields_done {
-                                    let f_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                                    let f_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
                                     let _ = self.expect(TokenType.COLON)
                                     fields.push(FieldInit(name: f_name, value: self.parse_expression(0)))
                                     if !self.match_token(TokenType.COMMA) {
@@ -1571,7 +1575,7 @@ impl Parser {
                 } else if op_tok.tok_type == TokenType.CATCH {
                     var var_name: Str = ""
                     if self.match_token(TokenType.PIPE) {
-                        var_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                        var_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
                         let _ = self.expect(TokenType.PIPE)
                     }
                     var fallback: Int = -1
@@ -1654,7 +1658,7 @@ impl Parser {
                 is_volatile = true
             }
             let _ = self.expect(TokenType.LPAREN)
-            let asm_code = tv_get_str(self.expect(TokenType.STRING_LIT).value)
+            let asm_code = tv_get_str(self.expect(TokenType.STRING_LIT).value, self.pool)
 
             var outputs = ArrayList<AsmOutput>(self.allocator)
             var inputs = ArrayList<AsmInput>(self.allocator)
@@ -1668,9 +1672,9 @@ impl Parser {
                         done = true
                     } else {
                         let _ = self.expect(TokenType.LBRACKET)
-                        let out_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                        let out_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
                         let _ = self.expect(TokenType.RBRACKET)
-                        let constraint = tv_get_str(self.expect(TokenType.STRING_LIT).value)
+                        let constraint = tv_get_str(self.expect(TokenType.STRING_LIT).value, self.pool)
                         let _ = self.expect(TokenType.LPAREN)
                         var type_name: Str = ""
                         var expr_idx: Int = -1
@@ -1695,9 +1699,9 @@ impl Parser {
                         done = true
                     } else {
                         let _ = self.expect(TokenType.LBRACKET)
-                        let in_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                        let in_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
                         let _ = self.expect(TokenType.RBRACKET)
-                        let constraint = tv_get_str(self.expect(TokenType.STRING_LIT).value)
+                        let constraint = tv_get_str(self.expect(TokenType.STRING_LIT).value, self.pool)
                         let _ = self.expect(TokenType.LPAREN)
                         let expr_idx = self.parse_expression(0)
                         let _ = self.expect(TokenType.RPAREN)
@@ -1715,7 +1719,7 @@ impl Parser {
                     if next_tt == TokenType.RPAREN || next_tt == TokenType.EOF {
                         done = true
                     } else {
-                        let clobber = tv_get_str(self.expect(TokenType.STRING_LIT).value)
+                        let clobber = tv_get_str(self.expect(TokenType.STRING_LIT).value, self.pool)
                         clobbers.push(clobber)
                         if !self.match_token(TokenType.COMMA) {
                             done = true
@@ -1727,7 +1731,7 @@ impl Parser {
             return self.ex_asm(asm_code, is_volatile, outputs, inputs, clobbers)
         } else if tok.tok_type == TokenType.IDENTIFIER {
             if self.is_generic_instantiation() {
-                let ident = tv_get_str(self.advance().value)
+                let ident = tv_get_str(self.advance().value, self.pool)
                 let _ = self.advance()
                 var type_args = ArrayList<Str>(self.allocator)
                 var done = false
@@ -1751,7 +1755,7 @@ impl Parser {
                         if self.peek(0).tok_type != TokenType.RPAREN {
                             var fields_done = false
                             while !fields_done {
-                                let f_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                                let f_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
                                 let _ = self.expect(TokenType.COLON)
                                 fields.push(FieldInit(name: f_name, value: self.parse_expression(0)))
                                 if !self.match_token(TokenType.COMMA) {
@@ -1788,14 +1792,14 @@ impl Parser {
                 self.expr_pool.push(id_node)
                 return self.expr_pool.length() - 1
             } else if self.peek(1).tok_type == TokenType.LPAREN {
-                let ident = tv_get_str(self.advance().value)
+                let ident = tv_get_str(self.advance().value, self.pool)
                 let _ = self.advance()
                 if self.peek(0).tok_type == TokenType.IDENTIFIER && self.peek(1).tok_type == TokenType.COLON {
                     var fields = ArrayList<FieldInit>(self.allocator)
                     if self.peek(0).tok_type != TokenType.RPAREN {
                         var fields_done = false
                         while !fields_done {
-                            let f_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value)
+                            let f_name = tv_get_str(self.expect(TokenType.IDENTIFIER).value, self.pool)
                             let _ = self.expect(TokenType.COLON)
                             fields.push(FieldInit(name: f_name, value: self.parse_expression(0)))
                             if !self.match_token(TokenType.COMMA) {
@@ -1821,7 +1825,7 @@ impl Parser {
                 }
             } else {
                 let _ = self.advance()
-                return self.ex_ident(tv_get_str(tok.value))
+                return self.ex_ident(tv_get_str(tok.value, self.pool))
             }
         } else if tok.tok_type == TokenType.MINUS {
             let _ = self.advance()

@@ -11,6 +11,7 @@ import CodegenBuilder from codegen_builder
 import LLVMCodegen from codegen_llvm
 import length from std.core.string
 import ImportResolver from imports
+import StringPool from string_pool
 
 import get_base_name from utils
 import run_fix from fix
@@ -178,22 +179,23 @@ fn main(argc: Int, argv: **Char) -> Int {
     }
     let source = source_res.value as Str
 
-    var lexer = Lexer(&allocator, source, input_file)
+    var pool = StringPool(&allocator)
+    var lexer = Lexer(&allocator, source, input_file, &pool)
     lexer.lex()
     if lexer.has_error {
         if json_mode { printf("{\"messages\":[{\"code\":\"E0100\",\"message\":\"Lexer error\",\"file\":\"%s\"}],\"error\":true}\n", input_file) }
         return 2
     }
-    var parser = Parser(&allocator, input_file, lexer.tokens, source)
+    var parser = Parser(&allocator, input_file, lexer.tokens, source, &pool)
     let program_idx = parser.parse_program()
     if program_idx < 0 {
         if json_mode { printf("{\"messages\":[{\"code\":\"E0101\",\"message\":\"Parse error\",\"file\":\"%s\"}],\"error\":true}\n", input_file) }
         return 3
     }
 
-    var resolver = ImportResolver(&allocator)
+    var resolver = ImportResolver(&allocator, &pool)
 
-    var checker = TypeChecker(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, input_file, source, &resolver)
+    var checker = TypeChecker(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, input_file, source, &resolver, &pool)
     let success = checker.check_program(program_idx)
     if !success {
         if json_mode { printf("{\"result\":\"typecheck_failed\",\"file\":\"%s\"}\n", input_file) }
@@ -206,7 +208,7 @@ fn main(argc: Int, argv: **Char) -> Int {
     }
 
     if use_llvm {
-        var llvm_gen = LLVMCodegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, &resolver)
+        var llvm_gen = LLVMCodegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, &resolver, &pool)
         var obj_file = base + ".o"
         if use_builder { obj_file = "CC" + obj_file }
         let emit_ok = llvm_gen.generate(program_idx, obj_file)
@@ -217,10 +219,10 @@ fn main(argc: Int, argv: **Char) -> Int {
     }
     var output: Str = ""
     if use_builder {
-        var builder_gen = CodegenBuilder(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, &resolver)
+        var builder_gen = CodegenBuilder(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, &resolver, &pool)
         output = builder_gen.generate(program_idx)
     } else {
-        var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, &resolver)
+        var gen = Codegen(&allocator, parser.stmt_pool, parser.expr_pool, parser.pattern_pool, &resolver, &pool)
         output = gen.generate(program_idx)
     }
     let write_res = write_string(c_file, output)

@@ -10,6 +10,7 @@ struct Symbol {
     llvm_value: Str
     moved: Bool
     freed: Bool
+    decl_stmt_idx: Int
 }
 
 struct SymbolTable {
@@ -25,8 +26,8 @@ impl SymbolTable {
         self.parent_idx = parent_idx
     }
 
-    fn define(self, name: Str, type_name: Str, is_mutable: Bool, kind: Str, llvm_value: Str) {
-        self.entries.push(Symbol(name: name, type_name: type_name, is_mutable: is_mutable, kind: kind, llvm_value: llvm_value, moved: false, freed: false))
+    fn define(self, name: Str, type_name: Str, is_mutable: Bool, kind: Str, llvm_value: Str, decl_stmt_idx: Int) {
+        self.entries.push(Symbol(name: name, type_name: type_name, is_mutable: is_mutable, kind: kind, llvm_value: llvm_value, moved: false, freed: false, decl_stmt_idx: decl_stmt_idx))
     }
 
     fn lookup(self, name: Str, tables: *ArrayList<SymbolTable>) -> Int {
@@ -56,7 +57,7 @@ impl SymbolTable {
             let parent = tables.get(self.parent_idx)
             return parent.lookup_symbol(name, tables)
         }
-        return Symbol(name: "", type_name: "", is_mutable: false, kind: "", llvm_value: "", moved: false, freed: false)
+        return Symbol(name: "", type_name: "", is_mutable: false, kind: "", llvm_value: "", moved: false, freed: false, decl_stmt_idx: -1)
     }
 
     fn mark_moved(self, name: Str, tables: *ArrayList<SymbolTable>) -> Void {

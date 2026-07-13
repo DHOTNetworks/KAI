@@ -8,6 +8,7 @@ import char_to_str from std.core.string
 import Allocator from std.core.allocator
 import KaiAllocator from std.core.allocator
 import parser_err from parser
+import StringPool from string_pool
 
 extern fn strlen(s: Str) -> Int
 
@@ -99,14 +100,14 @@ fn keyword_type(ident: Str) -> TokenType {
 
     }
 }
-fn make_keyword_value(ident: Str, ttype: TokenType) -> TokenValue {
+fn make_keyword_value(ident: Str, ttype: TokenType, pool: *StringPool) -> TokenValue {
     if ttype == TokenType.BOOL_LIT {
         if ident == "true" {
             return TokenValue.tv_bool(v: true)
         }
         return TokenValue.tv_bool(v: false)
     }
-    return TokenValue.tv_str(v: ident)
+    return TokenValue.tv_str(v: pool.intern(ident))
 
 }
 struct Lexer {
@@ -122,10 +123,11 @@ struct Lexer {
     paren_depth: Int
     brace_depth: Int
     has_error: Bool
+    pool: *StringPool
 
 }
 impl Lexer {
-    fn init(self, allocator: *KaiAllocator, source: Str, source_file: Str) {
+    fn init(self, allocator: *KaiAllocator, source: Str, source_file: Str, pool: *StringPool) {
         self.allocator = allocator
         self.source = source
         self.cursor = 0
@@ -135,6 +137,7 @@ impl Lexer {
         self.brace_depth = 0
         self.has_error = false
         self.source_file = source_file
+        self.pool = pool
         unsafe {
             self.tokens = allocator.alloc(sizeof(ArrayList<Token>), 1) as *ArrayList<Token>
             self.indent_stack = allocator.alloc(sizeof(ArrayList<Int>), 1) as *ArrayList<Int>
@@ -173,6 +176,9 @@ impl Lexer {
     fn emit(self, ttype: TokenType, value: TokenValue) {
         self.tokens.push(Token(tok_type: ttype, value: value, line: self.line, column: self.column))
 
+    }
+    fn emit_str(self, ttype: TokenType, s: Str) {
+        self.emit(ttype, TokenValue.tv_str(v: self.pool.intern(s)))
     }
     fn lex_error(self, msg: Str) {
         parser_err(self.source_file, self.source, "E0100", msg, self.line, self.column)
@@ -230,13 +236,11 @@ impl Lexer {
         let ident = sb.to_str()
         let ktype = keyword_type(ident)
         if ktype == TokenType.IDENTIFIER {
-            self.emit(TokenType.IDENTIFIER, TokenValue.tv_str(v: ident))
+            self.emit(TokenType.IDENTIFIER, TokenValue.tv_str(v: self.pool.intern(ident)))
         } else if ktype == TokenType.BOOL_LIT {
-            self.emit(TokenType.BOOL_LIT, make_keyword_value(ident, TokenType.BOOL_LIT))
+            self.emit(TokenType.BOOL_LIT, make_keyword_value(ident, TokenType.BOOL_LIT, self.pool))
         } else {
-            self.emit(ktype, TokenValue.tv_str(v: ident))
-
-
+            self.emit(ktype, TokenValue.tv_str(v: self.pool.intern(ident)))
         }
     }
     fn lex_number(self) {
@@ -262,10 +266,10 @@ impl Lexer {
                 }
             }
             let num_str = sb.to_str()
-            self.emit(TokenType.FLOAT_LIT, TokenValue.tv_str(v: num_str))
+            self.emit(TokenType.FLOAT_LIT, TokenValue.tv_str(v: self.pool.intern(num_str)))
         } else {
             let num_str = sb.to_str()
-            self.emit(TokenType.INT_LIT, TokenValue.tv_str(v: num_str))
+            self.emit(TokenType.INT_LIT, TokenValue.tv_str(v: self.pool.intern(num_str)))
 
         }
     }
@@ -302,7 +306,7 @@ impl Lexer {
             let _ = self.advance()
         }
         let s = sb.to_str()
-        self.emit(TokenType.STRING_LIT, TokenValue.tv_str(v: s))
+        self.emit(TokenType.STRING_LIT, TokenValue.tv_str(v: self.pool.intern(s)))
 
     }
     fn lex_char(self) {
@@ -435,147 +439,147 @@ impl Lexer {
                 } else if c == '-' && self.peek(1) == '>' {
                     let _ = self.advance()
                     let _ = self.advance()
-                    self.emit(TokenType.ARROW, TokenValue.tv_str(v: "->"))
+                    self.emit_str(TokenType.ARROW, "->")
                 } else if c == '=' && self.peek(1) == '>' {
                     let _ = self.advance()
                     let _ = self.advance()
-                    self.emit(TokenType.FAT_ARROW, TokenValue.tv_str(v: "=>"))
+                    self.emit_str(TokenType.FAT_ARROW, "=>")
                 } else if c == '+' && self.peek(1) == '=' {
                     let _ = self.advance()
                     let _ = self.advance()
-                    self.emit(TokenType.PLUS_ASSIGN, TokenValue.tv_str(v: "+="))
+                    self.emit_str(TokenType.PLUS_ASSIGN, "+=")
                 } else if c == '-' && self.peek(1) == '=' {
                     let _ = self.advance()
                     let _ = self.advance()
-                    self.emit(TokenType.MINUS_ASSIGN, TokenValue.tv_str(v: "-="))
+                    self.emit_str(TokenType.MINUS_ASSIGN, "-=")
                 } else if c == '=' && self.peek(1) == '=' {
                     let _ = self.advance()
                     let _ = self.advance()
-                    self.emit(TokenType.EQ, TokenValue.tv_str(v: "=="))
+                    self.emit_str(TokenType.EQ, "==")
                 } else if c == '!' && self.peek(1) == '=' {
                     let _ = self.advance()
                     let _ = self.advance()
-                    self.emit(TokenType.NE, TokenValue.tv_str(v: "!="))
+                    self.emit_str(TokenType.NE, "!=")
                 } else if c == '<' && self.peek(1) == '=' {
                     let _ = self.advance()
                     let _ = self.advance()
-                    self.emit(TokenType.LE, TokenValue.tv_str(v: "<="))
+                    self.emit_str(TokenType.LE, "<=")
                 } else if c == '>' && self.peek(1) == '=' {
                     let _ = self.advance()
                     let _ = self.advance()
-                    self.emit(TokenType.GE, TokenValue.tv_str(v: ">="))
+                    self.emit_str(TokenType.GE, ">=")
                 } else if c == '&' && self.peek(1) == '&' {
                     let _ = self.advance()
                     let _ = self.advance()
-                    self.emit(TokenType.AND, TokenValue.tv_str(v: "&&"))
+                    self.emit_str(TokenType.AND, "&&")
                 } else if c == '|' && self.peek(1) == '|' {
                     let _ = self.advance()
                     let _ = self.advance()
-                    self.emit(TokenType.OR, TokenValue.tv_str(v: "||"))
+                    self.emit_str(TokenType.OR, "||")
                 } else if c == '<' && self.peek(1) == '<' {
                     let _ = self.advance()
                     let _ = self.advance()
-                    self.emit(TokenType.LSHIFT, TokenValue.tv_str(v: "<<"))
+                    self.emit_str(TokenType.LSHIFT, "<<")
                 } else if c == '>' && self.peek(1) == '>' {
                     let _ = self.advance()
                     let _ = self.advance()
-                    self.emit(TokenType.RSHIFT, TokenValue.tv_str(v: ">>"))
+                    self.emit_str(TokenType.RSHIFT, ">>")
                 } else if c == '.' && self.peek(1) == '.' && self.peek(2) == '=' {
                     let _ = self.advance()
                     let _ = self.advance()
                     let _ = self.advance()
-                    self.emit(TokenType.DOTDOTEQ, TokenValue.tv_str(v: "..="))
+                    self.emit_str(TokenType.DOTDOTEQ, "..=")
                 } else if c == '.' && self.peek(1) == '.' {
                     let _ = self.advance()
                     let _ = self.advance()
-                    self.emit(TokenType.DOTDOT, TokenValue.tv_str(v: ".."))
+                    self.emit_str(TokenType.DOTDOT, "..")
                 } else if c == '+' {
                     let _ = self.advance()
-                    self.emit(TokenType.PLUS, TokenValue.tv_str(v: "+"))
+                    self.emit_str(TokenType.PLUS, "+")
                 } else if c == '-' {
                     let _ = self.advance()
-                    self.emit(TokenType.MINUS, TokenValue.tv_str(v: "-"))
+                    self.emit_str(TokenType.MINUS, "-")
                 } else if c == '*' {
                     let _ = self.advance()
-                    self.emit(TokenType.MUL, TokenValue.tv_str(v: "*"))
+                    self.emit_str(TokenType.MUL, "*")
                 } else if c == '/' {
                     let _ = self.advance()
-                    self.emit(TokenType.DIV, TokenValue.tv_str(v: "/"))
+                    self.emit_str(TokenType.DIV, "/")
                 } else if c == '%' {
                     let _ = self.advance()
-                    self.emit(TokenType.MOD, TokenValue.tv_str(v: "%"))
+                    self.emit_str(TokenType.MOD, "%")
                 } else if c == '=' {
                     let _ = self.advance()
-                    self.emit(TokenType.ASSIGN, TokenValue.tv_str(v: "="))
+                    self.emit_str(TokenType.ASSIGN, "=")
                 } else if c == '<' {
                     let _ = self.advance()
-                    self.emit(TokenType.LT, TokenValue.tv_str(v: "<"))
+                    self.emit_str(TokenType.LT, "<")
                 } else if c == '>' {
                     let _ = self.advance()
-                    self.emit(TokenType.GT, TokenValue.tv_str(v: ">"))
+                    self.emit_str(TokenType.GT, ">")
                 } else if c == ':' {
                     let _ = self.advance()
-                    self.emit(TokenType.COLON, TokenValue.tv_str(v: ":"))
+                    self.emit_str(TokenType.COLON, ":")
                 } else if c == ';' {
                     let _ = self.advance()
-                    self.emit(TokenType.SEMICOLON, TokenValue.tv_str(v: ";"))
+                    self.emit_str(TokenType.SEMICOLON, ";")
                 } else if c == ',' {
                     let _ = self.advance()
-                    self.emit(TokenType.COMMA, TokenValue.tv_str(v: ","))
+                    self.emit_str(TokenType.COMMA, ",")
                 } else if c == '(' {
                     let _ = self.advance()
                     self.paren_depth = self.paren_depth + 1
-                    self.emit(TokenType.LPAREN, TokenValue.tv_str(v: "("))
+                    self.emit_str(TokenType.LPAREN, "(")
                 } else if c == ')' {
                     let _ = self.advance()
                     if self.paren_depth > 0 {
                         self.paren_depth = self.paren_depth - 1
                     }
-                    self.emit(TokenType.RPAREN, TokenValue.tv_str(v: ")"))
+                    self.emit_str(TokenType.RPAREN, ")")
                 } else if c == '[' {
                     let _ = self.advance()
                     self.paren_depth = self.paren_depth + 1
-                    self.emit(TokenType.LBRACKET, TokenValue.tv_str(v: "["))
+                    self.emit_str(TokenType.LBRACKET, "[")
                 } else if c == ']' {
                     let _ = self.advance()
                     if self.paren_depth > 0 {
                         self.paren_depth = self.paren_depth - 1
                     }
-                    self.emit(TokenType.RBRACKET, TokenValue.tv_str(v: "]"))
+                    self.emit_str(TokenType.RBRACKET, "]")
                 } else if c == '{' {
                     let _ = self.advance()
                     self.brace_depth = self.brace_depth + 1
-                    self.emit(TokenType.LBRACE, TokenValue.tv_str(v: "{"))
+                    self.emit_str(TokenType.LBRACE, "{")
                 } else if c == '}' {
                     let _ = self.advance()
                     if self.brace_depth > 0 {
                         self.brace_depth = self.brace_depth - 1
                     }
-                    self.emit(TokenType.RBRACE, TokenValue.tv_str(v: "}"))
+                    self.emit_str(TokenType.RBRACE, "}")
                 } else if c == '&' {
                     let _ = self.advance()
-                    self.emit(TokenType.AMP, TokenValue.tv_str(v: "&"))
+                    self.emit_str(TokenType.AMP, "&")
                 } else if c == '#' {
                     let _ = self.advance()
-                    self.emit(TokenType.HASH, TokenValue.tv_str(v: "#"))
+                    self.emit_str(TokenType.HASH, "#")
                 } else if c == '!' {
                     let _ = self.advance()
-                    self.emit(TokenType.NOT, TokenValue.tv_str(v: "!"))
+                    self.emit_str(TokenType.NOT, "!")
                 } else if c == '?' {
                     let _ = self.advance()
-                    self.emit(TokenType.QUESTION, TokenValue.tv_str(v: "?"))
+                    self.emit_str(TokenType.QUESTION, "?")
                 } else if c == '^' {
                     let _ = self.advance()
-                    self.emit(TokenType.BITXOR, TokenValue.tv_str(v: "^"))
+                    self.emit_str(TokenType.BITXOR, "^")
                 } else if c == '~' {
                     let _ = self.advance()
-                    self.emit(TokenType.BITNOT, TokenValue.tv_str(v: "~"))
+                    self.emit_str(TokenType.BITNOT, "~")
                 } else if c == '|' {
                     let _ = self.advance()
-                    self.emit(TokenType.PIPE, TokenValue.tv_str(v: "|"))
+                    self.emit_str(TokenType.PIPE, "|")
                 } else if c == '.' {
                     let _ = self.advance()
-                    self.emit(TokenType.DOT, TokenValue.tv_str(v: "."))
+                    self.emit_str(TokenType.DOT, ".")
 
                 } else {
                     let _ = self.advance()

@@ -1,0 +1,95 @@
+import ArrayList from std.core.array
+import KaiAllocator from std.core.allocator
+
+enum TypeKind {
+    case tk_void
+    case tk_int
+    case tk_float
+    case tk_bool
+    case tk_char
+    case tk_str
+    case tk_pointer
+    case tk_slice
+    case tk_struct
+    case tk_enum
+    case tk_error_union
+}
+
+struct Type {
+    kind: TypeKind
+    name: Str
+    element_type_id: Int
+    decl_stmt_idx: Int
+    error_set_id: Int
+}
+
+struct TypeArena {
+    types: ArrayList<Type>
+    allocator: *KaiAllocator
+}
+
+impl TypeArena {
+    fn init(self, allocator: *KaiAllocator) {
+        self.allocator = allocator
+        self.types = ArrayList<Type>(allocator)
+        // Register primitive types
+        self.types.push(Type(kind: TypeKind.tk_void, name: "Void", element_type_id: -1, decl_stmt_idx: -1, error_set_id: -1))
+        self.types.push(Type(kind: TypeKind.tk_int, name: "Int", element_type_id: -1, decl_stmt_idx: -1, error_set_id: -1))
+        self.types.push(Type(kind: TypeKind.tk_float, name: "Float", element_type_id: -1, decl_stmt_idx: -1, error_set_id: -1))
+        self.types.push(Type(kind: TypeKind.tk_bool, name: "Bool", element_type_id: -1, decl_stmt_idx: -1, error_set_id: -1))
+        self.types.push(Type(kind: TypeKind.tk_char, name: "Char", element_type_id: -1, decl_stmt_idx: -1, error_set_id: -1))
+        self.types.push(Type(kind: TypeKind.tk_str, name: "Str", element_type_id: -1, decl_stmt_idx: -1, error_set_id: -1))
+    }
+
+    fn get_type(self, id: Int) -> Type {
+        return self.types.get(id)
+    }
+
+    fn intern_pointer(self, element_type_id: Int) -> Int {
+        var i = 0
+        while i < self.types.length() {
+            let t = self.types.get(i)
+            if t.kind == TypeKind.tk_pointer && t.element_type_id == element_type_id {
+                return i
+            }
+            i = i + 1
+        }
+        let el = self.types.get(element_type_id)
+        let name = "*" + el.name
+        let new_id = self.types.length()
+        self.types.push(Type(kind: TypeKind.tk_pointer, name: name, element_type_id: element_type_id, decl_stmt_idx: -1, error_set_id: -1))
+        return new_id
+    }
+
+    fn intern_struct(self, name: Str, decl_stmt_idx: Int) -> Int {
+        var i = 0
+        while i < self.types.length() {
+            let t = self.types.get(i)
+            if t.kind == TypeKind.tk_struct && t.name == name {
+                return i
+            }
+            i = i + 1
+        }
+        let new_id = self.types.length()
+        self.types.push(Type(kind: TypeKind.tk_struct, name: name, element_type_id: -1, decl_stmt_idx: decl_stmt_idx, error_set_id: -1))
+        return new_id
+    }
+
+    fn intern_enum(self, name: Str, decl_stmt_idx: Int) -> Int {
+        var i = 0
+        while i < self.types.length() {
+            let t = self.types.get(i)
+            if t.kind == TypeKind.tk_enum && t.name == name {
+                return i
+            }
+            i = i + 1
+        }
+        let new_id = self.types.length()
+        self.types.push(Type(kind: TypeKind.tk_enum, name: name, element_type_id: -1, decl_stmt_idx: decl_stmt_idx, error_set_id: -1))
+        return new_id
+    }
+
+    fn deinit(self) {
+        self.types.deinit()
+    }
+}

@@ -20,6 +20,7 @@ import CCodeBuilder from codegen_c_builder
 import cgb_char_to_str from codegen_c_builder
 import cgb_int_to_str from codegen_c_builder
 import ImportResolver from imports
+import StringPool from string_pool
 
 import CType from codegen_c_ast
 import CExprNode from codegen_c_ast
@@ -101,6 +102,7 @@ struct CodegenBuilder {
     expr_pool: *ArrayList<ExprNode>
     pattern_pool: *ArrayList<PatternNode>
     import_resolver: *ImportResolver
+    pool: *StringPool
 
     builder: CCodeBuilder
     struct_decls: StrBuf
@@ -213,12 +215,13 @@ fn add_init_return(self, body_str: Str, struct_name: Str) -> Str {
     return "{\n" + self_decl + content + "    return self;\n}"
 }
 
-fn init(self, allocator: *KaiAllocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, import_resolver: *ImportResolver) {
+fn init(self, allocator: *KaiAllocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, import_resolver: *ImportResolver, pool: *StringPool) {
     self.allocator = allocator
     self.stmt_pool = stmt_pool
     self.expr_pool = expr_pool
     self.pattern_pool = pattern_pool
     self.import_resolver = import_resolver
+    self.pool = pool
     self.builder.init(allocator)
     self.struct_decls.init(allocator)
     self.func_decls.init(allocator)
@@ -869,8 +872,23 @@ fn extract_first_type_arg(self, type_name: Str) -> Str {
     return "Int"
 }
 
+fn strip_module_prefix(self, name: Str) -> Str {
+    var last_dot = -1
+    var i = 0
+    while i < length(name) {
+        if name[i] == Char(46) { // '.'
+            last_dot = i
+        }
+        i = i + 1
+    }
+    if last_dot >= 0 {
+        return name[last_dot + 1..length(name)]
+    }
+    return name
+}
+
 fn map_type(self, resolved_type: Str) -> Str {
-    var orig = resolved_type
+    var orig = self.strip_module_prefix(resolved_type)
     if strlen(orig) == 0 { return "void" }
 
     if self.current_type_map.length() > 0 {
@@ -1353,7 +1371,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
         if vkind == "INT" {
             var val_str = "0"
             match expr.lit_value {
-                case .tv_str(v) => { val_str = v }
+                case .tv_str(v) => { val_str = self.pool.get(v) }
                 case .tv_int(v) => { val_str = cgb_int_to_str(v) }
                 case else => {}
             }
@@ -1362,7 +1380,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
         if vkind == "FLOAT" {
             var val_str = "0.0"
             match expr.lit_value {
-                case .tv_str(v) => { val_str = v }
+                case .tv_str(v) => { val_str = self.pool.get(v) }
                 case else => {}
             }
             return self.push_expr(cexpr_new_float(val_str))
@@ -1371,7 +1389,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
             var val_str = "\"\""
             match expr.lit_value {
                 case .tv_str(v) => {
-                    val_str = "\"" + self.cgb_replace_format_specifiers(self.escape_string(v)) + "\""
+                    val_str = "\"" + self.cgb_replace_format_specifiers(self.escape_string(self.pool.get(v))) + "\""
                 }
                 case else => {}
             }
@@ -2551,7 +2569,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
                 var lit_str = ""
                 match pat_node.lit_value {
                     case .tv_int(v) => { lit_str = cgb_int_to_str(v) }
-                    case .tv_str(v) => { lit_str = "\"" + self.escape_string(v) + "\"" }
+                    case .tv_str(v) => { lit_str = "\"" + self.escape_string(self.pool.get(v)) + "\"" }
                     case .tv_bool(v) => {
                         if v { lit_str = "true" } else { lit_str = "false" }
                     }
@@ -2951,6 +2969,9 @@ fn build_func_types(self) -> Void {
     var i2 = 0
     while i2 < self.stmt_pool.length() {
         let stmt = self.stmt_pool.get(i2)
+        unsafe {
+            printf("Phase 3b: i2=%d, stmt.kind=%d\n", i2, stmt.kind)
+        }
         if stmt.kind == StmtKind.sk_func_decl {
             var has_self_param = false
             var pi = 0
@@ -2963,6 +2984,9 @@ fn build_func_types(self) -> Void {
             else if stmt.func_type_params.length() > 0 { /* skip generic functions — monomorphized separately */ }
             else if stmt.func_body < 0 { /* skip auto-generated stubs (e.g. _new constructors) */ }
             else {
+                unsafe {
+                    printf("gen_func_decl: name=%s, param_count=%d, body_idx=%d\n", stmt.func_name, stmt.func_params.length(), stmt.func_body)
+                }
                 self.var_types.init(self.allocator)
                 self.block_stack.init(self.allocator)
                 var params_str = ""

@@ -273,6 +273,7 @@ extern fn LLVMGetTypeByName2(ctx: *Void, name: Str) -> *Void
 
 // Type query functions
 extern fn LLVMGetTypeKind(ty: *Void) -> Int
+extern fn LLVMStructGetTypeAtIndex(struct_ty: *Void, i: Int) -> *Void
 
 // Memory release function to avoid string leaks
 extern fn LLVMDisposeMessage(message: *Char)

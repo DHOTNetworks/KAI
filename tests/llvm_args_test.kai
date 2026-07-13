@@ -1,0 +1,6 @@
+import printi from std.io.print
+
+fn main(argc: Int, argv: **Char) -> Int {
+    printi(argc)
+    return 0
+}

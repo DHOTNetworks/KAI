@@ -7,6 +7,7 @@ import StringBuilder from std.core.string
 import int_to_str from std.core.string
 import char_to_str from std.core.string
 import length from std.core.string
+import StringPool from string_pool
 
 import ExprKind from ast_nodes
 import ExprNode from ast_nodes
@@ -49,6 +50,7 @@ struct Codegen {
     expr_pool: *ArrayList<ExprNode>
     pattern_pool: *ArrayList<PatternNode>
     import_resolver: *ImportResolver
+    pool: *StringPool
 
     //== Legacy string-based accumulators
     output: StringBuilder
@@ -140,12 +142,13 @@ fn add_init_return(self, body_str: Str, struct_name: Str) -> Str {
     return "{\n" + self_decl + stripped_body + self_ret
 }
 
-fn init(self, allocator: *KaiAllocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, import_resolver: *ImportResolver) {
+fn init(self, allocator: *KaiAllocator, stmt_pool: *ArrayList<StmtNode>, expr_pool: *ArrayList<ExprNode>, pattern_pool: *ArrayList<PatternNode>, import_resolver: *ImportResolver, pool: *StringPool) {
     self.allocator = allocator
     self.stmt_pool = stmt_pool
     self.expr_pool = expr_pool
     self.pattern_pool = pattern_pool
     self.import_resolver = import_resolver
+    self.pool = pool
     self.output = StringBuilder(allocator)
     self.struct_decls = StringBuilder(allocator)
     self.func_decls = StringBuilder(allocator)
@@ -180,12 +183,27 @@ fn is_pointer_type(self, t: Str) -> Bool {
 
 //== Type Mapping (Kai -> C)
 
+fn strip_module_prefix(self, name: Str) -> Str {
+    var last_dot = -1
+    var i = 0
+    while i < length(name) {
+        if name[i] == Char(46) { // '.'
+            last_dot = i
+        }
+        i = i + 1
+    }
+    if last_dot >= 0 {
+        return name[last_dot + 1..length(name)]
+    }
+    return name
+}
+
 fn map_type(self, type_name: Str) -> Str {
     if length(type_name) == 0 {
         return "void"
     }
 
-    var resolved_type = type_name
+    var resolved_type = self.strip_module_prefix(type_name)
     if self.current_type_map.length() > 0 {
         resolved_type = self.substitute_generic_type(type_name)
     }
@@ -1324,7 +1342,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         if vkind == "INT" {
             match expr.lit_value {
                 case .tv_str(v) => {
-                    let s: Str = v
+                    let s: Str = self.pool.get(v)
                     return s + "LL"
                 }
                 case .tv_int(v) => { return int_to_str(v) + "LL" }
@@ -1333,14 +1351,14 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         }
         if vkind == "FLOAT" {
             match expr.lit_value {
-                case .tv_str(v) => { return v }
+                case .tv_str(v) => { return self.pool.get(v) }
                 case else => { return "0.0" }
             }
         }
         if vkind == "STRING" {
             match expr.lit_value {
                 case .tv_str(v) => {
-                    return "\"" + self.escape_string(v) + "\""
+                    return "\"" + self.escape_string(self.pool.get(v)) + "\""
                 }
                 case else => { return "\"\"" }
             }
@@ -1354,7 +1372,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
                 case .tv_str(v) => {
                     var is_true = false
                     unsafe {
-                        if strcmp(v, "true") == 0 {
+                        if strcmp(self.pool.get(v), "true") == 0 {
                             is_true = true
                         }
                     }
@@ -1904,7 +1922,12 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         
         let func_name = clean_type + "_" + method_name
         if type_map_find(&self.func_types, func_name) < 0 {
-            printf("error[E0023]: type '%s' has no method '%s'\n", rec_type, method_name)
+            printf("error[E0023]: type '%s' has no method '%s' (looked up: '%s')\n", rec_type, method_name, func_name)
+            var d_i = 0
+            while d_i < self.func_types.length() {
+                printf("  registered: %s\n", self.func_types.get(d_i).key)
+                d_i = d_i + 1
+            }
             unsafe {
                 exit(1)
             }
@@ -2889,7 +2912,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
                 var lit_str = ""
                 match pat_node.lit_value {
                     case .tv_int(v) => { lit_str = int_to_str(v) }
-                    case .tv_str(v) => { lit_str = "\"" + self.escape_string(v) + "\"" }
+                    case .tv_str(v) => { lit_str = "\"" + self.escape_string(self.pool.get(v)) + "\"" }
                     case .tv_bool(v) => {
                         if v { lit_str = "true" }
                         else { lit_str = "false" }

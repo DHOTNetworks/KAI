@@ -18,6 +18,7 @@ import __kai_std_ascii_is_alnum from std.lib.ascii
 import diag_line from std.lib.diag
 import diag_line_end from std.lib.diag
 import diag_line_text from std.lib.diag
+import StringPool from string_pool
 
 extern fn strcmp(s1: Str, s2: Str) -> Int
 
@@ -286,14 +287,15 @@ fn run_fix(fix_mode: Str, fix_file: Str, json: Bool) -> Int {
 
     // Phase 1: Run type checker in text mode for additional diagnostics
     if !json {
-        var fix_lexer = Lexer(&fix_alloc, source, fix_file)
+        var fix_pool = StringPool(&fix_alloc)
+        var fix_lexer = Lexer(&fix_alloc, source, fix_file, &fix_pool)
         fix_lexer.lex()
         if !fix_lexer.has_error {
-            var fix_parser = Parser(&fix_alloc, fix_file, fix_lexer.tokens, source)
+            var fix_parser = Parser(&fix_alloc, fix_file, fix_lexer.tokens, source, &fix_pool)
             let prog_idx = fix_parser.parse_program()
             if prog_idx >= 0 {
-                var resolver = ImportResolver(&fix_alloc)
-                var chk = TypeChecker(&fix_alloc, fix_parser.stmt_pool, fix_parser.expr_pool, fix_parser.pattern_pool, fix_file, source, &resolver)
+                var resolver = ImportResolver(&fix_alloc, &fix_pool)
+                var chk = TypeChecker(&fix_alloc, fix_parser.stmt_pool, fix_parser.expr_pool, fix_parser.pattern_pool, fix_file, source, &resolver, &fix_pool)
                 let ttmp = chk.check_program(prog_idx)
                 if ttmp { } else { }
             }

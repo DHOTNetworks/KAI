@@ -1,0 +1,35 @@
+import ArrayList from std.core.array
+import KaiAllocator from std.core.allocator
+
+struct StringPool {
+    strings: ArrayList<Str>
+    allocator: *KaiAllocator
+}
+
+impl StringPool {
+    fn init(self, allocator: *KaiAllocator) {
+        self.allocator = allocator
+        self.strings.init(allocator)
+    }
+
+    fn intern(self, s: Str) -> Int {
+        var i = 0
+        while i < self.strings.length() {
+            if self.strings.get(i) == s {
+                return i
+            }
+            i = i + 1
+        }
+        let id = self.strings.length()
+        self.strings.push(s)
+        return id
+    }
+
+    fn get(self, id: Int) -> Str {
+        return self.strings.get(id)
+    }
+
+    fn deinit(self) {
+        self.strings.deinit()
+    }
+}
