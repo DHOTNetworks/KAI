@@ -177,6 +177,13 @@ fn print_stmt(self, idx: Int) {
         self.builder.emit_line("while (" + cond + ")")
         self.print_stmt(node.while_body)
     }
+    if node.kind == CStmtKind.cs_for {
+        let init = self.print_expr(node.for_init)
+        let cond = self.print_expr(node.for_cond)
+        let inc = self.print_expr(node.for_inc)
+        self.builder.emit_line("for (" + init + "; " + cond + "; " + inc + ")")
+        self.print_stmt(node.for_body)
+    }
     if node.kind == CStmtKind.cs_return {
         if node.return_val >= 0 {
             let val = self.print_expr(node.return_val)

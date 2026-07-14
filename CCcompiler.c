@@ -1781,6 +1781,7 @@ CExprNode cexpr_new_ternary(int64_t cond, int64_t then_expr, int64_t else_expr);
 CStmtNode cstmt_new_var_decl(CType var_type, const char* var_name, int64_t var_init);
 CStmtNode cstmt_new_return(int64_t return_val);
 CStmtNode cstmt_new_while(int64_t cond, int64_t body);
+CStmtNode cstmt_new_for(int64_t init, int64_t cond, int64_t inc, int64_t body);
 CDeclNode cdecl_new_func(const char* name, const char* ret_type, ArrayList_Str params, bool is_extern, bool is_vararg);
 CPrinter CPrinter_init(CCodeBuilder* builder, ArrayList_CExprNode* expr_pool, ArrayList_CStmtNode* stmt_pool);
 const char* CPrinter_print_expr(CPrinter* self, int64_t idx);
@@ -2531,7 +2532,7 @@ Result_Str_IoError read_to_string(KaiAllocator* allocator, const char* path)
 {
     {
         void* file = fopen(((char*)(path)), ((char*)("rb")));
-        if (((char*)(file)) == ((void*)0))
+        if (((char*)(file)) == NULL)
         {
             return IoError_open_failed;
         }
@@ -2549,7 +2550,7 @@ Result_Bool_IoError write_string(const char* path, const char* content)
 {
     {
         void* file = fopen(((char*)(path)), ((char*)("wb")));
-        if (((char*)(file)) == ((void*)0))
+        if (((char*)(file)) == NULL)
         {
             return IoError_open_failed;
         }
@@ -2597,7 +2598,7 @@ const char* __kai_std_str_copy(char* buffer, const char* text)
     int64_t len = strlen(((const char*)(text)));
     if (len > 100000000LL)
     {
-        return ((void*)0);
+        return NULL;
     }
     int64_t index = 0LL;
     while (index < len)
@@ -2614,7 +2615,7 @@ const char* __kai_std_str_concat(char* buffer, const char* left, const char* rig
     int64_t right_len = strlen(((const char*)(right)));
     if ((left_len > 100000000LL) || (right_len > (100000000LL - left_len)))
     {
-        return ((void*)0);
+        return NULL;
     }
     int64_t index = 0LL;
     while (index < left_len)
@@ -2636,7 +2637,7 @@ const char* __kai_std_str_repeat(char* buffer, const char* text, int64_t count)
     int64_t len = strlen(((const char*)(text)));
     if ((count > 0LL) && (len > (100000000LL / count)))
     {
-        return ((void*)0);
+        return NULL;
     }
     int64_t out = 0LL;
     int64_t repetition = 0LL;
@@ -2659,7 +2660,7 @@ const char* __kai_std_str_replace(char* buffer, const char* text, const char* ol
     int64_t old_len = strlen(((const char*)(old)));
     if (old_len == 0LL)
     {
-        return ((void*)0);
+        return NULL;
     }
     int64_t text_len = strlen(((const char*)(text)));
     int64_t read = 0LL;
@@ -2670,7 +2671,7 @@ const char* __kai_std_str_replace(char* buffer, const char* text, const char* ol
         {
             if (strlen(((const char*)(replacement))) > (100000000LL - write))
             {
-                return ((void*)0);
+                return NULL;
             }
             int64_t new_index = 0LL;
             while (new_index < strlen(((const char*)(replacement))))
@@ -2684,7 +2685,7 @@ const char* __kai_std_str_replace(char* buffer, const char* text, const char* ol
         {
             if (write >= 100000000LL)
             {
-                return ((void*)0);
+                return NULL;
             }
             (buffer[write] = text[read]);
             (write = (write + 1LL));
@@ -2699,7 +2700,7 @@ const char* __kai_std_str_to_lower_ascii(char* buffer, const char* text)
     int64_t len = strlen(((const char*)(text)));
     if (len > 100000000LL)
     {
-        return ((void*)0);
+        return NULL;
     }
     int64_t index = 0LL;
     while (index < len)
@@ -2715,7 +2716,7 @@ const char* __kai_std_str_to_upper_ascii(char* buffer, const char* text)
     int64_t len = strlen(((const char*)(text)));
     if (len > 100000000LL)
     {
-        return ((void*)0);
+        return NULL;
     }
     int64_t index = 0LL;
     while (index < len)
@@ -2731,7 +2732,7 @@ const char* __kai_std_str_reverse(char* buffer, const char* text)
     int64_t len = strlen(((const char*)(text)));
     if (len > 100000000LL)
     {
-        return ((void*)0);
+        return NULL;
     }
     int64_t index = 0LL;
     while (index < len)
@@ -2936,7 +2937,7 @@ const char* __kai_std_str_split(const char* text, const char* sep, int64_t part_
     int64_t sep_len = strlen(((const char*)(sep)));
     if (sep_len == 0LL)
     {
-        return ((void*)0);
+        return NULL;
     }
     int64_t current = 0LL;
     int64_t start = 0LL;
@@ -2951,12 +2952,12 @@ const char* __kai_std_str_split(const char* text, const char* sep, int64_t part_
         }
         if (found == strlen(((const char*)(rest))))
         {
-            return ((void*)0);
+            return NULL;
         }
         (current = (current + 1LL));
         (start = (end + sep_len));
     }
-    return ((void*)0);
+    return NULL;
 }
 bool __kai_std_str_eql_ignore_ascii_case(const char* left, const char* right)
 {
@@ -3023,7 +3024,7 @@ const char* __kai_std_str_field_ascii(const char* text, int64_t field_index)
         }
         if (index >= strlen(((const char*)(text))))
         {
-            return ((void*)0);
+            return NULL;
         }
         int64_t start = index;
         while ((index < strlen(((const char*)(text)))) && (!__kai_std_str_is_ascii_space(text[index])))
@@ -3036,7 +3037,7 @@ const char* __kai_std_str_field_ascii(const char* text, int64_t field_index)
         }
         (current = (current + 1LL));
     }
-    return ((void*)0);
+    return NULL;
 }
 int64_t __kai_std_str_line_count(const char* text)
 {
@@ -3060,7 +3061,7 @@ const char* __kai_std_str_line(const char* text, int64_t line_index)
 {
     if (strlen(((const char*)(text))) == 0LL)
     {
-        return ((void*)0);
+        return NULL;
     }
     int64_t current = 0LL;
     int64_t start = 0LL;
@@ -3071,7 +3072,7 @@ const char* __kai_std_str_line(const char* text, int64_t line_index)
         {
             if ((index == strlen(((const char*)(text)))) && (start == strlen(((const char*)(text)))))
             {
-                return ((void*)0);
+                return NULL;
             }
             int64_t end = index;
             if ((end > start) && (text[(end - 1LL)] == ((char)(13LL))))
@@ -3087,7 +3088,7 @@ const char* __kai_std_str_line(const char* text, int64_t line_index)
         }
         (index = (index + 1LL));
     }
-    return ((void*)0);
+    return NULL;
 }
 int64_t __kai_std_str_word_count_ascii(const char* text)
 {
@@ -15922,7 +15923,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx)
         }
         if (strcmp(vkind, "NONE") == 0LL)
         {
-            return CodegenBuilder_push_expr(self, cexpr_new_ident("((void*)0)"));
+            return CodegenBuilder_push_expr(self, cexpr_new_ident("NULL"));
         }
         return CodegenBuilder_push_expr(self, cexpr_new_ident(""));
     }
@@ -15941,31 +15942,33 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx)
         const char* right = CodegenBuilder_expr_to_str(self, right_idx);
         if ((strcmp(op, "==") == 0LL) || (strcmp(op, "!=") == 0LL))
         {
-            if (((strlen(lhs_type) > 0LL) && (lhs_type[0LL] == ((char)(63LL)))) && ((strcmp(right, "NULL") == 0LL) || (strcmp(right, "((void*)0)") == 0LL)))
+            if (((strlen(lhs_type) > 0LL) && (lhs_type[0LL] == ((char)(63LL)))) && (strcmp(right, "NULL") == 0LL))
             {
                 const char* val_type = __kai_str_sub(lhs_type, 1LL, strlen(lhs_type));
                 if (CodegenBuilder_is_pointer_type(self, val_type))
                 {
                     return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", left), " "), op), " NULL)")));
                 }
+                int64_t has_val = CodegenBuilder_push_expr(self, cexpr_new_field(left_idx, "has_value"));
                 if (strcmp(op, "==") == 0LL)
                 {
-                    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc("(!", left), ".has_value)")));
+                    return CodegenBuilder_push_expr(self, cexpr_new_unary("!", has_val, true));
                 }
-                return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc("(", left), ".has_value)")));
+                return has_val;
             }
-            if (((strlen(rhs_type) > 0LL) && (rhs_type[0LL] == ((char)(63LL)))) && ((strcmp(left, "NULL") == 0LL) || (strcmp(left, "((void*)0)") == 0LL)))
+            if (((strlen(rhs_type) > 0LL) && (rhs_type[0LL] == ((char)(63LL)))) && (strcmp(left, "NULL") == 0LL))
             {
                 const char* val_type = __kai_str_sub(rhs_type, 1LL, strlen(rhs_type));
                 if (CodegenBuilder_is_pointer_type(self, val_type))
                 {
                     return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc(concatAlloc(concatAlloc("(NULL ", op), " "), right), ")")));
                 }
+                int64_t has_val = CodegenBuilder_push_expr(self, cexpr_new_field(right_idx, "has_value"));
                 if (strcmp(op, "==") == 0LL)
                 {
-                    return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc("(!", right), ".has_value)")));
+                    return CodegenBuilder_push_expr(self, cexpr_new_unary("!", has_val, true));
                 }
-                return CodegenBuilder_push_expr(self, cexpr_new_ident(concatAlloc(concatAlloc("(", right), ".has_value)")));
+                return has_val;
             }
         }
         if (strcmp(lhs_type, "Str") == 0LL)
@@ -16493,43 +16496,52 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx)
         {
             return CodegenBuilder_push_expr(self, cexpr_new_str("\"\""));
         }
-        const char* result = "";
+        int64_t result_idx = (-1LL);
         int64_t i = 0LL;
         while (i < ArrayList_StrInterpPart_length((&expr.interp_parts)))
         {
             StrInterpPart part = ArrayList_StrInterpPart_get((&expr.interp_parts), i);
-            const char* part_str = "";
+            int64_t part_idx = (-1LL);
             if (part.kind == 0LL)
             {
-                (part_str = concatAlloc(concatAlloc("\"", CodegenBuilder_escape_string(self, part.str_val)), "\""));
+                (part_idx = CodegenBuilder_push_expr(self, cexpr_new_str(concatAlloc(concatAlloc("\"", CodegenBuilder_escape_string(self, part.str_val)), "\""))));
             } else
             {
-                const char* expr_val = CodegenBuilder_gen_expr_str(self, part.expr_idx);
+                int64_t expr_idx = CodegenBuilder_gen_expr(self, part.expr_idx);
                 const char* expr_type = CodegenBuilder_get_expr_type(self, part.expr_idx);
                 if (strcmp(expr_type, "Int") == 0LL)
                 {
-                    (part_str = concatAlloc(concatAlloc("cgb_int_to_str(", expr_val), ")"));
+                    ArrayList_Int int_args = ArrayList_Int_init(self->allocator);
+                    ArrayList_Int_push((&int_args), expr_idx);
+                    (part_idx = CodegenBuilder_push_expr(self, cexpr_new_call("cgb_int_to_str", int_args)));
                 } else if (strcmp(expr_type, "Char") == 0LL)
                 {
-                    (part_str = concatAlloc(concatAlloc("cgb_char_to_str(", expr_val), ")"));
+                    ArrayList_Int char_args = ArrayList_Int_init(self->allocator);
+                    ArrayList_Int_push((&char_args), expr_idx);
+                    (part_idx = CodegenBuilder_push_expr(self, cexpr_new_call("cgb_char_to_str", char_args)));
                 } else if (strcmp(expr_type, "Bool") == 0LL)
                 {
-                    (part_str = concatAlloc(concatAlloc("((", expr_val), ") ? \"true\" : \"false\")"));
+                    int64_t true_str = CodegenBuilder_push_expr(self, cexpr_new_str("\"true\""));
+                    int64_t false_str = CodegenBuilder_push_expr(self, cexpr_new_str("\"false\""));
+                    (part_idx = CodegenBuilder_push_expr(self, cexpr_new_ternary(expr_idx, true_str, false_str)));
                 } else
                 {
-                    (part_str = expr_val);
+                    (part_idx = expr_idx);
                 }
             }
             if (i == 0LL)
             {
-                (result = part_str);
+                (result_idx = part_idx);
             } else
             {
-                (result = concatAlloc(concatAlloc(concatAlloc(concatAlloc("concatAlloc(", result), ", "), part_str), ")"));
+                ArrayList_Int concat_args = ArrayList_Int_init(self->allocator);
+                ArrayList_Int_push((&concat_args), result_idx);
+                ArrayList_Int_push((&concat_args), part_idx);
+                (result_idx = CodegenBuilder_push_expr(self, cexpr_new_call("concatAlloc", concat_args)));
             }
             (i = (i + 1LL));
         }
-        return CodegenBuilder_push_expr(self, cexpr_new_ident(result));
+        return result_idx;
     }
     if (expr.kind == ExprKind_ek_try)
     {
@@ -17296,24 +17308,48 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx)
     }
     if (stmt.kind == StmtKind_sk_print)
     {
-        int64_t arg = stmt.print_value;
-        const char* val = CodegenBuilder_gen_expr_str(self, arg);
-        const char* arg_type = CodegenBuilder_get_expr_type(self, arg);
+        int64_t arg_idx = CodegenBuilder_gen_expr(self, stmt.print_value);
+        const char* arg_type = CodegenBuilder_get_expr_type(self, stmt.print_value);
         if (strcmp(arg_type, "Int") == 0LL)
         {
-            CCodeBuilder_emit_line((&self->builder), concatAlloc(concatAlloc("__kai_print_int(", val), ");"));
+            ArrayList_Int args = ArrayList_Int_init(self->allocator);
+            ArrayList_Int_push((&args), arg_idx);
+            int64_t call_idx = CodegenBuilder_push_expr(self, cexpr_new_call("__kai_print_int", args));
+            CodegenBuilder_emit_c_stmt(self, cstmt_new_expr(call_idx));
         } else if (strcmp(arg_type, "Float") == 0LL)
         {
-            CCodeBuilder_emit_line((&self->builder), concatAlloc(concatAlloc("__kai_print_float(", val), ");"));
+            ArrayList_Int args = ArrayList_Int_init(self->allocator);
+            ArrayList_Int_push((&args), arg_idx);
+            int64_t call_idx = CodegenBuilder_push_expr(self, cexpr_new_call("__kai_print_float", args));
+            CodegenBuilder_emit_c_stmt(self, cstmt_new_expr(call_idx));
         } else if (strcmp(arg_type, "Char") == 0LL)
         {
-            CCodeBuilder_emit_line((&self->builder), concatAlloc(concatAlloc("printf(\"%c\\n\", (char)(", val), "));"));
+            int64_t fmt = CodegenBuilder_push_expr(self, cexpr_new_str("\"%c\\n\""));
+            int64_t cast = CodegenBuilder_push_expr(self, cexpr_new_cast(ctype_char(), arg_idx));
+            ArrayList_Int args = ArrayList_Int_init(self->allocator);
+            ArrayList_Int_push((&args), fmt);
+            ArrayList_Int_push((&args), cast);
+            int64_t call_idx = CodegenBuilder_push_expr(self, cexpr_new_call("printf", args));
+            CodegenBuilder_emit_c_stmt(self, cstmt_new_expr(call_idx));
         } else if (strcmp(arg_type, "Bool") == 0LL)
         {
-            CCodeBuilder_emit_line((&self->builder), concatAlloc(concatAlloc("printf(\"%s\\n\", (", val), ") ? \"true\" : \"false\");"));
+            int64_t fmt = CodegenBuilder_push_expr(self, cexpr_new_str("\"%s\\n\""));
+            int64_t true_str = CodegenBuilder_push_expr(self, cexpr_new_str("\"true\""));
+            int64_t false_str = CodegenBuilder_push_expr(self, cexpr_new_str("\"false\""));
+            int64_t tern = CodegenBuilder_push_expr(self, cexpr_new_ternary(arg_idx, true_str, false_str));
+            ArrayList_Int args = ArrayList_Int_init(self->allocator);
+            ArrayList_Int_push((&args), fmt);
+            ArrayList_Int_push((&args), tern);
+            int64_t call_idx = CodegenBuilder_push_expr(self, cexpr_new_call("printf", args));
+            CodegenBuilder_emit_c_stmt(self, cstmt_new_expr(call_idx));
         } else
         {
-            CCodeBuilder_emit_line((&self->builder), concatAlloc(concatAlloc("printf(\"%s\\n\", ", val), ");"));
+            int64_t fmt = CodegenBuilder_push_expr(self, cexpr_new_str("\"%s\\n\""));
+            ArrayList_Int args = ArrayList_Int_init(self->allocator);
+            ArrayList_Int_push((&args), fmt);
+            ArrayList_Int_push((&args), arg_idx);
+            int64_t call_idx = CodegenBuilder_push_expr(self, cexpr_new_call("printf", args));
+            CodegenBuilder_emit_c_stmt(self, cstmt_new_expr(call_idx));
         }
         return;
     }
@@ -18766,6 +18802,11 @@ CStmtNode cstmt_new_while(int64_t cond, int64_t body)
     ArrayList_Int block_stmts = (ArrayList_Int){ .data = ((int64_t*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
     return (CStmtNode){ .kind = CStmtKind_cs_while, .block_stmts = block_stmts, .expr_stmt = (-1LL), .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .while_cond = cond, .while_body = body, .for_init = (-1LL), .for_cond = (-1LL), .for_inc = (-1LL), .for_body = (-1LL), .do_body = (-1LL), .do_cond = (-1LL), .return_val = (-1LL), .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .switch_expr = (-1LL), .case_val = "", .label_name = "", .asm_code = "", .asm_volatile = false };
 }
+CStmtNode cstmt_new_for(int64_t init, int64_t cond, int64_t inc, int64_t body)
+{
+    ArrayList_Int block_stmts = (ArrayList_Int){ .data = ((int64_t*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
+    return (CStmtNode){ .kind = CStmtKind_cs_for, .block_stmts = block_stmts, .expr_stmt = (-1LL), .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_init = init, .for_cond = cond, .for_inc = inc, .for_body = body, .do_body = (-1LL), .do_cond = (-1LL), .return_val = (-1LL), .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .switch_expr = (-1LL), .case_val = "", .label_name = "", .asm_code = "", .asm_volatile = false };
+}
 CDeclNode cdecl_new_func(const char* name, const char* ret_type, ArrayList_Str params, bool is_extern, bool is_vararg)
 {
     ArrayList_Int empty_stmts = (ArrayList_Int){ .data = ((int64_t*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
@@ -18980,6 +19021,14 @@ void CPrinter_print_stmt(CPrinter* self, int64_t idx)
         const char* cond = CPrinter_print_expr(self, node.while_cond);
         CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc("while (", cond), ")"));
         CPrinter_print_stmt(self, node.while_body);
+    }
+    if (node.kind == CStmtKind_cs_for)
+    {
+        const char* init = CPrinter_print_expr(self, node.for_init);
+        const char* cond = CPrinter_print_expr(self, node.for_cond);
+        const char* inc = CPrinter_print_expr(self, node.for_inc);
+        CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("for (", init), "; "), cond), "; "), inc), ")"));
+        CPrinter_print_stmt(self, node.for_body);
     }
     if (node.kind == CStmtKind_cs_return)
     {
@@ -25528,7 +25577,7 @@ Optional_Char __kai_std_ascii_digit_value(char byte)
     {
         return (byte - ((char)(48LL)));
     }
-    return ((void*)0);
+    return NULL;
 }
 Optional_Char __kai_std_ascii_hex_value(char byte)
 {
@@ -25544,7 +25593,7 @@ Optional_Char __kai_std_ascii_hex_value(char byte)
     {
         return (byte - ((char)(87LL)));
     }
-    return ((void*)0);
+    return NULL;
 }
 int64_t diag_clamp_offset(const char* bytes, int64_t offset)
 {

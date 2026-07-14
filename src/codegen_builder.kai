@@ -1431,7 +1431,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
             }
             return self.push_expr(cexpr_new_char(lit_str))
         }
-        if vkind == "NONE" { return self.push_expr(cexpr_new_ident("((void*)0)")) }
+        if vkind == "NONE" { return self.push_expr(cexpr_new_ident("NULL")) }
         return self.push_expr(cexpr_new_ident(""))
     }
 
@@ -1451,25 +1451,27 @@ fn gen_expr(self, expr_idx: Int) -> Int {
         let right = self.expr_to_str(right_idx)
 
         if op == "==" || op == "!=" {
-            if strlen(lhs_type) > 0 && lhs_type[0] == Char(63) && (right == "NULL" || right == "((void*)0)") {
+            if strlen(lhs_type) > 0 && lhs_type[0] == Char(63) && right == "NULL" {
                 let val_type = lhs_type[1..strlen(lhs_type)]
                 if self.is_pointer_type(val_type) {
                     return self.push_expr(cexpr_new_ident("(" + left + " " + op + " NULL)"))
                 }
+                let has_val = self.push_expr(cexpr_new_field(left_idx, "has_value"))
                 if op == "==" {
-                    return self.push_expr(cexpr_new_ident("(!" + left + ".has_value)"))
+                    return self.push_expr(cexpr_new_unary("!", has_val, true))
                 }
-                return self.push_expr(cexpr_new_ident("(" + left + ".has_value)"))
+                return has_val
             }
-            if strlen(rhs_type) > 0 && rhs_type[0] == Char(63) && (left == "NULL" || left == "((void*)0)") {
+            if strlen(rhs_type) > 0 && rhs_type[0] == Char(63) && left == "NULL" {
                 let val_type = rhs_type[1..strlen(rhs_type)]
                 if self.is_pointer_type(val_type) {
                     return self.push_expr(cexpr_new_ident("(NULL " + op + " " + right + ")"))
                 }
+                let has_val = self.push_expr(cexpr_new_field(right_idx, "has_value"))
                 if op == "==" {
-                    return self.push_expr(cexpr_new_ident("(!" + right + ".has_value)"))
+                    return self.push_expr(cexpr_new_unary("!", has_val, true))
                 }
-                return self.push_expr(cexpr_new_ident("(" + right + ".has_value)"))
+                return has_val
             }
         }
 
@@ -1910,34 +1912,43 @@ fn gen_expr(self, expr_idx: Int) -> Int {
     //== String interpolation
     if expr.kind == ExprKind.ek_str_interp {
         if expr.interp_parts.length() == 0 { return self.push_expr(cexpr_new_str("\"\"")) }
-        var result = ""
+        var result_idx = -1
         var i = 0
         while i < expr.interp_parts.length() {
             let part = expr.interp_parts.get(i)
-            var part_str = ""
+            var part_idx = -1
             if part.kind == 0 {
-                part_str = "\"" + self.escape_string(part.str_val) + "\""
+                part_idx = self.push_expr(cexpr_new_str("\"" + self.escape_string(part.str_val) + "\""))
             } else {
-                let expr_val = self.gen_expr_str(part.expr_idx)
+                let expr_idx = self.gen_expr(part.expr_idx)
                 let expr_type = self.get_expr_type(part.expr_idx)
                 if expr_type == "Int" {
-                    part_str = "cgb_int_to_str(" + expr_val + ")"
+                    var int_args = ArrayList<Int>(self.allocator)
+                    int_args.push(expr_idx)
+                    part_idx = self.push_expr(cexpr_new_call("cgb_int_to_str", int_args))
                 } else if expr_type == "Char" {
-                    part_str = "cgb_char_to_str(" + expr_val + ")"
+                    var char_args = ArrayList<Int>(self.allocator)
+                    char_args.push(expr_idx)
+                    part_idx = self.push_expr(cexpr_new_call("cgb_char_to_str", char_args))
                 } else if expr_type == "Bool" {
-                    part_str = "((" + expr_val + ") ? \"true\" : \"false\")"
+                    let true_str = self.push_expr(cexpr_new_str("\"true\""))
+                    let false_str = self.push_expr(cexpr_new_str("\"false\""))
+                    part_idx = self.push_expr(cexpr_new_ternary(expr_idx, true_str, false_str))
                 } else {
-                    part_str = expr_val
+                    part_idx = expr_idx
                 }
             }
             if i == 0 {
-                result = part_str
+                result_idx = part_idx
             } else {
-                result = "concatAlloc(" + result + ", " + part_str + ")"
+                var concat_args = ArrayList<Int>(self.allocator)
+                concat_args.push(result_idx)
+                concat_args.push(part_idx)
+                result_idx = self.push_expr(cexpr_new_call("concatAlloc", concat_args))
             }
             i = i + 1
         }
-        return self.push_expr(cexpr_new_ident(result))
+        return result_idx
     }
 
     //== Try expression
@@ -2580,19 +2591,43 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     }
 
     if stmt.kind == StmtKind.sk_print {
-        let arg = stmt.print_value
-        let val = self.gen_expr_str(arg)
-        let arg_type = self.get_expr_type(arg)
+        let arg_idx = self.gen_expr(stmt.print_value)
+        let arg_type = self.get_expr_type(stmt.print_value)
         if arg_type == "Int" {
-            self.builder.emit_line("__kai_print_int(" + val + ");")
+            var args = ArrayList<Int>(self.allocator)
+            args.push(arg_idx)
+            let call_idx = self.push_expr(cexpr_new_call("__kai_print_int", args))
+            self.emit_c_stmt(cstmt_new_expr(call_idx))
         } else if arg_type == "Float" {
-            self.builder.emit_line("__kai_print_float(" + val + ");")
+            var args = ArrayList<Int>(self.allocator)
+            args.push(arg_idx)
+            let call_idx = self.push_expr(cexpr_new_call("__kai_print_float", args))
+            self.emit_c_stmt(cstmt_new_expr(call_idx))
         } else if arg_type == "Char" {
-            self.builder.emit_line("printf(\"%c\\n\", (char)(" + val + "));")
+            let fmt = self.push_expr(cexpr_new_str("\"%c\\n\""))
+            let cast = self.push_expr(cexpr_new_cast(ctype_char(), arg_idx))
+            var args = ArrayList<Int>(self.allocator)
+            args.push(fmt)
+            args.push(cast)
+            let call_idx = self.push_expr(cexpr_new_call("printf", args))
+            self.emit_c_stmt(cstmt_new_expr(call_idx))
         } else if arg_type == "Bool" {
-            self.builder.emit_line("printf(\"%s\\n\", (" + val + ") ? \"true\" : \"false\");")
+            let fmt = self.push_expr(cexpr_new_str("\"%s\\n\""))
+            let true_str = self.push_expr(cexpr_new_str("\"true\""))
+            let false_str = self.push_expr(cexpr_new_str("\"false\""))
+            let tern = self.push_expr(cexpr_new_ternary(arg_idx, true_str, false_str))
+            var args = ArrayList<Int>(self.allocator)
+            args.push(fmt)
+            args.push(tern)
+            let call_idx = self.push_expr(cexpr_new_call("printf", args))
+            self.emit_c_stmt(cstmt_new_expr(call_idx))
         } else {
-            self.builder.emit_line("printf(\"%s\\n\", " + val + ");")
+            let fmt = self.push_expr(cexpr_new_str("\"%s\\n\""))
+            var args = ArrayList<Int>(self.allocator)
+            args.push(fmt)
+            args.push(arg_idx)
+            let call_idx = self.push_expr(cexpr_new_call("printf", args))
+            self.emit_c_stmt(cstmt_new_expr(call_idx))
         }
         return
     }
