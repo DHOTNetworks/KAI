@@ -60,13 +60,17 @@ To build the compiler from scratch without any pre-existing binaries or Python d
 ### Step 1: Build the Bootstrap Compiler
 Compile the C bootstrap file directly using `clang` or `gcc`:
 ```bash
-clang -O3 compiler_bootstrap.c -o ./kai_bootstrap
+clang -O3 compiler_bootstrap.c -o ./kai
+```
+
+```bash
+clang -O3 CCcompiler.c -o ./CCkai
 ```
 
 ### Step 2: Recompile the Compiler from Source (Self-Hosting)
 Compile the Kai source files using the bootstrapped compiler binary:
 ```bash
-./kai_bootstrap src/compiler.kai -o ./kai
+./kai src/compiler.kai -o ./kai
 ```
 
 ### Step 3: Verify the Compiler (Stage 2)

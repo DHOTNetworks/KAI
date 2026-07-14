@@ -1727,6 +1727,8 @@ int64_t CodegenBuilder_gen_stmt_sub(CodegenBuilder* self, int64_t stmt_idx);
 void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx);
 void CodegenBuilder_gen_else_chain(CodegenBuilder* self, int64_t else_idx);
 int64_t CodegenBuilder_gen_else_chain_sub(CodegenBuilder* self, int64_t else_idx);
+int64_t CodegenBuilder_gen_iflet_stmt(CodegenBuilder* self, int64_t stmt_idx);
+int64_t CodegenBuilder_gen_iflet_else_sub(CodegenBuilder* self, int64_t else_idx);
 void CodegenBuilder_build_func_types(CodegenBuilder* self);
 void CodegenBuilder_emit_struct_body_with_deps(CodegenBuilder* self, int64_t stmt_idx, ArrayList_Str* emitted);
 const char* CodegenBuilder_generate(CodegenBuilder* self, int64_t top_stmt_idx);
@@ -17352,47 +17354,10 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx)
     }
     if (stmt.kind == StmtKind_sk_if_let)
     {
-        const char* cond_val = CodegenBuilder_gen_expr_str(self, stmt.iflet_expr);
-        const char* cond_type = CodegenBuilder_get_expr_type(self, stmt.iflet_expr);
-        const char* unwrapped_type = __kai_str_sub(cond_type, 1LL, strlen(cond_type));
-        const char* unwrapped_ctype = CodegenBuilder_map_type(self, unwrapped_type);
-        const char* cond_ctype = CodegenBuilder_map_type(self, cond_type);
-        int64_t old_var_len = ArrayList_CgbMapEntry_length(&self->var_types);
-        cgb_map_put(&self->var_types, stmt.iflet_var, unwrapped_type);
-        if (CodegenBuilder_is_pointer_type(self, unwrapped_type))
+        int64_t iflet_idx = CodegenBuilder_gen_iflet_stmt(self, stmt_idx);
+        if (iflet_idx >= 0LL)
         {
-            CCodeBuilder_emit_line(&self->builder, concatAlloc(concatAlloc("if ((", cond_val), ") != NULL)"));
-            CCodeBuilder_begin_block(&self->builder);
-            CCodeBuilder_emit_line(&self->builder, concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(unwrapped_ctype, " "), stmt.iflet_var), " = "), cond_val), ";"));
-            CodegenBuilder_gen_stmt(self, stmt.iflet_then);
-            CCodeBuilder_end_block(&self->builder);
-        } else
-        {
-            CCodeBuilder_begin_block(&self->builder);
-            CCodeBuilder_emit_line(&self->builder, concatAlloc(concatAlloc(concatAlloc(cond_ctype, " _kai_opt = "), cond_val), ";"));
-            CCodeBuilder_emit_line(&self->builder, "if (_kai_opt.has_value)");
-            CCodeBuilder_begin_block(&self->builder);
-            CCodeBuilder_emit_line(&self->builder, concatAlloc(concatAlloc(concatAlloc(unwrapped_ctype, " "), stmt.iflet_var), " = _kai_opt.value;"));
-            CodegenBuilder_gen_stmt(self, stmt.iflet_then);
-            CCodeBuilder_end_block(&self->builder);
-            CCodeBuilder_end_block(&self->builder);
-        }
-        if (stmt.iflet_else >= 0LL)
-        {
-            StmtNode else_node = ArrayList_StmtNode_get(self->stmt_pool, stmt.iflet_else);
-            if (else_node.kind == StmtKind_sk_if_let)
-            {
-                CCodeBuilder_append_to_last_line(&self->builder, " else");
-                CodegenBuilder_gen_stmt(self, stmt.iflet_else);
-            } else
-            {
-                CCodeBuilder_append_to_last_line(&self->builder, " else");
-                CodegenBuilder_gen_stmt(self, stmt.iflet_else);
-            }
-        }
-        while (ArrayList_CgbMapEntry_length(&self->var_types) > old_var_len)
-        {
-            ((void)(ArrayList_CgbMapEntry_pop(&self->var_types)));
+            CodegenBuilder_emit_c_stmt(self, iflet_idx);
         }
         return;
     }
@@ -17983,6 +17948,93 @@ int64_t CodegenBuilder_gen_else_chain_sub(CodegenBuilder* self, int64_t else_idx
             ArrayList_CStmtNode_push(&self->c_stmts, if_node);
             return if_idx;
         }
+    }
+    return CodegenBuilder_gen_stmt_sub(self, else_idx);
+}
+int64_t CodegenBuilder_gen_iflet_stmt(CodegenBuilder* self, int64_t stmt_idx)
+{
+    StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt_idx);
+    int64_t expr_idx = CodegenBuilder_gen_expr(self, stmt.iflet_expr);
+    const char* cond_type = CodegenBuilder_get_expr_type(self, stmt.iflet_expr);
+    const char* unwrapped_type = __kai_str_sub(cond_type, 1LL, strlen(cond_type));
+    const char* unwrapped_ctype = CodegenBuilder_map_type(self, unwrapped_type);
+    const char* cond_ctype = CodegenBuilder_map_type(self, cond_type);
+    int64_t old_var_len = ArrayList_CgbMapEntry_length(&self->var_types);
+    cgb_map_put(&self->var_types, stmt.iflet_var, unwrapped_type);
+    int64_t result_idx = -1LL;
+    if (CodegenBuilder_is_pointer_type(self, unwrapped_type))
+    {
+        int64_t null_idx = CodegenBuilder_push_expr(self, cexpr_new_ident("NULL"));
+        int64_t cond_idx = CodegenBuilder_push_expr(self, cexpr_new_binary(expr_idx, "!=", null_idx));
+        ArrayList_Int then_stmts = ArrayList_Int_init(self->allocator);
+        CStmtNode var_decl = cstmt_new_var_decl(ctype_new(unwrapped_ctype, 0LL, false, false), stmt.iflet_var, expr_idx);
+        int64_t var_idx = ArrayList_CStmtNode_length(&self->c_stmts);
+        ArrayList_CStmtNode_push(&self->c_stmts, var_decl);
+        ArrayList_Int_push(&then_stmts, var_idx);
+        int64_t body_idx = CodegenBuilder_gen_stmt_sub(self, stmt.iflet_then);
+        if (body_idx >= 0LL)
+        {
+            ArrayList_Int_push(&then_stmts, body_idx);
+        }
+        CStmtNode then_block = cstmt_new_block(then_stmts);
+        int64_t then_idx = ArrayList_CStmtNode_length(&self->c_stmts);
+        ArrayList_CStmtNode_push(&self->c_stmts, then_block);
+        int64_t else_idx = -1LL;
+        if (stmt.iflet_else >= 0LL)
+        {
+            else_idx = CodegenBuilder_gen_iflet_else_sub(self, stmt.iflet_else);
+        }
+        CStmtNode if_node = cstmt_new_if(cond_idx, then_idx, else_idx);
+        result_idx = ArrayList_CStmtNode_length(&self->c_stmts);
+        ArrayList_CStmtNode_push(&self->c_stmts, if_node);
+    } else
+    {
+        CStmtNode opt_decl = cstmt_new_var_decl(ctype_new(cond_ctype, 0LL, false, false), "_kai_opt", expr_idx);
+        int64_t opt_idx = ArrayList_CStmtNode_length(&self->c_stmts);
+        ArrayList_CStmtNode_push(&self->c_stmts, opt_decl);
+        int64_t opt_ident = CodegenBuilder_push_expr(self, cexpr_new_ident("_kai_opt"));
+        int64_t has_val = CodegenBuilder_push_expr(self, cexpr_new_field(opt_ident, "has_value"));
+        ArrayList_Int then_stmts = ArrayList_Int_init(self->allocator);
+        int64_t val_field = CodegenBuilder_push_expr(self, cexpr_new_field(opt_ident, "value"));
+        CStmtNode var_decl = cstmt_new_var_decl(ctype_new(unwrapped_ctype, 0LL, false, false), stmt.iflet_var, val_field);
+        int64_t var_idx = ArrayList_CStmtNode_length(&self->c_stmts);
+        ArrayList_CStmtNode_push(&self->c_stmts, var_decl);
+        ArrayList_Int_push(&then_stmts, var_idx);
+        int64_t body_idx = CodegenBuilder_gen_stmt_sub(self, stmt.iflet_then);
+        if (body_idx >= 0LL)
+        {
+            ArrayList_Int_push(&then_stmts, body_idx);
+        }
+        CStmtNode then_block = cstmt_new_block(then_stmts);
+        int64_t then_idx = ArrayList_CStmtNode_length(&self->c_stmts);
+        ArrayList_CStmtNode_push(&self->c_stmts, then_block);
+        int64_t else_idx = -1LL;
+        if (stmt.iflet_else >= 0LL)
+        {
+            else_idx = CodegenBuilder_gen_iflet_else_sub(self, stmt.iflet_else);
+        }
+        CStmtNode inner_if = cstmt_new_if(has_val, then_idx, else_idx);
+        int64_t inner_if_idx = ArrayList_CStmtNode_length(&self->c_stmts);
+        ArrayList_CStmtNode_push(&self->c_stmts, inner_if);
+        ArrayList_Int outer_stmts = ArrayList_Int_init(self->allocator);
+        ArrayList_Int_push(&outer_stmts, opt_idx);
+        ArrayList_Int_push(&outer_stmts, inner_if_idx);
+        CStmtNode outer_block = cstmt_new_block(outer_stmts);
+        result_idx = ArrayList_CStmtNode_length(&self->c_stmts);
+        ArrayList_CStmtNode_push(&self->c_stmts, outer_block);
+    }
+    while (ArrayList_CgbMapEntry_length(&self->var_types) > old_var_len)
+    {
+        ((void)(ArrayList_CgbMapEntry_pop(&self->var_types)));
+    }
+    return result_idx;
+}
+int64_t CodegenBuilder_gen_iflet_else_sub(CodegenBuilder* self, int64_t else_idx)
+{
+    StmtNode else_node = ArrayList_StmtNode_get(self->stmt_pool, else_idx);
+    if (else_node.kind == StmtKind_sk_if_let)
+    {
+        return CodegenBuilder_gen_iflet_stmt(self, else_idx);
     }
     return CodegenBuilder_gen_stmt_sub(self, else_idx);
 }

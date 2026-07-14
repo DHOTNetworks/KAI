@@ -2673,45 +2673,9 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     }
 
     if stmt.kind == StmtKind.sk_if_let {
-        let cond_val = self.gen_expr_str(stmt.iflet_expr)
-        let cond_type = self.get_expr_type(stmt.iflet_expr)
-        let unwrapped_type = cond_type[1..strlen(cond_type)]
-        let unwrapped_ctype = self.map_type(unwrapped_type)
-        let cond_ctype = self.map_type(cond_type)
-
-        let old_var_len = self.var_types.length()
-        cgb_map_put(&self.var_types, stmt.iflet_var, unwrapped_type)
-
-        if self.is_pointer_type(unwrapped_type) {
-            self.builder.emit_line("if ((" + cond_val + ") != NULL)")
-            self.builder.begin_block()
-            self.builder.emit_line(unwrapped_ctype + " " + stmt.iflet_var + " = " + cond_val + ";")
-            self.gen_stmt(stmt.iflet_then)
-            self.builder.end_block()
-        } else {
-            self.builder.begin_block()
-            self.builder.emit_line(cond_ctype + " _kai_opt = " + cond_val + ";")
-            self.builder.emit_line("if (_kai_opt.has_value)")
-            self.builder.begin_block()
-            self.builder.emit_line(unwrapped_ctype + " " + stmt.iflet_var + " = _kai_opt.value;")
-            self.gen_stmt(stmt.iflet_then)
-            self.builder.end_block()
-            self.builder.end_block()
-        }
-
-        if stmt.iflet_else >= 0 {
-            let else_node = self.stmt_pool.get(stmt.iflet_else)
-            if else_node.kind == StmtKind.sk_if_let {
-                self.builder.append_to_last_line(" else")
-                self.gen_stmt(stmt.iflet_else)
-            } else {
-                self.builder.append_to_last_line(" else")
-                self.gen_stmt(stmt.iflet_else)
-            }
-        }
-
-        while self.var_types.length() > old_var_len {
-            let _ = self.var_types.pop()
+        let iflet_idx = self.gen_iflet_stmt(stmt_idx)
+        if iflet_idx >= 0 {
+            self.emit_c_stmt(iflet_idx)
         }
         return
     }
@@ -3193,6 +3157,98 @@ fn gen_else_chain_sub(self, else_idx: Int) -> Int {
         }
     }
     // Regular else: return captured body
+    return self.gen_stmt_sub(else_idx)
+}
+
+fn gen_iflet_stmt(self, stmt_idx: Int) -> Int {
+    let stmt = self.stmt_pool.get(stmt_idx)
+    let expr_idx = self.gen_expr(stmt.iflet_expr)
+    let cond_type = self.get_expr_type(stmt.iflet_expr)
+    let unwrapped_type = cond_type[1..strlen(cond_type)]
+    let unwrapped_ctype = self.map_type(unwrapped_type)
+    let cond_ctype = self.map_type(cond_type)
+
+    let old_var_len = self.var_types.length()
+    cgb_map_put(&self.var_types, stmt.iflet_var, unwrapped_type)
+
+    var result_idx = -1
+
+    if self.is_pointer_type(unwrapped_type) {
+        // Pointer case: if (expr != NULL) { T var = expr; body; }
+        let null_idx = self.push_expr(cexpr_new_ident("NULL"))
+        let cond_idx = self.push_expr(cexpr_new_binary(expr_idx, "!=", null_idx))
+
+        var then_stmts = ArrayList<Int>(self.allocator)
+        let var_decl = cstmt_new_var_decl(ctype_new(unwrapped_ctype, 0, false, false), stmt.iflet_var, expr_idx)
+        let var_idx = self.c_stmts.length()
+        self.c_stmts.push(var_decl)
+        then_stmts.push(var_idx)
+        let body_idx = self.gen_stmt_sub(stmt.iflet_then)
+        if body_idx >= 0 { then_stmts.push(body_idx) }
+
+        let then_block = cstmt_new_block(then_stmts)
+        let then_idx = self.c_stmts.length()
+        self.c_stmts.push(then_block)
+
+        var else_idx = -1
+        if stmt.iflet_else >= 0 {
+            else_idx = self.gen_iflet_else_sub(stmt.iflet_else)
+        }
+
+        let if_node = cstmt_new_if(cond_idx, then_idx, else_idx)
+        result_idx = self.c_stmts.length()
+        self.c_stmts.push(if_node)
+    } else {
+        // Non-pointer (Option) case:
+        // { OptT _kai_opt = expr; if (_kai_opt.has_value) { T var = _kai_opt.value; body; } }
+        let opt_decl = cstmt_new_var_decl(ctype_new(cond_ctype, 0, false, false), "_kai_opt", expr_idx)
+        let opt_idx = self.c_stmts.length()
+        self.c_stmts.push(opt_decl)
+
+        let opt_ident = self.push_expr(cexpr_new_ident("_kai_opt"))
+        let has_val = self.push_expr(cexpr_new_field(opt_ident, "has_value"))
+
+        var then_stmts = ArrayList<Int>(self.allocator)
+        let val_field = self.push_expr(cexpr_new_field(opt_ident, "value"))
+        let var_decl = cstmt_new_var_decl(ctype_new(unwrapped_ctype, 0, false, false), stmt.iflet_var, val_field)
+        let var_idx = self.c_stmts.length()
+        self.c_stmts.push(var_decl)
+        then_stmts.push(var_idx)
+        let body_idx = self.gen_stmt_sub(stmt.iflet_then)
+        if body_idx >= 0 { then_stmts.push(body_idx) }
+
+        let then_block = cstmt_new_block(then_stmts)
+        let then_idx = self.c_stmts.length()
+        self.c_stmts.push(then_block)
+
+        var else_idx = -1
+        if stmt.iflet_else >= 0 {
+            else_idx = self.gen_iflet_else_sub(stmt.iflet_else)
+        }
+
+        let inner_if = cstmt_new_if(has_val, then_idx, else_idx)
+        let inner_if_idx = self.c_stmts.length()
+        self.c_stmts.push(inner_if)
+
+        var outer_stmts = ArrayList<Int>(self.allocator)
+        outer_stmts.push(opt_idx)
+        outer_stmts.push(inner_if_idx)
+        let outer_block = cstmt_new_block(outer_stmts)
+        result_idx = self.c_stmts.length()
+        self.c_stmts.push(outer_block)
+    }
+
+    while self.var_types.length() > old_var_len {
+        let _ = self.var_types.pop()
+    }
+    return result_idx
+}
+
+fn gen_iflet_else_sub(self, else_idx: Int) -> Int {
+    let else_node = self.stmt_pool.get(else_idx)
+    if else_node.kind == StmtKind.sk_if_let {
+        return self.gen_iflet_stmt(else_idx)
+    }
     return self.gen_stmt_sub(else_idx)
 }
 
