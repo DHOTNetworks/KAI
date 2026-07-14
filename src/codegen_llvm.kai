@@ -1024,7 +1024,7 @@ fn emit_func_body(self, stmt_idx: Int, fn_val: *Void, struct_name: Str) {
     } else {
         self.cur_func_name = stmt.func_name
     }
-    unsafe { printf("emit_func_body: compiling %s\n", self.cur_func_name) }
+    
     self.cur_block = LLVMAppendBasicBlockInContext(self.ctx, self.cur_func, "entry")
     LLVMPositionBuilderAtEnd(self.builder, self.cur_block)
     self.last_was_term = false
@@ -2325,17 +2325,6 @@ fn find_alloca_type_by_idx(self, decl_idx: Int, name: Str) -> *Void {
 }
 
 fn find_alloca(self, name: Str) -> *Void {
-    if llvm_str_eq(name, "self") {
-        unsafe {
-            printf("find_alloca: searching for self, local_alloca_names.length=%lld\n", self.local_alloca_names.length())
-            var j = 0
-            while j < self.local_alloca_names.length() {
-                printf("  local_alloca_names[%lld] = %s\n", j, self.local_alloca_names.get(j))
-                j = j + 1
-            }
-            kai_fflush(stdout)
-        }
-    }
     // Iterate backwards so inner-scope variables shadow outer-scope ones
     var i = self.local_alloca_names.length() - 1
     while i >= 0 {
@@ -2409,17 +2398,9 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
             if llvm_str_eq(self.local_alloca_names.get(vi), expr.ident_name) {
                 // Force a heap-allocated copy to ensure null-termination (slices are not null-terminated)
                 let ty_str = self.local_alloca_type_strs.get(vi) + ""
-                unsafe {
-                    printf("get_expr_type: ident=%s found at vi=%lld, type_str=%s\n", expr.ident_name, vi, ty_str)
-                    kai_fflush(stdout)
-                }
                 return ty_str
             }
             vi = vi - 1
-        }
-        unsafe {
-            printf("get_expr_type: ident=%s NOT found in allocas (length=%lld)\n", expr.ident_name, self.local_alloca_names.length())
-            kai_fflush(stdout)
         }
         if self.is_struct_type(expr.ident_name) || self.is_enum_type(expr.ident_name) || self.is_error_type(expr.ident_name) {
             return expr.ident_name
@@ -4479,10 +4460,6 @@ fn gen_expr_address(self, expr_idx: Int) -> *Void {
 fn decl_name_matches(self, decl_name: Str, ident_name: Str) -> Bool {
     let dl = strlen(decl_name)
     let il = strlen(ident_name)
-    unsafe {
-        printf("decl_name_matches: decl_name=%s, ident_name=%s\n", decl_name, ident_name)
-        kai_fflush(stdout)
-    }
     if dl < il { return false }
     if dl == il {
         unsafe { return strcmp(decl_name, ident_name) == 0 }
