@@ -58,6 +58,8 @@ import cstmt_new_block from codegen_c_ast
 import cstmt_new_var_decl from codegen_c_ast
 import cstmt_new_return from codegen_c_ast
 import cstmt_new_while from codegen_c_ast
+import cstmt_new_if from codegen_c_ast
+import cexpr_new_stmt_expr from codegen_c_ast
 import ctype_new from codegen_c_ast
 import cdecl_new_func from codegen_c_ast
 
@@ -1309,12 +1311,57 @@ fn expr_to_str(self, c_idx: Int) -> Str {
     return printer.print_expr(c_idx)
 }
 
+fn wrap_for_return(self, expr_idx: Int, cval_idx: Int, return_type: Str) -> Int {
+    if strlen(return_type) == 0 { return cval_idx }
+    var excl_pos = -1
+    var ei = 0
+    while ei < strlen(return_type) {
+        if return_type[ei] == Char(33) { excl_pos = ei }
+        ei = ei + 1
+    }
+    if excl_pos >= 0 {
+        let val_payload = return_type[0..excl_pos]
+        let mapped_type = self.map_type(return_type)
+        // Check if the return expression is an enum/error variant (field access on enum/error)
+        var is_enum_field = false
+        if expr_idx >= 0 {
+            let orig = self.expr_pool.get(expr_idx)
+            if orig.kind == ExprKind.ek_field_access {
+                let base_expr = self.expr_pool.get(orig.field_expr)
+                if base_expr.kind == ExprKind.ek_identifier {
+                    is_enum_field = true
+                }
+            }
+        }
+        var fields = ArrayList<Str>(self.allocator)
+        if is_enum_field {
+            let val_str = self.expr_to_str(cval_idx)
+            fields.push(".tag = " + val_str)
+        } else if val_payload == "Void" {
+            fields.push(".tag = 0")
+        } else {
+            fields.push(".tag = 0")
+            let val_str = self.expr_to_str(cval_idx)
+            fields.push(".value = " + val_str)
+        }
+        let ct = ctype_new(mapped_type, 0, false, false)
+        return self.push_expr(cexpr_new_compound(ct, fields))
+    }
+    return cval_idx
+}
+
 // Push a CStmtNode and emit it through the CPrinter to the builder.
-fn emit_c_stmt(self, cnode: CStmtNode) {
-    let c_idx = self.c_stmts.length()
-    self.c_stmts.push(cnode)
+fn emit_c_stmt(self, cnode: Int) {
+    if cnode < 0 { return }
     var printer = CPrinter(builder: &self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
-    printer.print_stmt(c_idx)
+    printer.print_stmt(cnode)
+}
+
+fn push_emit(self, node: CStmtNode) -> Int {
+    let idx = self.c_stmts.length()
+    self.c_stmts.push(node)
+    self.emit_c_stmt(idx)
+    return idx
 }
 
 fn gen_expr_with_expected_type(self, expr_idx: Int, expected_type: Str) -> Str {
@@ -1953,156 +2000,359 @@ fn gen_expr(self, expr_idx: Int) -> Int {
 
     //== Try expression
     if expr.kind == ExprKind.ek_try {
+        let inner_idx = self.gen_expr(expr.try_expr)
         let inner_ty = self.get_expr_type(expr.try_expr)
         let excl_pos = self.str_find(inner_ty, Char(33))
-        let inner = self.gen_expr_str(expr.try_expr)
-        if excl_pos < 0 { return self.push_expr(cexpr_new_ident(inner)) }
+        if excl_pos < 0 { return inner_idx }
         let val_type = inner_ty[0..excl_pos]
-        let result_ctype = self.map_type(inner_ty)
-        let ret_ctype = self.map_type(self.cur_return_type)
-        var try_code = "({ " + result_ctype + " _kai_res = (" + inner + "); "
-        try_code = try_code + "if (_kai_res.tag != 0) { "
-        try_code = try_code + ret_ctype + " _kai_err_ret; _kai_err_ret.tag = _kai_res.tag; return _kai_err_ret; } "
+        let result_ctype_str = self.map_type(inner_ty)
+        let ret_ctype_str = self.map_type(self.cur_return_type)
+
+        var stmts = ArrayList<Int>(self.allocator)
+
+        let res_ctype = ctype_new(result_ctype_str, 0, false, false)
+        let res_decl = cstmt_new_var_decl(res_ctype, "_kai_res", inner_idx)
+        let res_decl_idx = self.c_stmts.length()
+        self.c_stmts.push(res_decl)
+        stmts.push(res_decl_idx)
+
+        let res_ident = self.push_expr(cexpr_new_ident("_kai_res"))
+        let tag_field = self.push_expr(cexpr_new_field(res_ident, "tag"))
+        let zero = self.push_expr(cexpr_new_int("0"))
+        let cond = self.push_expr(cexpr_new_binary(tag_field, "!=", zero))
+
+        var then_stmts = ArrayList<Int>(self.allocator)
+
+        let ret_ctype = ctype_new(ret_ctype_str, 0, false, false)
+        let err_ret_decl = cstmt_new_var_decl(ret_ctype, "_kai_err_ret", -1)
+        let err_ret_idx = self.c_stmts.length()
+        self.c_stmts.push(err_ret_decl)
+        then_stmts.push(err_ret_idx)
+
+        let err_ident = self.push_expr(cexpr_new_ident("_kai_err_ret"))
+        let err_tag_field = self.push_expr(cexpr_new_field(err_ident, "tag"))
+        let tag_assign = self.push_expr(cexpr_new_assign(err_tag_field, tag_field, "="))
+        let assign_stmt = cstmt_new_expr(tag_assign)
+        let assign_idx = self.c_stmts.length()
+        self.c_stmts.push(assign_stmt)
+        then_stmts.push(assign_idx)
+
+        let err_ident2 = self.push_expr(cexpr_new_ident("_kai_err_ret"))
+        let ret_stmt = cstmt_new_return(err_ident2)
+        let ret_idx = self.c_stmts.length()
+        self.c_stmts.push(ret_stmt)
+        then_stmts.push(ret_idx)
+
+        let then_block = cstmt_new_block(then_stmts)
+        let then_idx = self.c_stmts.length()
+        self.c_stmts.push(then_block)
+
+        let if_stmt = cstmt_new_if(cond, then_idx, -1)
+        let if_idx = self.c_stmts.length()
+        self.c_stmts.push(if_stmt)
+        stmts.push(if_idx)
+
+        var result_val = -1
         if val_type == "Void" {
-            try_code = try_code + "0; })"
+            result_val = self.push_expr(cexpr_new_int("0"))
         } else {
-            try_code = try_code + "_kai_res.value; })"
+            let val_field = self.push_expr(cexpr_new_field(res_ident, "value"))
+            result_val = val_field
         }
-        return self.push_expr(cexpr_new_ident(try_code))
+
+        return self.push_expr(cexpr_new_stmt_expr(stmts, result_val))
     }
 
-    //== Catch expression (complex, pre-render as ident)
+    //== Catch expression
     if expr.kind == ExprKind.ek_catch {
-        let inner = self.gen_expr_str(expr.catch_expr)
+        let inner_idx = self.gen_expr(expr.catch_expr)
         let inner_ty = self.get_expr_type(expr.catch_expr)
+
+        // Helper to resolve fallback: returns (expr_idx, is_stmt) tuple via references
+        // We'll handle fallback inline
+
+        // Option type: ?T
         if strlen(inner_ty) > 0 && inner_ty[0] == Char(63) {
             let val_type = inner_ty[1..strlen(inner_ty)]
-            let val_ctype = self.map_type(val_type)
-            let cond_ctype = self.map_type(inner_ty)
-            var fallback_code = ""
-            var fallback_is_stmt2 = false
+            let val_ctype_str = self.map_type(val_type)
+            let cond_ctype_str = self.map_type(inner_ty)
+
+            var stmts = ArrayList<Int>(self.allocator)
+
+            let opt_ctype = ctype_new(cond_ctype_str, 0, false, false)
+            let opt_decl = cstmt_new_var_decl(opt_ctype, "_kai_opt", inner_idx)
+            let opt_decl_idx = self.c_stmts.length()
+            self.c_stmts.push(opt_decl)
+            stmts.push(opt_decl_idx)
+
+            let cv_ctype = ctype_new(val_ctype_str, 0, false, false)
+            let cv_decl = cstmt_new_var_decl(cv_ctype, "_kai_cv", -1)
+            let cv_decl_idx = self.c_stmts.length()
+            self.c_stmts.push(cv_decl)
+            stmts.push(cv_decl_idx)
+
+            let opt_ident = self.push_expr(cexpr_new_ident("_kai_opt"))
+            let cv_ident = self.push_expr(cexpr_new_ident("_kai_cv"))
+
+            var cond_idx = -1
+            var then_val_idx = -1
+            if self.is_pointer_type(val_type) {
+                let null_idx = self.push_expr(cexpr_new_ident("NULL"))
+                cond_idx = self.push_expr(cexpr_new_binary(opt_ident, "!=", null_idx))
+                then_val_idx = opt_ident
+            } else {
+                cond_idx = self.push_expr(cexpr_new_field(opt_ident, "has_value"))
+                then_val_idx = self.push_expr(cexpr_new_field(opt_ident, "value"))
+            }
+
+            var then_stmts = ArrayList<Int>(self.allocator)
+            let then_assign = self.push_expr(cexpr_new_assign(cv_ident, then_val_idx, "="))
+            let then_assign_stmt = cstmt_new_expr(then_assign)
+            let then_assign_idx = self.c_stmts.length()
+            self.c_stmts.push(then_assign_stmt)
+            then_stmts.push(then_assign_idx)
+            let then_block = cstmt_new_block(then_stmts)
+            let then_idx = self.c_stmts.length()
+            self.c_stmts.push(then_block)
+
+            var else_idx = -1
             if expr.catch_fallback >= 0 {
                 let fb_node = self.stmt_pool.get(expr.catch_fallback)
                 if fb_node.kind == StmtKind.sk_expr {
-                    fallback_code = self.gen_expr_str(fb_node.expr_stmt)
-                } else if fb_node.kind == StmtKind.sk_block {
-                    var is_single_expr = false
-                    var expr_idx2 = -1
-                    if fb_node.block_stmts.length() == 1 {
-                        let single_stmt = self.stmt_pool.get(fb_node.block_stmts.get(0))
-                        if single_stmt.kind == StmtKind.sk_expr {
-                            is_single_expr = true
-                            expr_idx2 = single_stmt.expr_stmt
-                        }
+                    let fb_idx = self.gen_expr(fb_node.expr_stmt)
+                    var else_stmts = ArrayList<Int>(self.allocator)
+                    let else_assign = self.push_expr(cexpr_new_assign(cv_ident, fb_idx, "="))
+                    let else_assign_stmt = cstmt_new_expr(else_assign)
+                    let else_assign_idx = self.c_stmts.length()
+                    self.c_stmts.push(else_assign_stmt)
+                    else_stmts.push(else_assign_idx)
+                    let else_block = cstmt_new_block(else_stmts)
+                    else_idx = self.c_stmts.length()
+                    self.c_stmts.push(else_block)
+            } else if fb_node.kind == StmtKind.sk_block && fb_node.block_stmts.length() == 1 {
+                let inner = self.stmt_pool.get(fb_node.block_stmts.get(0))
+                if inner.kind == StmtKind.sk_expr {
+                    let fb_idx = self.gen_expr(inner.expr_stmt)
+                    let else_assign = self.push_expr(cexpr_new_assign(cv_ident, fb_idx, "="))
+                    let else_assign_stmt = cstmt_new_expr(else_assign)
+                    let else_assign_idx = self.c_stmts.length()
+                    self.c_stmts.push(else_assign_stmt)
+                    var else_stmts = ArrayList<Int>(self.allocator)
+                    else_stmts.push(else_assign_idx)
+                    let else_block = cstmt_new_block(else_stmts)
+                    else_idx = self.c_stmts.length()
+                    self.c_stmts.push(else_block)
+                } else {
+                    var else_stmts2 = ArrayList<Int>(self.allocator)
+                    let saved_builder = self.builder
+                    self.builder = CCodeBuilder(self.allocator)
+                    self.gen_stmt(expr.catch_fallback)
+                    let fb_text = self.builder.to_str()
+                    self.builder = saved_builder
+                    if strlen(fb_text) > 0 {
+                        let fb_ident = self.push_expr(cexpr_new_ident(fb_text))
+                        let fb_expr_stmt = cstmt_new_expr(fb_ident)
+                        let fb_expr_idx = self.c_stmts.length()
+                        self.c_stmts.push(fb_expr_stmt)
+                        else_stmts2.push(fb_expr_idx)
                     }
-                    if is_single_expr {
-                        fallback_code = self.gen_expr_str(expr_idx2)
+                    let else_block2 = cstmt_new_block(else_stmts2)
+                    else_idx = self.c_stmts.length()
+                    self.c_stmts.push(else_block2)
+                }
+            } else {
+                // Statement fallback: emit directly into else block
+                var else_stmts = ArrayList<Int>(self.allocator)
+                let saved_builder = self.builder
+                self.builder = CCodeBuilder(self.allocator)
+                self.gen_stmt(expr.catch_fallback)
+                let fb_text = self.builder.to_str()
+                self.builder = saved_builder
+                if strlen(fb_text) > 0 {
+                    let fb_ident = self.push_expr(cexpr_new_ident(fb_text))
+                    let fb_expr_stmt = cstmt_new_expr(fb_ident)
+                    let fb_expr_idx = self.c_stmts.length()
+                    self.c_stmts.push(fb_expr_stmt)
+                    else_stmts.push(fb_expr_idx)
+                }
+                let else_block = cstmt_new_block(else_stmts)
+                else_idx = self.c_stmts.length()
+                self.c_stmts.push(else_block)
+            }
+            } else {
+                var else_stmts = ArrayList<Int>(self.allocator)
+                let zero_idx = self.push_expr(cexpr_new_int("0"))
+                let else_assign = self.push_expr(cexpr_new_assign(cv_ident, zero_idx, "="))
+                let else_assign_stmt = cstmt_new_expr(else_assign)
+                let else_assign_idx = self.c_stmts.length()
+                self.c_stmts.push(else_assign_stmt)
+                else_stmts.push(else_assign_idx)
+                let else_block = cstmt_new_block(else_stmts)
+                else_idx = self.c_stmts.length()
+                self.c_stmts.push(else_block)
+            }
+
+            let if_stmt = cstmt_new_if(cond_idx, then_idx, else_idx)
+            let if_idx = self.c_stmts.length()
+            self.c_stmts.push(if_stmt)
+            stmts.push(if_idx)
+
+            return self.push_expr(cexpr_new_stmt_expr(stmts, cv_ident))
+        }
+
+        // Error union type: T!E
+        let excl_pos = self.str_find(inner_ty, Char(33))
+        if excl_pos < 0 { return inner_idx }
+        let val_type = inner_ty[0..excl_pos]
+        let result_ctype_str = self.map_type(inner_ty)
+        let val_ctype_str = self.map_type(val_type)
+
+        var stmts = ArrayList<Int>(self.allocator)
+
+        let res_ctype = ctype_new(result_ctype_str, 0, false, false)
+        let res_decl = cstmt_new_var_decl(res_ctype, "_kai_cr", inner_idx)
+        let res_decl_idx = self.c_stmts.length()
+        self.c_stmts.push(res_decl)
+        stmts.push(res_decl_idx)
+
+        let cr_ident = self.push_expr(cexpr_new_ident("_kai_cr"))
+        let tag_field = self.push_expr(cexpr_new_field(cr_ident, "tag"))
+        let zero_idx = self.push_expr(cexpr_new_int("0"))
+        let cond_idx = self.push_expr(cexpr_new_binary(tag_field, "!=", zero_idx))
+
+        var then_stmts_for_catch_stmts = ArrayList<Int>(self.allocator)
+
+        if strlen(expr.catch_var) > 0 {
+            let cv_decl = cstmt_new_var_decl(ctype_new("int64_t", 0, false, false), expr.catch_var, tag_field)
+            let cv_decl_idx = self.c_stmts.length()
+            self.c_stmts.push(cv_decl)
+            then_stmts_for_catch_stmts.push(cv_decl_idx)
+        }
+
+        var then_else_idx = -1
+        if val_type != "Void" {
+            let cv_ctype = ctype_new(val_ctype_str, 0, false, false)
+            let cv2_decl = cstmt_new_var_decl(cv_ctype, "_kai_cv", -1)
+            let cv2_decl_idx = self.c_stmts.length()
+            self.c_stmts.push(cv2_decl)
+            stmts.push(cv2_decl_idx)
+            let cv2_ident = self.push_expr(cexpr_new_ident("_kai_cv"))
+
+            if expr.catch_fallback >= 0 {
+                let fb_node = self.stmt_pool.get(expr.catch_fallback)
+                if fb_node.kind == StmtKind.sk_expr {
+                    let fb_idx = self.gen_expr(fb_node.expr_stmt)
+                    let else_assign = self.push_expr(cexpr_new_assign(cv2_ident, fb_idx, "="))
+                    let else_assign_stmt = cstmt_new_expr(else_assign)
+                    let else_assign_idx = self.c_stmts.length()
+                    self.c_stmts.push(else_assign_stmt)
+                    then_stmts_for_catch_stmts.push(else_assign_idx)
+                } else if fb_node.kind == StmtKind.sk_block && fb_node.block_stmts.length() == 1 {
+                    let inner = self.stmt_pool.get(fb_node.block_stmts.get(0))
+                    if inner.kind == StmtKind.sk_expr {
+                        let fb_idx = self.gen_expr(inner.expr_stmt)
+                        let else_assign = self.push_expr(cexpr_new_assign(cv2_ident, fb_idx, "="))
+                        let else_assign_stmt = cstmt_new_expr(else_assign)
+                        let else_assign_idx = self.c_stmts.length()
+                        self.c_stmts.push(else_assign_stmt)
+                        then_stmts_for_catch_stmts.push(else_assign_idx)
                     } else {
                         let saved_builder = self.builder
                         self.builder = CCodeBuilder(self.allocator)
                         self.gen_stmt(expr.catch_fallback)
-                        fallback_code = self.builder.to_str()
+                        let fb_text = self.builder.to_str()
                         self.builder = saved_builder
-                        fallback_is_stmt2 = true
+                        if strlen(fb_text) > 0 {
+                            let fb_var_ident = self.push_expr(cexpr_new_ident("_kai_cv = " + fb_text))
+                            let fb_var_stmt = cstmt_new_expr(fb_var_ident)
+                            let fb_var_idx = self.c_stmts.length()
+                            self.c_stmts.push(fb_var_stmt)
+                            then_stmts_for_catch_stmts.push(fb_var_idx)
+                        }
                     }
                 } else {
                     let saved_builder = self.builder
                     self.builder = CCodeBuilder(self.allocator)
                     self.gen_stmt(expr.catch_fallback)
-                    fallback_code = self.builder.to_str()
+                    let fb_text = self.builder.to_str()
                     self.builder = saved_builder
-                    fallback_is_stmt2 = true
-                }
-            } else {
-                fallback_code = "0"
-            }
-            var catch_code = "({ "
-            if self.is_pointer_type(val_type) {
-                catch_code = catch_code + val_ctype + " _kai_opt = (" + inner + "); "
-                catch_code = catch_code + val_ctype + " _kai_cv; "
-                catch_code = catch_code + "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } "
-                if fallback_is_stmt2 {
-                    catch_code = catch_code + "else { " + fallback_code + " __builtin_unreachable(); } _kai_cv; })"
-                } else {
-                    catch_code = catch_code + "else { _kai_cv = (" + fallback_code + "); } _kai_cv; })"
-                }
-            } else {
-                catch_code = catch_code + cond_ctype + " _kai_opt = (" + inner + "); "
-                catch_code = catch_code + val_ctype + " _kai_cv; "
-                catch_code = catch_code + "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } "
-                if fallback_is_stmt2 {
-                    catch_code = catch_code + "else { " + fallback_code + " __builtin_unreachable(); } _kai_cv; })"
-                } else {
-                    catch_code = catch_code + "else { _kai_cv = (" + fallback_code + "); } _kai_cv; })"
-                }
-            }
-            return self.push_expr(cexpr_new_ident(catch_code))
-        }
-        let excl_pos = self.str_find(inner_ty, Char(33))
-        if excl_pos < 0 {
-            return self.push_expr(cexpr_new_ident(inner))
-        }
-        let val_type = inner_ty[0..excl_pos]
-        let result_ctype = self.map_type(inner_ty)
-        let val_ctype = self.map_type(val_type)
-        var fallback_code = ""
-        var fallback_is_stmt = false
-        if expr.catch_fallback >= 0 {
-            let fb_node = self.stmt_pool.get(expr.catch_fallback)
-            if fb_node.kind == StmtKind.sk_expr {
-                fallback_code = self.gen_expr_str(fb_node.expr_stmt)
-            } else if fb_node.kind == StmtKind.sk_block {
-                var is_single_expr = false
-                var expr_idx2 = -1
-                if fb_node.block_stmts.length() == 1 {
-                    let single_stmt = self.stmt_pool.get(fb_node.block_stmts.get(0))
-                    if single_stmt.kind == StmtKind.sk_expr {
-                        is_single_expr = true
-                        expr_idx2 = single_stmt.expr_stmt
+                    if strlen(fb_text) > 0 {
+                        let fb_var_ident = self.push_expr(cexpr_new_ident("_kai_cv = " + fb_text))
+                        let fb_var_stmt = cstmt_new_expr(fb_var_ident)
+                        let fb_var_idx = self.c_stmts.length()
+                        self.c_stmts.push(fb_var_stmt)
+                        then_stmts_for_catch_stmts.push(fb_var_idx)
                     }
                 }
-                if is_single_expr {
-                    fallback_code = self.gen_expr_str(expr_idx2)
+            } else {
+                let zero_val = self.push_expr(cexpr_new_int("0"))
+                let else_assign = self.push_expr(cexpr_new_assign(cv2_ident, zero_val, "="))
+                let else_assign_stmt = cstmt_new_expr(else_assign)
+                let else_assign_idx = self.c_stmts.length()
+                self.c_stmts.push(else_assign_stmt)
+                then_stmts_for_catch_stmts.push(else_assign_idx)
+            }
+
+            // else: _kai_cv = _kai_cr.value
+            var else_stmts_for_catch = ArrayList<Int>(self.allocator)
+            let val_field = self.push_expr(cexpr_new_field(cr_ident, "value"))
+            let else_assign2 = self.push_expr(cexpr_new_assign(cv2_ident, val_field, "="))
+            let else_assign2_stmt = cstmt_new_expr(else_assign2)
+            let else_assign2_idx = self.c_stmts.length()
+            self.c_stmts.push(else_assign2_stmt)
+            else_stmts_for_catch.push(else_assign2_idx)
+            then_else_idx = self.c_stmts.length()
+            self.c_stmts.push(cstmt_new_block(else_stmts_for_catch))
+
+            let then_block_result = cstmt_new_block(then_stmts_for_catch_stmts)
+            let then_idx_result = self.c_stmts.length()
+            self.c_stmts.push(then_block_result)
+
+            let if_stmt2 = cstmt_new_if(cond_idx, then_idx_result, then_else_idx)
+            let if_idx2 = self.c_stmts.length()
+            self.c_stmts.push(if_stmt2)
+            stmts.push(if_idx2)
+
+            return self.push_expr(cexpr_new_stmt_expr(stmts, cv2_ident))
+        } else {
+            // Void value type: just the fallback and 0
+            if expr.catch_fallback >= 0 {
+                let fb_node = self.stmt_pool.get(expr.catch_fallback)
+                if fb_node.kind == StmtKind.sk_expr {
+                    let fb_idx = self.gen_expr(fb_node.expr_stmt)
+                    let fb_ident = self.push_expr(cexpr_new_ident("0"))
+                    let else_assign = self.push_expr(cexpr_new_assign(fb_ident, fb_idx, "="))
+                    let else_assign_stmt = cstmt_new_expr(else_assign)
+                    let else_assign_idx = self.c_stmts.length()
+                    self.c_stmts.push(else_assign_stmt)
+                    then_stmts_for_catch_stmts.push(else_assign_idx)
                 } else {
                     let saved_builder = self.builder
                     self.builder = CCodeBuilder(self.allocator)
                     self.gen_stmt(expr.catch_fallback)
-                    fallback_code = self.builder.to_str()
+                    let fb_text = self.builder.to_str()
                     self.builder = saved_builder
-                    fallback_is_stmt = true
+                    if strlen(fb_text) > 0 {
+                        let fb_ident = self.push_expr(cexpr_new_ident(fb_text))
+                        let fb_expr_stmt = cstmt_new_expr(fb_ident)
+                        let fb_expr_idx = self.c_stmts.length()
+                        self.c_stmts.push(fb_expr_stmt)
+                        then_stmts_for_catch_stmts.push(fb_expr_idx)
+                    }
                 }
-            } else {
-                let saved_builder = self.builder
-                self.builder = CCodeBuilder(self.allocator)
-                self.gen_stmt(expr.catch_fallback)
-                fallback_code = self.builder.to_str()
-                self.builder = saved_builder
-                fallback_is_stmt = true
             }
-        } else {
-            fallback_code = "0"
+            let then_block_void = cstmt_new_block(then_stmts_for_catch_stmts)
+            let then_idx_void = self.c_stmts.length()
+            self.c_stmts.push(then_block_void)
+
+            let if_stmt_void = cstmt_new_if(cond_idx, then_idx_void, -1)
+            let if_idx_void = self.c_stmts.length()
+            self.c_stmts.push(if_stmt_void)
+            stmts.push(if_idx_void)
+
+            let result_void = self.push_expr(cexpr_new_int("0"))
+            return self.push_expr(cexpr_new_stmt_expr(stmts, result_void))
         }
-        var catch_code = "({ " + result_ctype + " _kai_cr = (" + inner + "); "
-        if val_type == "Void" {
-            catch_code = catch_code + "if (_kai_cr.tag != 0) { "
-            if strlen(expr.catch_var) > 0 {
-                catch_code = catch_code + "int64_t " + expr.catch_var + " = _kai_cr.tag; "
-            }
-            catch_code = catch_code + fallback_code + " } 0; })"
-        } else {
-            catch_code = catch_code + val_ctype + " _kai_cv; "
-            catch_code = catch_code + "if (_kai_cr.tag != 0) { "
-            if strlen(expr.catch_var) > 0 {
-                catch_code = catch_code + "int64_t " + expr.catch_var + " = _kai_cr.tag; "
-            }
-            if fallback_is_stmt {
-                catch_code = catch_code + fallback_code + " __builtin_unreachable(); "
-            } else {
-                catch_code = catch_code + "_kai_cv = (" + fallback_code + "); "
-            }
-            catch_code = catch_code + "} else { _kai_cv = _kai_cr.value; } _kai_cv; })"
-        }
-        return self.push_expr(cexpr_new_ident(catch_code))
     }
 
     //== Check (?. operator — unwrap optional/pointer)
@@ -2230,6 +2480,30 @@ fn gen_expr(self, expr_idx: Int) -> Int {
 
 //== Statement Codegen
 
+fn gen_stmt_sub(self, stmt_idx: Int) -> Int {
+    // Captures a sub-statement's text via temp builder and wraps in CStmtNode
+    if stmt_idx < 0 { return -1 }
+    let saved_builder = self.builder
+    self.builder = CCodeBuilder(self.allocator)
+    self.gen_stmt(stmt_idx)
+    var text = self.builder.to_str()
+    self.builder = saved_builder
+    // Trim trailing whitespace/newlines so append_to_last_line in cs_if works
+    var last_idx = strlen(text) - 1
+    while last_idx >= 0 && (text[last_idx] == Char(10) || text[last_idx] == Char(13) || text[last_idx] == Char(32)) {
+        last_idx = last_idx - 1
+    }
+    if last_idx < strlen(text) - 1 {
+        text = text[0..(last_idx + 1)]
+    }
+    if strlen(text) == 0 { return -1 }
+    let tidx = self.push_expr(cexpr_new_ident(text))
+    let s = cstmt_new_expr(tidx)
+    let sidx = self.c_stmts.length()
+    self.c_stmts.push(s)
+    return sidx
+}
+
 fn gen_stmt(self, stmt_idx: Int) -> Void {
     if stmt_idx < 0 { return }
     let stmt = self.stmt_pool.get(stmt_idx)
@@ -2255,7 +2529,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
         if is_discard {
             let val_idx = self.gen_expr(var_value)
             let void_cast = self.push_expr(cexpr_new_cast(ctype_void(), val_idx))
-            self.emit_c_stmt(cstmt_new_expr(void_cast))
+            self.push_emit(cstmt_new_expr(void_cast))
             cgb_map_put(&self.var_types, var_name, "Void")
             return
         }
@@ -2269,10 +2543,10 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
         if var_value >= 0 {
             let val_idx = self.gen_expr(var_value)
             let ct = ctype_new(mapped_type, 0, false, false)
-            self.emit_c_stmt(cstmt_new_var_decl(ct, var_name, val_idx))
+            self.push_emit(cstmt_new_var_decl(ct, var_name, val_idx))
         } else {
             let ct = ctype_new(mapped_type, 0, false, false)
-            self.emit_c_stmt(cstmt_new_var_decl(ct, var_name, -1))
+            self.push_emit(cstmt_new_var_decl(ct, var_name, -1))
         }
         return
     }
@@ -2284,7 +2558,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
         var op = "="
         if strlen(stmt.assign_op) > 0 { op = stmt.assign_op }
         let assign_idx = self.push_expr(cexpr_new_assign(target_idx, rhs_idx, op))
-        self.emit_c_stmt(cstmt_new_expr(assign_idx))
+        self.push_emit(cstmt_new_expr(assign_idx))
         return
     }
 
@@ -2334,30 +2608,31 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
         }
 
         if stmt.return_value >= 0 {
-            let val_idx = self.gen_expr(stmt.return_value)
+            let raw_val_idx = self.gen_expr(stmt.return_value)
+            let wrapped_val = self.wrap_for_return(stmt.return_value, raw_val_idx, self.cur_return_type)
             if self.cur_method_is_init {
                 let expr = self.expr_pool.get(stmt.return_value)
                 if expr.kind == ExprKind.ek_identifier || expr.kind == ExprKind.ek_literal {
                     if block_stmts.length() > 0 {
-                        self.emit_c_stmt(cstmt_new_block(block_stmts))
+                        self.push_emit(cstmt_new_block(block_stmts))
                     }
                     return
                 }
-                let expr_stmt = cstmt_new_expr(val_idx)
+                let expr_stmt = cstmt_new_expr(wrapped_val)
                 if block_stmts.length() > 0 {
                     let e_idx = self.c_stmts.length()
                     self.c_stmts.push(expr_stmt)
                     block_stmts.push(e_idx)
-                    self.emit_c_stmt(cstmt_new_block(block_stmts))
+                    self.push_emit(cstmt_new_block(block_stmts))
                 } else {
-                    self.emit_c_stmt(expr_stmt)
+                    self.push_emit(expr_stmt)
                 }
                 return
             }
             if block_stmts.length() > 0 {
                 let ret_ctype = self.map_type(self.cur_return_type)
                 let ret_var_name = "__ret_val"
-                let var_decl = cstmt_new_var_decl(ctype_new(ret_ctype, 0, false, false), ret_var_name, val_idx)
+                let var_decl = cstmt_new_var_decl(ctype_new(ret_ctype, 0, false, false), ret_var_name, wrapped_val)
                 let var_idx = self.c_stmts.length()
                 self.c_stmts.push(var_decl)
                 block_stmts.push(var_idx)
@@ -2366,30 +2641,34 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
                 let r_idx = self.c_stmts.length()
                 self.c_stmts.push(ret_stmt)
                 block_stmts.push(r_idx)
-                self.emit_c_stmt(cstmt_new_block(block_stmts))
+                self.push_emit(cstmt_new_block(block_stmts))
             } else {
-                self.emit_c_stmt(cstmt_new_return(val_idx))
+                self.push_emit(cstmt_new_return(wrapped_val))
             }
         } else {
             if block_stmts.length() > 0 {
                 let r_idx2 = self.c_stmts.length()
                 self.c_stmts.push(cstmt_new_return(-1))
                 block_stmts.push(r_idx2)
-                self.emit_c_stmt(cstmt_new_block(block_stmts))
+                self.push_emit(cstmt_new_block(block_stmts))
             } else {
-                self.emit_c_stmt(cstmt_new_return(-1))
+                self.push_emit(cstmt_new_return(-1))
             }
         }
         return
     }
 
     if stmt.kind == StmtKind.sk_if {
-        let cond = self.gen_expr_str(stmt.if_cond)
-        self.builder.emit_line("if " + self.format_cond(cond))
-        self.gen_stmt(stmt.if_then)
+        let cond_idx = self.gen_expr(stmt.if_cond)
+        let then_idx = self.gen_stmt_sub(stmt.if_then)
+        var else_idx = -1
         if stmt.if_else >= 0 {
-            self.gen_else_chain(stmt.if_else)
+            else_idx = self.gen_else_chain_sub(stmt.if_else)
         }
+        let if_node = cstmt_new_if(cond_idx, then_idx, else_idx)
+        let if_idx = self.c_stmts.length()
+        self.c_stmts.push(if_node)
+        self.emit_c_stmt(if_idx)
         return
     }
 
@@ -2438,14 +2717,17 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     }
 
     if stmt.kind == StmtKind.sk_while {
-        let cond = self.gen_expr_str(stmt.while_cond)
-        self.builder.emit_line("while " + self.format_cond(cond))
+        let cond_idx = self.gen_expr(stmt.while_cond)
         if stmt.while_body >= 0 {
             var body_stmt = self.stmt_pool.get(stmt.while_body)
             body_stmt.block_is_loop_body = true
             self.stmt_pool.set(stmt.while_body, body_stmt)
         }
-        self.gen_stmt(stmt.while_body)
+        let body_idx = self.gen_stmt_sub(stmt.while_body)
+        let while_node = cstmt_new_while(cond_idx, body_idx)
+        let while_idx = self.c_stmts.length()
+        self.c_stmts.push(while_node)
+        self.emit_c_stmt(while_idx)
         return
     }
 
@@ -2597,12 +2879,12 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
             var args = ArrayList<Int>(self.allocator)
             args.push(arg_idx)
             let call_idx = self.push_expr(cexpr_new_call("__kai_print_int", args))
-            self.emit_c_stmt(cstmt_new_expr(call_idx))
+            self.push_emit(cstmt_new_expr(call_idx))
         } else if arg_type == "Float" {
             var args = ArrayList<Int>(self.allocator)
             args.push(arg_idx)
             let call_idx = self.push_expr(cexpr_new_call("__kai_print_float", args))
-            self.emit_c_stmt(cstmt_new_expr(call_idx))
+            self.push_emit(cstmt_new_expr(call_idx))
         } else if arg_type == "Char" {
             let fmt = self.push_expr(cexpr_new_str("\"%c\\n\""))
             let cast = self.push_expr(cexpr_new_cast(ctype_char(), arg_idx))
@@ -2610,7 +2892,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
             args.push(fmt)
             args.push(cast)
             let call_idx = self.push_expr(cexpr_new_call("printf", args))
-            self.emit_c_stmt(cstmt_new_expr(call_idx))
+            self.push_emit(cstmt_new_expr(call_idx))
         } else if arg_type == "Bool" {
             let fmt = self.push_expr(cexpr_new_str("\"%s\\n\""))
             let true_str = self.push_expr(cexpr_new_str("\"true\""))
@@ -2620,14 +2902,14 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
             args.push(fmt)
             args.push(tern)
             let call_idx = self.push_expr(cexpr_new_call("printf", args))
-            self.emit_c_stmt(cstmt_new_expr(call_idx))
+            self.push_emit(cstmt_new_expr(call_idx))
         } else {
             let fmt = self.push_expr(cexpr_new_str("\"%s\\n\""))
             var args = ArrayList<Int>(self.allocator)
             args.push(fmt)
             args.push(arg_idx)
             let call_idx = self.push_expr(cexpr_new_call("printf", args))
-            self.emit_c_stmt(cstmt_new_expr(call_idx))
+            self.push_emit(cstmt_new_expr(call_idx))
         }
         return
     }
@@ -2808,16 +3090,13 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     }
 
     if stmt.kind == StmtKind.sk_expr {
-        let expr = self.expr_pool.get(stmt.expr_stmt)
-        if expr.kind != ExprKind.ek_identifier && expr.kind != ExprKind.ek_literal {
-            let c_expr_idx = self.gen_expr(stmt.expr_stmt)
-            if c_expr_idx >= 0 {
-                let c_stmt = cstmt_new_expr(c_expr_idx)
-                let c_stmt_idx = self.c_stmts.length()
-                self.c_stmts.push(c_stmt)
-                var printer = CPrinter(builder: &self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
-                printer.print_stmt(c_stmt_idx)
-            }
+        let c_expr_idx = self.gen_expr(stmt.expr_stmt)
+        if c_expr_idx >= 0 {
+            let c_stmt = cstmt_new_expr(c_expr_idx)
+            let c_stmt_idx = self.c_stmts.length()
+            self.c_stmts.push(c_stmt)
+            var printer = CPrinter(builder: &self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+            printer.print_stmt(c_stmt_idx)
         }
         return
     }
@@ -2853,6 +3132,29 @@ fn gen_else_chain(self, else_idx: Int) {
     }
     self.builder.append_to_last_line(" else")
     self.gen_stmt(else_idx)
+}
+
+fn gen_else_chain_sub(self, else_idx: Int) -> Int {
+    // Returns CStmtNode index for an else branch, building cs_if chains for else-if
+    let else_node = self.stmt_pool.get(else_idx)
+    if else_node.kind == StmtKind.sk_block && else_node.block_stmts.length() == 1 {
+        let single_stmt_idx = else_node.block_stmts.get(0)
+        let single_stmt = self.stmt_pool.get(single_stmt_idx)
+        if single_stmt.kind == StmtKind.sk_if {
+            let inner_cond_idx = self.gen_expr(single_stmt.if_cond)
+            let then_idx = self.gen_stmt_sub(single_stmt.if_then)
+            var inner_else_idx = -1
+            if single_stmt.if_else >= 0 {
+                inner_else_idx = self.gen_else_chain_sub(single_stmt.if_else)
+            }
+            let if_node = cstmt_new_if(inner_cond_idx, then_idx, inner_else_idx)
+            let if_idx = self.c_stmts.length()
+            self.c_stmts.push(if_node)
+            return if_idx
+        }
+    }
+    // Regular else: return captured body
+    return self.gen_stmt_sub(else_idx)
 }
 
 fn build_func_types(self) -> Void {

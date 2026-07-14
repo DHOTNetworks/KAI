@@ -151,30 +151,54 @@ fn print_stmt(self, idx: Int) {
         self.builder.end_block()
     }
     if node.kind == CStmtKind.cs_expr {
-        self.builder.emit_line(self.print_expr(node.expr_stmt) + ";")
+        let expr_text = self.print_expr(node.expr_stmt)
+        // Find last non-whitespace character
+        var last_c = strlen(expr_text) - 1
+        while last_c >= 0 && (expr_text[last_c] == Char(10) || expr_text[last_c] == Char(13) || expr_text[last_c] == Char(32)) {
+            last_c = last_c - 1
+        }
+        if last_c < 0 { return }
+        var skip_semi = false
+        if expr_text[last_c] == Char(125) {
+            skip_semi = true
+        }
+        // If text spans multiple lines, emit each line with proper indent
+        var has_nl = false
+        var i = 0
+        while i < strlen(expr_text) {
+            if expr_text[i] == Char(10) { has_nl = true; break }
+            i = i + 1
+        }
+        if has_nl {
+            self.builder.emit_multiline(expr_text)
+        } else if skip_semi {
+            self.builder.emit_line(expr_text)
+        } else {
+            self.builder.emit_line(expr_text + ";")
+        }
     }
     if node.kind == CStmtKind.cs_if {
         let cond = self.print_expr(node.if_cond)
-        self.builder.emit_line("if (" + cond + ")")
+        self.builder.emit_line("if " + cond)
         self.print_stmt(node.if_then)
-        if node.if_else >= 0 {
-            let else_node = self.stmt_pool.get(node.if_else)
+        var cur_else = node.if_else
+        while cur_else >= 0 {
+            let else_node = self.stmt_pool.get(cur_else)
             if else_node.kind == CStmtKind.cs_if {
                 let inner_cond = self.print_expr(else_node.if_cond)
-                self.builder.append_to_last_line(" else if (" + inner_cond + ")")
+                self.builder.append_to_last_line(" else if " + inner_cond)
                 self.print_stmt(else_node.if_then)
-                if else_node.if_else >= 0 {
-                    self.print_stmt(else_node.if_else)
-                }
+                cur_else = else_node.if_else
             } else {
                 self.builder.append_to_last_line(" else")
-                self.print_stmt(node.if_else)
+                self.print_stmt(cur_else)
+                cur_else = -1
             }
         }
     }
     if node.kind == CStmtKind.cs_while {
         let cond = self.print_expr(node.while_cond)
-        self.builder.emit_line("while (" + cond + ")")
+        self.builder.emit_line("while " + cond)
         self.print_stmt(node.while_body)
     }
     if node.kind == CStmtKind.cs_for {

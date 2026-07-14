@@ -49,6 +49,25 @@ fn emit_raw(self, code: Str) {
     self.lines.push(code)
 }
 
+fn emit_multiline(self, code: Str) {
+    var start = 0
+    while start < strlen(code) {
+        var nl = -1
+        var i = start
+        while i < strlen(code) {
+            if code[i] == Char(10) { nl = i; break }
+            i = i + 1
+        }
+        if nl >= 0 {
+            self.emit_line(code[start..nl])
+            start = nl + 1
+        } else {
+            self.emit_line(code[start..strlen(code)])
+            start = strlen(code)
+        }
+    }
+}
+
 fn append_to_last_line(self, suffix: Str) {
     if self.lines.length() > 0 {
         let idx = self.lines.length() - 1

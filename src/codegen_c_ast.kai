@@ -542,6 +542,20 @@ fn cexpr_new_ternary(cond: Int, then_expr: Int, else_expr: Int) -> CExprNode {
     )
 }
 
+fn cexpr_new_stmt_expr(stmts: ArrayList<Int>, result_expr: Int) -> CExprNode {
+    var args = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    var fields = ArrayList<Str>(data: 0 as *Str, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    return CExprNode(
+        kind: CExprKind.ck_stmt_expr, int_val: "", float_val: "", str_val: "", char_val: "", bool_val: false,
+        ident_name: "", binop_left: -1, binop_right: -1, binop_op: "", unop_operand: -1, unop_op: "", is_prefix: false,
+        call_func: -1, call_args: args, callee_name: "", field_expr: -1, field_name: "", idx_expr: -1, idx_index: -1,
+        cast_type: ctype_void(), cast_expr: -1, compound_type: ctype_void(), compound_fields: fields,
+        tern_cond: -1, tern_then: -1, tern_else: -1, sizeof_type: ctype_void(), sizeof_expr: -1,
+        assign_target: -1, assign_value: -1, assign_op: "", comma_left: -1, comma_right: -1,
+        stmts: stmts, stmt_result: result_expr
+    )
+}
+
 //== 9d. CStmtNode Constructors for var_decl/return/while
 
 fn cstmt_new_var_decl(var_type: CType, var_name: Str, var_init: Int) -> CStmtNode {
