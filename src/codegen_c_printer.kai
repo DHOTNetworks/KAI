@@ -49,14 +49,14 @@ fn print_expr(self, idx: Int) -> Str {
     if node.kind == CExprKind.ck_binary {
         let left = self.print_expr(node.binop_left)
         let right = self.print_expr(node.binop_right)
-        return "(" + left + " " + node.binop_op + " " + right + ")"
+        return left + " " + node.binop_op + " " + right
     }
     if node.kind == CExprKind.ck_unary {
         let operand = self.print_expr(node.unop_operand)
         if node.is_prefix {
-            return "(" + node.unop_op + operand + ")"
+            return node.unop_op + operand
         }
-        return "(" + operand + node.unop_op + ")"
+        return operand + node.unop_op
     }
     if node.kind == CExprKind.ck_call {
         var args_str = ""
@@ -102,7 +102,7 @@ fn print_expr(self, idx: Int) -> Str {
     if node.kind == CExprKind.ck_assign {
         let target = self.print_expr(node.assign_target)
         let val = self.print_expr(node.assign_value)
-        return "(" + target + " " + node.assign_op + " " + val + ")"
+        return target + " " + node.assign_op + " " + val
     }
     if node.kind == CExprKind.ck_compound {
         let type_str = ctype_to_str(node.compound_type)
@@ -179,14 +179,14 @@ fn print_stmt(self, idx: Int) {
     }
     if node.kind == CStmtKind.cs_if {
         let cond = self.print_expr(node.if_cond)
-        self.builder.emit_line("if " + cond)
+        self.builder.emit_line("if (" + cond + ")")
         self.print_stmt(node.if_then)
         var cur_else = node.if_else
         while cur_else >= 0 {
             let else_node = self.stmt_pool.get(cur_else)
             if else_node.kind == CStmtKind.cs_if {
                 let inner_cond = self.print_expr(else_node.if_cond)
-                self.builder.append_to_last_line(" else if " + inner_cond)
+                self.builder.append_to_last_line(" else if (" + inner_cond + ")")
                 self.print_stmt(else_node.if_then)
                 cur_else = else_node.if_else
             } else {
@@ -198,7 +198,7 @@ fn print_stmt(self, idx: Int) {
     }
     if node.kind == CStmtKind.cs_while {
         let cond = self.print_expr(node.while_cond)
-        self.builder.emit_line("while " + cond)
+        self.builder.emit_line("while (" + cond + ")")
         self.print_stmt(node.while_body)
     }
     if node.kind == CStmtKind.cs_for {
