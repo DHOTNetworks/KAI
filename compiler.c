@@ -15751,7 +15751,8 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     CCodeBuilder_emit_line(&(self->builder), "return;");
 } else {
     CCodeBuilder_begin_block(&(self->builder));
-    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc("int64_t __ret_val = ", val_str), ";"));
+    const char* ret_ctype = CodegenBuilder_map_type(self, self->cur_return_type);
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc(concatAlloc(ret_ctype, " __ret_val = "), val_str), ";"));
     int64_t ci = 0LL;
     while (ci < ArrayList_Str_length(&(drop_calls))) {
     CCodeBuilder_emit_line(&(self->builder), ArrayList_Str_get(&(drop_calls), ci));
@@ -15846,8 +15847,14 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     cmp_asc = "<=";
     cmp_desc = ">=";
 }
-    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("for (int64_t ", iter_var), " = "), start), "; ("), start), " <= "), end), ") ? ("), iter_var), " "), cmp_asc), " "), end), ") : ("), iter_var), " "), cmp_desc), " "), end), "); ("), start), " <= "), end), ") ? ++"), iter_var), " : --"), iter_var), ")"));
+    CCodeBuilder_emit_line(&(self->builder), "{");
+    CCodeBuilder_indent(&(self->builder));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc("int64_t _kai_start = ", start), ";"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc("int64_t _kai_end = ", end), ";"));
+    CCodeBuilder_emit_line(&(self->builder), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("for (int64_t ", iter_var), " = _kai_start; (_kai_start <= _kai_end) ? ("), iter_var), " "), cmp_asc), " _kai_end) : ("), iter_var), " "), cmp_desc), " _kai_end); (_kai_start <= _kai_end) ? ++"), iter_var), " : --"), iter_var), ")"));
     CodegenBuilder_gen_stmt(self, stmt.for_body);
+    CCodeBuilder_dedent(&(self->builder));
+    CCodeBuilder_emit_line(&(self->builder), "}");
     return;
 }
     if (stmt.kind == StmtKind_sk_break) {
@@ -15980,6 +15987,10 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     return;
 }
     if (stmt.kind == StmtKind_sk_defer) {
+    ArrayList_Int_push(&(self->defer_stack), stmt_idx);
+    return;
+}
+    if (stmt.kind == StmtKind_sk_errdefer) {
     ArrayList_Int_push(&(self->defer_stack), stmt_idx);
     return;
 }
@@ -17447,6 +17458,10 @@ void CPrinter_emit_runtime_preamble(CPrinter* self, ArrayList_Str* cimport_heade
     CCodeBuilder_emit_line(self->builder, "    if (buf) memcpy(buf, (const char*)arr + start * elem_size, total);");
     CCodeBuilder_emit_line(self->builder, "    return buf;");
     CCodeBuilder_emit_line(self->builder, "}");
+    CCodeBuilder_emit_blank(self->builder);
+    CCodeBuilder_emit_line(self->builder, "#ifndef __kai_std_str_concat_alloc");
+    CCodeBuilder_emit_line(self->builder, "#define __kai_std_str_concat_alloc concatAlloc");
+    CCodeBuilder_emit_line(self->builder, "#endif");
     CCodeBuilder_emit_blank(self->builder);
     int64_t ci = 0LL;
     bool has_cimports = false;

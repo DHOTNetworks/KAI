@@ -51,8 +51,13 @@ import cexpr_new_cast from codegen_c_ast
 import cexpr_new_sizeof_type from codegen_c_ast
 import cexpr_new_compound from codegen_c_ast
 import cexpr_new_call from codegen_c_ast
+import cexpr_new_assign from codegen_c_ast
+import cexpr_new_ternary from codegen_c_ast
 import cstmt_new_expr from codegen_c_ast
 import cstmt_new_block from codegen_c_ast
+import cstmt_new_var_decl from codegen_c_ast
+import cstmt_new_return from codegen_c_ast
+import cstmt_new_while from codegen_c_ast
 import ctype_new from codegen_c_ast
 import cdecl_new_func from codegen_c_ast
 
@@ -1304,6 +1309,14 @@ fn expr_to_str(self, c_idx: Int) -> Str {
     return printer.print_expr(c_idx)
 }
 
+// Push a CStmtNode and emit it through the CPrinter to the builder.
+fn emit_c_stmt(self, cnode: CStmtNode) {
+    let c_idx = self.c_stmts.length()
+    self.c_stmts.push(cnode)
+    var printer = CPrinter(builder: &self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
+    printer.print_stmt(c_idx)
+}
+
 fn gen_expr_with_expected_type(self, expr_idx: Int, expected_type: Str) -> Str {
     if expr_idx < 0 { return "" }
     let expr = self.expr_pool.get(expr_idx)
@@ -1645,9 +1658,6 @@ fn gen_expr(self, expr_idx: Int) -> Int {
                         }
                         vi = vi + 1
                     }
-                    if has_payload {
-                        return self.push_expr(cexpr_new_ident("(" + ename + "){ .tag = " + ename + "_" + var_name + "_TAG }"))
-                    }
                     var any_payload = false
                     vi = 0
                     while vi < s.enum_variants.length() {
@@ -1655,8 +1665,11 @@ fn gen_expr(self, expr_idx: Int) -> Int {
                         if v.params.length() > 0 { any_payload = true }
                         vi = vi + 1
                     }
-                    if any_payload {
-                        return self.push_expr(cexpr_new_ident("(" + ename + "){ .tag = " + ename + "_" + var_name + "_TAG }"))
+                    if has_payload || any_payload {
+                        var fields = ArrayList<Str>(self.allocator)
+                        fields.push(".tag = " + ename + "_" + var_name + "_TAG")
+                        let ct = ctype_new(ename, 0, false, false)
+                        return self.push_expr(cexpr_new_compound(ct, fields))
                     }
                     return self.push_expr(cexpr_new_ident(ename + "_" + var_name))
                 }
@@ -1678,7 +1691,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
         return self.push_expr(cexpr_new_field(base_idx, expr.field_name))
     }
 
-    //== Method call (complex, use pre-rendered ident)
+    //== Method call (lowered to C-AST nodes)
     if expr.kind == ExprKind.ek_method_call {
         let receiver_node = self.expr_pool.get(expr.meth_expr)
         let rec_type = self.get_expr_type(expr.meth_expr)
@@ -1699,34 +1712,53 @@ fn gen_expr(self, expr_idx: Int) -> Int {
             if r_name[0] >= Char(65) && r_name[0] <= Char(90) { is_constructor = true }
         }
         let func_name = clean_type + "_" + expr.meth_name
-        var args_str = ""
+
+        // Build argument list as C-AST indices
+        var call_args = ArrayList<Int>(self.allocator)
+        var has_receiver_as_arg = false
         if !is_constructor && expr.meth_name != "init" {
-            let rec_val = self.gen_expr_str(expr.meth_expr)
             let rec_inferred = self.get_expr_type(expr.meth_expr)
             let is_self_ptr = (receiver_node.kind == ExprKind.ek_identifier && receiver_node.ident_name == "self" && !self.cur_method_is_init)
             if strlen(rec_inferred) > 0 && (rec_inferred[0] == Char(42) || rec_inferred[0] == Char(38) || is_self_ptr) {
-                args_str = rec_val
+                call_args.push(self.gen_expr(expr.meth_expr))
             } else {
-                args_str = "&(" + rec_val + ")"
+                let rec_idx = self.gen_expr(expr.meth_expr)
+                call_args.push(self.push_expr(cexpr_new_unary("&", rec_idx, true)))
             }
+            has_receiver_as_arg = true
         }
         var ai = 0
         while ai < expr.meth_args.length() {
-            if strlen(args_str) > 0 { args_str = args_str + ", " }
             let p_key = func_name + "_param_" + cgb_int_to_str(ai + 1)
             let expected_type = cgb_map_get(&self.func_param_types, p_key)
-            args_str = args_str + self.gen_expr_with_expected_type(expr.meth_args.get(ai), expected_type)
+            let arg_idx = self.gen_expr(expr.meth_args.get(ai))
+            // Wrap in type coercion via cast if needed
+            if strlen(expected_type) > 0 {
+                let arg_type = self.get_expr_type(expr.meth_args.get(ai))
+                if arg_type != expected_type {
+                    let mapped = self.map_type(expected_type)
+                    call_args.push(self.push_expr(cexpr_new_cast(ctype_new(mapped, 0, false, false), arg_idx)))
+                } else {
+                    call_args.push(arg_idx)
+                }
+            } else {
+                call_args.push(arg_idx)
+            }
             ai = ai + 1
         }
+        let call_idx = self.push_expr(cexpr_new_call(func_name, call_args))
+
+        // Init methods: return assignment (the init result is stored back to receiver)
         if expr.meth_name == "init" && !is_constructor {
-            let rec_val = self.gen_expr_str(expr.meth_expr)
+            let rec_idx = self.gen_expr(expr.meth_expr)
             let rec_inferred = self.get_expr_type(expr.meth_expr)
             if strlen(rec_inferred) > 0 && (rec_inferred[0] == Char(42) || rec_inferred[0] == Char(38)) {
-                return self.push_expr(cexpr_new_ident("*(" + rec_val + ") = " + func_name + "(" + args_str + ")"))
+                let deref_idx = self.push_expr(cexpr_new_unary("*", rec_idx, true))
+                return self.push_expr(cexpr_new_assign(deref_idx, call_idx, "="))
             }
-            return self.push_expr(cexpr_new_ident(rec_val + " = " + func_name + "(" + args_str + ")"))
+            return self.push_expr(cexpr_new_assign(rec_idx, call_idx, "="))
         }
-        return self.push_expr(cexpr_new_ident(func_name + "(" + args_str + ")"))
+        return call_idx
     }
 
     //== Slice
@@ -1783,19 +1815,21 @@ fn gen_expr(self, expr_idx: Int) -> Int {
             let enum_part = expr.struct_name[0..dot_pos]
             let variant_name = expr.struct_name[(dot_pos + 1)..strlen(expr.struct_name)]
             let enum_name = self.map_type(enum_part)
-            var fields_str = ""
-            var i = 0
-            while i < expr.struct_fields.length() {
-                let f = expr.struct_fields.get(i)
-                if i > 0 { fields_str = fields_str + ", " }
-                fields_str = fields_str + "." + f.name + " = " + self.gen_expr_str(f.value)
-                i = i + 1
+            var fields = ArrayList<Str>(self.allocator)
+            fields.push(".tag = " + enum_name + "_" + variant_name + "_TAG")
+            if expr.struct_fields.length() > 0 {
+                var inner_fields = ""
+                var i = 0
+                while i < expr.struct_fields.length() {
+                    let f = expr.struct_fields.get(i)
+                    if i > 0 { inner_fields = inner_fields + ", " }
+                    inner_fields = inner_fields + "." + f.name + " = " + self.gen_expr_str(f.value)
+                    i = i + 1
+                }
+                fields.push("." + variant_name + " = { " + inner_fields + " }")
             }
-            var payload_str = ""
-            if strlen(fields_str) > 0 {
-                payload_str = ", ." + variant_name + " = { " + fields_str + " }"
-            }
-            return self.push_expr(cexpr_new_ident("(" + enum_name + "){ .tag = " + enum_name + "_" + variant_name + "_TAG" + payload_str + " }"))
+            let ct = ctype_new(enum_name, 0, false, false)
+            return self.push_expr(cexpr_new_compound(ct, fields))
         }
         let struct_name = self.map_type(expr.struct_name)
         var fields = ArrayList<Str>(self.allocator)
@@ -1847,14 +1881,14 @@ fn gen_expr(self, expr_idx: Int) -> Int {
     if expr.kind == ExprKind.ek_tuple {
         if strlen(expr.inferred_type) > 0 {
             let mapped_ty = self.map_type(expr.inferred_type)
-            var elems_str = ""
+            var field_strs = ArrayList<Str>(self.allocator)
             var i = 0
             while i < expr.tup_elements.length() {
-                if i > 0 { elems_str = elems_str + ", " }
-                elems_str = elems_str + self.gen_expr_str(expr.tup_elements.get(i))
+                field_strs.push(self.gen_expr_str(expr.tup_elements.get(i)))
                 i = i + 1
             }
-            return self.push_expr(cexpr_new_ident("(" + mapped_ty + "){ " + elems_str + " }"))
+            let ct = ctype_new(mapped_ty, 0, false, false)
+            return self.push_expr(cexpr_new_compound(ct, field_strs))
         }
         return self.push_expr(cexpr_new_ident("NULL"))
     }
@@ -2060,9 +2094,24 @@ fn gen_expr(self, expr_idx: Int) -> Int {
         return self.push_expr(cexpr_new_ident(catch_code))
     }
 
-    //== Check (passthrough)
+    //== Check (?. operator — unwrap optional/pointer)
     if expr.kind == ExprKind.ek_check {
-        return self.gen_expr(expr.check_expr)
+        let inner_idx = self.gen_expr(expr.check_expr)
+        let inner_type = self.get_expr_type(expr.check_expr)
+        if strlen(inner_type) > 0 && inner_type[0] == Char(63) {
+            let val_type = inner_type[1..strlen(inner_type)]
+            if self.is_pointer_type(val_type) {
+                let null_idx = self.push_expr(cexpr_new_ident("NULL"))
+                let cond_idx = self.push_expr(cexpr_new_binary(inner_idx, "!=", null_idx))
+                return self.push_expr(cexpr_new_ternary(cond_idx, inner_idx, null_idx))
+            }
+            let has_val_idx = self.push_expr(cexpr_new_field(inner_idx, "has_value"))
+            let val_idx = self.push_expr(cexpr_new_field(inner_idx, "value"))
+            let zero_idx = self.push_expr(cexpr_new_ident("(" + self.map_type(val_type) + "){0}"))
+            return self.push_expr(cexpr_new_ternary(has_val_idx, val_idx, zero_idx))
+        }
+        // For pointer types, just return the inner (already nullable)
+        return inner_idx
     }
 
     //== Inline asm expression
@@ -2193,44 +2242,43 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
         var var_value = stmt.vardecl_value
         var is_discard = var_value >= 0 && (var_name == "_" || (strlen(var_type) == 0 && (self.get_expr_type(var_value) == "Void" || self.get_expr_type(var_value) == "NoneType")))
         if is_discard {
-            self.builder.emit_line("(void)(" + self.gen_expr_str(var_value) + ");")
+            let val_idx = self.gen_expr(var_value)
+            let void_cast = self.push_expr(cexpr_new_cast(ctype_void(), val_idx))
+            self.emit_c_stmt(cstmt_new_expr(void_cast))
             cgb_map_put(&self.var_types, var_name, "Void")
             return
         }
 
-        if strlen(var_type) == 0 {
-            let val_type = self.get_expr_type(var_value)
-            let ctype = self.map_type(val_type)
-            cgb_map_put(&self.var_types, var_name, val_type)
-            if var_value >= 0 {
-                self.builder.emit_line(ctype + " " + var_name + " = " + self.gen_expr_str(var_value) + ";")
-            } else {
-                self.builder.emit_line(ctype + " " + var_name + ";")
-            }
+        var resolved_type = var_type
+        if strlen(resolved_type) == 0 {
+            resolved_type = self.get_expr_type(var_value)
+        }
+        let mapped_type = self.map_type(resolved_type)
+        cgb_map_put(&self.var_types, var_name, resolved_type)
+        if var_value >= 0 {
+            let val_idx = self.gen_expr(var_value)
+            let ct = ctype_new(mapped_type, 0, false, false)
+            self.emit_c_stmt(cstmt_new_var_decl(ct, var_name, val_idx))
         } else {
-            let ctype = self.map_type(var_type)
-            cgb_map_put(&self.var_types, var_name, var_type)
-            if var_value >= 0 {
-                self.builder.emit_line(ctype + " " + var_name + " = " + self.gen_expr_str(var_value) + ";")
-            } else {
-                self.builder.emit_line(ctype + " " + var_name + ";")
-            }
+            let ct = ctype_new(mapped_type, 0, false, false)
+            self.emit_c_stmt(cstmt_new_var_decl(ct, var_name, -1))
         }
         return
     }
 
     if stmt.kind == StmtKind.sk_assignment {
-        let target = self.gen_expr_str(stmt.assign_target)
         let lhs_type = self.get_expr_type(stmt.assign_target)
-        let rhs = self.gen_expr_with_expected_type(stmt.assign_value, lhs_type)
+        let target_idx = self.gen_expr(stmt.assign_target)
+        let rhs_idx = self.gen_expr(stmt.assign_value)
         var op = "="
         if strlen(stmt.assign_op) > 0 { op = stmt.assign_op }
-        self.builder.emit_line(target + " " + op + " " + rhs + ";")
+        let assign_idx = self.push_expr(cexpr_new_assign(target_idx, rhs_idx, op))
+        self.emit_c_stmt(cstmt_new_expr(assign_idx))
         return
     }
 
     if stmt.kind == StmtKind.sk_return {
-        var drop_calls = ArrayList<Str>(self.allocator)
+        // Emit deferred bodies (side effect on builder)
         var bi = self.block_stack.length() - 1
         while bi >= 0 {
             let b_idx = self.block_stack.get(bi)
@@ -2250,61 +2298,75 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
                 }
                 def_i = def_i - 1
             }
-            var di = 0
-            while di < b_node.block_drop_vars.length() {
-                let entry = b_node.block_drop_vars.get(di)
-                drop_calls.push(entry.base_type + "_drop(&" + entry.name + ");")
-                di = di + 1
-            }
             bi = bi - 1
         }
 
-        if drop_calls.length() == 0 {
-            if stmt.return_value >= 0 {
-                let val = self.gen_expr_with_expected_type(stmt.return_value, self.cur_return_type)
-                if self.cur_method_is_init {
-                    let expr = self.expr_pool.get(stmt.return_value)
-                    if expr.kind != ExprKind.ek_identifier && expr.kind != ExprKind.ek_literal {
-                        self.builder.emit_line(val + ";")
+        // Build drop-call and return statement nodes
+        var block_stmts = ArrayList<Int>(self.allocator)
+        if self.block_stack.length() > 0 {
+            let b_idx = self.block_stack.get(self.block_stack.length() - 1)
+            let b_node = self.stmt_pool.get(b_idx)
+            var di = 0
+            while di < b_node.block_drop_vars.length() {
+                let entry = b_node.block_drop_vars.get(di)
+                let var_idx = self.push_expr(cexpr_new_ident(entry.name))
+                let addr_idx = self.push_expr(cexpr_new_unary("&", var_idx, true))
+                var drop_args = ArrayList<Int>(self.allocator)
+                drop_args.push(addr_idx)
+                let drop_call = self.push_expr(cexpr_new_call(entry.base_type + "_drop", drop_args))
+                let drop_stmt = cstmt_new_expr(drop_call)
+                let drop_idx = self.c_stmts.length()
+                self.c_stmts.push(drop_stmt)
+                block_stmts.push(drop_idx)
+                di = di + 1
+            }
+        }
+
+        if stmt.return_value >= 0 {
+            let val_idx = self.gen_expr(stmt.return_value)
+            if self.cur_method_is_init {
+                let expr = self.expr_pool.get(stmt.return_value)
+                if expr.kind == ExprKind.ek_identifier || expr.kind == ExprKind.ek_literal {
+                    if block_stmts.length() > 0 {
+                        self.emit_c_stmt(cstmt_new_block(block_stmts))
                     }
-                } else {
-                    self.builder.emit_line("return " + val + ";")
+                    return
                 }
+                let expr_stmt = cstmt_new_expr(val_idx)
+                if block_stmts.length() > 0 {
+                    let e_idx = self.c_stmts.length()
+                    self.c_stmts.push(expr_stmt)
+                    block_stmts.push(e_idx)
+                    self.emit_c_stmt(cstmt_new_block(block_stmts))
+                } else {
+                    self.emit_c_stmt(expr_stmt)
+                }
+                return
+            }
+            if block_stmts.length() > 0 {
+                let ret_ctype = self.map_type(self.cur_return_type)
+                let ret_var_name = "__ret_val"
+                let var_decl = cstmt_new_var_decl(ctype_new(ret_ctype, 0, false, false), ret_var_name, val_idx)
+                let var_idx = self.c_stmts.length()
+                self.c_stmts.push(var_decl)
+                block_stmts.push(var_idx)
+                let ret_ident = self.push_expr(cexpr_new_ident(ret_var_name))
+                let ret_stmt = cstmt_new_return(ret_ident)
+                let r_idx = self.c_stmts.length()
+                self.c_stmts.push(ret_stmt)
+                block_stmts.push(r_idx)
+                self.emit_c_stmt(cstmt_new_block(block_stmts))
             } else {
-                self.builder.emit_line("return;")
+                self.emit_c_stmt(cstmt_new_return(val_idx))
             }
         } else {
-            if stmt.return_value >= 0 {
-                let val_str = self.gen_expr_with_expected_type(stmt.return_value, self.cur_return_type)
-                let val_type = self.get_expr_type(stmt.return_value)
-                if val_type == "Void" || val_type == "NoneType" {
-                    self.builder.emit_line(val_str + ";")
-                    var ci = 0
-                    while ci < drop_calls.length() {
-                        self.builder.emit_line(drop_calls.get(ci))
-                        ci = ci + 1
-                    }
-                    self.builder.emit_line("return;")
-                } else {
-                    self.builder.begin_block()
-                    self.builder.emit_line("int64_t __ret_val = " + val_str + ";")
-                    var ci = 0
-                    while ci < drop_calls.length() {
-                        self.builder.emit_line(drop_calls.get(ci))
-                        ci = ci + 1
-                    }
-                    self.builder.emit_line("return __ret_val;")
-                    self.builder.end_block()
-                }
+            if block_stmts.length() > 0 {
+                let r_idx2 = self.c_stmts.length()
+                self.c_stmts.push(cstmt_new_return(-1))
+                block_stmts.push(r_idx2)
+                self.emit_c_stmt(cstmt_new_block(block_stmts))
             } else {
-                self.builder.begin_block()
-                var ci = 0
-                while ci < drop_calls.length() {
-                    self.builder.emit_line(drop_calls.get(ci))
-                    ci = ci + 1
-                }
-                self.builder.emit_line("return;")
-                self.builder.end_block()
+                self.emit_c_stmt(cstmt_new_return(-1))
             }
         }
         return
@@ -2391,8 +2453,15 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
             cmp_asc = "<="
             cmp_desc = ">="
         }
-        self.builder.emit_line("for (int64_t " + iter_var + " = " + start + "; (" + start + " <= " + end + ") ? (" + iter_var + " " + cmp_asc + " " + end + ") : (" + iter_var + " " + cmp_desc + " " + end + "); (" + start + " <= " + end + ") ? ++" + iter_var + " : --" + iter_var + ")")
+        // Capture start/end once to prevent double-evaluation of side-effecting expressions
+        self.builder.emit_line("{")
+        self.builder.indent()
+        self.builder.emit_line("int64_t _kai_start = " + start + ";")
+        self.builder.emit_line("int64_t _kai_end = " + end + ";")
+        self.builder.emit_line("for (int64_t " + iter_var + " = _kai_start; (_kai_start <= _kai_end) ? (" + iter_var + " " + cmp_asc + " _kai_end) : (" + iter_var + " " + cmp_desc + " _kai_end); (_kai_start <= _kai_end) ? ++" + iter_var + " : --" + iter_var + ")")
         self.gen_stmt(stmt.for_body)
+        self.builder.dedent()
+        self.builder.emit_line("}")
         return
     }
 
@@ -2534,6 +2603,11 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     }
 
     if stmt.kind == StmtKind.sk_defer {
+        self.defer_stack.push(stmt_idx)
+        return
+    }
+
+    if stmt.kind == StmtKind.sk_errdefer {
         self.defer_stack.push(stmt_idx)
         return
     }

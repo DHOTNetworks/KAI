@@ -329,6 +329,11 @@ fn emit_runtime_preamble(self, cimport_headers: *ArrayList<Str>) {
     self.builder.emit_line("}")
     self.builder.emit_blank()
 
+    //== Runtime: concatAlloc alias (used in string interpolation / str concat)
+    self.builder.emit_line("#ifndef __kai_std_str_concat_alloc")
+    self.builder.emit_line("#define __kai_std_str_concat_alloc concatAlloc")
+    self.builder.emit_line("#endif")
+    self.builder.emit_blank()
 
     //== Phase: User C FFI imports (non-baseline headers)
     var ci = 0
