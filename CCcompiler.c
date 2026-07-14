@@ -17380,14 +17380,14 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx)
     if (stmt.kind == StmtKind_sk_for)
     {
         const char* iter_var = stmt.for_var;
-        const char* start = CodegenBuilder_gen_expr_str(self, stmt.for_start);
-        const char* end = CodegenBuilder_gen_expr_str(self, stmt.for_end);
         if (stmt.for_body >= 0LL)
         {
             StmtNode body_stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt.for_body);
             body_stmt.block_is_loop_body = true;
             ArrayList_StmtNode_set(self->stmt_pool, stmt.for_body, body_stmt);
         }
+        int64_t start_idx = CodegenBuilder_gen_expr(self, stmt.for_start);
+        int64_t end_idx = CodegenBuilder_gen_expr(self, stmt.for_end);
         const char* cmp_asc = "<";
         const char* cmp_desc = ">";
         if (stmt.for_inclusive)
@@ -17395,14 +17395,38 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx)
             cmp_asc = "<=";
             cmp_desc = ">=";
         }
-        CCodeBuilder_emit_line(&self->builder, "{");
-        CCodeBuilder_indent(&self->builder);
-        CCodeBuilder_emit_line(&self->builder, concatAlloc(concatAlloc("int64_t _kai_start = ", start), ";"));
-        CCodeBuilder_emit_line(&self->builder, concatAlloc(concatAlloc("int64_t _kai_end = ", end), ";"));
-        CCodeBuilder_emit_line(&self->builder, concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("for (int64_t ", iter_var), " = _kai_start; (_kai_start <= _kai_end) ? ("), iter_var), " "), cmp_asc), " _kai_end) : ("), iter_var), " "), cmp_desc), " _kai_end); (_kai_start <= _kai_end) ? ++"), iter_var), " : --"), iter_var), ")"));
-        CodegenBuilder_gen_stmt(self, stmt.for_body);
-        CCodeBuilder_dedent(&self->builder);
-        CCodeBuilder_emit_line(&self->builder, "}");
+        ArrayList_Int block_stmts = ArrayList_Int_init(self->allocator);
+        CStmtNode start_decl = cstmt_new_var_decl(ctype_int(), "_kai_start", start_idx);
+        int64_t start_decl_idx = ArrayList_CStmtNode_length(&self->c_stmts);
+        ArrayList_CStmtNode_push(&self->c_stmts, start_decl);
+        ArrayList_Int_push(&block_stmts, start_decl_idx);
+        CStmtNode end_decl = cstmt_new_var_decl(ctype_int(), "_kai_end", end_idx);
+        int64_t end_decl_idx = ArrayList_CStmtNode_length(&self->c_stmts);
+        ArrayList_CStmtNode_push(&self->c_stmts, end_decl);
+        ArrayList_Int_push(&block_stmts, end_decl_idx);
+        int64_t start_ident = CodegenBuilder_push_expr(self, cexpr_new_ident("_kai_start"));
+        CStmtNode iter_decl = cstmt_new_var_decl(ctype_int(), iter_var, start_ident);
+        int64_t iter_decl_idx = ArrayList_CStmtNode_length(&self->c_stmts);
+        ArrayList_CStmtNode_push(&self->c_stmts, iter_decl);
+        ArrayList_Int_push(&block_stmts, iter_decl_idx);
+        int64_t iter_ident = CodegenBuilder_push_expr(self, cexpr_new_ident(iter_var));
+        int64_t end_ident = CodegenBuilder_push_expr(self, cexpr_new_ident("_kai_end"));
+        int64_t dir_check = CodegenBuilder_push_expr(self, cexpr_new_binary(start_ident, "<=", end_ident));
+        int64_t asc_cond = CodegenBuilder_push_expr(self, cexpr_new_binary(iter_ident, cmp_asc, end_ident));
+        int64_t desc_cond = CodegenBuilder_push_expr(self, cexpr_new_binary(iter_ident, cmp_desc, end_ident));
+        int64_t for_cond = CodegenBuilder_push_expr(self, cexpr_new_ternary(dir_check, asc_cond, desc_cond));
+        int64_t asc_inc = CodegenBuilder_push_expr(self, cexpr_new_unary("++", iter_ident, true));
+        int64_t desc_inc = CodegenBuilder_push_expr(self, cexpr_new_unary("--", iter_ident, true));
+        int64_t for_inc = CodegenBuilder_push_expr(self, cexpr_new_ternary(dir_check, asc_inc, desc_inc));
+        int64_t body_idx = CodegenBuilder_gen_stmt_sub(self, stmt.for_body);
+        CStmtNode for_node = cstmt_new_for(-1LL, for_cond, for_inc, body_idx);
+        int64_t for_idx = ArrayList_CStmtNode_length(&self->c_stmts);
+        ArrayList_CStmtNode_push(&self->c_stmts, for_node);
+        ArrayList_Int_push(&block_stmts, for_idx);
+        CStmtNode outer_block = cstmt_new_block(block_stmts);
+        int64_t outer_idx = ArrayList_CStmtNode_length(&self->c_stmts);
+        ArrayList_CStmtNode_push(&self->c_stmts, outer_block);
+        CodegenBuilder_emit_c_stmt(self, outer_idx);
         return;
     }
     if (stmt.kind == StmtKind_sk_break)

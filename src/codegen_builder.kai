@@ -58,6 +58,7 @@ import cstmt_new_block from codegen_c_ast
 import cstmt_new_var_decl from codegen_c_ast
 import cstmt_new_return from codegen_c_ast
 import cstmt_new_while from codegen_c_ast
+import cstmt_new_for from codegen_c_ast
 import cstmt_new_if from codegen_c_ast
 import cexpr_new_stmt_expr from codegen_c_ast
 import ctype_new from codegen_c_ast
@@ -2697,28 +2698,64 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
 
     if stmt.kind == StmtKind.sk_for {
         let iter_var = stmt.for_var
-        let start = self.gen_expr_str(stmt.for_start)
-        let end = self.gen_expr_str(stmt.for_end)
         if stmt.for_body >= 0 {
             var body_stmt = self.stmt_pool.get(stmt.for_body)
             body_stmt.block_is_loop_body = true
             self.stmt_pool.set(stmt.for_body, body_stmt)
         }
+        let start_idx = self.gen_expr(stmt.for_start)
+        let end_idx = self.gen_expr(stmt.for_end)
+
         var cmp_asc = "<"
         var cmp_desc = ">"
         if stmt.for_inclusive {
             cmp_asc = "<="
             cmp_desc = ">="
         }
-        // Capture start/end once to prevent double-evaluation of side-effecting expressions
-        self.builder.emit_line("{")
-        self.builder.indent()
-        self.builder.emit_line("int64_t _kai_start = " + start + ";")
-        self.builder.emit_line("int64_t _kai_end = " + end + ";")
-        self.builder.emit_line("for (int64_t " + iter_var + " = _kai_start; (_kai_start <= _kai_end) ? (" + iter_var + " " + cmp_asc + " _kai_end) : (" + iter_var + " " + cmp_desc + " _kai_end); (_kai_start <= _kai_end) ? ++" + iter_var + " : --" + iter_var + ")")
-        self.gen_stmt(stmt.for_body)
-        self.builder.dedent()
-        self.builder.emit_line("}")
+
+        // Outer block scoping temp vars + for loop
+        var block_stmts = ArrayList<Int>(self.allocator)
+
+        let start_decl = cstmt_new_var_decl(ctype_int(), "_kai_start", start_idx)
+        let start_decl_idx = self.c_stmts.length()
+        self.c_stmts.push(start_decl)
+        block_stmts.push(start_decl_idx)
+
+        let end_decl = cstmt_new_var_decl(ctype_int(), "_kai_end", end_idx)
+        let end_decl_idx = self.c_stmts.length()
+        self.c_stmts.push(end_decl)
+        block_stmts.push(end_decl_idx)
+
+        let start_ident = self.push_expr(cexpr_new_ident("_kai_start"))
+        let iter_decl = cstmt_new_var_decl(ctype_int(), iter_var, start_ident)
+        let iter_decl_idx = self.c_stmts.length()
+        self.c_stmts.push(iter_decl)
+        block_stmts.push(iter_decl_idx)
+
+        // For condition: (_kai_start <= _kai_end) ? (iter < end) : (iter > end)
+        let iter_ident = self.push_expr(cexpr_new_ident(iter_var))
+        let end_ident = self.push_expr(cexpr_new_ident("_kai_end"))
+        let dir_check = self.push_expr(cexpr_new_binary(start_ident, "<=", end_ident))
+        let asc_cond = self.push_expr(cexpr_new_binary(iter_ident, cmp_asc, end_ident))
+        let desc_cond = self.push_expr(cexpr_new_binary(iter_ident, cmp_desc, end_ident))
+        let for_cond = self.push_expr(cexpr_new_ternary(dir_check, asc_cond, desc_cond))
+
+        // For increment: (_kai_start <= _kai_end) ? ++iter : --iter
+        let asc_inc = self.push_expr(cexpr_new_unary("++", iter_ident, true))
+        let desc_inc = self.push_expr(cexpr_new_unary("--", iter_ident, true))
+        let for_inc = self.push_expr(cexpr_new_ternary(dir_check, asc_inc, desc_inc))
+
+        let body_idx = self.gen_stmt_sub(stmt.for_body)
+
+        let for_node = cstmt_new_for(-1, for_cond, for_inc, body_idx)
+        let for_idx = self.c_stmts.length()
+        self.c_stmts.push(for_node)
+        block_stmts.push(for_idx)
+
+        let outer_block = cstmt_new_block(block_stmts)
+        let outer_idx = self.c_stmts.length()
+        self.c_stmts.push(outer_block)
+        self.emit_c_stmt(outer_idx)
         return
     }
 
