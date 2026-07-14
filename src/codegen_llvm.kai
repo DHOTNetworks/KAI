@@ -887,6 +887,20 @@ fn emit_runtime_helpers(self) {
     // Actually declare mmap with correct types later as extern; skip body for now
     // since mmap is complex (vararg). Add as declare only.
 
+    // 5. Define get_exe_dir(buf: ptr, max_len: i64) -> i64
+    // Declare extern kai_os_get_exe_dir
+    let kai_os_get_exe_dir_ty = kai_func_type_2(self.int64_type, self.ptr_type, self.int64_type, false)
+    let kai_os_get_exe_dir_fn = LLVMAddFunction(self.module, "kai_os_get_exe_dir", kai_os_get_exe_dir_ty)
+    // Define get_exe_dir
+    let get_exe_dir_ty = kai_func_type_2(self.int64_type, self.ptr_type, self.int64_type, false)
+    let get_exe_dir_fn = LLVMAddFunction(self.module, "get_exe_dir", get_exe_dir_ty)
+    let b_get_exe = LLVMAppendBasicBlockInContext(self.ctx, get_exe_dir_fn, "entry")
+    LLVMPositionBuilderAtEnd(self.builder, b_get_exe)
+    let get_exe_buf = LLVMGetParam(get_exe_dir_fn, 0)
+    let get_exe_max = LLVMGetParam(get_exe_dir_fn, 1)
+    let get_exe_ret = kai_build_call_2(self.builder, kai_os_get_exe_dir_ty, kai_os_get_exe_dir_fn, get_exe_buf, get_exe_max, "")
+    LLVMBuildRet(self.builder, get_exe_ret)
+
     // Restore builder state
     self.cur_block = old_block
     self.cur_func = old_func
@@ -1128,8 +1142,8 @@ fn coerce_return_value(self, val: *Void, ret_type_str: Str, actual_type_str: Str
     // 1. Handle Error Union wrapping (T!E)
     if self.str_contains(ret_type_str, Char(33)) {
         let excl_pos = self.str_find(ret_type_str, Char(33))
-        let val_payload = ret_type_str[0..excl_pos]
-        let err_type = ret_type_str[(excl_pos + 1)..strlen(ret_type_str)]
+        let val_payload = ret_type_str[0..excl_pos] + ""
+        let err_type = ret_type_str[(excl_pos + 1)..strlen(ret_type_str)] + ""
         let mapped_type = self.map_type(ret_type_str)
         
         let val_ty = LLVMTypeOf(val)
@@ -1139,20 +1153,34 @@ fn coerce_return_value(self, val: *Void, ret_type_str: Str, actual_type_str: Str
         
         // Check if returning the error payload
         if actual_type_str == err_type || actual_type_str == "IoError" {
-            // Wrap as error: tag = val (cast to i64), value = undef/null
-            let tag_val = self.gen_cast(val, self.int64_type)
-            let undef_struct = LLVMGetUndef(mapped_type)
-            let with_tag = kai_LLVMBuildInsertValue(self.builder, undef_struct, tag_val, 0, ".tag")
-            return with_tag
+            let tag_val = LLVMConstInt(self.int64_type, 1, false)
+            let null_struct = LLVMConstNull(mapped_type)
+            return kai_LLVMBuildInsertValue(self.builder, null_struct, tag_val, 0, ".tag")
+        }
+        
+        // Fallback when actual_type_str is empty (Bug C: inferred_type not in shared pool):
+        // If the return type is an error union and the val's LLVM type doesn't match the
+        // success payload type, treat as error return. This handles Str!IoError where
+        // payload is %Str (struct) but IoError variant is i64.
+        if strlen(actual_type_str) == 0 {
+            let payload_llvm_ty = self.map_type(val_payload)
+            if payload_llvm_ty != (0 as *Void) && payload_llvm_ty != self.void_type {
+                if val_ty != payload_llvm_ty {
+                    let tag_val = LLVMConstInt(self.int64_type, 1, false)
+                    let null_struct = LLVMConstNull(mapped_type)
+                    return kai_LLVMBuildInsertValue(self.builder, null_struct, tag_val, 0, ".tag")
+                }
+            }
         }
         
         // Otherwise, wrap as success: tag = 0, value = val (coerced to val_payload type)
         let tag_val = LLVMConstInt(self.int64_type, 0, false)
-        let undef_struct = LLVMGetUndef(mapped_type)
-        let with_tag = kai_LLVMBuildInsertValue(self.builder, undef_struct, tag_val, 0, ".tag")
+        let null_struct = LLVMConstNull(mapped_type)
+        let with_tag = kai_LLVMBuildInsertValue(self.builder, null_struct, tag_val, 0, ".tag")
         
         if val_payload != "Void" {
-            let coerced_val = self.coerce_return_value(val, val_payload, actual_type_str)
+            let payload_copy = val_payload
+            let coerced_val = self.coerce_return_value(val, payload_copy, actual_type_str)
             return kai_LLVMBuildInsertValue(self.builder, with_tag, coerced_val, 1, ".value")
         }
         return with_tag
@@ -1213,8 +1241,8 @@ fn map_type(self, type_name: Str) -> *Void {
 
     if self.str_contains(resolved_type, Char(33)) {
         let excl_pos = self.str_find(resolved_type, Char(33))
-        let val_type = resolved_type[0..excl_pos]
-        let err_type = resolved_type[(excl_pos + 1)..strlen(resolved_type)]
+        let val_type = resolved_type[0..excl_pos] + ""
+        let err_type = resolved_type[(excl_pos + 1)..strlen(resolved_type)] + ""
         let clean_val = self.clean_type_for_mangling(val_type)
         let clean_err = self.clean_type_for_mangling(err_type)
         let concrete_name = "Result_" + clean_val + "_" + clean_err
@@ -1597,21 +1625,37 @@ fn gen_stmt(self, stmt_idx: Int) {
                 init_val = self.gen_expr(stmt.vardecl_value)
             }
             if init_val != (0 as *Void) {
-                let init_llvm_ty = LLVMTypeOf(init_val)
-                if init_llvm_ty == self.void_type {
-                    // Do not store void values (which are invalid in LLVM store instructions)
-                } else {
-                    let init_kind = LLVMGetTypeKind(init_llvm_ty)
-                    let dest_kind = LLVMGetTypeKind(var_type)
-                    if init_kind == LLVMPointerTypeKind && dest_kind == LLVMStructTypeKind {
-                        let loaded = LLVMBuildLoad2(self.builder, var_type, init_val, "")
-                        LLVMBuildStore(self.builder, loaded, alloca_val)
-                    } else if init_kind == LLVMStructTypeKind && dest_kind == LLVMPointerTypeKind {
-                        let struct_alloca = LLVMBuildAlloca(self.builder, init_llvm_ty, ".tmp_struct")
-                        LLVMBuildStore(self.builder, init_val, struct_alloca)
-                        LLVMBuildStore(self.builder, struct_alloca, alloca_val)
+                if stmt.vardecl_value >= 0 {
+                    let init_expr = self.expr_pool.get(stmt.vardecl_value)
+                    if init_expr.kind == ExprKind.ek_literal && init_expr.lit_vkind == "NONE" {
+                        // none literal: store null of the correct type
+                        LLVMBuildStore(self.builder, LLVMConstNull(var_type), alloca_val)
                     } else {
-                        LLVMBuildStore(self.builder, init_val, alloca_val)
+                        let init_llvm_ty = LLVMTypeOf(init_val)
+                        if init_llvm_ty == self.void_type {
+                            // Do not store void values
+                        } else {
+                            let init_kind = LLVMGetTypeKind(init_llvm_ty)
+                            let dest_kind = LLVMGetTypeKind(var_type)
+                            if init_kind == LLVMPointerTypeKind && dest_kind == LLVMStructTypeKind {
+                                let loaded = LLVMBuildLoad2(self.builder, var_type, init_val, "")
+                                LLVMBuildStore(self.builder, loaded, alloca_val)
+                            } else if init_kind == LLVMStructTypeKind && dest_kind == LLVMPointerTypeKind {
+                                let struct_alloca = LLVMBuildAlloca(self.builder, init_llvm_ty, ".tmp_struct")
+                                LLVMBuildStore(self.builder, init_val, struct_alloca)
+                                LLVMBuildStore(self.builder, struct_alloca, alloca_val)
+                            } else {
+                                LLVMBuildStore(self.builder, init_val, alloca_val)
+                            }
+                        }
+                    }
+                }
+            } else {
+                if stmt.vardecl_value >= 0 {
+                    let init_expr = self.expr_pool.get(stmt.vardecl_value)
+                    if init_expr.kind == ExprKind.ek_literal && init_expr.lit_vkind == "NONE" {
+                        // none literal: gen_expr returned NULL sentinel, store proper null
+                        LLVMBuildStore(self.builder, LLVMConstNull(var_type), alloca_val)
                     }
                 }
             }
@@ -2088,6 +2132,51 @@ fn gen_stmt(self, stmt_idx: Int) {
                 let cmp = LLVMBuildICmp(self.builder, LLVMIntEQ, match_expr_val, lit_val, "")
                 LLVMBuildCondBr(self.builder, cmp, then_block, merge_block)
             } else if pat_node.kind == PatternKind.pk_variant {
+                // Error union match (.ok / .err)
+                var is_error_union = self.str_contains(clean_type, Char(33))
+                if is_error_union {
+                    let excl_pos = self.str_find(clean_type, Char(33))
+                    let val_type = clean_type[0..excl_pos] + ""
+                    let err_type = clean_type[(excl_pos + 1)..strlen(clean_type)] + ""
+                    // Load tag from struct field 0
+                    var loaded_struct: *Void = match_expr_val
+                    let type_kind = LLVMGetTypeKind(LLVMTypeOf(match_expr_val))
+                    if type_kind == LLVMPointerTypeKind {
+                        loaded_struct = LLVMBuildLoad2(self.builder, llvm_match_type, match_expr_val, ".match_val")
+                    }
+                    let tag_val = kai_LLVMBuildExtractValue(self.builder, loaded_struct, 0, ".tag")
+                    var target_tag: Int = 0
+                    var payload_type: Str = ""
+                    if pat_node.variant_name == "ok" {
+                        target_tag = 0
+                        payload_type = val_type
+                    } else if pat_node.variant_name == "err" {
+                        target_tag = 1
+                        payload_type = err_type
+                    }
+                    let expected_tag = LLVMConstInt(self.int64_type, target_tag, false)
+                    let cmp = LLVMBuildICmp(self.builder, LLVMIntEQ, tag_val, expected_tag, "")
+                    LLVMBuildCondBr(self.builder, cmp, then_block, merge_block)
+                    LLVMPositionBuilderAtEnd(self.builder, then_block)
+                    self.last_was_term = false
+
+                    // Bind the payload value (field 1) if the variant has a binding
+                    if pat_node.bindings.length() > 0 {
+                        let payload_llvm_ty = self.map_type(payload_type)
+                        let ext_val = kai_LLVMBuildExtractValue(self.builder, loaded_struct, 1, ".val")
+                        let coerced_val = self.gen_cast(ext_val, payload_llvm_ty)
+                        let bind_name = pat_node.bindings.get(0)
+                        if bind_name != "_" && payload_llvm_ty != (0 as *Void) && payload_llvm_ty != self.void_type {
+                            let bind_alloca = LLVMBuildAlloca(self.builder, payload_llvm_ty, bind_name)
+                            LLVMBuildStore(self.builder, coerced_val, bind_alloca)
+                            self.local_alloca_names.push(bind_name)
+                            self.local_alloca_vals.push((bind_alloca as Int))
+                            self.local_alloca_types.push((payload_llvm_ty as Int))
+                            self.local_alloca_type_strs.push(payload_type)
+                            self.local_alloca_decls.push(stmt_idx)
+                        }
+                    }
+                } else {
                 // Find actual variant index in the enum decl
                 var target_tag_idx = 0
                 var enum_stmt_idx = 0
@@ -2189,6 +2278,7 @@ fn gen_stmt(self, stmt_idx: Int) {
                     let tag_val = LLVMConstInt(self.int64_type, target_tag_idx, false)
                     let cmp = LLVMBuildICmp(self.builder, LLVMIntEQ, match_expr_val, tag_val, "")
                     LLVMBuildCondBr(self.builder, cmp, then_block, merge_block)
+                }
                 }
             } else if pat_node.kind == PatternKind.pk_else {
                 LLVMBuildBr(self.builder, then_block)
@@ -2331,7 +2421,7 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
             printf("get_expr_type: ident=%s NOT found in allocas (length=%lld)\n", expr.ident_name, self.local_alloca_names.length())
             kai_fflush(stdout)
         }
-        if self.is_struct_type(expr.ident_name) || self.is_enum_type(expr.ident_name) {
+        if self.is_struct_type(expr.ident_name) || self.is_enum_type(expr.ident_name) || self.is_error_type(expr.ident_name) {
             return expr.ident_name
         }
     }
@@ -2388,7 +2478,7 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
         if strlen(clean_type) >= 4 && clean_type[0..4] == "mut " {
             clean_type = clean_type[4..strlen(clean_type)]
         }
-        if self.is_enum_type(clean_type) {
+        if self.is_enum_type(clean_type) || self.is_error_type(clean_type) {
             return clean_type
         }
         
@@ -2598,6 +2688,18 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
             let dest_type = self.map_type(dest_type_str)
             return LLVMSizeOf(dest_type)
         }
+        // strlen builtin: extract .len from %Str struct instead of calling C strlen.
+        // This is safe for zero-initialized strings (LLVMConstNull) where .ptr is NULL.
+        if name == "strlen" {
+            if expr.func_args.length() > 0 {
+                let s_val = self.gen_expr(expr.func_args.get(0))
+                if s_val == (0 as *Void) { return LLVMConstInt(self.int64_type, 0, false) }
+                if LLVMTypeOf(s_val) == self.str_type {
+                    return kai_LLVMBuildExtractValue(self.builder, s_val, 1, ".len")
+                }
+                // Fallback: for *Char, call strlen via lookup (handled below)
+            }
+        }
         var target_fn_name = expr.func_name
         if self.is_struct_type(expr.func_name) {
             if expr.func_type_args.length() > 0 {
@@ -2664,10 +2766,54 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
         return (0 as *Void)
     }
     if expr.kind == ExprKind.ek_binary_op {
+        let op = expr.binop_op
+        
+        // Logical AND and OR (non-short-circuit for now — safety relies on coerce_return_value
+        // zeroing the error union value field, and imports.kai using nested-if patterns).
+        if op == "&&" || op == "||" {
+            let lhs = self.gen_expr(expr.binop_left)
+            let rhs = self.gen_expr(expr.binop_right)
+            let zero = LLVMConstInt(self.int64_type, 0, false)
+            var lhs_i64 = lhs
+            var rhs_i64 = rhs
+            if lhs == (0 as *Void) { lhs_i64 = zero }
+            else if LLVMTypeOf(lhs) != self.int64_type { lhs_i64 = LLVMBuildSExt(self.builder, lhs, self.int64_type, "") }
+            if rhs == (0 as *Void) { rhs_i64 = zero }
+            else if LLVMTypeOf(rhs) != self.int64_type { rhs_i64 = LLVMBuildSExt(self.builder, rhs, self.int64_type, "") }
+            let lhs_ne = LLVMBuildICmp(self.builder, LLVMIntNE, lhs_i64, zero, "")
+            let rhs_ne = LLVMBuildICmp(self.builder, LLVMIntNE, rhs_i64, zero, "")
+            if op == "&&" {
+                let and_val = LLVMBuildAnd(self.builder, lhs_ne, rhs_ne, "")
+                return LLVMBuildZExt(self.builder, and_val, self.int64_type, "")
+            }
+            let or_val = LLVMBuildOr(self.builder, lhs_ne, rhs_ne, "")
+            return LLVMBuildZExt(self.builder, or_val, self.int64_type, "")
+        }
+        
         let lhs = self.gen_expr(expr.binop_left)
         let rhs = self.gen_expr(expr.binop_right)
-        if lhs == (0 as *Void) || rhs == (0 as *Void) { return (0 as *Void) }
-        let op = expr.binop_op
+        if op != "==" && op != "!=" {
+            if lhs == (0 as *Void) || rhs == (0 as *Void) { return (0 as *Void) }
+        }
+        // Handle 'none' (null sentinel) comparisons for == and !=.
+        // ek_none returns (0 as *Void); we must compare the non-null side against null
+        // before any LLVMTypeOf call, which would crash on a NULL value.
+        if lhs == (0 as *Void) || rhs == (0 as *Void) {
+            if lhs == (0 as *Void) && rhs == (0 as *Void) {
+                if op == "==" { return LLVMConstInt(self.int64_type, 1, false) }
+                return LLVMConstInt(self.int64_type, 0, false)
+            }
+            var ptr_val = lhs
+            if lhs == (0 as *Void) { ptr_val = rhs }
+            let ptr_int = LLVMBuildPtrToInt(self.builder, ptr_val, self.int64_type, "")
+            let zero = LLVMConstInt(self.int64_type, 0, false)
+            if op == "==" {
+                let cmp = LLVMBuildICmp(self.builder, LLVMIntEQ, ptr_int, zero, "")
+                return LLVMBuildZExt(self.builder, cmp, self.int64_type, "")
+            }
+            let cmp = LLVMBuildICmp(self.builder, LLVMIntNE, ptr_int, zero, "")
+            return LLVMBuildZExt(self.builder, cmp, self.int64_type, "")
+        }
         let lhs_ty = LLVMTypeOf(lhs)
         let left_type = self.get_expr_type(expr.binop_left)
         let right_type = self.get_expr_type(expr.binop_right)
@@ -2818,28 +2964,6 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
         if op == ">=" {
             let cmp = LLVMBuildICmp(self.builder, LLVMIntSGE, cmp_lhs, cmp_rhs, "")
             return LLVMBuildZExt(self.builder, cmp, self.int64_type, "")
-        }
-        if op == "&&" {
-            let zero = LLVMConstInt(self.int64_type, 0, false)
-            var lhs_i64 = lhs
-            var rhs_i64 = rhs
-            if LLVMTypeOf(lhs) != self.int64_type { lhs_i64 = LLVMBuildSExt(self.builder, lhs, self.int64_type, "") }
-            if LLVMTypeOf(rhs) != self.int64_type { rhs_i64 = LLVMBuildSExt(self.builder, rhs, self.int64_type, "") }
-            let lhs_ne = LLVMBuildICmp(self.builder, LLVMIntNE, lhs_i64, zero, "")
-            let rhs_ne = LLVMBuildICmp(self.builder, LLVMIntNE, rhs_i64, zero, "")
-            let and = LLVMBuildAnd(self.builder, lhs_ne, rhs_ne, "")
-            return LLVMBuildZExt(self.builder, and, self.int64_type, "")
-        }
-        if op == "||" {
-            let zero = LLVMConstInt(self.int64_type, 0, false)
-            var lhs_i64 = lhs
-            var rhs_i64 = rhs
-            if LLVMTypeOf(lhs) != self.int64_type { lhs_i64 = LLVMBuildSExt(self.builder, lhs, self.int64_type, "") }
-            if LLVMTypeOf(rhs) != self.int64_type { rhs_i64 = LLVMBuildSExt(self.builder, rhs, self.int64_type, "") }
-            let lhs_ne = LLVMBuildICmp(self.builder, LLVMIntNE, lhs_i64, zero, "")
-            let rhs_ne = LLVMBuildICmp(self.builder, LLVMIntNE, rhs_i64, zero, "")
-            let or = LLVMBuildOr(self.builder, lhs_ne, rhs_ne, "")
-            return LLVMBuildZExt(self.builder, or, self.int64_type, "")
         }
         return (0 as *Void)
     }
@@ -3179,6 +3303,9 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
             if self.is_enum_type(base_expr.ident_name) {
                 is_enum_member_ref = true
             }
+            if self.is_error_type(base_expr.ident_name) {
+                is_enum_member_ref = true
+            }
         }
         
         if is_enum_member_ref {
@@ -3195,6 +3322,16 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
                     var vi = 0
                     while vi < stmt.enum_variants.length() {
                         if stmt.enum_variants.get(vi).vname == variant_name {
+                            tag_idx = vi
+                            found_tag = true
+                        }
+                        vi = vi + 1
+                    }
+                }
+                if stmt.kind == StmtKind.sk_error_decl && stmt.error_name == enum_name {
+                    var vi = 0
+                    while vi < stmt.error_variants.length() {
+                        if stmt.error_variants.get(vi) == variant_name {
                             tag_idx = vi
                             found_tag = true
                         }
@@ -3351,7 +3488,9 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
                 clean_type = name
             }
         }
-        if !is_static && receiver_val == (0 as *Void) { return (0 as *Void) }
+        if !is_static && receiver_val == (0 as *Void) {
+            return (0 as *Void)
+        }
 
         if !is_static {
             let receiver_type = self.get_expr_type(expr.meth_expr)
@@ -3423,6 +3562,9 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
         let call_res = LLVMBuildCall2(self.builder, fn_ty, fn_val, arg_vals.data as *Void, arg_vals.length(), "")
         
         if is_init {
+            if is_static {
+                return call_res
+            }
             if call_res != (0 as *Void) {
                 LLVMBuildStore(self.builder, call_res, receiver_val)
             }
@@ -3597,8 +3739,12 @@ fn get_param_type_at_index(self, param_types_str: Str, idx: Int) -> Str {
 // callee_is_extern: true => C ABI: Str is passed as raw ptr (i8*).
 //                  false => Kai ABI: Str is passed as %Str fat-pointer by value.
 fn prepare_arg(self, arg_val: *Void, param_type_str: Str, callee_is_extern: Bool) -> *Void {
-    if callee_is_extern && arg_val != (0 as *Void) && LLVMTypeOf(arg_val) == self.str_type {
-        return self.unwrap_str_for_c(arg_val)
+    if callee_is_extern {
+        if arg_val != (0 as *Void) {
+            if LLVMTypeOf(arg_val) == self.str_type {
+                return self.unwrap_str_for_c(arg_val)
+            }
+        }
     }
     let is_str = (param_type_str == "Str" || param_type_str == "*Str" || param_type_str == "&Str")
 
@@ -3728,6 +3874,10 @@ fn is_struct_type(self, name: Str) -> Bool {
 
 fn is_enum_type(self, name: Str) -> Bool {
     return self.find_enum_decl(name) >= 0
+}
+
+fn is_error_type(self, name: Str) -> Bool {
+    return self.find_error_decl(name) >= 0
 }
 
 fn clean_type_for_mangling(self, s: Str) -> Str {
@@ -3888,6 +4038,22 @@ fn find_enum_decl(self, clean_name: Str) -> Int {
                 if strlen(stripped_clean) > strlen(prefix) && stripped_clean[0..strlen(prefix)] == prefix {
                     return si
                 }
+            }
+        }
+        si = si + 1
+    }
+    return -1
+}
+
+fn find_error_decl(self, clean_name: Str) -> Int {
+    let stripped_clean = self.strip_module_prefix(clean_name)
+    var si = 0
+    while si < self.stmt_pool.length() {
+        let s = self.stmt_pool.get(si)
+        if s.kind == StmtKind.sk_error_decl {
+            let decl_name = self.strip_module_prefix(s.error_name)
+            if decl_name == stripped_clean {
+                return si
             }
         }
         si = si + 1
@@ -4176,7 +4342,6 @@ fn emit_func_body_mono(self, stmt_idx: Int, fn_val: *Void, struct_name: Str, par
     var pi = 0
     while pi < stmt.func_params.length() {
         let param = stmt.func_params.get(pi)
-        unsafe { printf("emit_func_body_mono: function %s, param.name = %s, pi = %d\n", self.cur_func_name, param.name, pi) }
         var ptype_str = param.ptype
         if ptype_str != "self" && param.name != "self" {
             ptype_str = self.substitute_type_params(ptype_str, param_names, type_args)

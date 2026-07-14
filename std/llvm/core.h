@@ -123,6 +123,16 @@ static inline int64_t kai_LLVMGetIntTypeWidth(void* IntegerTy) {
     return (int64_t)LLVMGetIntTypeWidth((LLVMTypeRef)IntegerTy);
 }
 
+// Phi node support (2-value variant to avoid C-array-in-Kai issue)
+static inline void* kai_LLVMBuildPhi(void* b, void* ty, const char* name) {
+    return (void*)LLVMBuildPhi((LLVMBuilderRef)b, (LLVMTypeRef)ty, name);
+}
+static inline void kai_LLVMAddIncoming2(void* phi, void* v0, void* b0, void* v1, void* b1) {
+    LLVMValueRef vals[2] = {(LLVMValueRef)v0, (LLVMValueRef)v1};
+    LLVMBasicBlockRef blocks[2] = {(LLVMBasicBlockRef)b0, (LLVMBasicBlockRef)b1};
+    LLVMAddIncoming((LLVMValueRef)phi, vals, blocks, 2);
+}
+
 static inline void* kai_LLVMBuildStore(void* b, void* val, void* val_ptr) {
     if (!val || !val_ptr) return NULL;
     if (LLVMGetTypeKind(LLVMTypeOf((LLVMValueRef)val)) == LLVMVoidTypeKind) {

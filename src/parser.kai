@@ -720,12 +720,14 @@ impl Parser {
     fn parse_program(self) -> Int {
         self.consume_newlines()
         var stmts = ArrayList<Int>(self.allocator)
+        var stmt_count = 0
         while self.peek(0).tok_type != TokenType.EOF {
             let stmt = self.parse_statement()
             if stmt >= 0 {
                 stmts.push(stmt)
             }
             self.consume_newlines()
+            stmt_count = stmt_count + 1
         }
         return self.st_block(stmts)
 

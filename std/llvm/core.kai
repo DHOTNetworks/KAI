@@ -247,6 +247,10 @@ extern fn LLVMBuildBitCast(b: *Void, val: *Void, dest_ty: *Void, name: Str) -> *
 extern fn LLVMBuildIntToPtr(b: *Void, val: *Void, dest_ty: *Void, name: Str) -> *Void
 extern fn LLVMBuildPtrToInt(b: *Void, val: *Void, dest_ty: *Void, name: Str) -> *Void
 
+// Phi node support
+extern fn kai_LLVMBuildPhi(b: *Void, ty: *Void, name: Str) -> *Void
+extern fn kai_LLVMAddIncoming2(phi: *Void, v0: *Void, b0: *Void, v1: *Void, b1: *Void)
+
 // Remainder and Bitwise Builder APIs
 extern fn LLVMBuildSRem(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void
 extern fn LLVMBuildAnd(b: *Void, lhs: *Void, rhs: *Void, name: Str) -> *Void

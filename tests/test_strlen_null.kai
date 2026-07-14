@@ -1,0 +1,22 @@
+cimport "std/llvm/core.h"
+
+import length from std.core.string
+
+fn returns_str_or_error(v: Int) -> Str!Int {
+    return "hello"
+}
+
+fn main() -> Int {
+    let res = returns_str_or_error(1)
+    match res {
+        case .ok(v) => {
+            if length(v) > 0 {
+                unsafe { printf("length = %lld\n", length(v)) }
+            }
+        }
+        case .err(e) => {
+            unsafe { printf("error: %lld\n", e) }
+        }
+    }
+    0
+}

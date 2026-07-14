@@ -1,0 +1,29 @@
+fn main() Int {
+    // Test 1: *Char variable == none
+    var p: *Char = none
+    if p == none {
+        printf("Test 1 passed: *Char == none\n")
+    } else {
+        printf("Test 1 FAILED\n")
+        return 1
+    }
+
+    // Test 2: *Char != none on null value
+    if p != none {
+        printf("Test 2 FAILED: != should be false for null\n")
+        return 1
+    }
+    printf("Test 2 passed: *Char != none is false\n")
+
+    // Test 3: none == none
+    var q: *Char = none
+    if q == p {
+        printf("Test 3 passed: none == none\n")
+    } else {
+        printf("Test 3 FAILED\n")
+        return 1
+    }
+
+    printf("All null check tests passed\n")
+    return 0
+}

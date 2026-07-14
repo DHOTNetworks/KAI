@@ -11,9 +11,9 @@ import ExprNode from ast_nodes
 import PatternNode from ast_nodes
 import StringPool from string_pool
 
+import length from std.core.string
 extern fn malloc(size: Int) -> *Char
 extern fn get_exe_dir(buf: *Char, max_len: Int) -> Int
-extern fn strlen(s: Str) -> Int
 
 struct ImportResolver {
     allocator: *KaiAllocator
@@ -100,17 +100,14 @@ impl ImportResolver {
             var path_str = ""
             var ii = 0
             while ii < path.length() {
-                if ii > 0 { path_str = path_str + "/" }
+                if ii > 0 { 
+                    path_str = path_str + "/" 
+                }
                 path_str = path_str + path.get(ii)
                 ii = ii + 1
             }
             let rel_path = path_str + ".kai"
             let s1 = read_to_string(self.allocator, rel_path)
-            if s1.tag == 0 && strlen(s1.value) > 0 {
-                source = s1.value
-                has_source = true
-                resolved_path = rel_path
-            }
             if !has_source {
                 unsafe {
                     let buf = malloc(1024) as *Char
@@ -118,26 +115,32 @@ impl ImportResolver {
                         let exe_dir = buf as Str
                         let full_path = exe_dir + "/" + rel_path
                         let s2 = read_to_string(self.allocator, full_path)
-                        if s2.tag == 0 && strlen(s2.value) > 0 {
-                            source = s2.value
-                            has_source = true
-                            resolved_path = full_path
+                        if s2.tag == 0 {
+                            if length(s2.value) > 0 {
+                                source = s2.value
+                                has_source = true
+                                resolved_path = full_path
+                            }
                         }
                         if !has_source {
                             let parent_path = exe_dir + "/../" + rel_path
                             let s3 = read_to_string(self.allocator, parent_path)
-                            if s3.tag == 0 && strlen(s3.value) > 0 {
-                                source = s3.value
-                                has_source = true
-                                resolved_path = parent_path
+                            if s3.tag == 0 {
+                                if length(s3.value) > 0 {
+                                    source = s3.value
+                                    has_source = true
+                                    resolved_path = parent_path
+                                }
                             }
                             if !has_source {
                                 let lib_path = exe_dir + "/../lib/kai/" + rel_path
                                 let s4 = read_to_string(self.allocator, lib_path)
-                                if s4.tag == 0 && strlen(s4.value) > 0 {
-                                    source = s4.value
-                                    has_source = true
-                                    resolved_path = lib_path
+                                if s4.tag == 0 {
+                                    if length(s4.value) > 0 {
+                                        source = s4.value
+                                        has_source = true
+                                        resolved_path = lib_path
+                                    }
                                 }
                             }
                         }
@@ -157,18 +160,22 @@ impl ImportResolver {
 
             // Try bare name first, then with src/ prefix
             let s1 = read_to_string(self.allocator, file_name)
-            if s1.tag == 0 && strlen(s1.value) > 0 {
-                source = s1.value
-                has_source = true
-                resolved_path = file_name
+            if s1.tag == 0 {
+                if length(s1.value) > 0 {
+                    source = s1.value
+                    has_source = true
+                    resolved_path = file_name
+                }
             }
             if !has_source {
                 let src_path = "src/" + file_name
                 let s2 = read_to_string(self.allocator, src_path)
-                if s2.tag == 0 && strlen(s2.value) > 0 {
-                    source = s2.value
-                    has_source = true
-                    resolved_path = src_path
+                if s2.tag == 0 {
+                    if length(s2.value) > 0 {
+                        source = s2.value
+                        has_source = true
+                        resolved_path = src_path
+                    }
                 }
             }
             // Also try with exe_dir relative paths
@@ -179,10 +186,12 @@ impl ImportResolver {
                         let exe_dir = buf as Str
                         let exe_src = exe_dir + "/../../src/" + file_name
                         let s3 = read_to_string(self.allocator, exe_src)
-                        if s3.tag == 0 && strlen(s3.value) > 0 {
-                            source = s3.value
-                            has_source = true
-                            resolved_path = exe_src
+                        if s3.tag == 0 {
+                            if length(s3.value) > 0 {
+                                source = s3.value
+                                has_source = true
+                                resolved_path = exe_src
+                            }
                         }
                     }
                 }

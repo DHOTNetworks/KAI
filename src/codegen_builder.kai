@@ -2969,9 +2969,6 @@ fn build_func_types(self) -> Void {
     var i2 = 0
     while i2 < self.stmt_pool.length() {
         let stmt = self.stmt_pool.get(i2)
-        unsafe {
-            printf("Phase 3b: i2=%d, stmt.kind=%d\n", i2, stmt.kind)
-        }
         if stmt.kind == StmtKind.sk_func_decl {
             var has_self_param = false
             var pi = 0
@@ -2984,9 +2981,6 @@ fn build_func_types(self) -> Void {
             else if stmt.func_type_params.length() > 0 { /* skip generic functions — monomorphized separately */ }
             else if stmt.func_body < 0 { /* skip auto-generated stubs (e.g. _new constructors) */ }
             else {
-                unsafe {
-                    printf("gen_func_decl: name=%s, param_count=%d, body_idx=%d\n", stmt.func_name, stmt.func_params.length(), stmt.func_body)
-                }
                 self.var_types.init(self.allocator)
                 self.block_stack.init(self.allocator)
                 var params_str = ""

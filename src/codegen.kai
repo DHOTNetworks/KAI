@@ -1544,7 +1544,8 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         }
         if name == "length" {
             let arg_val = self.gen_expr(expr.func_args.get(0))
-            return "strlen(" + arg_val + ")"
+            // NULL-safe: returns 0 for NULL strings instead of crashing
+            return "(" + arg_val + " ? strlen(" + arg_val + ") : 0)"
         }
         var is_struct = false
         var s_idx = 0

@@ -19,9 +19,10 @@
 #undef inline
 
 // Implement get_exe_dir which delegates to kai_os_get_exe_dir
-int64_t get_exe_dir(char* out_buf, int64_t max_len) {
-    return kai_os_get_exe_dir(out_buf, max_len);
-}
+// (provided by compiler's runtime preamble)
+// int64_t get_exe_dir(char* out_buf, int64_t max_len) {
+//     return kai_os_get_exe_dir(out_buf, max_len);
+// }
 
 uint8_t* _kai_mmap(uint8_t* addr, int64_t length, int64_t prot, int64_t flags, int64_t fd, int64_t offset) {
 #ifdef _WIN32
