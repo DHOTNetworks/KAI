@@ -1719,6 +1719,7 @@ int64_t CodegenBuilder_push_expr(CodegenBuilder* self, CExprNode node);
 const char* CodegenBuilder_gen_expr_str(CodegenBuilder* self, int64_t expr_idx);
 const char* CodegenBuilder_expr_to_str(CodegenBuilder* self, int64_t c_idx);
 void CodegenBuilder_emit_c_stmt(CodegenBuilder* self, CStmtNode cnode);
+int64_t CodegenBuilder_wrap_for_return(CodegenBuilder* self, int64_t expr_idx, int64_t cval_idx, const char* return_type);
 const char* CodegenBuilder_gen_expr_with_expected_type(CodegenBuilder* self, int64_t expr_idx, const char* expected_type);
 int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx);
 void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx);
@@ -2534,7 +2535,7 @@ Result_Str_IoError read_to_string(KaiAllocator* allocator, const char* path)
         void* file = fopen(((char*)(path)), ((char*)("rb")));
         if (((char*)(file)) == NULL)
         {
-            return IoError_open_failed;
+            return (Result_Str_IoError){ .tag = IoError_open_failed };
         }
         fseek(file, 0LL, 2LL);
         int64_t size = ftell(file);
@@ -2543,7 +2544,7 @@ Result_Str_IoError read_to_string(KaiAllocator* allocator, const char* path)
         int64_t bytes_read = fread(buf, 1LL, size, file);
         (buf[bytes_read] = ((char)(0LL)));
         fclose(file);
-        return ((const char*)(buf));
+        return (Result_Str_IoError){ .tag = 0, .value = ((const char*)(buf)) };
     }
 }
 Result_Bool_IoError write_string(const char* path, const char* content)
@@ -2552,12 +2553,12 @@ Result_Bool_IoError write_string(const char* path, const char* content)
         void* file = fopen(((char*)(path)), ((char*)("wb")));
         if (((char*)(file)) == NULL)
         {
-            return IoError_open_failed;
+            return (Result_Bool_IoError){ .tag = IoError_open_failed };
         }
         int64_t len = strlen(content);
         int64_t bytes_written = fwrite(((char*)(content)), 1LL, len, file);
         fclose(file);
-        return true;
+        return (Result_Bool_IoError){ .tag = 0, .value = true };
     }
 }
 const char* concatAlloc(const char* left, const char* right)
@@ -9571,6 +9572,15 @@ void ImportResolver_resolve_import(ImportResolver* self, int64_t stmt_idx, Array
         }
         const char* rel_path = concatAlloc(path_str, ".kai");
         Result_Str_IoError s1 = read_to_string(self->allocator, rel_path);
+        if (s1.tag == 0LL)
+        {
+            if (strlen(s1.value) > 0LL)
+            {
+                (source = s1.value);
+                (has_source = true);
+                (resolved_path = rel_path);
+            }
+        }
         if (!has_source)
         {
             {
@@ -15739,6 +15749,80 @@ void CodegenBuilder_emit_c_stmt(CodegenBuilder* self, CStmtNode cnode)
     CPrinter printer = (CPrinter){ .builder = (&self->builder), .expr_pool = (&self->c_exprs), .stmt_pool = (&self->c_stmts) };
     CPrinter_print_stmt((&printer), c_idx);
 }
+int64_t CodegenBuilder_wrap_for_return(CodegenBuilder* self, int64_t expr_idx, int64_t cval_idx, const char* return_type)
+{
+    if (strlen(return_type) == 0LL)
+    {
+        return cval_idx;
+    }
+    if ((return_type[0LL] == ((char)(63LL))) && (!CodegenBuilder_is_pointer_type(self, __kai_str_sub(return_type, 1LL, strlen(return_type)))))
+    {
+        bool is_none = false;
+        if (expr_idx >= 0LL)
+        {
+            ExprNode orig = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
+            if ((orig.kind == ExprKind_ek_literal) && (strcmp(orig.lit_vkind, "NONE") == 0LL))
+            {
+                (is_none = true);
+            }
+        }
+        ArrayList_Str fields = ArrayList_Str_init(self->allocator);
+        if (!is_none)
+        {
+            const char* val_str = CodegenBuilder_expr_to_str(self, cval_idx);
+            ArrayList_Str_push((&fields), ".has_value = true");
+            ArrayList_Str_push((&fields), concatAlloc(".value = ", val_str));
+        }
+        const char* mapped = CodegenBuilder_map_type(self, return_type);
+        CType ct = ctype_new(mapped, 0LL, false, false);
+        return CodegenBuilder_push_expr(self, cexpr_new_compound(ct, fields));
+    }
+    int64_t excl_pos = (-1LL);
+    int64_t ei = 0LL;
+    while (ei < strlen(return_type))
+    {
+        if (return_type[ei] == ((char)(33LL)))
+        {
+            (excl_pos = ei);
+        }
+        (ei = (ei + 1LL));
+    }
+    if (excl_pos >= 0LL)
+    {
+        const char* val_payload = __kai_str_sub(return_type, 0LL, excl_pos);
+        const char* mapped_type = CodegenBuilder_map_type(self, return_type);
+        bool is_enum_field = false;
+        if (expr_idx >= 0LL)
+        {
+            ExprNode orig = ArrayList_ExprNode_get(self->expr_pool, expr_idx);
+            if (orig.kind == ExprKind_ek_field_access)
+            {
+                ExprNode base_expr = ArrayList_ExprNode_get(self->expr_pool, orig.field_expr);
+                if (base_expr.kind == ExprKind_ek_identifier)
+                {
+                    (is_enum_field = true);
+                }
+            }
+        }
+        ArrayList_Str fields = ArrayList_Str_init(self->allocator);
+        if (is_enum_field)
+        {
+            const char* val_str = CodegenBuilder_expr_to_str(self, cval_idx);
+            ArrayList_Str_push((&fields), concatAlloc(".tag = ", val_str));
+        } else if (strcmp(val_payload, "Void") == 0LL)
+        {
+            ArrayList_Str_push((&fields), ".tag = 0");
+        } else
+        {
+            ArrayList_Str_push((&fields), ".tag = 0");
+            const char* val_str = CodegenBuilder_expr_to_str(self, cval_idx);
+            ArrayList_Str_push((&fields), concatAlloc(".value = ", val_str));
+        }
+        CType ct = ctype_new(mapped_type, 0LL, false, false);
+        return CodegenBuilder_push_expr(self, cexpr_new_compound(ct, fields));
+    }
+    return cval_idx;
+}
 const char* CodegenBuilder_gen_expr_with_expected_type(CodegenBuilder* self, int64_t expr_idx, const char* expected_type)
 {
     if (expr_idx < 0LL)
@@ -17024,6 +17108,7 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx)
         if (stmt.return_value >= 0LL)
         {
             int64_t val_idx = CodegenBuilder_gen_expr(self, stmt.return_value);
+            (val_idx = CodegenBuilder_wrap_for_return(self, stmt.return_value, val_idx, self->cur_return_type));
             if (self->cur_method_is_init)
             {
                 ExprNode expr = ArrayList_ExprNode_get(self->expr_pool, stmt.return_value);
@@ -25575,25 +25660,25 @@ Optional_Char __kai_std_ascii_digit_value(char byte)
 {
     if (__kai_std_ascii_is_digit(byte))
     {
-        return (byte - ((char)(48LL)));
+        return (Optional_Char){ .has_value = true, .value = (byte - ((char)(48LL))) };
     }
-    return NULL;
+    return (Optional_Char){0};
 }
 Optional_Char __kai_std_ascii_hex_value(char byte)
 {
     if (__kai_std_ascii_is_digit(byte))
     {
-        return (byte - ((char)(48LL)));
+        return (Optional_Char){ .has_value = true, .value = (byte - ((char)(48LL))) };
     }
     if ((byte >= ((char)(65LL))) && (byte <= ((char)(70LL))))
     {
-        return (byte - ((char)(55LL)));
+        return (Optional_Char){ .has_value = true, .value = (byte - ((char)(55LL))) };
     }
     if ((byte >= ((char)(97LL))) && (byte <= ((char)(102LL))))
     {
-        return (byte - ((char)(87LL)));
+        return (Optional_Char){ .has_value = true, .value = (byte - ((char)(87LL))) };
     }
-    return NULL;
+    return (Optional_Char){0};
 }
 int64_t diag_clamp_offset(const char* bytes, int64_t offset)
 {

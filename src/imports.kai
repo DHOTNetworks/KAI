@@ -108,6 +108,13 @@ impl ImportResolver {
             }
             let rel_path = path_str + ".kai"
             let s1 = read_to_string(self.allocator, rel_path)
+            if s1.tag == 0 {
+                if length(s1.value) > 0 {
+                    source = s1.value
+                    has_source = true
+                    resolved_path = rel_path
+                }
+            }
             if !has_source {
                 unsafe {
                     let buf = malloc(1024) as *Char

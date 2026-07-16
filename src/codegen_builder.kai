@@ -1317,6 +1317,58 @@ fn emit_c_stmt(self, cnode: CStmtNode) {
     printer.print_stmt(c_idx)
 }
 
+fn wrap_for_return(self, expr_idx: Int, cval_idx: Int, return_type: Str) -> Int {
+    if strlen(return_type) == 0 { return cval_idx }
+    if return_type[0] == Char(63) && !self.is_pointer_type(return_type[1..strlen(return_type)]) {
+        var is_none = false
+        if expr_idx >= 0 {
+            let orig = self.expr_pool.get(expr_idx)
+            if orig.kind == ExprKind.ek_literal && orig.lit_vkind == "NONE" { is_none = true }
+        }
+        var fields = ArrayList<Str>(self.allocator)
+        if !is_none {
+            let val_str = self.expr_to_str(cval_idx)
+            fields.push(".has_value = true")
+            fields.push(".value = " + val_str)
+        }
+        let mapped = self.map_type(return_type)
+        let ct = ctype_new(mapped, 0, false, false)
+        return self.push_expr(cexpr_new_compound(ct, fields))
+    }
+    var excl_pos = -1
+    var ei = 0
+    while ei < strlen(return_type) {
+        if return_type[ei] == Char(33) { excl_pos = ei }
+        ei = ei + 1
+    }
+    if excl_pos >= 0 {
+        let val_payload = return_type[0..excl_pos]
+        let mapped_type = self.map_type(return_type)
+        var is_enum_field = false
+        if expr_idx >= 0 {
+            let orig = self.expr_pool.get(expr_idx)
+            if orig.kind == ExprKind.ek_field_access {
+                let base_expr = self.expr_pool.get(orig.field_expr)
+                if base_expr.kind == ExprKind.ek_identifier { is_enum_field = true }
+            }
+        }
+        var fields = ArrayList<Str>(self.allocator)
+        if is_enum_field {
+            let val_str = self.expr_to_str(cval_idx)
+            fields.push(".tag = " + val_str)
+        } else if val_payload == "Void" {
+            fields.push(".tag = 0")
+        } else {
+            fields.push(".tag = 0")
+            let val_str = self.expr_to_str(cval_idx)
+            fields.push(".value = " + val_str)
+        }
+        let ct = ctype_new(mapped_type, 0, false, false)
+        return self.push_expr(cexpr_new_compound(ct, fields))
+    }
+    return cval_idx
+}
+
 fn gen_expr_with_expected_type(self, expr_idx: Int, expected_type: Str) -> Str {
     if expr_idx < 0 { return "" }
     let expr = self.expr_pool.get(expr_idx)
@@ -2334,7 +2386,8 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
         }
 
         if stmt.return_value >= 0 {
-            let val_idx = self.gen_expr(stmt.return_value)
+            var val_idx = self.gen_expr(stmt.return_value)
+            val_idx = self.wrap_for_return(stmt.return_value, val_idx, self.cur_return_type)
             if self.cur_method_is_init {
                 let expr = self.expr_pool.get(stmt.return_value)
                 if expr.kind == ExprKind.ek_identifier || expr.kind == ExprKind.ek_literal {
