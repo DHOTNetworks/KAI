@@ -207,6 +207,9 @@ fn print_stmt(self, idx: Int) {
             self.builder.emit_line(type_str + " " + node.var_name + ";")
         }
     }
+    if node.kind == CStmtKind.cs_text {
+        self.builder.emit_line(node.case_val)
+    }
 }
 
 fn print_decl(self, decl: CDeclNode) {
