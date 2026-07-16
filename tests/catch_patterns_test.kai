@@ -1,0 +1,70 @@
+// ponytail: catch patterns test, tests all catch variants
+
+cimport "stdio.h"
+cimport "stdlib.h"
+extern fn printf(fmt: Str) -> Int
+extern fn __kai_print_int(i: Int) -> Void
+extern fn exit(code: Int) -> Void
+
+error MyError {
+    case fail_a
+    case fail_b
+}
+
+fn make_fail_a() -> Int!MyError {
+    return MyError.fail_a
+}
+
+fn make_success(v: Int) -> Int!MyError {
+    return v
+}
+
+fn main() -> Int {
+    __kai_print_int(0)
+    printf("=== catch patterns ===\n")
+
+    // Test 1: Error union catch with expression fallback
+    let r1 = make_fail_a()
+    let v1 = r1 catch 99
+    if v1 != 99 { printf("FAIL test1\n"); exit(1) }
+    printf("PASS test1\n")
+
+    // Test 2: Error union catch success path
+    let r2 = make_success(42)
+    let v2 = r2 catch 99
+    if v2 != 42 { printf("FAIL test2\n"); exit(1) }
+    printf("PASS test2\n")
+
+    // Test 3: Error union catch with catch-var binding
+    let r3 = make_fail_a()
+    let v3 = r3 catch |e| 100
+    if v3 != 100 { printf("FAIL test3\n"); exit(1) }
+    printf("PASS test3\n")
+
+    // Test 4: Optional catch with expression fallback
+    let o4: ?Int = none
+    let v4 = o4 catch 77
+    if v4 != 77 { printf("FAIL test4\n"); exit(1) }
+    printf("PASS test4\n")
+
+    // Test 5: Optional catch success path
+    let o5: ?Int = 55
+    let v5 = o5 catch 77
+    if v5 != 55 { printf("FAIL test5\n"); exit(1) }
+    printf("PASS test5\n")
+
+    // Test 6: Optional catch with String (pointer-based)
+    let o6: ?Str = none
+    let v6 = o6 catch "fallback"
+    printf("PASS test6\n")
+
+    // Test 7: Chained operations with catch
+    let r7_a = make_fail_a()
+    let r7_b = make_success(10)
+    let v7 = (r7_a catch 100) + (r7_b catch 200)
+    if v7 != 110 { printf("FAIL test7\n"); exit(1) }
+    printf("PASS test7\n")
+
+    printf("=== ALL PASSED ===\n")
+    return 0
+}

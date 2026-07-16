@@ -1309,6 +1309,13 @@ fn expr_to_str(self, c_idx: Int) -> Str {
     return printer.print_expr(c_idx)
 }
 
+// Push a CStmtNode to the pool and return its index (no printing).
+fn push_c_stmt(self, cnode: CStmtNode) -> Int {
+    let idx = self.c_stmts.length()
+    self.c_stmts.push(cnode)
+    return idx
+}
+
 // Push a CStmtNode and emit it through the CPrinter to the builder.
 fn emit_c_stmt(self, cnode: CStmtNode) {
     let c_idx = self.c_stmts.length()
@@ -1369,32 +1376,40 @@ fn wrap_for_return(self, expr_idx: Int, cval_idx: Int, return_type: Str) -> Int 
     return cval_idx
 }
 
-fn gen_expr_with_expected_type(self, expr_idx: Int, expected_type: Str) -> Str {
-    if expr_idx < 0 { return "" }
+fn gen_expr_with_expected_type(self, expr_idx: Int, expected_type: Str) -> Int {
+    if expr_idx < 0 { return -1 }
     let expr = self.expr_pool.get(expr_idx)
     let actual_type = self.get_expr_type(expr_idx)
     if expr.kind == ExprKind.ek_literal && expr.lit_vkind == "NONE" {
         if strlen(expected_type) > 0 && expected_type[0] == Char(63) {
             let val_type = expected_type[1..strlen(expected_type)]
-            if self.is_pointer_type(val_type) { return "NULL" }
-            return "(" + self.map_type(expected_type) + "){0}"
+            if self.is_pointer_type(val_type) { return self.push_expr(cexpr_new_ident("NULL")) }
+            let mapped = self.map_type(expected_type)
+            let ct = ctype_new(mapped, 0, false, false)
+            var fields = ArrayList<Str>(self.allocator)
+            fields.push("0")
+            return self.push_expr(cexpr_new_compound(ct, fields))
         }
-        return "NULL"
+        return self.push_expr(cexpr_new_ident("NULL"))
     }
-    let gen_val = self.gen_expr_str(expr_idx)
+    let gen_idx = self.gen_expr(expr_idx)
     if strlen(actual_type) > 0 && actual_type[0] == Char(42) {
         let pointer_target = actual_type[1..strlen(actual_type)]
         if pointer_target == expected_type {
-            return "*" + gen_val
+            return self.push_expr(cexpr_new_unary("*", gen_idx, true))
         }
     }
     if strlen(expected_type) > 0 && expected_type[0] == Char(63) {
         let val_type = expected_type[1..strlen(expected_type)]
         if !self.is_pointer_type(val_type) && actual_type == val_type {
-            return "(" + self.map_type(expected_type) + "){ .has_value = true, .value = " + gen_val + " }"
+            let mapped = self.map_type(expected_type)
+            let ct = ctype_new(mapped, 0, false, false)
+            var fields = ArrayList<Str>(self.allocator)
+            fields.push(".has_value = true")
+            fields.push(".value = " + self.expr_to_str(gen_idx))
+            return self.push_expr(cexpr_new_compound(ct, fields))
         }
     }
-    // Handle Result type wrapping (T!E)
     var excl_pos = -1
     var ei = 0
     while ei < strlen(expected_type) {
@@ -1403,25 +1418,28 @@ fn gen_expr_with_expected_type(self, expr_idx: Int, expected_type: Str) -> Str {
     }
     if excl_pos >= 0 {
         let val_payload = expected_type[0..excl_pos]
-        let mapped_type = self.map_type(expected_type)
-        // Check if return value is already a Result type
+        let mapped = self.map_type(expected_type)
         var actual_has_excl = false
         var aei = 0
         while aei < strlen(actual_type) {
             if actual_type[aei] == Char(33) { actual_has_excl = true }
             aei = aei + 1
         }
-        if actual_has_excl { return gen_val }
-        // Is it an error variant (enum field access)?
+        if actual_has_excl { return gen_idx }
+        let val_str = self.expr_to_str(gen_idx)
+        let ct = ctype_new(mapped, 0, false, false)
+        var fields = ArrayList<Str>(self.allocator)
         if actual_type == "Void" && val_payload != "Void" {
-            return "(" + mapped_type + "){ .tag = " + gen_val + " }"
+            fields.push(".tag = " + val_str)
+        } else if val_payload == "Void" {
+            fields.push(".tag = 0")
+        } else {
+            fields.push(".tag = 0")
+            fields.push(".value = " + val_str)
         }
-        if val_payload == "Void" {
-            return "(" + mapped_type + "){ .tag = 0 }"
-        }
-        return "(" + mapped_type + "){ .tag = 0, .value = " + gen_val + " }"
+        return self.push_expr(cexpr_new_compound(ct, fields))
     }
-    return gen_val
+    return gen_idx
 }
 
 //== Expression Codegen
@@ -1506,7 +1524,8 @@ fn gen_expr(self, expr_idx: Int) -> Int {
             if strlen(lhs_type) > 0 && lhs_type[0] == Char(63) && right == "NULL" {
                 let val_type = lhs_type[1..strlen(lhs_type)]
                 if self.is_pointer_type(val_type) {
-                    return self.push_expr(cexpr_new_ident("(" + left + " " + op + " NULL)"))
+                    let null_idx = self.push_expr(cexpr_new_ident("NULL"))
+                    return self.push_expr(cexpr_new_binary(left_idx, op, null_idx))
                 }
                 let has_val = self.push_expr(cexpr_new_field(left_idx, "has_value"))
                 if op == "==" {
@@ -1517,7 +1536,8 @@ fn gen_expr(self, expr_idx: Int) -> Int {
             if strlen(rhs_type) > 0 && rhs_type[0] == Char(63) && left == "NULL" {
                 let val_type = rhs_type[1..strlen(rhs_type)]
                 if self.is_pointer_type(val_type) {
-                    return self.push_expr(cexpr_new_ident("(NULL " + op + " " + right + ")"))
+                    let null_idx = self.push_expr(cexpr_new_ident("NULL"))
+                    return self.push_expr(cexpr_new_binary(null_idx, op, right_idx))
                 }
                 let has_val = self.push_expr(cexpr_new_field(right_idx, "has_value"))
                 if op == "==" {
@@ -1665,9 +1685,8 @@ fn gen_expr(self, expr_idx: Int) -> Int {
             if is_struct { p_idx = ai + 1 }
             let p_key = fn_name + "_param_" + cgb_int_to_str(p_idx)
             let expected_type = cgb_map_get(&self.func_param_types, p_key)
-            // gen_expr_with_expected_type returns Str; wrap in an ident node
-            let arg_str = self.gen_expr_with_expected_type(expr.func_args.get(ai), expected_type)
-            call_args.push(self.push_expr(cexpr_new_ident(arg_str)))
+            let arg_idx = self.gen_expr_with_expected_type(expr.func_args.get(ai), expected_type)
+            call_args.push(arg_idx)
             ai = ai + 1
         }
         return self.push_expr(cexpr_new_call(fn_name, call_args))
@@ -1904,8 +1923,8 @@ fn gen_expr(self, expr_idx: Int) -> Int {
                 }
                 si = si + 1
             }
-            let val_str = self.gen_expr_with_expected_type(f.value, field_type)
-            fields.push("." + f.name + " = " + val_str)
+            let val_idx = self.gen_expr_with_expected_type(f.value, field_type)
+            fields.push("." + f.name + " = " + self.expr_to_str(val_idx))
             i = i + 1
         }
         let ct = ctype_new(struct_name, 0, false, false)
@@ -2007,154 +2026,196 @@ fn gen_expr(self, expr_idx: Int) -> Int {
     if expr.kind == ExprKind.ek_try {
         let inner_ty = self.get_expr_type(expr.try_expr)
         let excl_pos = self.str_find(inner_ty, Char(33))
-        let inner = self.gen_expr_str(expr.try_expr)
-        if excl_pos < 0 { return self.push_expr(cexpr_new_ident(inner)) }
+        let inner_idx = self.gen_expr(expr.try_expr)
+        if excl_pos < 0 { return inner_idx }
         let val_type = inner_ty[0..excl_pos]
-        let result_ctype = self.map_type(inner_ty)
-        let ret_ctype = self.map_type(self.cur_return_type)
-        var try_code = "({ " + result_ctype + " _kai_res = (" + inner + "); "
-        try_code = try_code + "if (_kai_res.tag != 0) { "
-        try_code = try_code + ret_ctype + " _kai_err_ret; _kai_err_ret.tag = _kai_res.tag; return _kai_err_ret; } "
-        if val_type == "Void" {
-            try_code = try_code + "0; })"
-        } else {
-            try_code = try_code + "_kai_res.value; })"
-        }
-        return self.push_expr(cexpr_new_ident(try_code))
+        let result_mapped = self.map_type(inner_ty)
+        let ret_mapped = self.map_type(self.cur_return_type)
+        let res_ct = ctype_new(result_mapped, 0, false, false)
+        let ret_ct = ctype_new(ret_mapped, 0, false, false)
+
+        let res_ident = self.push_expr(cexpr_new_ident("_kai_res"))
+        let err_ident = self.push_expr(cexpr_new_ident("_kai_err"))
+
+        let res_decl = self.push_c_stmt(cstmt_new_var_decl(res_ct, "_kai_res", inner_idx))
+        let tag_field = self.push_expr(cexpr_new_field(res_ident, "tag"))
+        let zero = self.push_expr(cexpr_new_int("0"))
+        let cond = self.push_expr(cexpr_new_binary(tag_field, "!=", zero))
+
+        let err_decl = self.push_c_stmt(cstmt_new_var_decl(ret_ct, "_kai_err", -1))
+        let err_tag = self.push_expr(cexpr_new_field(err_ident, "tag"))
+        let tag_assign = self.push_expr(cexpr_new_assign(err_tag, tag_field, "="))
+        let tag_assign_stmt = self.push_c_stmt(cstmt_new_expr(tag_assign))
+        let ret_stmt = self.push_c_stmt(cstmt_new_return(err_ident))
+
+        var then_stmts = ArrayList<Int>(self.allocator)
+        then_stmts.push(err_decl)
+        then_stmts.push(tag_assign_stmt)
+        then_stmts.push(ret_stmt)
+        let then_block = self.push_c_stmt(cstmt_new_block(then_stmts))
+        let if_stmt = self.push_c_stmt(cstmt_new_if(cond, then_block, -1))
+
+        var result_expr = self.push_expr(cexpr_new_field(res_ident, "value"))
+        if val_type == "Void" { result_expr = self.push_expr(cexpr_new_int("0")) }
+
+        var body_stmts = ArrayList<Int>(self.allocator)
+        body_stmts.push(res_decl)
+        body_stmts.push(if_stmt)
+        return self.push_expr(cexpr_new_stmt_expr(body_stmts, result_expr))
     }
 
-    //== Catch expression (complex, pre-render as ident)
+    //== Catch expression — proper C-AST ck_stmt_expr
     if expr.kind == ExprKind.ek_catch {
-        let inner = self.gen_expr_str(expr.catch_expr)
-        let inner_ty = self.get_expr_type(expr.catch_expr)
-        if strlen(inner_ty) > 0 && inner_ty[0] == Char(63) {
-            let val_type = inner_ty[1..strlen(inner_ty)]
-            let val_ctype = self.map_type(val_type)
-            let cond_ctype = self.map_type(inner_ty)
-            var fallback_code = ""
-            var fallback_is_stmt2 = false
-            if expr.catch_fallback >= 0 {
-                let fb_node = self.stmt_pool.get(expr.catch_fallback)
-                if fb_node.kind == StmtKind.sk_expr {
-                    fallback_code = self.gen_expr_str(fb_node.expr_stmt)
-                } else if fb_node.kind == StmtKind.sk_block {
-                    var is_single_expr = false
-                    var expr_idx2 = -1
-                    if fb_node.block_stmts.length() == 1 {
-                        let single_stmt = self.stmt_pool.get(fb_node.block_stmts.get(0))
-                        if single_stmt.kind == StmtKind.sk_expr {
-                            is_single_expr = true
-                            expr_idx2 = single_stmt.expr_stmt
-                        }
-                    }
-                    if is_single_expr {
-                        fallback_code = self.gen_expr_str(expr_idx2)
-                    } else {
-                        let saved_builder = self.builder
-                        self.builder = CCodeBuilder(self.allocator)
-                        self.gen_stmt(expr.catch_fallback)
-                        fallback_code = self.builder.to_str()
-                        self.builder = saved_builder
-                        fallback_is_stmt2 = true
-                    }
-                } else {
-                    let saved_builder = self.builder
-                    self.builder = CCodeBuilder(self.allocator)
-                    self.gen_stmt(expr.catch_fallback)
-                    fallback_code = self.builder.to_str()
-                    self.builder = saved_builder
-                    fallback_is_stmt2 = true
-                }
-            } else {
-                fallback_code = "0"
-            }
-            var catch_code = "({ "
-            if self.is_pointer_type(val_type) {
-                catch_code = catch_code + val_ctype + " _kai_opt = (" + inner + "); "
-                catch_code = catch_code + val_ctype + " _kai_cv; "
-                catch_code = catch_code + "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } "
-                if fallback_is_stmt2 {
-                    catch_code = catch_code + "else { " + fallback_code + " __builtin_unreachable(); } _kai_cv; })"
-                } else {
-                    catch_code = catch_code + "else { _kai_cv = (" + fallback_code + "); } _kai_cv; })"
-                }
-            } else {
-                catch_code = catch_code + cond_ctype + " _kai_opt = (" + inner + "); "
-                catch_code = catch_code + val_ctype + " _kai_cv; "
-                catch_code = catch_code + "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } "
-                if fallback_is_stmt2 {
-                    catch_code = catch_code + "else { " + fallback_code + " __builtin_unreachable(); } _kai_cv; })"
-                } else {
-                    catch_code = catch_code + "else { _kai_cv = (" + fallback_code + "); } _kai_cv; })"
-                }
-            }
-            return self.push_expr(cexpr_new_ident(catch_code))
-        }
-        let excl_pos = self.str_find(inner_ty, Char(33))
-        if excl_pos < 0 {
-            return self.push_expr(cexpr_new_ident(inner))
-        }
-        let val_type = inner_ty[0..excl_pos]
-        let result_ctype = self.map_type(inner_ty)
-        let val_ctype = self.map_type(val_type)
-        var fallback_code = ""
-        var fallback_is_stmt = false
+        let inner_type = self.get_expr_type(expr.catch_expr)
+        let inner_idx = self.gen_expr(expr.catch_expr)
+
+        // --- Fallback extraction ---
+        var fb_expr = -1
+        var fb_raw = ""
+        var fb_is_stmt = false
         if expr.catch_fallback >= 0 {
             let fb_node = self.stmt_pool.get(expr.catch_fallback)
             if fb_node.kind == StmtKind.sk_expr {
-                fallback_code = self.gen_expr_str(fb_node.expr_stmt)
-            } else if fb_node.kind == StmtKind.sk_block {
-                var is_single_expr = false
-                var expr_idx2 = -1
-                if fb_node.block_stmts.length() == 1 {
-                    let single_stmt = self.stmt_pool.get(fb_node.block_stmts.get(0))
-                    if single_stmt.kind == StmtKind.sk_expr {
-                        is_single_expr = true
-                        expr_idx2 = single_stmt.expr_stmt
-                    }
+                fb_expr = self.gen_expr(fb_node.expr_stmt)
+            } else if fb_node.kind == StmtKind.sk_block && fb_node.block_stmts.length() == 1 {
+                let single = self.stmt_pool.get(fb_node.block_stmts.get(0))
+                if single.kind == StmtKind.sk_expr {
+                    fb_expr = self.gen_expr(single.expr_stmt)
                 }
-                if is_single_expr {
-                    fallback_code = self.gen_expr_str(expr_idx2)
-                } else {
-                    let saved_builder = self.builder
-                    self.builder = CCodeBuilder(self.allocator)
-                    self.gen_stmt(expr.catch_fallback)
-                    fallback_code = self.builder.to_str()
-                    self.builder = saved_builder
-                    fallback_is_stmt = true
-                }
-            } else {
-                let saved_builder = self.builder
+            }
+            if fb_expr < 0 {
+                let saved = self.builder
                 self.builder = CCodeBuilder(self.allocator)
                 self.gen_stmt(expr.catch_fallback)
-                fallback_code = self.builder.to_str()
-                self.builder = saved_builder
-                fallback_is_stmt = true
+                fb_raw = self.builder.to_str()
+                self.builder = saved
+                fb_is_stmt = true
             }
-        } else {
-            fallback_code = "0"
         }
-        var catch_code = "({ " + result_ctype + " _kai_cr = (" + inner + "); "
-        if val_type == "Void" {
-            catch_code = catch_code + "if (_kai_cr.tag != 0) { "
-            if strlen(expr.catch_var) > 0 {
-                catch_code = catch_code + "int64_t " + expr.catch_var + " = _kai_cr.tag; "
-            }
-            catch_code = catch_code + fallback_code + " } 0; })"
-        } else {
-            catch_code = catch_code + val_ctype + " _kai_cv; "
-            catch_code = catch_code + "if (_kai_cr.tag != 0) { "
-            if strlen(expr.catch_var) > 0 {
-                catch_code = catch_code + "int64_t " + expr.catch_var + " = _kai_cr.tag; "
-            }
-            if fallback_is_stmt {
-                catch_code = catch_code + fallback_code + " __builtin_unreachable(); "
+
+        // --- ?T optional ---
+        if strlen(inner_type) > 0 && inner_type[0] == Char(63) {
+            let val_type = inner_type[1..strlen(inner_type)]
+            let val_ctype_str = self.map_type(val_type)
+            let opt_ctype_str = self.map_type(inner_type)
+            let opt_ct = ctype_new(opt_ctype_str, 0, false, false)
+            let val_ct = ctype_new(val_ctype_str, 0, false, false)
+
+            let opt_ident = self.push_expr(cexpr_new_ident("_kai_opt"))
+            let cv_ident = self.push_expr(cexpr_new_ident("_kai_cv"))
+            let opt_decl = self.push_c_stmt(cstmt_new_var_decl(opt_ct, "_kai_opt", inner_idx))
+            let cv_decl = self.push_c_stmt(cstmt_new_var_decl(val_ct, "_kai_cv", -1))
+
+            var cond = -1
+            var then_val = -1
+            if self.is_pointer_type(val_type) {
+                let null_idx = self.push_expr(cexpr_new_ident("NULL"))
+                cond = self.push_expr(cexpr_new_binary(opt_ident, "!=", null_idx))
+                then_val = opt_ident
             } else {
-                catch_code = catch_code + "_kai_cv = (" + fallback_code + "); "
+                cond = self.push_expr(cexpr_new_field(opt_ident, "has_value"))
+                then_val = self.push_expr(cexpr_new_field(opt_ident, "value"))
             }
-            catch_code = catch_code + "} else { _kai_cv = _kai_cr.value; } _kai_cv; })"
+
+            var then_stmts_arr = ArrayList<Int>(self.allocator)
+            let then_assign = self.push_expr(cexpr_new_assign(cv_ident, then_val, "="))
+            then_stmts_arr.push(self.push_c_stmt(cstmt_new_expr(then_assign)))
+
+            var else_stmts_arr = ArrayList<Int>(self.allocator)
+            if fb_is_stmt {
+                let raw_c = fb_raw + " __builtin_unreachable();"
+                else_stmts_arr.push(self.push_c_stmt(cstmt_new_expr(self.push_expr(cexpr_new_ident(raw_c)))))
+            } else {
+                var fb_val = self.push_expr(cexpr_new_int("0"))
+                if fb_expr >= 0 { fb_val = fb_expr }
+                let else_assign = self.push_expr(cexpr_new_assign(cv_ident, fb_val, "="))
+                else_stmts_arr.push(self.push_c_stmt(cstmt_new_expr(else_assign)))
+            }
+
+            let then_block = self.push_c_stmt(cstmt_new_block(then_stmts_arr))
+            let else_block = self.push_c_stmt(cstmt_new_block(else_stmts_arr))
+            let if_stmt = self.push_c_stmt(cstmt_new_if(cond, then_block, else_block))
+
+            var stmts = ArrayList<Int>(self.allocator)
+            stmts.push(opt_decl)
+            stmts.push(cv_decl)
+            stmts.push(if_stmt)
+            return self.push_expr(cexpr_new_stmt_expr(stmts, cv_ident))
         }
-        return self.push_expr(cexpr_new_ident(catch_code))
+
+        // --- T!E error union ---
+        let excl_pos = self.str_find(inner_type, Char(33))
+        if excl_pos >= 0 {
+            let val_type = inner_type[0..excl_pos]
+            let result_ctype_str = self.map_type(inner_type)
+            let val_ctype_str = self.map_type(val_type)
+            let result_ct = ctype_new(result_ctype_str, 0, false, false)
+            let val_ct = ctype_new(val_ctype_str, 0, false, false)
+
+            let cr_ident = self.push_expr(cexpr_new_ident("_kai_cr"))
+            let zero = self.push_expr(cexpr_new_int("0"))
+            let tag_field = self.push_expr(cexpr_new_field(cr_ident, "tag"))
+            let cr_decl = self.push_c_stmt(cstmt_new_var_decl(result_ct, "_kai_cr", inner_idx))
+            let cond = self.push_expr(cexpr_new_binary(tag_field, "!=", zero))
+
+            if val_type == "Void" {
+                var then_stmts_arr = ArrayList<Int>(self.allocator)
+                if strlen(expr.catch_var) > 0 {
+                    let err_ct = ctype_new("int64_t", 0, false, false)
+                    then_stmts_arr.push(self.push_c_stmt(cstmt_new_var_decl(err_ct, expr.catch_var, tag_field)))
+                }
+                if fb_is_stmt {
+                    then_stmts_arr.push(self.push_c_stmt(cstmt_new_expr(self.push_expr(cexpr_new_ident(fb_raw)))))
+                } else {
+                    var fb_val = zero
+                    if fb_expr >= 0 { fb_val = fb_expr }
+                    then_stmts_arr.push(self.push_c_stmt(cstmt_new_expr(fb_val)))
+                }
+
+                let then_block = self.push_c_stmt(cstmt_new_block(then_stmts_arr))
+                let if_stmt = self.push_c_stmt(cstmt_new_if(cond, then_block, -1))
+
+                var stmts = ArrayList<Int>(self.allocator)
+                stmts.push(cr_decl)
+                stmts.push(if_stmt)
+                return self.push_expr(cexpr_new_stmt_expr(stmts, zero))
+            } else {
+                let cv_ident = self.push_expr(cexpr_new_ident("_kai_cv"))
+                let cv_decl = self.push_c_stmt(cstmt_new_var_decl(val_ct, "_kai_cv", -1))
+                let value_field = self.push_expr(cexpr_new_field(cr_ident, "value"))
+
+                var then_stmts_arr = ArrayList<Int>(self.allocator)
+                if strlen(expr.catch_var) > 0 {
+                    let err_ct = ctype_new("int64_t", 0, false, false)
+                    then_stmts_arr.push(self.push_c_stmt(cstmt_new_var_decl(err_ct, expr.catch_var, tag_field)))
+                }
+                if fb_is_stmt {
+                    let raw_c = fb_raw + " __builtin_unreachable();"
+                    then_stmts_arr.push(self.push_c_stmt(cstmt_new_expr(self.push_expr(cexpr_new_ident(raw_c)))))
+                } else {
+                    var fb_val = zero
+                    if fb_expr >= 0 { fb_val = fb_expr }
+                    let then_assign = self.push_expr(cexpr_new_assign(cv_ident, fb_val, "="))
+                    then_stmts_arr.push(self.push_c_stmt(cstmt_new_expr(then_assign)))
+                }
+
+                var else_stmts_arr = ArrayList<Int>(self.allocator)
+                let else_assign = self.push_expr(cexpr_new_assign(cv_ident, value_field, "="))
+                else_stmts_arr.push(self.push_c_stmt(cstmt_new_expr(else_assign)))
+                let else_block = self.push_c_stmt(cstmt_new_block(else_stmts_arr))
+
+                let then_block = self.push_c_stmt(cstmt_new_block(then_stmts_arr))
+                let if_stmt = self.push_c_stmt(cstmt_new_if(cond, then_block, else_block))
+
+                var stmts = ArrayList<Int>(self.allocator)
+                stmts.push(cr_decl)
+                stmts.push(cv_decl)
+                stmts.push(if_stmt)
+                return self.push_expr(cexpr_new_stmt_expr(stmts, cv_ident))
+            }
+        }
+
+        return inner_idx
     }
 
     //== Check (?. operator — unwrap optional/pointer)
@@ -2170,7 +2231,10 @@ fn gen_expr(self, expr_idx: Int) -> Int {
             }
             let has_val_idx = self.push_expr(cexpr_new_field(inner_idx, "has_value"))
             let val_idx = self.push_expr(cexpr_new_field(inner_idx, "value"))
-            let zero_idx = self.push_expr(cexpr_new_ident("(" + self.map_type(val_type) + "){0}"))
+            let zero_ct = ctype_new(self.map_type(val_type), 0, false, false)
+            var zero_fields = ArrayList<Str>(self.allocator)
+            zero_fields.push("0")
+            let zero_idx = self.push_expr(cexpr_new_compound(zero_ct, zero_fields))
             return self.push_expr(cexpr_new_ternary(has_val_idx, val_idx, zero_idx))
         }
         // For pointer types, just return the inner (already nullable)
@@ -2319,7 +2383,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
         let mapped_type = self.map_type(resolved_type)
         cgb_map_put(&self.var_types, var_name, resolved_type)
         if var_value >= 0 {
-            let val_idx = self.gen_expr(var_value)
+            let val_idx = self.gen_expr_with_expected_type(var_value, resolved_type)
             let ct = ctype_new(mapped_type, 0, false, false)
             self.emit_c_stmt(cstmt_new_var_decl(ct, var_name, val_idx))
         } else {
