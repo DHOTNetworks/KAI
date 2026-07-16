@@ -4,9 +4,9 @@ import length from std.core.string
 import substring from std.core.string
 import std.io.print
 
-import Lexer from lexer
-import Parser from parser
-import StringPool from string_pool
+import Lexer from compiler.lexer
+import Parser from compiler.parser
+import StringPool from compiler.string_pool
 
 extern fn strcmp(s1: Str, s2: Str) -> Int
 

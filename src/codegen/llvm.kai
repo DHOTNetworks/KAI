@@ -7,18 +7,18 @@ import KaiAllocator from std.core.allocator
 import length from std.core.string
 import strlen from std.core.string
 import Str from std.core.string
-import ImportResolver from imports
-import StmtNode from ast_nodes
-import ExprNode from ast_nodes
-import PatternNode from ast_nodes
-import StmtKind from ast_nodes
-import ExprKind from ast_nodes
-import PatternKind from ast_nodes
-import TokenValue from token_defs
+import ImportResolver from compiler.imports
+import StmtNode from compiler.ast_nodes
+import ExprNode from compiler.ast_nodes
+import PatternNode from compiler.ast_nodes
+import StmtKind from compiler.ast_nodes
+import ExprKind from compiler.ast_nodes
+import PatternKind from compiler.ast_nodes
+import TokenValue from compiler.token_defs
 import int_to_str from std.core.string
 import char_to_str from std.core.string
 import std.llvm.core
-import StringPool from string_pool
+import StringPool from compiler.string_pool
 
 extern fn malloc(size: Int) -> *Char
 extern fn free(ptr: *Char)

@@ -1,12 +1,12 @@
 import ArrayList from std.core.array
-import CCodeBuilder from codegen_c_builder
-import CType from codegen_c_ast
-import CExprNode from codegen_c_ast
-import CExprKind from codegen_c_ast
-import CStmtNode from codegen_c_ast
-import CStmtKind from codegen_c_ast
-import CDeclNode from codegen_c_ast
-import ctype_to_str from codegen_c_ast
+import CCodeBuilder from codegen.c_builder_utils
+import CType from codegen.c_ast_nodes
+import CExprNode from codegen.c_ast_nodes
+import CExprKind from codegen.c_ast_nodes
+import CStmtNode from codegen.c_ast_nodes
+import CStmtKind from codegen.c_ast_nodes
+import CDeclNode from codegen.c_ast_nodes
+import ctype_to_str from codegen.c_ast_nodes
 
 extern fn strlen(s: Str) -> Int
 

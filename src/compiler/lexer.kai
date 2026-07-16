@@ -7,14 +7,14 @@ import is_space from std.core.string
 import char_to_str from std.core.string
 import Allocator from std.core.allocator
 import KaiAllocator from std.core.allocator
-import parser_err from parser
-import StringPool from string_pool
+import parser_err from compiler.parser
+import StringPool from compiler.string_pool
 
 extern fn strlen(s: Str) -> Int
 
-import TokenType from token_defs
-import TokenValue from token_defs
-import Token from token_defs
+import TokenType from compiler.token_defs
+import TokenValue from compiler.token_defs
+import Token from compiler.token_defs
 
 fn keyword_type(ident: Str) -> TokenType {
     if ident == "let" {

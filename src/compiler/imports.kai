@@ -3,13 +3,13 @@ import Allocator from std.core.allocator
 import KaiAllocator from std.core.allocator
 import read_to_string from std.io.file
 import std.io.print
-import Lexer from lexer
-import Parser from parser
-import StmtNode from ast_nodes
-import StmtKind from ast_nodes
-import ExprNode from ast_nodes
-import PatternNode from ast_nodes
-import StringPool from string_pool
+import Lexer from compiler.lexer
+import Parser from compiler.parser
+import StmtNode from compiler.ast_nodes
+import StmtKind from compiler.ast_nodes
+import ExprNode from compiler.ast_nodes
+import PatternNode from compiler.ast_nodes
+import StringPool from compiler.string_pool
 
 import length from std.core.string
 extern fn malloc(size: Int) -> *Char

@@ -1,5 +1,5 @@
 import std.io.print
-import get_error_info from error_registry
+import get_error_info from compiler.error_registry
 
 extern fn strcmp(s1: Str, s2: Str) -> Int
 

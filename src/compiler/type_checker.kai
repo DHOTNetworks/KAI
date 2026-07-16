@@ -2,30 +2,30 @@ import ArrayList from std.core.array
 import Allocator from std.core.allocator
 import KaiAllocator from std.core.allocator
 import KaiAllocator from std.core.allocator
-import StmtNode from ast_nodes
-import ExprNode from ast_nodes
-import PatternNode from ast_nodes
-import StmtKind from ast_nodes
-import ExprKind from ast_nodes
-import PatternKind from ast_nodes
-import Param from ast_nodes
-import StructField from ast_nodes
-import DropVarEntry from ast_nodes
-import empty_str_array from ast_nodes
-import SymbolTable from symbol_table
-import Symbol from symbol_table
+import StmtNode from compiler.ast_nodes
+import ExprNode from compiler.ast_nodes
+import PatternNode from compiler.ast_nodes
+import StmtKind from compiler.ast_nodes
+import ExprKind from compiler.ast_nodes
+import PatternKind from compiler.ast_nodes
+import Param from compiler.ast_nodes
+import StructField from compiler.ast_nodes
+import DropVarEntry from compiler.ast_nodes
+import empty_str_array from compiler.ast_nodes
+import SymbolTable from compiler.symbol_table
+import Symbol from compiler.symbol_table
 import length from std.core.string
 import substring from std.core.string
 import char_to_str from std.core.string
 import int_to_str from std.core.string
-import str_array_join from parser
+import str_array_join from compiler.parser
 import std.io.print
 import get_source_line from utils
-import ImportResolver from imports
-import StringPool from string_pool
-import TypeArena from types
-import TypeKind from types
-import Type from types
+import ImportResolver from compiler.imports
+import StringPool from compiler.string_pool
+import TypeArena from compiler.types
+import TypeKind from compiler.types
+import Type from compiler.types
 
 extern fn strlen(s: Str) -> Int
 

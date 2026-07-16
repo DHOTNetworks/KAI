@@ -2,7 +2,7 @@ import ArrayList from std.core.array
 import Allocator from std.core.allocator
 import KaiAllocator from std.core.allocator
 
-import TokenValue from token_defs
+import TokenValue from compiler.token_defs
 
 struct DropVarEntry {
     name: Str

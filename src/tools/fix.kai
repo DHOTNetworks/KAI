@@ -8,17 +8,17 @@ import substring from std.core.string
 import str_replace from utils
 import std.io.print
 
-import Lexer from lexer
-import Parser from parser
-import TypeChecker from type_checker
-import ImportResolver from imports
-import get_error_info from error_registry
+import Lexer from compiler.lexer
+import Parser from compiler.parser
+import TypeChecker from compiler.type_checker
+import ImportResolver from compiler.imports
+import get_error_info from compiler.error_registry
 import __kai_std_ascii_is_alpha from std.lib.ascii
 import __kai_std_ascii_is_alnum from std.lib.ascii
 import diag_line from std.lib.diag
 import diag_line_end from std.lib.diag
 import diag_line_text from std.lib.diag
-import StringPool from string_pool
+import StringPool from compiler.string_pool
 
 extern fn strcmp(s1: Str, s2: Str) -> Int
 

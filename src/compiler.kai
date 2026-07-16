@@ -3,24 +3,24 @@ import read_to_string from std.io.file
 import write_string from std.io.file
 import concatAlloc from std.lib.str
 
-import Lexer from lexer
-import Parser from parser
-import TypeChecker from type_checker
-import Codegen from codegen
-import CodegenBuilder from codegen_builder
-import LLVMCodegen from codegen_llvm
+import Lexer from compiler.lexer
+import Parser from compiler.parser
+import TypeChecker from compiler.type_checker
+import Codegen from codegen.c_legacy
+import CodegenBuilder from codegen.c_builder
+import LLVMCodegen from codegen.llvm
 import length from std.core.string
-import ImportResolver from imports
-import StringPool from string_pool
+import ImportResolver from compiler.imports
+import StringPool from compiler.string_pool
 
 import get_base_name from utils
-import run_fix from fix
-import run_patch from patch
-import run_graph from graph
-import run_init from init
-import run_skills from skills
-import run_explain from explain
-import run_build from build_cmd
+import run_fix from tools.fix
+import run_patch from tools.patch
+import run_graph from tools.graph
+import run_init from tools.init
+import run_skills from tools.skills
+import run_explain from tools.explain
+import run_build from tools.build
 
 extern fn system(cmd: *Char) -> Int
 extern fn strcmp(s1: Str, s2: Str) -> Int

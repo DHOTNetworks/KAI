@@ -3,28 +3,28 @@ import Allocator from std.core.allocator
 import KaiAllocator from std.core.allocator
 import std.io.print
 
-import TokenType from token_defs
-import TokenValue from token_defs
-import Token from token_defs
+import TokenType from compiler.token_defs
+import TokenValue from compiler.token_defs
+import Token from compiler.token_defs
 
 extern fn exit(code: Int)
 
-import FieldInit from ast_nodes
-import Param from ast_nodes
-import StructField from ast_nodes
-import Variant from ast_nodes
-import MatchCase from ast_nodes
-import AsmOutput from ast_nodes
-import AsmInput from ast_nodes
-import PatternKind from ast_nodes
-import PatternNode from ast_nodes
-import ExprKind from ast_nodes
-import ExprNode from ast_nodes
-import StmtKind from ast_nodes
-import StmtNode from ast_nodes
-import new_expr_node from ast_nodes
-import new_stmt_node from ast_nodes
-import new_pattern_node from ast_nodes
+import FieldInit from compiler.ast_nodes
+import Param from compiler.ast_nodes
+import StructField from compiler.ast_nodes
+import Variant from compiler.ast_nodes
+import MatchCase from compiler.ast_nodes
+import AsmOutput from compiler.ast_nodes
+import AsmInput from compiler.ast_nodes
+import PatternKind from compiler.ast_nodes
+import PatternNode from compiler.ast_nodes
+import ExprKind from compiler.ast_nodes
+import ExprNode from compiler.ast_nodes
+import StmtKind from compiler.ast_nodes
+import StmtNode from compiler.ast_nodes
+import new_expr_node from compiler.ast_nodes
+import new_stmt_node from compiler.ast_nodes
+import new_pattern_node from compiler.ast_nodes
 import get_source_line from utils
 import length from std.core.string
 import int_to_str from std.core.string
