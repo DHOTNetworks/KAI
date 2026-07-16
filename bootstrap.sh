@@ -57,6 +57,13 @@ $CC $CFLAGS $OPT -o CCkai-stage2-self "$OUT_CC"
 echo "  → CCkai-stage2-self ($(stat -f%z CCkai-stage2-self) bytes)"
 echo ""
 
+# --- 3. Self-hosting: stage1-CC compiles itself ---
+echo "--- Stage 3 (self-host): builder (-CC) ---"
+./CCkai-stage2-self -c -CC "$SRC"
+$CC $CFLAGS $OPT -o CCkai-stage3-self "$OUT_CC"
+echo "  → CCkai-stage3-self ($(stat -f%z CCkai-stage3-self) bytes)"
+echo ""
+
 # --- 4. Self-hosting: stage1-CC compiles via legacy ---
 echo "--- Stage 2 (self-host): legacy (-c) ---"
 ./CCkai-stage1-CC -c "$SRC"
@@ -72,7 +79,7 @@ echo ""
 
 # --- 6. Binary sizes ---
 echo "--- Binary sizes ---"
-for bin in CCkai-stage1 CCkai-stage1-CC CCkai-stage2-self CCkai-stage2-legacy; do
+for bin in CCkai-stage1 CCkai-stage1-CC CCkai-stage2-self CCkai-stage3-self CCkai-stage2-legacy; do
   printf "  %-24s %'d bytes\n" "$bin" "$(stat -f%z "$bin")"
 done
 echo ""

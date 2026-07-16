@@ -1489,6 +1489,459 @@ fn lower_stmt(self, kai_stmt_idx: Int) -> Int {
         return self.push_c_stmt(cstmt_new_while(cond, body))
     }
 
+    if stmt.kind == StmtKind.sk_for {
+        let iter_var = stmt.for_var
+        let start_expr = self.gen_expr(stmt.for_start)
+        let end_expr = self.gen_expr(stmt.for_end)
+        if stmt.for_body >= 0 {
+            var body_stmt = self.stmt_pool.get(stmt.for_body)
+            body_stmt.block_is_loop_body = true
+            self.stmt_pool.set(stmt.for_body, body_stmt)
+        }
+        var cmp_asc = "<"
+        var cmp_desc = ">"
+        if stmt.for_inclusive {
+            cmp_asc = "<="
+            cmp_desc = ">="
+        }
+
+        // Build: int64_t _kai_start = <start_expr>, int64_t _kai_end = <end_expr>
+        let int64_type = ctype_new("int64_t", 0, false, false)
+        let start_decl = self.push_c_stmt(cstmt_new_var_decl(int64_type, "_kai_start", start_expr))
+        let end_decl = self.push_c_stmt(cstmt_new_var_decl(int64_type, "_kai_end", end_expr))
+
+        // Build: int64_t iter; (no init — done in for-init)
+        let iter_decl = self.push_c_stmt(cstmt_new_var_decl(int64_type, iter_var, -1))
+
+        // Build for-init: iter = _kai_start
+        let kai_start_id = self.push_expr(cexpr_new_ident("_kai_start"))
+        let iter_id = self.push_expr(cexpr_new_ident(iter_var))
+        let for_init = self.push_expr(cexpr_new_assign(iter_id, kai_start_id, "="))
+
+        // Build cond: (_kai_start <= _kai_end) ? (iter <cmp_asc> _kai_end) : (iter <cmp_desc> _kai_end)
+        let kai_end_id = self.push_expr(cexpr_new_ident("_kai_end"))
+        let iter2 = self.push_expr(cexpr_new_ident(iter_var))
+        let start_le_end = self.push_expr(cexpr_new_binary(kai_start_id, "<=", kai_end_id))
+        let iter_asc = self.push_expr(cexpr_new_binary(iter2, cmp_asc, kai_end_id))
+        let iter3 = self.push_expr(cexpr_new_ident(iter_var))
+        let iter_desc = self.push_expr(cexpr_new_binary(iter3, cmp_desc, kai_end_id))
+        let for_cond = self.push_expr(cexpr_new_ternary(start_le_end, iter_asc, iter_desc))
+
+        // Build inc: (_kai_start <= _kai_end) ? ++iter : --iter
+        let kai_start2 = self.push_expr(cexpr_new_ident("_kai_start"))
+        let kai_end2 = self.push_expr(cexpr_new_ident("_kai_end"))
+        let start_le_end2 = self.push_expr(cexpr_new_binary(kai_start2, "<=", kai_end2))
+        let iter4 = self.push_expr(cexpr_new_ident(iter_var))
+        let inc_asc = self.push_expr(cexpr_new_unary("++", iter4, true))
+        let iter5 = self.push_expr(cexpr_new_ident(iter_var))
+        let inc_desc = self.push_expr(cexpr_new_unary("--", iter5, true))
+        let for_inc = self.push_expr(cexpr_new_ternary(start_le_end2, inc_asc, inc_desc))
+
+        let for_body = self.lower_stmt(stmt.for_body)
+        let for_stmt = self.push_c_stmt(cstmt_new_for(for_init, for_cond, for_inc, for_body))
+
+        var block_stmts = ArrayList<Int>(self.allocator)
+        block_stmts.push(start_decl)
+        block_stmts.push(end_decl)
+        block_stmts.push(iter_decl)
+        block_stmts.push(for_stmt)
+        return self.push_c_stmt(cstmt_new_block(block_stmts))
+    }
+
+    if stmt.kind == StmtKind.sk_if_let {
+        let cond_val_idx = self.gen_expr(stmt.iflet_expr)
+        let cond_type = self.get_expr_type(stmt.iflet_expr)
+        let unwrapped_type = cond_type[1..strlen(cond_type)]
+        let unwrapped_ctype = self.map_type(unwrapped_type)
+        let cond_ctype = self.map_type(cond_type)
+
+        let old_var_len = self.var_types.length()
+        cgb_map_put(&self.var_types, stmt.iflet_var, unwrapped_type)
+
+        let then_body = self.lower_stmt(stmt.iflet_then)
+
+        var else_body = -1
+        if stmt.iflet_else >= 0 {
+            else_body = self.lower_stmt(stmt.iflet_else)
+        }
+
+        while self.var_types.length() > old_var_len {
+            let _ = self.var_types.pop()
+        }
+
+        if self.is_pointer_type(unwrapped_type) {
+            let null_idx = self.push_expr(cexpr_new_ident("NULL"))
+            let cond = self.push_expr(cexpr_new_binary(cond_val_idx, "!=", null_idx))
+            var then_stmts = ArrayList<Int>(self.allocator)
+            let dt = ctype_new(unwrapped_ctype, 0, false, false)
+            let var_decl = self.push_c_stmt(cstmt_new_var_decl(dt, stmt.iflet_var, cond_val_idx))
+            then_stmts.push(var_decl)
+            if then_body >= 0 { then_stmts.push(then_body) }
+            let then_block = self.push_c_stmt(cstmt_new_block(then_stmts))
+            return self.push_c_stmt(cstmt_new_if(cond, then_block, else_body))
+        } else {
+            let opt_type = ctype_new(cond_ctype, 0, false, false)
+            let opt_decl = self.push_c_stmt(cstmt_new_var_decl(opt_type, "_kai_opt", cond_val_idx))
+            let opt_ident = self.push_expr(cexpr_new_ident("_kai_opt"))
+            let has_value = self.push_expr(cexpr_new_field(opt_ident, "has_value"))
+            var inner_then = ArrayList<Int>(self.allocator)
+            let opt_val = self.push_expr(cexpr_new_ident("_kai_opt"))
+            let val_field = self.push_expr(cexpr_new_field(opt_val, "value"))
+            let vt = ctype_new(unwrapped_ctype, 0, false, false)
+            let var_decl2 = self.push_c_stmt(cstmt_new_var_decl(vt, stmt.iflet_var, val_field))
+            inner_then.push(var_decl2)
+            if then_body >= 0 { inner_then.push(then_body) }
+            let inner_block = self.push_c_stmt(cstmt_new_block(inner_then))
+            let inner_if = self.push_c_stmt(cstmt_new_if(has_value, inner_block, else_body))
+            var outer = ArrayList<Int>(self.allocator)
+            outer.push(opt_decl)
+            outer.push(inner_if)
+            return self.push_c_stmt(cstmt_new_block(outer))
+        }
+    }
+
+    if stmt.kind == StmtKind.sk_match {
+        let expr_idx = stmt.match_expr
+        let expr_c_idx = self.gen_expr(expr_idx)
+        let expr_node = self.expr_pool.get(expr_idx)
+        let expr_type = self.get_expr_type(expr_idx)
+        let mapped_expr_type = self.map_type(expr_type)
+
+        let is_self_ptr = (expr_node.kind == ExprKind.ek_identifier && expr_node.ident_name == "self" && !self.cur_method_is_init)
+        var is_ptr = false
+        if strlen(expr_type) > 0 && (expr_type[0] == Char(42) || expr_type[0] == Char(38) || is_self_ptr) {
+            is_ptr = true
+        }
+
+        var enum_idx_str = cgb_map_get(&self.enum_decls, expr_type)
+        if strlen(enum_idx_str) == 0 {
+            var clean_base = expr_type
+            var done_clean = false
+            while !done_clean {
+                if strlen(clean_base) > 0 && (clean_base[0] == Char(42) || clean_base[0] == Char(38)) {
+                    clean_base = clean_base[1..strlen(clean_base)]
+                } else { done_clean = true }
+            }
+            enum_idx_str = cgb_map_get(&self.enum_decls, clean_base)
+        }
+
+        var else_branch = -1
+        var ci = stmt.match_cases.length() - 1
+        while ci >= 0 {
+            let case_node = stmt.match_cases.get(ci)
+            let pat_node = self.pattern_pool.get(case_node.pattern)
+
+            var cond_idx = -1
+            var has_non_underscore_bindings = false
+            var found_var = false
+            var matched_var = Variant(vname: "", params: empty_param_array())
+            var var_name = ""
+
+            if pat_node.kind == PatternKind.pk_literal {
+                var lit_c_idx = -1
+                match pat_node.lit_value {
+                    case .tv_int(v) => { lit_c_idx = self.push_expr(cexpr_new_int(cgb_int_to_str(v))) }
+                    case .tv_str(v) => {
+                        let raw_s = self.pool.get(v)
+                        let esc = self.escape_string(raw_s)
+                        lit_c_idx = self.push_expr(cexpr_new_str("\"" + esc + "\""))
+                    }
+                    case .tv_bool(v) => { lit_c_idx = self.push_expr(cexpr_new_bool(v)) }
+                    case .tv_char(v) => {
+                        var escaped = ""
+                        if v == Char(10) { escaped = "'\\n'" }
+                        else if v == Char(13) { escaped = "'\\r'" }
+                        else if v == Char(9) { escaped = "'\\t'" }
+                        else if v == Char(92) { escaped = "'\\\\'" }
+                        else if v == Char(39) { escaped = "'\\''" }
+                        else { escaped = "'" + cgb_char_to_str(v) + "'" }
+                        lit_c_idx = self.push_expr(cexpr_new_char(escaped))
+                    }
+                    case else => { lit_c_idx = self.push_expr(cexpr_new_int("0")) }
+                }
+                cond_idx = self.push_expr(cexpr_new_binary(expr_c_idx, "==", lit_c_idx))
+            } else if pat_node.kind == PatternKind.pk_variant {
+                var_name = pat_node.variant_name
+                var base_type = mapped_expr_type
+                if strlen(base_type) > 0 && (base_type[strlen(base_type) - 1] == Char(42) || base_type[strlen(base_type) - 1] == Char(38)) {
+                    base_type = base_type[0..strlen(base_type) - 1]
+                }
+                if strlen(base_type) > 0 && base_type[0] == Char(42) {
+                    base_type = base_type[1..strlen(base_type)]
+                }
+                var has_payload = false
+                if strlen(enum_idx_str) > 0 {
+                    let enum_stmt = self.stmt_pool.get(self.str_to_int(enum_idx_str))
+                    var vi = 0
+                    while vi < enum_stmt.enum_variants.length() {
+                        let v = enum_stmt.enum_variants.get(vi)
+                        if v.params.length() > 0 { has_payload = true }
+                        vi = vi + 1
+                    }
+                }
+
+                if has_payload {
+                    var tag_expr = -1
+                    if is_ptr { tag_expr = self.push_expr(cexpr_new_arrow(expr_c_idx, "tag")) }
+                    else { tag_expr = self.push_expr(cexpr_new_field(expr_c_idx, "tag")) }
+                    let tag_const = self.push_expr(cexpr_new_ident(base_type + "_" + var_name + "_TAG"))
+                    cond_idx = self.push_expr(cexpr_new_binary(tag_expr, "==", tag_const))
+
+                    if pat_node.bindings.length() > 0 {
+                        var bi = 0
+                        while bi < pat_node.bindings.length() {
+                            if pat_node.bindings.get(bi) != "_" {
+                                has_non_underscore_bindings = true
+                                break
+                            }
+                            bi = bi + 1
+                        }
+                    }
+
+                    if strlen(enum_idx_str) > 0 {
+                        let enum_stmt = self.stmt_pool.get(self.str_to_int(enum_idx_str))
+                        var vi = 0
+                        while vi < enum_stmt.enum_variants.length() {
+                            let v = enum_stmt.enum_variants.get(vi)
+                            if v.vname == var_name {
+                                found_var = true
+                                matched_var = v
+                                break
+                            }
+                            vi = vi + 1
+                        }
+                    }
+                } else {
+                    let variant_const = self.push_expr(cexpr_new_ident(base_type + "_" + var_name))
+                    cond_idx = self.push_expr(cexpr_new_binary(expr_c_idx, "==", variant_const))
+                }
+            } else if pat_node.kind == PatternKind.pk_else {
+                cond_idx = self.push_expr(cexpr_new_bool(true))
+            }
+
+            var body_stmts = ArrayList<Int>(self.allocator)
+            if has_non_underscore_bindings {
+                var bi = 0
+                while bi < pat_node.bindings.length() {
+                    let bind_name = pat_node.bindings.get(bi)
+                    if bind_name != "_" {
+                        var bind_type = "Void"
+                        var field_name = ""
+                        if found_var && bi < matched_var.params.length() {
+                            let param = matched_var.params.get(bi)
+                            bind_type = param.ptype
+                            field_name = param.name
+                        }
+                        if bind_type == "T" {
+                            var t_type = cgb_map_get(&self.current_type_map, "T")
+                            if strlen(t_type) == 0 {
+                                t_type = self.extract_first_type_arg(expr_type)
+                            }
+                            bind_type = t_type
+                        } else if bind_type == "E" {
+                            var e_type = cgb_map_get(&self.current_type_map, "E")
+                            if strlen(e_type) == 0 {
+                                e_type = "Int"
+                            }
+                            bind_type = e_type
+                        }
+                        let mapped_bind_type = self.map_type(bind_type)
+                        var base_access = -1
+                        if is_ptr { base_access = self.push_expr(cexpr_new_arrow(expr_c_idx, var_name)) }
+                        else { base_access = self.push_expr(cexpr_new_field(expr_c_idx, var_name)) }
+                        let field_access = self.push_expr(cexpr_new_field(base_access, field_name))
+                        let bt = ctype_new(mapped_bind_type, 0, false, false)
+                        let bind_decl = self.push_c_stmt(cstmt_new_var_decl(bt, bind_name, field_access))
+                        body_stmts.push(bind_decl)
+                    }
+                    bi = bi + 1
+                }
+            }
+            let lowered_body = self.lower_stmt(case_node.body)
+            if lowered_body >= 0 { body_stmts.push(lowered_body) }
+            let body_block = self.push_c_stmt(cstmt_new_block(body_stmts))
+            else_branch = self.push_c_stmt(cstmt_new_if(cond_idx, body_block, else_branch))
+            ci = ci - 1
+        }
+        return else_branch
+    }
+
+    if stmt.kind == StmtKind.sk_return {
+        var block_stmts = ArrayList<Int>(self.allocator)
+        var bi = self.block_stack.length() - 1
+        while bi >= 0 {
+            let b_idx = self.block_stack.get(bi)
+            let b_node = self.stmt_pool.get(b_idx)
+            var start_idx = 0
+            if bi < self.defer_depths.length() { start_idx = self.defer_depths.get(bi) }
+            var next_start_idx = self.defer_stack.length()
+            if bi < self.block_stack.length() - 1 && (bi + 1) < self.defer_depths.length() {
+                next_start_idx = self.defer_depths.get(bi + 1)
+            }
+            var def_i = next_start_idx - 1
+            while def_i >= start_idx {
+                if def_i < self.defer_stack.length() {
+                    let def_idx = self.defer_stack.get(def_i)
+                    let def_node = self.stmt_pool.get(def_idx)
+                    let def_body_idx = self.lower_stmt(def_node.defer_body)
+                    if def_body_idx >= 0 { block_stmts.push(def_body_idx) }
+                }
+                def_i = def_i - 1
+            }
+            bi = bi - 1
+        }
+
+        if self.block_stack.length() > 0 {
+            let b_idx = self.block_stack.get(self.block_stack.length() - 1)
+            let b_node = self.stmt_pool.get(b_idx)
+            var di = 0
+            while di < b_node.block_drop_vars.length() {
+                let entry = b_node.block_drop_vars.get(di)
+                let var_ident = self.push_expr(cexpr_new_ident(entry.name))
+                let addr_expr = self.push_expr(cexpr_new_unary("&", var_ident, true))
+                var drop_args = ArrayList<Int>(self.allocator)
+                drop_args.push(addr_expr)
+                let drop_call = self.push_expr(cexpr_new_call(entry.base_type + "_drop", drop_args))
+                let drop_stmt = self.push_c_stmt(cstmt_new_expr(drop_call))
+                block_stmts.push(drop_stmt)
+                di = di + 1
+            }
+        }
+
+        if stmt.return_value >= 0 {
+            var val_idx = self.gen_expr(stmt.return_value)
+            val_idx = self.wrap_for_return(stmt.return_value, val_idx, self.cur_return_type)
+            if self.cur_method_is_init {
+                let expr = self.expr_pool.get(stmt.return_value)
+                if expr.kind == ExprKind.ek_identifier || expr.kind == ExprKind.ek_literal {
+                    if block_stmts.length() > 0 {
+                        return self.push_c_stmt(cstmt_new_block(block_stmts))
+                    }
+                    return -1
+                }
+                let expr_stmt = self.push_c_stmt(cstmt_new_expr(val_idx))
+                if block_stmts.length() > 0 {
+                    block_stmts.push(expr_stmt)
+                    return self.push_c_stmt(cstmt_new_block(block_stmts))
+                }
+                return expr_stmt
+            }
+            if block_stmts.length() > 0 {
+                let ret_ctype = self.map_type(self.cur_return_type)
+                let ret_var_name = "__ret_val"
+                let var_decl = self.push_c_stmt(cstmt_new_var_decl(ctype_new(ret_ctype, 0, false, false), ret_var_name, val_idx))
+                block_stmts.push(var_decl)
+                let ret_ident = self.push_expr(cexpr_new_ident(ret_var_name))
+                let ret_stmt = self.push_c_stmt(cstmt_new_return(ret_ident))
+                block_stmts.push(ret_stmt)
+                return self.push_c_stmt(cstmt_new_block(block_stmts))
+            } else {
+                return self.push_c_stmt(cstmt_new_return(val_idx))
+            }
+        } else {
+            if block_stmts.length() > 0 {
+                let ret_stmt = self.push_c_stmt(cstmt_new_return(-1))
+                block_stmts.push(ret_stmt)
+                return self.push_c_stmt(cstmt_new_block(block_stmts))
+            } else {
+                return self.push_c_stmt(cstmt_new_return(-1))
+            }
+        }
+        return -1
+    }
+
+    if stmt.kind == StmtKind.sk_break {
+        var block_stmts = ArrayList<Int>(self.allocator)
+        var bi = self.block_stack.length() - 1
+        var done = false
+        while bi >= 0 && !done {
+            let b_idx = self.block_stack.get(bi)
+            let b_node = self.stmt_pool.get(b_idx)
+            var start_idx = 0
+            if bi < self.defer_depths.length() { start_idx = self.defer_depths.get(bi) }
+            var next_start_idx = self.defer_stack.length()
+            if bi < self.block_stack.length() - 1 && (bi + 1) < self.defer_depths.length() {
+                next_start_idx = self.defer_depths.get(bi + 1)
+            }
+            var def_i = next_start_idx - 1
+            while def_i >= start_idx {
+                if def_i < self.defer_stack.length() {
+                    let def_idx = self.defer_stack.get(def_i)
+                    let def_node = self.stmt_pool.get(def_idx)
+                    let def_body_idx = self.lower_stmt(def_node.defer_body)
+                    if def_body_idx >= 0 { block_stmts.push(def_body_idx) }
+                }
+                def_i = def_i - 1
+            }
+            var di = 0
+            while di < b_node.block_drop_vars.length() {
+                let entry = b_node.block_drop_vars.get(di)
+                let var_ident = self.push_expr(cexpr_new_ident(entry.name))
+                let addr_expr = self.push_expr(cexpr_new_unary("&", var_ident, true))
+                var drop_args = ArrayList<Int>(self.allocator)
+                drop_args.push(addr_expr)
+                let drop_call = self.push_expr(cexpr_new_call(entry.base_type + "_drop", drop_args))
+                let drop_stmt = self.push_c_stmt(cstmt_new_expr(drop_call))
+                block_stmts.push(drop_stmt)
+                di = di + 1
+            }
+            if b_node.block_is_loop_body { done = true }
+            bi = bi - 1
+        }
+        if block_stmts.length() > 0 {
+            let break_idx = self.push_c_stmt(cstmt_new_break())
+            block_stmts.push(break_idx)
+            return self.push_c_stmt(cstmt_new_block(block_stmts))
+        }
+        return self.push_c_stmt(cstmt_new_break())
+    }
+
+    if stmt.kind == StmtKind.sk_continue {
+        var block_stmts = ArrayList<Int>(self.allocator)
+        var bi = self.block_stack.length() - 1
+        var done = false
+        while bi >= 0 && !done {
+            let b_idx = self.block_stack.get(bi)
+            let b_node = self.stmt_pool.get(b_idx)
+            var start_idx = 0
+            if bi < self.defer_depths.length() { start_idx = self.defer_depths.get(bi) }
+            var next_start_idx = self.defer_stack.length()
+            if bi < self.block_stack.length() - 1 && (bi + 1) < self.defer_depths.length() {
+                next_start_idx = self.defer_depths.get(bi + 1)
+            }
+            var def_i = next_start_idx - 1
+            while def_i >= start_idx {
+                if def_i < self.defer_stack.length() {
+                    let def_idx = self.defer_stack.get(def_i)
+                    let def_node = self.stmt_pool.get(def_idx)
+                    let def_body_idx = self.lower_stmt(def_node.defer_body)
+                    if def_body_idx >= 0 { block_stmts.push(def_body_idx) }
+                }
+                def_i = def_i - 1
+            }
+            var di = 0
+            while di < b_node.block_drop_vars.length() {
+                let entry = b_node.block_drop_vars.get(di)
+                let var_ident = self.push_expr(cexpr_new_ident(entry.name))
+                let addr_expr = self.push_expr(cexpr_new_unary("&", var_ident, true))
+                var drop_args = ArrayList<Int>(self.allocator)
+                drop_args.push(addr_expr)
+                let drop_call = self.push_expr(cexpr_new_call(entry.base_type + "_drop", drop_args))
+                let drop_stmt = self.push_c_stmt(cstmt_new_expr(drop_call))
+                block_stmts.push(drop_stmt)
+                di = di + 1
+            }
+            if b_node.block_is_loop_body { done = true }
+            bi = bi - 1
+        }
+        if block_stmts.length() > 0 {
+            let continue_idx = self.push_c_stmt(cstmt_new_continue())
+            block_stmts.push(continue_idx)
+            return self.push_c_stmt(cstmt_new_block(block_stmts))
+        }
+        return self.push_c_stmt(cstmt_new_continue())
+    }
+
     // Defer/errdefer — side effect only (push to defer stack), no output
     if stmt.kind == StmtKind.sk_defer { self.gen_stmt(kai_stmt_idx); return -1 }
     if stmt.kind == StmtKind.sk_errdefer { self.gen_stmt(kai_stmt_idx); return -1 }
@@ -2579,98 +3032,8 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     }
 
     if stmt.kind == StmtKind.sk_return {
-        // Emit deferred bodies (side effect on builder)
-        var bi = self.block_stack.length() - 1
-        while bi >= 0 {
-            let b_idx = self.block_stack.get(bi)
-            let b_node = self.stmt_pool.get(b_idx)
-            var start_idx = 0
-            if bi < self.defer_depths.length() { start_idx = self.defer_depths.get(bi) }
-            var next_start_idx = self.defer_stack.length()
-            if bi < self.block_stack.length() - 1 && (bi + 1) < self.defer_depths.length() {
-                next_start_idx = self.defer_depths.get(bi + 1)
-            }
-            var def_i = next_start_idx - 1
-            while def_i >= start_idx {
-                if def_i < self.defer_stack.length() {
-                    let def_idx = self.defer_stack.get(def_i)
-                    let def_node = self.stmt_pool.get(def_idx)
-                    self.gen_stmt(def_node.defer_body)
-                }
-                def_i = def_i - 1
-            }
-            bi = bi - 1
-        }
-
-        // Build drop-call and return statement nodes
-        var block_stmts = ArrayList<Int>(self.allocator)
-        if self.block_stack.length() > 0 {
-            let b_idx = self.block_stack.get(self.block_stack.length() - 1)
-            let b_node = self.stmt_pool.get(b_idx)
-            var di = 0
-            while di < b_node.block_drop_vars.length() {
-                let entry = b_node.block_drop_vars.get(di)
-                let var_idx = self.push_expr(cexpr_new_ident(entry.name))
-                let addr_idx = self.push_expr(cexpr_new_unary("&", var_idx, true))
-                var drop_args = ArrayList<Int>(self.allocator)
-                drop_args.push(addr_idx)
-                let drop_call = self.push_expr(cexpr_new_call(entry.base_type + "_drop", drop_args))
-                let drop_stmt = cstmt_new_expr(drop_call)
-                let drop_idx = self.c_stmts.length()
-                self.c_stmts.push(drop_stmt)
-                block_stmts.push(drop_idx)
-                di = di + 1
-            }
-        }
-
-        if stmt.return_value >= 0 {
-            var val_idx = self.gen_expr(stmt.return_value)
-            val_idx = self.wrap_for_return(stmt.return_value, val_idx, self.cur_return_type)
-            if self.cur_method_is_init {
-                let expr = self.expr_pool.get(stmt.return_value)
-                if expr.kind == ExprKind.ek_identifier || expr.kind == ExprKind.ek_literal {
-                    if block_stmts.length() > 0 {
-                        self.emit_c_stmt(cstmt_new_block(block_stmts))
-                    }
-                    return
-                }
-                let expr_stmt = cstmt_new_expr(val_idx)
-                if block_stmts.length() > 0 {
-                    let e_idx = self.c_stmts.length()
-                    self.c_stmts.push(expr_stmt)
-                    block_stmts.push(e_idx)
-                    self.emit_c_stmt(cstmt_new_block(block_stmts))
-                } else {
-                    self.emit_c_stmt(expr_stmt)
-                }
-                return
-            }
-            if block_stmts.length() > 0 {
-                let ret_ctype = self.map_type(self.cur_return_type)
-                let ret_var_name = "__ret_val"
-                let var_decl = cstmt_new_var_decl(ctype_new(ret_ctype, 0, false, false), ret_var_name, val_idx)
-                let var_idx = self.c_stmts.length()
-                self.c_stmts.push(var_decl)
-                block_stmts.push(var_idx)
-                let ret_ident = self.push_expr(cexpr_new_ident(ret_var_name))
-                let ret_stmt = cstmt_new_return(ret_ident)
-                let r_idx = self.c_stmts.length()
-                self.c_stmts.push(ret_stmt)
-                block_stmts.push(r_idx)
-                self.emit_c_stmt(cstmt_new_block(block_stmts))
-            } else {
-                self.emit_c_stmt(cstmt_new_return(val_idx))
-            }
-        } else {
-            if block_stmts.length() > 0 {
-                let r_idx2 = self.c_stmts.length()
-                self.c_stmts.push(cstmt_new_return(-1))
-                block_stmts.push(r_idx2)
-                self.emit_c_stmt(cstmt_new_block(block_stmts))
-            } else {
-                self.emit_c_stmt(cstmt_new_return(-1))
-            }
-        }
+        let c_idx = self.lower_stmt(stmt_idx)
+        if c_idx >= 0 { self.print_c_stmt(c_idx) }
         return
     }
 
@@ -2685,46 +3048,8 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     }
 
     if stmt.kind == StmtKind.sk_if_let {
-        let cond_val = self.gen_expr_str(stmt.iflet_expr)
-        let cond_type = self.get_expr_type(stmt.iflet_expr)
-        let unwrapped_type = cond_type[1..strlen(cond_type)]
-        let unwrapped_ctype = self.map_type(unwrapped_type)
-        let cond_ctype = self.map_type(cond_type)
-
-        let old_var_len = self.var_types.length()
-        cgb_map_put(&self.var_types, stmt.iflet_var, unwrapped_type)
-
-        if self.is_pointer_type(unwrapped_type) {
-            self.builder.emit_line("if ((" + cond_val + ") != NULL)")
-            self.builder.begin_block()
-            self.builder.emit_line(unwrapped_ctype + " " + stmt.iflet_var + " = " + cond_val + ";")
-            self.gen_stmt(stmt.iflet_then)
-            self.builder.end_block()
-        } else {
-            self.builder.begin_block()
-            self.builder.emit_line(cond_ctype + " _kai_opt = " + cond_val + ";")
-            self.builder.emit_line("if (_kai_opt.has_value)")
-            self.builder.begin_block()
-            self.builder.emit_line(unwrapped_ctype + " " + stmt.iflet_var + " = _kai_opt.value;")
-            self.gen_stmt(stmt.iflet_then)
-            self.builder.end_block()
-            self.builder.end_block()
-        }
-
-        if stmt.iflet_else >= 0 {
-            let else_node = self.stmt_pool.get(stmt.iflet_else)
-            if else_node.kind == StmtKind.sk_if_let {
-                self.builder.append_to_last_line(" else")
-                self.gen_stmt(stmt.iflet_else)
-            } else {
-                self.builder.append_to_last_line(" else")
-                self.gen_stmt(stmt.iflet_else)
-            }
-        }
-
-        while self.var_types.length() > old_var_len {
-            let _ = self.var_types.pop()
-        }
+        let c_idx = self.lower_stmt(stmt_idx)
+        if c_idx >= 0 { self.print_c_stmt(c_idx) }
         return
     }
 
@@ -2768,116 +3093,14 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     }
 
     if stmt.kind == StmtKind.sk_break {
-        var drop_calls = ArrayList<Str>(self.allocator)
-        var bi = self.block_stack.length() - 1
-        var done = false
-        while bi >= 0 && !done {
-            let b_idx = self.block_stack.get(bi)
-            let b_node = self.stmt_pool.get(b_idx)
-            var start_idx = 0
-            if bi < self.defer_depths.length() { start_idx = self.defer_depths.get(bi) }
-            var next_start_idx = self.defer_stack.length()
-            if bi < self.block_stack.length() - 1 && (bi + 1) < self.defer_depths.length() {
-                next_start_idx = self.defer_depths.get(bi + 1)
-            }
-            var def_i = next_start_idx - 1
-            while def_i >= start_idx {
-                if def_i < self.defer_stack.length() {
-                    let def_idx = self.defer_stack.get(def_i)
-                    let def_node = self.stmt_pool.get(def_idx)
-                    self.gen_stmt(def_node.defer_body)
-                }
-                def_i = def_i - 1
-            }
-            var di = 0
-            while di < b_node.block_drop_vars.length() {
-                let entry = b_node.block_drop_vars.get(di)
-                drop_calls.push(entry.base_type + "_drop(&" + entry.name + ");")
-                di = di + 1
-            }
-            if b_node.block_is_loop_body { done = true }
-            bi = bi - 1
-        }
-        if drop_calls.length() == 0 {
-            // ROUTE VIA C-AST
-            var block_stmts = ArrayList<Int>(self.allocator)
-            let cnode = CStmtNode(
-                kind: CStmtKind.cs_break, block_stmts: block_stmts, expr_stmt: -1, if_cond: -1, if_then: -1, if_else: -1,
-                while_cond: -1, while_body: -1, for_init: -1, for_cond: -1, for_inc: -1, for_body: -1, do_body: -1, do_cond: -1,
-                return_val: -1, var_type: ctype_void(), var_name: "", var_init: -1, switch_expr: -1, case_val: "",
-                label_name: "", asm_code: "", asm_volatile: false
-            )
-            let c_idx = self.c_stmts.length()
-            self.c_stmts.push(cnode)
-            var printer = CPrinter(builder: &self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
-            printer.print_stmt(c_idx)
-        } else {
-            self.builder.begin_block()
-            var ci = 0
-            while ci < drop_calls.length() {
-                self.builder.emit_line(drop_calls.get(ci))
-                ci = ci + 1
-            }
-            self.builder.emit_line("break;")
-            self.builder.end_block()
-        }
+        let c_idx = self.lower_stmt(stmt_idx)
+        if c_idx >= 0 { self.print_c_stmt(c_idx) }
         return
     }
 
     if stmt.kind == StmtKind.sk_continue {
-        var drop_calls = ArrayList<Str>(self.allocator)
-        var bi = self.block_stack.length() - 1
-        var done = false
-        while bi >= 0 && !done {
-            let b_idx = self.block_stack.get(bi)
-            let b_node = self.stmt_pool.get(b_idx)
-            var start_idx = 0
-            if bi < self.defer_depths.length() { start_idx = self.defer_depths.get(bi) }
-            var next_start_idx = self.defer_stack.length()
-            if bi < self.block_stack.length() - 1 && (bi + 1) < self.defer_depths.length() {
-                next_start_idx = self.defer_depths.get(bi + 1)
-            }
-            var def_i = next_start_idx - 1
-            while def_i >= start_idx {
-                if def_i < self.defer_stack.length() {
-                    let def_idx = self.defer_stack.get(def_i)
-                    let def_node = self.stmt_pool.get(def_idx)
-                    self.gen_stmt(def_node.defer_body)
-                }
-                def_i = def_i - 1
-            }
-            var di = 0
-            while di < b_node.block_drop_vars.length() {
-                let entry = b_node.block_drop_vars.get(di)
-                drop_calls.push(entry.base_type + "_drop(&" + entry.name + ");")
-                di = di + 1
-            }
-            if b_node.block_is_loop_body { done = true }
-            bi = bi - 1
-        }
-        if drop_calls.length() == 0 {
-            // ROUTE VIA C-AST
-            var block_stmts = ArrayList<Int>(self.allocator)
-            let cnode = CStmtNode(
-                kind: CStmtKind.cs_continue, block_stmts: block_stmts, expr_stmt: -1, if_cond: -1, if_then: -1, if_else: -1,
-                while_cond: -1, while_body: -1, for_init: -1, for_cond: -1, for_inc: -1, for_body: -1, do_body: -1, do_cond: -1,
-                return_val: -1, var_type: ctype_void(), var_name: "", var_init: -1, switch_expr: -1, case_val: "",
-                label_name: "", asm_code: "", asm_volatile: false
-            )
-            let c_idx = self.c_stmts.length()
-            self.c_stmts.push(cnode)
-            var printer = CPrinter(builder: &self.builder, expr_pool: &self.c_exprs, stmt_pool: &self.c_stmts)
-            printer.print_stmt(c_idx)
-        } else {
-            self.builder.begin_block()
-            var ci = 0
-            while ci < drop_calls.length() {
-                self.builder.emit_line(drop_calls.get(ci))
-                ci = ci + 1
-            }
-            self.builder.emit_line("continue;")
-            self.builder.end_block()
-        }
+        let c_idx = self.lower_stmt(stmt_idx)
+        if c_idx >= 0 { self.print_c_stmt(c_idx) }
         return
     }
 
@@ -2939,162 +3162,8 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     }
 
     if stmt.kind == StmtKind.sk_match {
-        let expr_idx = stmt.match_expr
-        let expr_val = self.gen_expr_str(expr_idx)
-        let expr_node = self.expr_pool.get(expr_idx)
-        let expr_type = self.get_expr_type(expr_idx)
-        let mapped_expr_type = self.map_type(expr_type)
-
-        let is_self_ptr = (expr_node.kind == ExprKind.ek_identifier && expr_node.ident_name == "self" && !self.cur_method_is_init)
-        var is_ptr = false
-        if strlen(expr_type) > 0 && (expr_type[0] == Char(42) || expr_type[0] == Char(38) || is_self_ptr) {
-            is_ptr = true
-        }
-        var op = "."
-        if is_ptr { op = "->" }
-
-        var case_idx = 0
-        while case_idx < stmt.match_cases.length() {
-            let case_node = stmt.match_cases.get(case_idx)
-            let pat_node = self.pattern_pool.get(case_node.pattern)
-
-            var cond = ""
-            var bindings_str = ""
-            var has_non_underscore_bindings = false
-            var found_var = false
-            var matched_var = Variant(vname: "", params: empty_param_array())
-            var var_name = ""
-
-            if pat_node.kind == PatternKind.pk_literal {
-                var lit_str = ""
-                match pat_node.lit_value {
-                    case .tv_int(v) => { lit_str = cgb_int_to_str(v) }
-                    case .tv_str(v) => { lit_str = "\"" + self.escape_string(self.pool.get(v)) + "\"" }
-                    case .tv_bool(v) => {
-                        if v { lit_str = "true" } else { lit_str = "false" }
-                    }
-                    case .tv_char(v) => {
-                        if v == Char(10) { lit_str = "'\\n'" }
-                        else if v == Char(13) { lit_str = "'\\r'" }
-                        else if v == Char(9) { lit_str = "'\\t'" }
-                        else if v == Char(92) { lit_str = "'\\\\'" }
-                        else if v == Char(39) { lit_str = "'\\''" }
-                        else { lit_str = "'" + cgb_char_to_str(v) + "'" }
-                    }
-                    case else => { lit_str = "0" }
-                }
-                cond = expr_val + " == " + lit_str
-            } else if pat_node.kind == PatternKind.pk_variant {
-                var_name = pat_node.variant_name
-                var base_type = mapped_expr_type
-                if strlen(base_type) > 0 && (base_type[strlen(base_type) - 1] == Char(42) || base_type[strlen(base_type) - 1] == Char(38)) {
-                    base_type = base_type[0..strlen(base_type) - 1]
-                }
-                if strlen(base_type) > 0 && base_type[0] == Char(42) {
-                    base_type = base_type[1..strlen(base_type)]
-                }
-                var has_payload = false
-                var enum_idx_str = cgb_map_get(&self.enum_decls, expr_type)
-                if strlen(enum_idx_str) == 0 {
-                    var clean_base = expr_type
-                    var done_clean = false
-                    while !done_clean {
-                        if strlen(clean_base) > 0 && (clean_base[0] == Char(42) || clean_base[0] == Char(38)) {
-                            clean_base = clean_base[1..strlen(clean_base)]
-                        } else { done_clean = true }
-                    }
-                    enum_idx_str = cgb_map_get(&self.enum_decls, clean_base)
-                }
-                if strlen(enum_idx_str) > 0 {
-                    let enum_stmt = self.stmt_pool.get(self.str_to_int(enum_idx_str))
-                    var vi = 0
-                    while vi < enum_stmt.enum_variants.length() {
-                        let v = enum_stmt.enum_variants.get(vi)
-                        if v.params.length() > 0 { has_payload = true }
-                        vi = vi + 1
-                    }
-                }
-                if has_payload {
-                    cond = expr_val + op + "tag == " + base_type + "_" + var_name + "_TAG"
-                } else {
-                    cond = expr_val + " == " + base_type + "_" + var_name
-                }
-
-                if pat_node.bindings.length() > 0 {
-                    var bi = 0
-                    while bi < pat_node.bindings.length() {
-                        if pat_node.bindings.get(bi) != "_" {
-                            has_non_underscore_bindings = true
-                            break
-                        }
-                        bi = bi + 1
-                    }
-                }
-                
-                if strlen(enum_idx_str) > 0 {
-                    let enum_stmt = self.stmt_pool.get(self.str_to_int(enum_idx_str))
-                    var vi = 0
-                    while vi < enum_stmt.enum_variants.length() {
-                        let v = enum_stmt.enum_variants.get(vi)
-                        if v.vname == var_name {
-                            found_var = true
-                            matched_var = v
-                            break
-                        }
-                        vi = vi + 1
-                    }
-                }
-            } else if pat_node.kind == PatternKind.pk_else {
-                cond = "true"
-            }
-
-            if case_idx == 0 {
-                self.builder.emit_line("if " + self.format_cond(cond))
-            } else if cond == "true" {
-                self.builder.append_to_last_line(" else")
-            } else {
-                self.builder.append_to_last_line(" else if " + self.format_cond(cond))
-            }
-
-            if has_non_underscore_bindings {
-                self.builder.begin_block()
-                var bi = 0
-                while bi < pat_node.bindings.length() {
-                    let bind_name = pat_node.bindings.get(bi)
-                    if bind_name != "_" {
-                        var bind_type = "Void"
-                        var field_name = ""
-                        if found_var && bi < matched_var.params.length() {
-                            let param = matched_var.params.get(bi)
-                            bind_type = param.ptype
-                            field_name = param.name
-                        }
-                        if bind_type == "T" {
-                            var t_type = cgb_map_get(&self.current_type_map, "T")
-                            if strlen(t_type) == 0 {
-                                t_type = self.extract_first_type_arg(expr_type)
-                            }
-                            bind_type = t_type
-                        } else if bind_type == "E" {
-                            var e_type = cgb_map_get(&self.current_type_map, "E")
-                            if strlen(e_type) == 0 {
-                                e_type = "Int"
-                            }
-                            bind_type = e_type
-                        }
-                        let mapped_bind_type = self.map_type(bind_type)
-                        let single_binding = mapped_bind_type + " " + bind_name + " = " + expr_val + op + var_name + "." + field_name + ";"
-                        self.builder.emit_line(single_binding)
-                    }
-                    bi = bi + 1
-                }
-                self.gen_stmt(case_node.body)
-                self.builder.end_block()
-            } else {
-                self.gen_stmt(case_node.body)
-            }
-            case_idx = case_idx + 1
-        }
+        let c_idx = self.lower_stmt(stmt_idx)
+        if c_idx >= 0 { self.print_c_stmt(c_idx) }
         return
     }
 

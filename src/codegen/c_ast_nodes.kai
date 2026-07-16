@@ -589,6 +589,26 @@ fn cstmt_new_return(return_val: Int) -> CStmtNode {
     )
 }
 
+fn cstmt_new_break() -> CStmtNode {
+    var block_stmts = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    return CStmtNode(
+        kind: CStmtKind.cs_break, block_stmts: block_stmts, expr_stmt: -1, if_cond: -1, if_then: -1, if_else: -1,
+        while_cond: -1, while_body: -1, for_init: -1, for_cond: -1, for_inc: -1, for_body: -1, do_body: -1, do_cond: -1,
+        return_val: -1, var_type: ctype_void(), var_name: "", var_init: -1, switch_expr: -1, case_val: "",
+        label_name: "", asm_code: "", asm_volatile: false
+    )
+}
+
+fn cstmt_new_continue() -> CStmtNode {
+    var block_stmts = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
+    return CStmtNode(
+        kind: CStmtKind.cs_continue, block_stmts: block_stmts, expr_stmt: -1, if_cond: -1, if_then: -1, if_else: -1,
+        while_cond: -1, while_body: -1, for_init: -1, for_cond: -1, for_inc: -1, for_body: -1, do_body: -1, do_cond: -1,
+        return_val: -1, var_type: ctype_void(), var_name: "", var_init: -1, switch_expr: -1, case_val: "",
+        label_name: "", asm_code: "", asm_volatile: false
+    )
+}
+
 fn cstmt_new_while(cond: Int, body: Int) -> CStmtNode {
     var block_stmts = ArrayList<Int>(data: 0 as *Int, len: 0, cap: 0, allocator: 0 as *KaiAllocator)
     return CStmtNode(
