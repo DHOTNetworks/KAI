@@ -1797,6 +1797,7 @@ CStmtNode cstmt_new_for(int64_t init, int64_t cond, int64_t inc, int64_t body);
 CDeclNode cdecl_new_func(const char* name, const char* ret_type, ArrayList_Str params, bool is_extern, bool is_vararg);
 CPrinter CPrinter_init(CCodeBuilder* builder, ArrayList_CExprNode* expr_pool, ArrayList_CStmtNode* stmt_pool);
 const char* CPrinter_print_expr(CPrinter* self, int64_t idx);
+void CPrinter_print_else_chain(CPrinter* self, int64_t else_idx);
 void CPrinter_print_stmt(CPrinter* self, int64_t idx);
 void CPrinter_print_decl(CPrinter* self, CDeclNode decl);
 void CPrinter_emit_runtime_preamble(CPrinter* self, ArrayList_Str* cimport_headers);
@@ -14913,6 +14914,38 @@ int64_t CodegenBuilder_lower_stmt(CodegenBuilder* self, int64_t kai_stmt_idx) {
     ImportResolver_record_cimport(self->import_resolver, stmt.cimport_header);
     return (-1LL);
 }
+    if (stmt.kind == StmtKind_sk_unsafe) {
+    return CodegenBuilder_lower_stmt(self, stmt.unsafe_body);
+}
+    if (stmt.kind == StmtKind_sk_if) {
+    int64_t cond = CodegenBuilder_gen_expr(self, stmt.if_cond);
+    int64_t then_branch = CodegenBuilder_lower_stmt(self, stmt.if_then);
+    int64_t else_branch = (-1LL);
+    if (stmt.if_else >= 0LL) {
+    StmtNode else_node = ArrayList_StmtNode_get(self->stmt_pool, stmt.if_else);
+    if ((else_node.kind == StmtKind_sk_block) && (ArrayList_Int_length(&(else_node.block_stmts)) == 1LL)) {
+    StmtNode single_inner = ArrayList_StmtNode_get(self->stmt_pool, ArrayList_Int_get(&(else_node.block_stmts), 0LL));
+    if (single_inner.kind == StmtKind_sk_if) {
+    else_branch = CodegenBuilder_lower_stmt(self, ArrayList_Int_get(&(else_node.block_stmts), 0LL));
+} else {
+    else_branch = CodegenBuilder_lower_stmt(self, stmt.if_else);
+}
+} else {
+    else_branch = CodegenBuilder_lower_stmt(self, stmt.if_else);
+}
+}
+    return CodegenBuilder_push_c_stmt(self, cstmt_new_if(cond, then_branch, else_branch));
+}
+    if (stmt.kind == StmtKind_sk_while) {
+    int64_t cond = CodegenBuilder_gen_expr(self, stmt.while_cond);
+    if (stmt.while_body >= 0LL) {
+    StmtNode body_stmt = ArrayList_StmtNode_get(self->stmt_pool, stmt.while_body);
+    body_stmt.block_is_loop_body = true;
+    ArrayList_StmtNode_set(self->stmt_pool, stmt.while_body, body_stmt);
+}
+    int64_t body = CodegenBuilder_lower_stmt(self, stmt.while_body);
+    return CodegenBuilder_push_c_stmt(self, cstmt_new_while(cond, body));
+}
     if (stmt.kind == StmtKind_sk_defer) {
     CodegenBuilder_gen_stmt(self, kai_stmt_idx);
     return (-1LL);
@@ -17658,6 +17691,20 @@ const char* CPrinter_print_expr(CPrinter* self, int64_t idx) {
 }
     return "";
 }
+void CPrinter_print_else_chain(CPrinter* self, int64_t else_idx) {
+    CStmtNode else_node = ArrayList_CStmtNode_get(self->stmt_pool, else_idx);
+    if (else_node.kind == CStmtKind_cs_if) {
+    const char* cond = CPrinter_print_expr(self, else_node.if_cond);
+    CCodeBuilder_append_to_last_line(self->builder, concatAlloc(concatAlloc(" else if (", cond), ")"));
+    CPrinter_print_stmt(self, else_node.if_then);
+    if (else_node.if_else >= 0LL) {
+    CPrinter_print_else_chain(self, else_node.if_else);
+}
+} else {
+    CCodeBuilder_append_to_last_line(self->builder, " else");
+    CPrinter_print_stmt(self, else_idx);
+}
+}
 void CPrinter_print_stmt(CPrinter* self, int64_t idx) {
     if (idx < 0LL) {
     return;
@@ -17680,18 +17727,7 @@ void CPrinter_print_stmt(CPrinter* self, int64_t idx) {
     CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc("if (", cond), ")"));
     CPrinter_print_stmt(self, node.if_then);
     if (node.if_else >= 0LL) {
-    CStmtNode else_node = ArrayList_CStmtNode_get(self->stmt_pool, node.if_else);
-    if (else_node.kind == CStmtKind_cs_if) {
-    const char* inner_cond = CPrinter_print_expr(self, else_node.if_cond);
-    CCodeBuilder_append_to_last_line(self->builder, concatAlloc(concatAlloc(" else if (", inner_cond), ")"));
-    CPrinter_print_stmt(self, else_node.if_then);
-    if (else_node.if_else >= 0LL) {
-    CPrinter_print_stmt(self, else_node.if_else);
-}
-} else {
-    CCodeBuilder_append_to_last_line(self->builder, " else");
-    CPrinter_print_stmt(self, node.if_else);
-}
+    CPrinter_print_else_chain(self, node.if_else);
 }
 }
     if (node.kind == CStmtKind_cs_while) {

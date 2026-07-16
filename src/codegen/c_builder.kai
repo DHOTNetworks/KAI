@@ -1454,6 +1454,41 @@ fn lower_stmt(self, kai_stmt_idx: Int) -> Int {
         return -1
     }
 
+    if stmt.kind == StmtKind.sk_unsafe {
+        return self.lower_stmt(stmt.unsafe_body)
+    }
+
+    if stmt.kind == StmtKind.sk_if {
+        let cond = self.gen_expr(stmt.if_cond)
+        let then_branch = self.lower_stmt(stmt.if_then)
+        var else_branch = -1
+        if stmt.if_else >= 0 {
+            let else_node = self.stmt_pool.get(stmt.if_else)
+            if else_node.kind == StmtKind.sk_block && else_node.block_stmts.length() == 1 {
+                let single_inner = self.stmt_pool.get(else_node.block_stmts.get(0))
+                if single_inner.kind == StmtKind.sk_if {
+                    else_branch = self.lower_stmt(else_node.block_stmts.get(0))
+                } else {
+                    else_branch = self.lower_stmt(stmt.if_else)
+                }
+            } else {
+                else_branch = self.lower_stmt(stmt.if_else)
+            }
+        }
+        return self.push_c_stmt(cstmt_new_if(cond, then_branch, else_branch))
+    }
+
+    if stmt.kind == StmtKind.sk_while {
+        let cond = self.gen_expr(stmt.while_cond)
+        if stmt.while_body >= 0 {
+            var body_stmt = self.stmt_pool.get(stmt.while_body)
+            body_stmt.block_is_loop_body = true
+            self.stmt_pool.set(stmt.while_body, body_stmt)
+        }
+        let body = self.lower_stmt(stmt.while_body)
+        return self.push_c_stmt(cstmt_new_while(cond, body))
+    }
+
     // Defer/errdefer — side effect only (push to defer stack), no output
     if stmt.kind == StmtKind.sk_defer { self.gen_stmt(kai_stmt_idx); return -1 }
     if stmt.kind == StmtKind.sk_errdefer { self.gen_stmt(kai_stmt_idx); return -1 }
