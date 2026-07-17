@@ -259,7 +259,12 @@ fn print_decl(self, decl: CDeclNode) {
     if decl.is_tagged_union_struct {
         self.builder.emit_line("struct " + decl.struct_name + " {")
         self.builder.indent()
-        self.builder.emit_line("uint8_t tag;")
+        var tag_type = "uint8_t"
+        if decl.tagged_variants.length() > 255 {
+            if decl.tagged_variants.length() > 65535 { tag_type = "uint32_t" }
+            else { tag_type = "uint16_t" }
+        }
+        self.builder.emit_line(tag_type + " tag;")
         self.builder.emit_line("union {")
         self.builder.indent()
         var vi = 0

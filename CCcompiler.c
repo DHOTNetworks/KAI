@@ -1653,6 +1653,7 @@ void Codegen_monomorphize_enum(Codegen* self, int64_t stmt_idx, const char* conc
 void Codegen_monomorphize_methods(Codegen* self, const char* base_struct_name, const char* concrete_struct_name);
 void Codegen_monomorphize_func(Codegen* self, int64_t func_stmt_idx, const char* mangled_name, ArrayList_Str* type_args);
 const char* Codegen_extract_first_type_arg(Codegen* self, const char* type_name);
+const char* Codegen_extract_second_type_arg(Codegen* self, const char* type_name);
 void Codegen_build_func_types(Codegen* self);
 const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx);
 const char* Codegen_gen_expr_with_expected_type(Codegen* self, int64_t expr_idx, const char* expected_type);
@@ -1706,6 +1707,7 @@ void CodegenBuilder_monomorphize_enum(CodegenBuilder* self, const char* enum_nam
 int64_t CodegenBuilder_str_to_int_safe(CodegenBuilder* self, const char* s);
 const char* CodegenBuilder_substitute_type_params(CodegenBuilder* self, const char* type_name, ArrayList_Str* param_names, ArrayList_Str* arg_types);
 const char* CodegenBuilder_extract_first_type_arg(CodegenBuilder* self, const char* type_name);
+const char* CodegenBuilder_extract_second_type_arg(CodegenBuilder* self, const char* type_name);
 const char* CodegenBuilder_strip_module_prefix(CodegenBuilder* self, const char* name);
 const char* CodegenBuilder_map_type(CodegenBuilder* self, const char* resolved_type);
 bool CodegenBuilder_str_contains(CodegenBuilder* self, const char* s, char target);
@@ -10490,8 +10492,19 @@ void Codegen_monomorphize_enum(Codegen* self, int64_t stmt_idx, const char* conc
     }
     (tags_str = concatAlloc(concatAlloc(concatAlloc(tags_str, "} "), tags_name), ";\n"));
     ((void)(StringBuilder_append((&self->struct_decls), tags_str)));
+    const char* tag_type2 = "uint8_t";
+    if (ArrayList_Variant_length((&stmt.enum_variants)) > 255LL)
+    {
+        if (ArrayList_Variant_length((&stmt.enum_variants)) > 65535LL)
+        {
+            (tag_type2 = "uint32_t");
+        } else
+        {
+            (tag_type2 = "uint16_t");
+        }
+    }
     const char* body = concatAlloc(concatAlloc("struct ", concrete_name), " {\n");
-    (body = concatAlloc(body, "    uint8_t tag;\n"));
+    (body = concatAlloc(concatAlloc(concatAlloc(body, "    "), tag_type2), " tag;\n"));
     (body = concatAlloc(body, "    union {\n"));
     (i = 0LL);
     while (i < ArrayList_Variant_length((&stmt.enum_variants)))
@@ -10716,6 +10729,47 @@ const char* Codegen_extract_first_type_arg(Codegen* self, const char* type_name)
     if ((start >= 0LL) && (end >= 0LL))
     {
         return __kai_str_sub(type_name, start, end);
+    }
+    return "Int";
+}
+const char* Codegen_extract_second_type_arg(Codegen* self, const char* type_name)
+{
+    int64_t start = (-1LL);
+    int64_t end = (-1LL);
+    bool found_lt = false;
+    int64_t i = 0LL;
+    while (i < strlen(type_name))
+    {
+        char c = type_name[i];
+        if (c == ((char)(60LL)))
+        {
+            (found_lt = true);
+        } else if ((c == ((char)(44LL))) && found_lt)
+        {
+            (start = (i + 1LL));
+        } else if ((c == ((char)(62LL))) && (start >= 0LL))
+        {
+            (end = i);
+            break;
+        }
+        (i = (i + 1LL));
+    }
+    if ((start >= 0LL) && (end >= 0LL))
+    {
+        int64_t s = start;
+        int64_t e = end;
+        while ((s < e) && (type_name[s] == ((char)(32LL))))
+        {
+            (s = (s + 1LL));
+        }
+        while ((e > s) && (type_name[(e - 1LL)] == ((char)(32LL))))
+        {
+            (e = (e - 1LL));
+        }
+        if (s < e)
+        {
+            return __kai_str_sub(type_name, s, e);
+        }
     }
     return "Int";
 }
@@ -11028,16 +11082,11 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx)
                 if (strcmp(stmt.struct_name, clean_type) == 0LL)
                 {
                     (is_match = true);
-                } else if (Codegen_str_contains(self, clean_type, ((char)(((char)(95LL))))))
+                } else if ((strlen(clean_type) > strlen(stmt.struct_name)) && (ArrayList_Str_length((&stmt.struct_type_params)) > 0LL))
                 {
-                    if (ArrayList_Str_length((&stmt.struct_type_params)) > 0LL)
+                    if ((clean_type[strlen(stmt.struct_name)] == ((char)(95LL))) && (strcmp(__kai_str_sub(clean_type, 0LL, strlen(stmt.struct_name)), stmt.struct_name) == 0LL))
                     {
-                        int64_t underscore_pos = Codegen_str_find(self, clean_type, ((char)(((char)(95LL)))));
-                        const char* base_name = __kai_str_sub(clean_type, 0LL, underscore_pos);
-                        if (strcmp(stmt.struct_name, base_name) == 0LL)
-                        {
-                            (is_match = true);
-                        }
+                        (is_match = true);
                     }
                 }
                 if (is_match)
@@ -12732,7 +12781,18 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx)
             (enum_str = concatAlloc(concatAlloc(concatAlloc(enum_str, "} "), tags_name), ";\n"));
             (enum_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(enum_str, "typedef struct "), name), " "), name), ";\n"));
             (enum_str = concatAlloc(concatAlloc(concatAlloc(enum_str, "struct "), name), " {\n"));
-            (enum_str = concatAlloc(enum_str, "    uint8_t tag;\n"));
+            const char* tag_type3 = "uint8_t";
+            if (ArrayList_Variant_length((&stmt.enum_variants)) > 255LL)
+            {
+                if (ArrayList_Variant_length((&stmt.enum_variants)) > 65535LL)
+                {
+                    (tag_type3 = "uint32_t");
+                } else
+                {
+                    (tag_type3 = "uint16_t");
+                }
+            }
+            (enum_str = concatAlloc(concatAlloc(concatAlloc(enum_str, "    "), tag_type3), " tag;\n"));
             (enum_str = concatAlloc(enum_str, "    union {\n"));
             int64_t k = 0LL;
             while (k < ArrayList_Variant_length((&stmt.enum_variants)))
@@ -13349,15 +13409,29 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx)
                         (done_clean = true);
                     }
                 }
-                int64_t underscore_pos = Codegen_str_find(self, clean_enum_name, ((char)(((char)(95LL)))));
-                if (underscore_pos >= 0LL)
-                {
-                    (clean_enum_name = __kai_str_sub(clean_enum_name, 0LL, underscore_pos));
-                }
                 int64_t lt_pos = Codegen_str_find(self, clean_enum_name, ((char)(((char)(60LL)))));
                 if (lt_pos >= 0LL)
                 {
                     (clean_enum_name = __kai_str_sub(clean_enum_name, 0LL, lt_pos));
+                }
+                if (strlen(type_map_get((&self->enum_decls), clean_enum_name)) == 0LL)
+                {
+                    if (Codegen_str_contains(self, clean_enum_name, ((char)(((char)(95LL))))))
+                    {
+                        int64_t i3 = 0LL;
+                        while (i3 < strlen(clean_enum_name))
+                        {
+                            if (clean_enum_name[i3] == ((char)(95LL)))
+                            {
+                                const char* prefix = __kai_str_sub(clean_enum_name, 0LL, i3);
+                                if (strlen(type_map_get((&self->enum_decls), prefix)) > 0LL)
+                                {
+                                    (clean_enum_name = prefix);
+                                }
+                            }
+                            (i3 = (i3 + 1LL));
+                        }
+                    }
                 }
                 const char* enum_idx_str = type_map_get((&self->enum_decls), clean_enum_name);
                 bool found_var = false;
@@ -13407,7 +13481,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx)
                                 const char* e_type = type_map_get((&self->current_type_map), "E");
                                 if (strlen(e_type) == 0LL)
                                 {
-                                    (e_type = "Int");
+                                    (e_type = Codegen_extract_second_type_arg(self, expr_type));
                                 }
                                 (bind_type = e_type);
                             }
@@ -13418,7 +13492,9 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx)
                         (bi = (bi + 1LL));
                     }
                 }
-            } else if (pat_node.kind == PatternKind_pk_else)
+            }
+            bool is_else = (pat_node.kind == PatternKind_pk_else);
+            if (is_else)
             {
                 (cond = "true");
             }
@@ -13426,7 +13502,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx)
             if (case_idx == 0LL)
             {
                 (prefix = concatAlloc(concatAlloc("if (", cond), ")"));
-            } else if (strcmp(cond, "true") == 0LL)
+            } else if (is_else)
             {
                 (prefix = "else");
             } else
@@ -13485,11 +13561,23 @@ const char* Codegen_clean_enum_name(Codegen* self, const char* type_name)
     {
         if (Codegen_str_contains(self, base_name, ((char)(((char)(95LL))))))
         {
-            int64_t underscore_pos = Codegen_str_find(self, base_name, ((char)(((char)(95LL)))));
-            const char* fallback_name = __kai_str_sub(base_name, 0LL, underscore_pos);
-            if (strlen(type_map_get((&self->enum_decls), fallback_name)) > 0LL)
+            const char* best_name = base_name;
+            int64_t i2 = 0LL;
+            while (i2 < strlen(base_name))
             {
-                return fallback_name;
+                if (base_name[i2] == ((char)(95LL)))
+                {
+                    const char* prefix = __kai_str_sub(base_name, 0LL, i2);
+                    if (strlen(type_map_get((&self->enum_decls), prefix)) > 0LL)
+                    {
+                        (best_name = prefix);
+                    }
+                }
+                (i2 = (i2 + 1LL));
+            }
+            if (strcmp(best_name, base_name) != 0LL)
+            {
+                return best_name;
             }
         }
     }
@@ -14451,19 +14539,11 @@ const char* CodegenBuilder_get_expr_type(CodegenBuilder* self, int64_t expr_idx)
                 if (strcmp(s.struct_name, clean_base) == 0LL)
                 {
                     (is_match = true);
-                } else if (CodegenBuilder_str_contains(self, clean_base, ((char)(((char)(95LL))))))
+                } else if ((strlen(clean_base) > strlen(s.struct_name)) && (ArrayList_Str_length((&s.struct_type_params)) > 0LL))
                 {
-                    if (ArrayList_Str_length((&s.struct_type_params)) > 0LL)
+                    if ((clean_base[strlen(s.struct_name)] == ((char)(95LL))) && (strcmp(__kai_str_sub(clean_base, 0LL, strlen(s.struct_name)), s.struct_name) == 0LL))
                     {
-                        int64_t underscore_pos = CodegenBuilder_str_find(self, clean_base, ((char)(((char)(95LL)))));
-                        if (underscore_pos >= 0LL)
-                        {
-                            const char* base_name = __kai_str_sub(clean_base, 0LL, underscore_pos);
-                            if (strcmp(s.struct_name, base_name) == 0LL)
-                            {
-                                (is_match = true);
-                            }
-                        }
+                        (is_match = true);
                     }
                 }
                 if (is_match)
@@ -15030,6 +15110,47 @@ const char* CodegenBuilder_extract_first_type_arg(CodegenBuilder* self, const ch
     if ((start >= 0LL) && (end >= 0LL))
     {
         return __kai_str_sub(type_name, start, end);
+    }
+    return "Int";
+}
+const char* CodegenBuilder_extract_second_type_arg(CodegenBuilder* self, const char* type_name)
+{
+    int64_t start = (-1LL);
+    int64_t end = (-1LL);
+    bool found_lt = false;
+    int64_t i = 0LL;
+    while (i < strlen(type_name))
+    {
+        char c = type_name[i];
+        if (c == ((char)(60LL)))
+        {
+            (found_lt = true);
+        } else if ((c == ((char)(44LL))) && found_lt)
+        {
+            (start = (i + 1LL));
+        } else if ((c == ((char)(62LL))) && (start >= 0LL))
+        {
+            (end = i);
+            break;
+        }
+        (i = (i + 1LL));
+    }
+    if ((start >= 0LL) && (end >= 0LL))
+    {
+        int64_t s = start;
+        int64_t e = end;
+        while ((s < e) && (type_name[s] == ((char)(32LL))))
+        {
+            (s = (s + 1LL));
+        }
+        while ((e > s) && (type_name[(e - 1LL)] == ((char)(32LL))))
+        {
+            (e = (e - 1LL));
+        }
+        if (s < e)
+        {
+            return __kai_str_sub(type_name, s, e);
+        }
     }
     return "Int";
 }
@@ -16289,7 +16410,7 @@ int64_t CodegenBuilder_lower_stmt(CodegenBuilder* self, int64_t kai_stmt_idx)
                             const char* e_type = cgb_map_get((&self->current_type_map), "E");
                             if (strlen(e_type) == 0LL)
                             {
-                                (e_type = "Int");
+                                (e_type = CodegenBuilder_extract_second_type_arg(self, expr_type));
                             }
                             (bind_type = e_type);
                         }
@@ -19556,7 +19677,18 @@ void CPrinter_print_decl(CPrinter* self, CDeclNode decl)
     {
         CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc("struct ", decl.struct_name), " {"));
         CCodeBuilder_indent(self->builder);
-        CCodeBuilder_emit_line(self->builder, "uint8_t tag;");
+        const char* tag_type = "uint8_t";
+        if (ArrayList_Str_length((&decl.tagged_variants)) > 255LL)
+        {
+            if (ArrayList_Str_length((&decl.tagged_variants)) > 65535LL)
+            {
+                (tag_type = "uint32_t");
+            } else
+            {
+                (tag_type = "uint16_t");
+            }
+        }
+        CCodeBuilder_emit_line(self->builder, concatAlloc(tag_type, " tag;"));
         CCodeBuilder_emit_line(self->builder, "union {");
         CCodeBuilder_indent(self->builder);
         int64_t vi = 0LL;

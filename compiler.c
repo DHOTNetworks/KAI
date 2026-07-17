@@ -535,7 +535,6 @@ typedef enum {
     StmtKind_sk_while,
     StmtKind_sk_for,
     StmtKind_sk_return,
-    StmtKind_sk_print,
     StmtKind_sk_expr,
     StmtKind_sk_defer,
     StmtKind_sk_errdefer,
@@ -626,7 +625,6 @@ struct StmtNode {
     bool for_inclusive;
     int64_t for_body;
     int64_t return_value;
-    int64_t print_value;
     int64_t expr_stmt;
     int64_t defer_body;
     int64_t errdefer_body;
@@ -1674,6 +1672,7 @@ void Codegen_monomorphize_enum(Codegen* self, int64_t stmt_idx, const char* conc
 void Codegen_monomorphize_methods(Codegen* self, const char* base_struct_name, const char* concrete_struct_name);
 void Codegen_monomorphize_func(Codegen* self, int64_t func_stmt_idx, const char* mangled_name, ArrayList_Str* type_args);
 const char* Codegen_extract_first_type_arg(Codegen* self, const char* type_name);
+const char* Codegen_extract_second_type_arg(Codegen* self, const char* type_name);
 void Codegen_build_func_types(Codegen* self);
 const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx);
 const char* Codegen_gen_expr_with_expected_type(Codegen* self, int64_t expr_idx, const char* expected_type);
@@ -1713,6 +1712,7 @@ void CodegenBuilder_monomorphize_enum(CodegenBuilder* self, const char* enum_nam
 int64_t CodegenBuilder_str_to_int_safe(CodegenBuilder* self, const char* s);
 const char* CodegenBuilder_substitute_type_params(CodegenBuilder* self, const char* type_name, ArrayList_Str* param_names, ArrayList_Str* arg_types);
 const char* CodegenBuilder_extract_first_type_arg(CodegenBuilder* self, const char* type_name);
+const char* CodegenBuilder_extract_second_type_arg(CodegenBuilder* self, const char* type_name);
 const char* CodegenBuilder_strip_module_prefix(CodegenBuilder* self, const char* name);
 const char* CodegenBuilder_map_type(CodegenBuilder* self, const char* resolved_type);
 bool CodegenBuilder_str_contains(CodegenBuilder* self, const char* s, char target);
@@ -7122,7 +7122,7 @@ ExprNode new_expr_node(ExprKind kind, int64_t line, int64_t col) {
     return node;
 }
 StmtNode new_stmt_node(StmtKind kind, int64_t line, int64_t col) {
-    StmtNode node = (StmtNode){ .kind = kind, .line = line, .col = col, .block_stmts = empty_int_array(), .vardecl_name = "", .vardecl_type = "", .vardecl_value = (-1LL), .vardecl_mut = false, .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .func_name = "", .func_params = empty_param_array(), .func_return_type = "", .func_body = (-1LL), .func_capability = "", .func_type_params = empty_str_array(), .func_public = false, .struct_name = "", .struct_fields = empty_structfield_array(), .struct_type_params = empty_str_array(), .struct_methods = empty_int_array(), .struct_trait_impls = empty_int_array(), .struct_public = false, .impl_struct_name = "", .impl_trait_name = "", .impl_methods = empty_int_array(), .trait_name = "", .trait_methods = empty_int_array(), .trait_public = false, .enum_name = "", .enum_variants = empty_variant_array(), .enum_type_params = empty_str_array(), .enum_public = false, .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .iflet_var = "", .iflet_expr = (-1LL), .iflet_then = (-1LL), .iflet_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_var = "", .for_start = (-1LL), .for_end = (-1LL), .for_inclusive = false, .for_body = (-1LL), .return_value = (-1LL), .print_value = (-1LL), .expr_stmt = (-1LL), .defer_body = (-1LL), .errdefer_body = (-1LL), .unsafe_body = (-1LL), .extern_name = "", .extern_params = empty_param_array(), .extern_return = "", .import_path = empty_str_array(), .import_alias = "", .cimport_header = "", .cimport_alias = "", .block_drop_vars = empty_dropvarentry_array(), .block_is_loop_body = false, .match_expr = (-1LL), .match_cases = empty_matchcase_array(), .error_name = "", .error_variants = empty_str_array() };
+    StmtNode node = (StmtNode){ .kind = kind, .line = line, .col = col, .block_stmts = empty_int_array(), .vardecl_name = "", .vardecl_type = "", .vardecl_value = (-1LL), .vardecl_mut = false, .assign_target = (-1LL), .assign_value = (-1LL), .assign_op = "", .func_name = "", .func_params = empty_param_array(), .func_return_type = "", .func_body = (-1LL), .func_capability = "", .func_type_params = empty_str_array(), .func_public = false, .struct_name = "", .struct_fields = empty_structfield_array(), .struct_type_params = empty_str_array(), .struct_methods = empty_int_array(), .struct_trait_impls = empty_int_array(), .struct_public = false, .impl_struct_name = "", .impl_trait_name = "", .impl_methods = empty_int_array(), .trait_name = "", .trait_methods = empty_int_array(), .trait_public = false, .enum_name = "", .enum_variants = empty_variant_array(), .enum_type_params = empty_str_array(), .enum_public = false, .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .iflet_var = "", .iflet_expr = (-1LL), .iflet_then = (-1LL), .iflet_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_var = "", .for_start = (-1LL), .for_end = (-1LL), .for_inclusive = false, .for_body = (-1LL), .return_value = (-1LL), .expr_stmt = (-1LL), .defer_body = (-1LL), .errdefer_body = (-1LL), .unsafe_body = (-1LL), .extern_name = "", .extern_params = empty_param_array(), .extern_return = "", .import_path = empty_str_array(), .import_alias = "", .cimport_header = "", .cimport_alias = "", .block_drop_vars = empty_dropvarentry_array(), .block_is_loop_body = false, .match_expr = (-1LL), .match_cases = empty_matchcase_array(), .error_name = "", .error_variants = empty_str_array() };
     return node;
 }
 PatternNode new_pattern_node(PatternKind kind) {
@@ -9127,10 +9127,6 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     TypeChecker_restore_tracking_state(self, snapshot);
     return;
 }
-    if (stmt.kind == StmtKind_sk_print) {
-    TypeChecker_check_expr(self, stmt.print_value);
-    return;
-}
 }
 void TypeChecker_check_expr(TypeChecker* self, int64_t expr_idx) {
     if (expr_idx < 0LL) {
@@ -10566,8 +10562,16 @@ void Codegen_monomorphize_enum(Codegen* self, int64_t stmt_idx, const char* conc
 }
     tags_str = concatAlloc(concatAlloc(concatAlloc(tags_str, "} "), tags_name), ";\n");
     (void)(StringBuilder_append(&(self->struct_decls), tags_str));
+    const char* tag_type2 = "uint8_t";
+    if (ArrayList_Variant_length(&(stmt.enum_variants)) > 255LL) {
+    if (ArrayList_Variant_length(&(stmt.enum_variants)) > 65535LL) {
+    tag_type2 = "uint32_t";
+} else {
+    tag_type2 = "uint16_t";
+}
+}
     const char* body = concatAlloc(concatAlloc("struct ", concrete_name), " {\n");
-    body = concatAlloc(body, "    uint8_t tag;\n");
+    body = concatAlloc(concatAlloc(concatAlloc(body, "    "), tag_type2), " tag;\n");
     body = concatAlloc(body, "    union {\n");
     i = 0LL;
     while (i < ArrayList_Variant_length(&(stmt.enum_variants))) {
@@ -10756,6 +10760,38 @@ const char* Codegen_extract_first_type_arg(Codegen* self, const char* type_name)
 }
     if ((start >= 0LL) && (end >= 0LL)) {
     return __kai_str_sub(type_name, start, end);
+}
+    return "Int";
+}
+const char* Codegen_extract_second_type_arg(Codegen* self, const char* type_name) {
+    int64_t start = (-1LL);
+    int64_t end = (-1LL);
+    bool found_lt = false;
+    int64_t i = 0LL;
+    while (i < (type_name ? strlen(type_name) : 0)) {
+    char c = (type_name)[i];
+    if (c == ((char)(60LL))) {
+    found_lt = true;
+} else if ((c == ((char)(44LL))) && found_lt) {
+    start = (i + 1LL);
+} else if ((c == ((char)(62LL))) && (start >= 0LL)) {
+    end = i;
+    break;
+}
+    i = (i + 1LL);
+}
+    if ((start >= 0LL) && (end >= 0LL)) {
+    int64_t s = start;
+    int64_t e = end;
+    while ((s < e) && ((type_name)[s] == ((char)(32LL)))) {
+    s = (s + 1LL);
+}
+    while ((e > s) && ((type_name)[(e - 1LL)] == ((char)(32LL)))) {
+    e = (e - 1LL);
+}
+    if (s < e) {
+    return __kai_str_sub(type_name, s, e);
+}
 }
     return "Int";
 }
@@ -11006,13 +11042,9 @@ const char* Codegen_get_expr_type(Codegen* self, int64_t expr_idx) {
     bool is_match = false;
     if (strcmp(stmt.struct_name, clean_type) == 0) {
     is_match = true;
-} else if (Codegen_str_contains(self, clean_type, ((char)(95LL)))) {
-    if (ArrayList_Str_length(&(stmt.struct_type_params)) > 0LL) {
-    int64_t underscore_pos = Codegen_str_find(self, clean_type, ((char)(95LL)));
-    const char* base_name = __kai_str_sub(clean_type, 0LL, underscore_pos);
-    if (strcmp(stmt.struct_name, base_name) == 0) {
+} else if (((clean_type ? strlen(clean_type) : 0) > (stmt.struct_name ? strlen(stmt.struct_name) : 0)) && (ArrayList_Str_length(&(stmt.struct_type_params)) > 0LL)) {
+    if (((clean_type)[(stmt.struct_name ? strlen(stmt.struct_name) : 0)] == ((char)(95LL))) && (strcmp(__kai_str_sub(clean_type, 0LL, (stmt.struct_name ? strlen(stmt.struct_name) : 0)), stmt.struct_name) == 0)) {
     is_match = true;
-}
 }
 }
     if (is_match) {
@@ -12350,7 +12382,15 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     enum_str = concatAlloc(concatAlloc(concatAlloc(enum_str, "} "), tags_name), ";\n");
     enum_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(enum_str, "typedef struct "), name), " "), name), ";\n");
     enum_str = concatAlloc(concatAlloc(concatAlloc(enum_str, "struct "), name), " {\n");
-    enum_str = concatAlloc(enum_str, "    uint8_t tag;\n");
+    const char* tag_type3 = "uint8_t";
+    if (ArrayList_Variant_length(&(stmt.enum_variants)) > 255LL) {
+    if (ArrayList_Variant_length(&(stmt.enum_variants)) > 65535LL) {
+    tag_type3 = "uint32_t";
+} else {
+    tag_type3 = "uint16_t";
+}
+}
+    enum_str = concatAlloc(concatAlloc(concatAlloc(enum_str, "    "), tag_type3), " tag;\n");
     enum_str = concatAlloc(enum_str, "    union {\n");
     int64_t k = 0LL;
     while (k < ArrayList_Variant_length(&(stmt.enum_variants))) {
@@ -12698,24 +12738,6 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     if (stmt.kind == StmtKind_sk_expr) {
     return concatAlloc(Codegen_gen_expr(self, stmt.expr_stmt), ";");
 }
-    if (stmt.kind == StmtKind_sk_print) {
-    int64_t arg = stmt.print_value;
-    const char* val = Codegen_gen_expr(self, arg);
-    const char* arg_type = Codegen_get_expr_type(self, arg);
-    if (strcmp(arg_type, "Int") == 0) {
-    return concatAlloc(concatAlloc("__kai_print_int(", val), ");");
-}
-    if (strcmp(arg_type, "Float") == 0) {
-    return concatAlloc(concatAlloc("__kai_print_float(", val), ");");
-}
-    if (strcmp(arg_type, "Char") == 0) {
-    return concatAlloc(concatAlloc("printf(\"%c\\n\", (char)(", val), "));");
-}
-    if (strcmp(arg_type, "Bool") == 0) {
-    return concatAlloc(concatAlloc("printf(\"%s\\n\", (", val), ") ? \"true\" : \"false\");");
-}
-    return concatAlloc(concatAlloc("printf(\"%s\\n\", ", val), ");");
-}
     if (stmt.kind == StmtKind_sk_unsafe) {
     return Codegen_gen_stmt(self, stmt.unsafe_body);
 }
@@ -12863,13 +12885,23 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     done_clean = true;
 }
 }
-    int64_t underscore_pos = Codegen_str_find(self, clean_enum_name, ((char)(95LL)));
-    if (underscore_pos >= 0LL) {
-    clean_enum_name = __kai_str_sub(clean_enum_name, 0LL, underscore_pos);
-}
     int64_t lt_pos = Codegen_str_find(self, clean_enum_name, ((char)(60LL)));
     if (lt_pos >= 0LL) {
     clean_enum_name = __kai_str_sub(clean_enum_name, 0LL, lt_pos);
+}
+    if ((type_map_get(&(self->enum_decls), clean_enum_name) ? strlen(type_map_get(&(self->enum_decls), clean_enum_name)) : 0) == 0LL) {
+    if (Codegen_str_contains(self, clean_enum_name, ((char)(95LL)))) {
+    int64_t i3 = 0LL;
+    while (i3 < (clean_enum_name ? strlen(clean_enum_name) : 0)) {
+    if ((clean_enum_name)[i3] == ((char)(95LL))) {
+    const char* prefix = __kai_str_sub(clean_enum_name, 0LL, i3);
+    if ((type_map_get(&(self->enum_decls), prefix) ? strlen(type_map_get(&(self->enum_decls), prefix)) : 0) > 0LL) {
+    clean_enum_name = prefix;
+}
+}
+    i3 = (i3 + 1LL);
+}
+}
 }
     const char* enum_idx_str = type_map_get(&(self->enum_decls), clean_enum_name);
     bool found_var = false;
@@ -12908,7 +12940,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 } else if (strcmp(bind_type, "E") == 0) {
     const char* e_type = type_map_get(&(self->current_type_map), "E");
     if ((e_type ? strlen(e_type) : 0) == 0LL) {
-    e_type = "Int";
+    e_type = Codegen_extract_second_type_arg(self, expr_type);
 }
     bind_type = e_type;
 }
@@ -12919,13 +12951,15 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
     bi = (bi + 1LL);
 }
 }
-} else if (pat_node.kind == PatternKind_pk_else) {
+}
+    bool is_else = (pat_node.kind == PatternKind_pk_else);
+    if (is_else) {
     cond = "true";
 }
     const char* prefix = "";
     if (case_idx == 0LL) {
     prefix = concatAlloc(concatAlloc("if (", cond), ")");
-} else if (strcmp(cond, "true") == 0) {
+} else if (is_else) {
     prefix = "else";
 } else {
     prefix = concatAlloc(concatAlloc("else if (", cond), ")");
@@ -12970,10 +13004,19 @@ const char* Codegen_clean_enum_name(Codegen* self, const char* type_name) {
 }
     if ((type_map_get(&(self->enum_decls), base_name) ? strlen(type_map_get(&(self->enum_decls), base_name)) : 0) == 0LL) {
     if (Codegen_str_contains(self, base_name, ((char)(95LL)))) {
-    int64_t underscore_pos = Codegen_str_find(self, base_name, ((char)(95LL)));
-    const char* fallback_name = __kai_str_sub(base_name, 0LL, underscore_pos);
-    if ((type_map_get(&(self->enum_decls), fallback_name) ? strlen(type_map_get(&(self->enum_decls), fallback_name)) : 0) > 0LL) {
-    return fallback_name;
+    const char* best_name = base_name;
+    int64_t i2 = 0LL;
+    while (i2 < (base_name ? strlen(base_name) : 0)) {
+    if ((base_name)[i2] == ((char)(95LL))) {
+    const char* prefix = __kai_str_sub(base_name, 0LL, i2);
+    if ((type_map_get(&(self->enum_decls), prefix) ? strlen(type_map_get(&(self->enum_decls), prefix)) : 0) > 0LL) {
+    best_name = prefix;
+}
+}
+    i2 = (i2 + 1LL);
+}
+    if (strcmp(best_name, base_name) != 0) {
+    return best_name;
 }
 }
 }
@@ -13750,15 +13793,9 @@ const char* CodegenBuilder_get_expr_type(CodegenBuilder* self, int64_t expr_idx)
     bool is_match = false;
     if (strcmp(s.struct_name, clean_base) == 0) {
     is_match = true;
-} else if (CodegenBuilder_str_contains(self, clean_base, ((char)(95LL)))) {
-    if (ArrayList_Str_length(&(s.struct_type_params)) > 0LL) {
-    int64_t underscore_pos = CodegenBuilder_str_find(self, clean_base, ((char)(95LL)));
-    if (underscore_pos >= 0LL) {
-    const char* base_name = __kai_str_sub(clean_base, 0LL, underscore_pos);
-    if (strcmp(s.struct_name, base_name) == 0) {
+} else if ((strlen(clean_base) > strlen(s.struct_name)) && (ArrayList_Str_length(&(s.struct_type_params)) > 0LL)) {
+    if (((clean_base)[strlen(s.struct_name)] == ((char)(95LL))) && (strcmp(__kai_str_sub(clean_base, 0LL, strlen(s.struct_name)), s.struct_name) == 0)) {
     is_match = true;
-}
-}
 }
 }
     if (is_match) {
@@ -14214,6 +14251,38 @@ const char* CodegenBuilder_extract_first_type_arg(CodegenBuilder* self, const ch
 }
     if ((start >= 0LL) && (end >= 0LL)) {
     return __kai_str_sub(type_name, start, end);
+}
+    return "Int";
+}
+const char* CodegenBuilder_extract_second_type_arg(CodegenBuilder* self, const char* type_name) {
+    int64_t start = (-1LL);
+    int64_t end = (-1LL);
+    bool found_lt = false;
+    int64_t i = 0LL;
+    while (i < strlen(type_name)) {
+    char c = (type_name)[i];
+    if (c == ((char)(60LL))) {
+    found_lt = true;
+} else if ((c == ((char)(44LL))) && found_lt) {
+    start = (i + 1LL);
+} else if ((c == ((char)(62LL))) && (start >= 0LL)) {
+    end = i;
+    break;
+}
+    i = (i + 1LL);
+}
+    if ((start >= 0LL) && (end >= 0LL)) {
+    int64_t s = start;
+    int64_t e = end;
+    while ((s < e) && ((type_name)[s] == ((char)(32LL)))) {
+    s = (s + 1LL);
+}
+    while ((e > s) && ((type_name)[(e - 1LL)] == ((char)(32LL)))) {
+    e = (e - 1LL);
+}
+    if (s < e) {
+    return __kai_str_sub(type_name, s, e);
+}
 }
     return "Int";
 }
@@ -14898,46 +14967,6 @@ int64_t CodegenBuilder_lower_stmt(CodegenBuilder* self, int64_t kai_stmt_idx) {
     int64_t assign_idx = CodegenBuilder_push_expr(self, cexpr_new_assign(target_idx, rhs_idx, op));
     return CodegenBuilder_push_c_stmt(self, cstmt_new_expr(assign_idx));
 }
-    if (stmt.kind == StmtKind_sk_print) {
-    int64_t arg_idx = CodegenBuilder_gen_expr(self, stmt.print_value);
-    const char* arg_type = CodegenBuilder_get_expr_type(self, stmt.print_value);
-    if (strcmp(arg_type, "Int") == 0) {
-    ArrayList_Int args = ArrayList_Int_init(self->allocator);
-    ArrayList_Int_push(&(args), arg_idx);
-    int64_t call_idx = CodegenBuilder_push_expr(self, cexpr_new_call("__kai_print_int", args));
-    return CodegenBuilder_push_c_stmt(self, cstmt_new_expr(call_idx));
-} else if (strcmp(arg_type, "Float") == 0) {
-    ArrayList_Int args = ArrayList_Int_init(self->allocator);
-    ArrayList_Int_push(&(args), arg_idx);
-    int64_t call_idx = CodegenBuilder_push_expr(self, cexpr_new_call("__kai_print_float", args));
-    return CodegenBuilder_push_c_stmt(self, cstmt_new_expr(call_idx));
-} else if (strcmp(arg_type, "Char") == 0) {
-    int64_t fmt = CodegenBuilder_push_expr(self, cexpr_new_str("\"%c\\n\""));
-    int64_t cast = CodegenBuilder_push_expr(self, cexpr_new_cast(ctype_char(), arg_idx));
-    ArrayList_Int args = ArrayList_Int_init(self->allocator);
-    ArrayList_Int_push(&(args), fmt);
-    ArrayList_Int_push(&(args), cast);
-    int64_t call_idx = CodegenBuilder_push_expr(self, cexpr_new_call("printf", args));
-    return CodegenBuilder_push_c_stmt(self, cstmt_new_expr(call_idx));
-} else if (strcmp(arg_type, "Bool") == 0) {
-    int64_t fmt = CodegenBuilder_push_expr(self, cexpr_new_str("\"%s\\n\""));
-    int64_t true_str = CodegenBuilder_push_expr(self, cexpr_new_str("\"true\""));
-    int64_t false_str = CodegenBuilder_push_expr(self, cexpr_new_str("\"false\""));
-    int64_t tern = CodegenBuilder_push_expr(self, cexpr_new_ternary(arg_idx, true_str, false_str));
-    ArrayList_Int args = ArrayList_Int_init(self->allocator);
-    ArrayList_Int_push(&(args), fmt);
-    ArrayList_Int_push(&(args), tern);
-    int64_t call_idx = CodegenBuilder_push_expr(self, cexpr_new_call("printf", args));
-    return CodegenBuilder_push_c_stmt(self, cstmt_new_expr(call_idx));
-} else {
-    int64_t fmt = CodegenBuilder_push_expr(self, cexpr_new_str("\"%s\\n\""));
-    ArrayList_Int args = ArrayList_Int_init(self->allocator);
-    ArrayList_Int_push(&(args), fmt);
-    ArrayList_Int_push(&(args), arg_idx);
-    int64_t call_idx = CodegenBuilder_push_expr(self, cexpr_new_call("printf", args));
-    return CodegenBuilder_push_c_stmt(self, cstmt_new_expr(call_idx));
-}
-}
     if (stmt.kind == StmtKind_sk_func_decl) {
     return (-1LL);
 }
@@ -15248,7 +15277,7 @@ int64_t CodegenBuilder_lower_stmt(CodegenBuilder* self, int64_t kai_stmt_idx) {
 } else if (strcmp(bind_type, "E") == 0) {
     const char* e_type = cgb_map_get(&(self->current_type_map), "E");
     if (strlen(e_type) == 0LL) {
-    e_type = "Int";
+    e_type = CodegenBuilder_extract_second_type_arg(self, expr_type);
 }
     bind_type = e_type;
 }
@@ -16630,47 +16659,6 @@ void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
 }
     return;
 }
-    if (stmt.kind == StmtKind_sk_print) {
-    int64_t arg_idx = CodegenBuilder_gen_expr(self, stmt.print_value);
-    const char* arg_type = CodegenBuilder_get_expr_type(self, stmt.print_value);
-    if (strcmp(arg_type, "Int") == 0) {
-    ArrayList_Int args = ArrayList_Int_init(self->allocator);
-    ArrayList_Int_push(&(args), arg_idx);
-    int64_t call_idx = CodegenBuilder_push_expr(self, cexpr_new_call("__kai_print_int", args));
-    CodegenBuilder_emit_c_stmt(self, cstmt_new_expr(call_idx));
-} else if (strcmp(arg_type, "Float") == 0) {
-    ArrayList_Int args = ArrayList_Int_init(self->allocator);
-    ArrayList_Int_push(&(args), arg_idx);
-    int64_t call_idx = CodegenBuilder_push_expr(self, cexpr_new_call("__kai_print_float", args));
-    CodegenBuilder_emit_c_stmt(self, cstmt_new_expr(call_idx));
-} else if (strcmp(arg_type, "Char") == 0) {
-    int64_t fmt = CodegenBuilder_push_expr(self, cexpr_new_str("\"%c\\n\""));
-    int64_t cast = CodegenBuilder_push_expr(self, cexpr_new_cast(ctype_char(), arg_idx));
-    ArrayList_Int args = ArrayList_Int_init(self->allocator);
-    ArrayList_Int_push(&(args), fmt);
-    ArrayList_Int_push(&(args), cast);
-    int64_t call_idx = CodegenBuilder_push_expr(self, cexpr_new_call("printf", args));
-    CodegenBuilder_emit_c_stmt(self, cstmt_new_expr(call_idx));
-} else if (strcmp(arg_type, "Bool") == 0) {
-    int64_t fmt = CodegenBuilder_push_expr(self, cexpr_new_str("\"%s\\n\""));
-    int64_t true_str = CodegenBuilder_push_expr(self, cexpr_new_str("\"true\""));
-    int64_t false_str = CodegenBuilder_push_expr(self, cexpr_new_str("\"false\""));
-    int64_t tern = CodegenBuilder_push_expr(self, cexpr_new_ternary(arg_idx, true_str, false_str));
-    ArrayList_Int args = ArrayList_Int_init(self->allocator);
-    ArrayList_Int_push(&(args), fmt);
-    ArrayList_Int_push(&(args), tern);
-    int64_t call_idx = CodegenBuilder_push_expr(self, cexpr_new_call("printf", args));
-    CodegenBuilder_emit_c_stmt(self, cstmt_new_expr(call_idx));
-} else {
-    int64_t fmt = CodegenBuilder_push_expr(self, cexpr_new_str("\"%s\\n\""));
-    ArrayList_Int args = ArrayList_Int_init(self->allocator);
-    ArrayList_Int_push(&(args), fmt);
-    ArrayList_Int_push(&(args), arg_idx);
-    int64_t call_idx = CodegenBuilder_push_expr(self, cexpr_new_call("printf", args));
-    CodegenBuilder_emit_c_stmt(self, cstmt_new_expr(call_idx));
-}
-    return;
-}
     if (stmt.kind == StmtKind_sk_unsafe) {
     CodegenBuilder_gen_stmt(self, stmt.unsafe_body);
     return;
@@ -17955,7 +17943,15 @@ void CPrinter_print_decl(CPrinter* self, CDeclNode decl) {
     if (decl.is_tagged_union_struct) {
     CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc("struct ", decl.struct_name), " {"));
     CCodeBuilder_indent(self->builder);
-    CCodeBuilder_emit_line(self->builder, "uint8_t tag;");
+    const char* tag_type = "uint8_t";
+    if (ArrayList_Str_length(&(decl.tagged_variants)) > 255LL) {
+    if (ArrayList_Str_length(&(decl.tagged_variants)) > 65535LL) {
+    tag_type = "uint32_t";
+} else {
+    tag_type = "uint16_t";
+}
+}
+    CCodeBuilder_emit_line(self->builder, concatAlloc(tag_type, " tag;"));
     CCodeBuilder_emit_line(self->builder, "union {");
     CCodeBuilder_indent(self->builder);
     int64_t vi = 0LL;
@@ -19882,31 +19878,6 @@ void LLVMCodegen_gen_stmt(LLVMCodegen* self, int64_t stmt_idx) {
 }
     if (stmt.kind == StmtKind_sk_defer) {
     LLVMCodegen_gen_stmt(self, stmt.defer_body);
-    return;
-}
-    if (stmt.kind == StmtKind_sk_print) {
-    void* val = LLVMCodegen_gen_expr(self, stmt.print_value);
-    if (val == (void*)(unsigned long long)(0LL)) {
-    return;
-}
-    void* printf_fn = LLVMCodegen_lookup_or_create_func(self, "printf");
-    void* val_type = LLVMTypeOf(val);
-    if (val_type == self->int64_type) {
-    void* fmt_str = LLVMBuildGlobalStringPtr(self->builder, "%lld\n", ".fmt_int");
-    void* p_char = LLVMCodegen_map_type(self, "*Char");
-    void* fn_ty = kai_func_type_2(self->int64_type, p_char, self->int64_type, true);
-    (void)(kai_build_call_2(self->builder, fn_ty, printf_fn, fmt_str, val, ""));
-} else if (val_type == self->double_type) {
-    void* fmt_str = LLVMBuildGlobalStringPtr(self->builder, "%f\n", ".fmt_float");
-    void* p_char = LLVMCodegen_map_type(self, "*Char");
-    void* fn_ty = kai_func_type_2(self->int64_type, p_char, self->double_type, true);
-    (void)(kai_build_call_2(self->builder, fn_ty, printf_fn, fmt_str, val, ""));
-} else if (val != (void*)(unsigned long long)(0LL)) {
-    void* fmt_str = LLVMBuildGlobalStringPtr(self->builder, "%s\n", ".fmt_str");
-    void* p_char = LLVMCodegen_map_type(self, "*Char");
-    void* fn_ty = kai_func_type_2(self->int64_type, p_char, self->ptr_type, true);
-    (void)(kai_build_call_2(self->builder, fn_ty, printf_fn, fmt_str, val, ""));
-}
     return;
 }
     if (stmt.kind == StmtKind_sk_errdefer) {
