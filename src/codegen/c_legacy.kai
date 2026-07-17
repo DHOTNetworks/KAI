@@ -2794,25 +2794,6 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
         return self.gen_expr(stmt.expr_stmt) + ";"
     }
     
-    if stmt.kind == StmtKind.sk_print {
-        let arg = stmt.print_value
-        let val = self.gen_expr(arg)
-        let arg_type = self.get_expr_type(arg)
-        if arg_type == "Int" {
-            return "__kai_print_int(" + val + ");"
-        }
-        if arg_type == "Float" {
-            return "__kai_print_float(" + val + ");"
-        }
-        if arg_type == "Char" {
-            return "printf(\"%c\\n\", (char)(" + val + "));"
-        }
-        if arg_type == "Bool" {
-            return "printf(\"%s\\n\", (" + val + ") ? \"true\" : \"false\");"
-        }
-        return "printf(\"%s\\n\", " + val + ");"
-    }
-    
     if stmt.kind == StmtKind.sk_unsafe {
         return self.gen_stmt(stmt.unsafe_body)
     }

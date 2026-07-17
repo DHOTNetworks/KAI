@@ -1799,6 +1799,7 @@ CStmtNode cstmt_new_for(int64_t init, int64_t cond, int64_t inc, int64_t body);
 CStmtNode cstmt_new_asm(const char* code, bool is_volatile);
 CDeclNode cdecl_new_func(const char* name, const char* ret_type, ArrayList_Str params, bool is_extern, bool is_vararg);
 CPrinter CPrinter_init(CCodeBuilder* builder, ArrayList_CExprNode* expr_pool, ArrayList_CStmtNode* stmt_pool);
+const char* CPrinter_format_cond(CPrinter* self, const char* cond);
 const char* CPrinter_print_expr(CPrinter* self, int64_t idx);
 void CPrinter_print_else_chain(CPrinter* self, int64_t else_idx);
 void CPrinter_print_stmt(CPrinter* self, int64_t idx);
@@ -5292,7 +5293,7 @@ const char* tv_get_str(TokenValue val, StringPool* pool) {
     result = StringPool_get(pool, id);
 } else {
     {
-    printf("error[E0101]: internal error: unexpected token value type tag = %ld\n", val.tag);
+    printf("error[E0101]: internal error: unexpected token value type tag = %d\n", val.tag);
     exit(1LL);
 }
 } 
@@ -17713,6 +17714,12 @@ CPrinter CPrinter_init(CCodeBuilder* builder, ArrayList_CExprNode* expr_pool, Ar
     self.stmt_pool = stmt_pool;
     return self;
 }
+const char* CPrinter_format_cond(CPrinter* self, const char* cond) {
+    if (((strlen(cond) > 1LL) && ((cond)[0LL] == ((char)(40LL)))) && ((cond)[(strlen(cond) - 1LL)] == ((char)(41LL)))) {
+    return cond;
+}
+    return concatAlloc(concatAlloc("(", cond), ")");
+}
 const char* CPrinter_print_expr(CPrinter* self, int64_t idx) {
     if (idx < 0LL) {
     return "";
@@ -17838,7 +17845,7 @@ void CPrinter_print_else_chain(CPrinter* self, int64_t else_idx) {
     CStmtNode else_node = ArrayList_CStmtNode_get(self->stmt_pool, else_idx);
     if (else_node.kind == CStmtKind_cs_if) {
     const char* cond = CPrinter_print_expr(self, else_node.if_cond);
-    CCodeBuilder_append_to_last_line(self->builder, concatAlloc(concatAlloc(" else if (", cond), ")"));
+    CCodeBuilder_append_to_last_line(self->builder, concatAlloc(" else if ", CPrinter_format_cond(self, cond)));
     CPrinter_print_stmt(self, else_node.if_then);
     if (else_node.if_else >= 0LL) {
     CPrinter_print_else_chain(self, else_node.if_else);
@@ -17867,7 +17874,7 @@ void CPrinter_print_stmt(CPrinter* self, int64_t idx) {
 }
     if (node.kind == CStmtKind_cs_if) {
     const char* cond = CPrinter_print_expr(self, node.if_cond);
-    CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc("if (", cond), ")"));
+    CCodeBuilder_emit_line(self->builder, concatAlloc("if ", CPrinter_format_cond(self, cond)));
     CPrinter_print_stmt(self, node.if_then);
     if (node.if_else >= 0LL) {
     CPrinter_print_else_chain(self, node.if_else);
@@ -17875,7 +17882,7 @@ void CPrinter_print_stmt(CPrinter* self, int64_t idx) {
 }
     if (node.kind == CStmtKind_cs_while) {
     const char* cond = CPrinter_print_expr(self, node.while_cond);
-    CCodeBuilder_emit_line(self->builder, concatAlloc(concatAlloc("while (", cond), ")"));
+    CCodeBuilder_emit_line(self->builder, concatAlloc("while ", CPrinter_format_cond(self, cond)));
     CPrinter_print_stmt(self, node.while_body);
 }
     if (node.kind == CStmtKind_cs_for) {

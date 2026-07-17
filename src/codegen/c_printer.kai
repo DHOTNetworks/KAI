@@ -24,6 +24,13 @@ fn init(self, builder: *CCodeBuilder, expr_pool: *ArrayList<CExprNode>, stmt_poo
     self.stmt_pool = stmt_pool
 }
 
+fn format_cond(self, cond: Str) -> Str {
+    if strlen(cond) > 1 && cond[0] == Char(40) && cond[strlen(cond) - 1] == Char(41) {
+        return cond
+    }
+    return "(" + cond + ")"
+}
+
 fn print_expr(self, idx: Int) -> Str {
     if idx < 0 { return "" }
     let node = self.expr_pool.get(idx)
@@ -142,7 +149,7 @@ fn print_else_chain(self, else_idx: Int) {
     let else_node = self.stmt_pool.get(else_idx)
     if else_node.kind == CStmtKind.cs_if {
         let cond = self.print_expr(else_node.if_cond)
-        self.builder.append_to_last_line(" else if (" + cond + ")")
+        self.builder.append_to_last_line(" else if " + self.format_cond(cond))
         self.print_stmt(else_node.if_then)
         if else_node.if_else >= 0 {
             self.print_else_chain(else_node.if_else)
@@ -170,7 +177,7 @@ fn print_stmt(self, idx: Int) {
     }
     if node.kind == CStmtKind.cs_if {
         let cond = self.print_expr(node.if_cond)
-        self.builder.emit_line("if (" + cond + ")")
+        self.builder.emit_line("if " + self.format_cond(cond))
         self.print_stmt(node.if_then)
         if node.if_else >= 0 {
             self.print_else_chain(node.if_else)
@@ -178,7 +185,7 @@ fn print_stmt(self, idx: Int) {
     }
     if node.kind == CStmtKind.cs_while {
         let cond = self.print_expr(node.while_cond)
-        self.builder.emit_line("while (" + cond + ")")
+        self.builder.emit_line("while " + self.format_cond(cond))
         self.print_stmt(node.while_body)
     }
     if node.kind == CStmtKind.cs_for {

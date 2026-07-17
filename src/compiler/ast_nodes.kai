@@ -158,7 +158,6 @@ enum StmtKind {
     case sk_while
     case sk_for
     case sk_return
-    case sk_print
     case sk_expr
     case sk_defer
     case sk_errdefer
@@ -222,7 +221,6 @@ struct StmtNode {
     for_inclusive: Bool
     for_body: Int
     return_value: Int
-    print_value: Int
     expr_stmt: Int
     defer_body: Int
     errdefer_body: Int
@@ -382,7 +380,6 @@ fn new_stmt_node(kind: StmtKind, line: Int, col: Int) -> StmtNode {
         for_inclusive: false,
         for_body: -1,
         return_value: -1,
-        print_value: -1,
         expr_stmt: -1,
         defer_body: -1,
     errdefer_body: -1,

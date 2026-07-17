@@ -1424,47 +1424,6 @@ fn lower_stmt(self, kai_stmt_idx: Int) -> Int {
         return self.push_c_stmt(cstmt_new_expr(assign_idx))
     }
 
-    if stmt.kind == StmtKind.sk_print {
-        let arg_idx = self.gen_expr(stmt.print_value)
-        let arg_type = self.get_expr_type(stmt.print_value)
-        if arg_type == "Int" {
-            var args = ArrayList<Int>(self.allocator)
-            args.push(arg_idx)
-            let call_idx = self.push_expr(cexpr_new_call("__kai_print_int", args))
-            return self.push_c_stmt(cstmt_new_expr(call_idx))
-        } else if arg_type == "Float" {
-            var args = ArrayList<Int>(self.allocator)
-            args.push(arg_idx)
-            let call_idx = self.push_expr(cexpr_new_call("__kai_print_float", args))
-            return self.push_c_stmt(cstmt_new_expr(call_idx))
-        } else if arg_type == "Char" {
-            let fmt = self.push_expr(cexpr_new_str("\"%c\\n\""))
-            let cast = self.push_expr(cexpr_new_cast(ctype_char(), arg_idx))
-            var args = ArrayList<Int>(self.allocator)
-            args.push(fmt)
-            args.push(cast)
-            let call_idx = self.push_expr(cexpr_new_call("printf", args))
-            return self.push_c_stmt(cstmt_new_expr(call_idx))
-        } else if arg_type == "Bool" {
-            let fmt = self.push_expr(cexpr_new_str("\"%s\\n\""))
-            let true_str = self.push_expr(cexpr_new_str("\"true\""))
-            let false_str = self.push_expr(cexpr_new_str("\"false\""))
-            let tern = self.push_expr(cexpr_new_ternary(arg_idx, true_str, false_str))
-            var args = ArrayList<Int>(self.allocator)
-            args.push(fmt)
-            args.push(tern)
-            let call_idx = self.push_expr(cexpr_new_call("printf", args))
-            return self.push_c_stmt(cstmt_new_expr(call_idx))
-        } else {
-            let fmt = self.push_expr(cexpr_new_str("\"%s\\n\""))
-            var args = ArrayList<Int>(self.allocator)
-            args.push(fmt)
-            args.push(arg_idx)
-            let call_idx = self.push_expr(cexpr_new_call("printf", args))
-            return self.push_c_stmt(cstmt_new_expr(call_idx))
-        }
-    }
-
     // Decl types produce no C-AST statement output
     if stmt.kind == StmtKind.sk_func_decl { return -1 }
     if stmt.kind == StmtKind.sk_struct_decl { return -1 }
@@ -3135,48 +3094,6 @@ fn gen_stmt(self, stmt_idx: Int) -> Void {
     if stmt.kind == StmtKind.sk_continue {
         let c_idx = self.lower_stmt(stmt_idx)
         if c_idx >= 0 { self.print_c_stmt(c_idx) }
-        return
-    }
-
-    if stmt.kind == StmtKind.sk_print {
-        let arg_idx = self.gen_expr(stmt.print_value)
-        let arg_type = self.get_expr_type(stmt.print_value)
-        if arg_type == "Int" {
-            var args = ArrayList<Int>(self.allocator)
-            args.push(arg_idx)
-            let call_idx = self.push_expr(cexpr_new_call("__kai_print_int", args))
-            self.emit_c_stmt(cstmt_new_expr(call_idx))
-        } else if arg_type == "Float" {
-            var args = ArrayList<Int>(self.allocator)
-            args.push(arg_idx)
-            let call_idx = self.push_expr(cexpr_new_call("__kai_print_float", args))
-            self.emit_c_stmt(cstmt_new_expr(call_idx))
-        } else if arg_type == "Char" {
-            let fmt = self.push_expr(cexpr_new_str("\"%c\\n\""))
-            let cast = self.push_expr(cexpr_new_cast(ctype_char(), arg_idx))
-            var args = ArrayList<Int>(self.allocator)
-            args.push(fmt)
-            args.push(cast)
-            let call_idx = self.push_expr(cexpr_new_call("printf", args))
-            self.emit_c_stmt(cstmt_new_expr(call_idx))
-        } else if arg_type == "Bool" {
-            let fmt = self.push_expr(cexpr_new_str("\"%s\\n\""))
-            let true_str = self.push_expr(cexpr_new_str("\"true\""))
-            let false_str = self.push_expr(cexpr_new_str("\"false\""))
-            let tern = self.push_expr(cexpr_new_ternary(arg_idx, true_str, false_str))
-            var args = ArrayList<Int>(self.allocator)
-            args.push(fmt)
-            args.push(tern)
-            let call_idx = self.push_expr(cexpr_new_call("printf", args))
-            self.emit_c_stmt(cstmt_new_expr(call_idx))
-        } else {
-            let fmt = self.push_expr(cexpr_new_str("\"%s\\n\""))
-            var args = ArrayList<Int>(self.allocator)
-            args.push(fmt)
-            args.push(arg_idx)
-            let call_idx = self.push_expr(cexpr_new_call("printf", args))
-            self.emit_c_stmt(cstmt_new_expr(call_idx))
-        }
         return
     }
 

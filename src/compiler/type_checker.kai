@@ -1822,10 +1822,6 @@ impl TypeChecker {
             self.restore_tracking_state(snapshot)
             return
         }
-        if stmt.kind == StmtKind.sk_print {
-            self.check_expr(stmt.print_value)
-            return
-        }
     }
 
     fn check_expr(self, expr_idx: Int) -> Void {

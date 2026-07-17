@@ -1991,29 +1991,6 @@ fn gen_stmt(self, stmt_idx: Int) {
         self.gen_stmt(stmt.defer_body)
         return
     }
-    if stmt.kind == StmtKind.sk_print {
-        let val = self.gen_expr(stmt.print_value)
-        if val == (0 as *Void) { return }
-        let printf_fn = self.lookup_or_create_func("printf")
-        let val_type = LLVMTypeOf(val)
-        if val_type == self.int64_type {
-            let fmt_str = LLVMBuildGlobalStringPtr(self.builder, "%lld\n", ".fmt_int")
-            let p_char = self.map_type("*Char")
-            let fn_ty = kai_func_type_2(self.int64_type, p_char, self.int64_type, true)
-            let _ = kai_build_call_2(self.builder, fn_ty, printf_fn, fmt_str, val, "")
-        } else if val_type == self.double_type {
-            let fmt_str = LLVMBuildGlobalStringPtr(self.builder, "%f\n", ".fmt_float")
-            let p_char = self.map_type("*Char")
-            let fn_ty = kai_func_type_2(self.int64_type, p_char, self.double_type, true)
-            let _ = kai_build_call_2(self.builder, fn_ty, printf_fn, fmt_str, val, "")
-        } else if val != (0 as *Void) {
-            let fmt_str = LLVMBuildGlobalStringPtr(self.builder, "%s\n", ".fmt_str")
-            let p_char = self.map_type("*Char")
-            let fn_ty = kai_func_type_2(self.int64_type, p_char, self.ptr_type, true)
-            let _ = kai_build_call_2(self.builder, fn_ty, printf_fn, fmt_str, val, "")
-        }
-        return
-    }
     if stmt.kind == StmtKind.sk_errdefer {
         self.gen_stmt(stmt.errdefer_body)
         return
