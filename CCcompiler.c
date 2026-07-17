@@ -1791,6 +1791,7 @@ CStmtNode cstmt_new_break();
 CStmtNode cstmt_new_continue();
 CStmtNode cstmt_new_while(int64_t cond, int64_t body);
 CStmtNode cstmt_new_for(int64_t init, int64_t cond, int64_t inc, int64_t body);
+CStmtNode cstmt_new_asm(const char* code, bool is_volatile);
 CDeclNode cdecl_new_func(const char* name, const char* ret_type, ArrayList_Str params, bool is_extern, bool is_vararg);
 CPrinter CPrinter_init(CCodeBuilder* builder, ArrayList_CExprNode* expr_pool, ArrayList_CStmtNode* stmt_pool);
 const char* CPrinter_print_expr(CPrinter* self, int64_t idx);
@@ -4534,6 +4535,37 @@ int64_t Parser_ex_asm(Parser* self, const char* code, bool is_volatile, ArrayLis
     (node.asm_outputs = outputs);
     (node.asm_inputs = inputs);
     (node.asm_clobbers = clobbers);
+    if ((ArrayList_AsmOutput_length((&outputs)) == 1LL))
+    {
+        AsmOutput out0 = ArrayList_AsmOutput_get((&outputs), 0LL);
+        if ((strlen(out0.type_name) > 0LL))
+        {
+            (node.inferred_type = out0.type_name);
+        }
+    } else if ((ArrayList_AsmOutput_length((&outputs)) > 1LL))
+    {
+        bool all_typed = true;
+        int64_t ti = 0LL;
+        const char* types_str = "";
+        while ((ti < ArrayList_AsmOutput_length((&outputs))))
+        {
+            AsmOutput out = ArrayList_AsmOutput_get((&outputs), ti);
+            if ((strlen(out.type_name) == 0LL))
+            {
+                (all_typed = false);
+            }
+            if ((strlen(types_str) > 0LL))
+            {
+                (types_str = concatAlloc(types_str, ", "));
+            }
+            (types_str = concatAlloc(types_str, out.type_name));
+            (ti = (ti + 1LL));
+        }
+        if (all_typed)
+        {
+            (node.inferred_type = concatAlloc(concatAlloc("(", types_str), ")"));
+        }
+    }
     ArrayList_ExprNode_push(self->expr_pool, node);
     return (ArrayList_ExprNode_length(self->expr_pool) - 1LL);
 }
@@ -15798,6 +15830,8 @@ int64_t CodegenBuilder_lower_stmt(CodegenBuilder* self, int64_t kai_stmt_idx)
     StmtNode stmt = ArrayList_StmtNode_get(self->stmt_pool, kai_stmt_idx);
     if ((stmt.kind == StmtKind_sk_block))
     {
+        ArrayList_Int_push((&self->block_stack), kai_stmt_idx);
+        ArrayList_Int_push((&self->defer_depths), ArrayList_Int_length((&self->defer_stack)));
         ArrayList_Int lowered = ArrayList_Int_init(self->allocator);
         int64_t i = 0LL;
         while ((i < ArrayList_Int_length((&stmt.block_stmts))))
@@ -15809,6 +15843,31 @@ int64_t CodegenBuilder_lower_stmt(CodegenBuilder* self, int64_t kai_stmt_idx)
             }
             (i = (i + 1LL));
         }
+        int64_t start_idx = ArrayList_Int_pop((&self->defer_depths));
+        while ((ArrayList_Int_length((&self->defer_stack)) > start_idx))
+        {
+            int64_t def_idx = ArrayList_Int_pop((&self->defer_stack));
+            StmtNode def_node = ArrayList_StmtNode_get(self->stmt_pool, def_idx);
+            int64_t def_body_idx = CodegenBuilder_lower_stmt(self, def_node.defer_body);
+            if ((def_body_idx >= 0LL))
+            {
+                ArrayList_Int_push((&lowered), def_body_idx);
+            }
+        }
+        int64_t di = 0LL;
+        while ((di < ArrayList_DropVarEntry_length((&stmt.block_drop_vars))))
+        {
+            DropVarEntry entry = ArrayList_DropVarEntry_get((&stmt.block_drop_vars), di);
+            int64_t var_ident = CodegenBuilder_push_expr(self, cexpr_new_ident(entry.name));
+            int64_t addr_expr = CodegenBuilder_push_expr(self, cexpr_new_unary("&", var_ident, true));
+            ArrayList_Int drop_args = ArrayList_Int_init(self->allocator);
+            ArrayList_Int_push((&drop_args), addr_expr);
+            int64_t drop_call = CodegenBuilder_push_expr(self, cexpr_new_call(concatAlloc(entry.base_type, "_drop"), drop_args));
+            int64_t drop_stmt = CodegenBuilder_push_c_stmt(self, cstmt_new_expr(drop_call));
+            ArrayList_Int_push((&lowered), drop_stmt);
+            (di = (di + 1LL));
+        }
+        ArrayList_Int_pop((&self->block_stack));
         return CodegenBuilder_push_c_stmt(self, cstmt_new_block(lowered));
     }
     if ((stmt.kind == StmtKind_sk_expr))
@@ -16370,12 +16429,6 @@ int64_t CodegenBuilder_lower_stmt(CodegenBuilder* self, int64_t kai_stmt_idx)
                 }
                 (def_i = (def_i - 1LL));
             }
-            (bi = (bi - 1LL));
-        }
-        if ((ArrayList_Int_length((&self->block_stack)) > 0LL))
-        {
-            int64_t b_idx = ArrayList_Int_get((&self->block_stack), (ArrayList_Int_length((&self->block_stack)) - 1LL));
-            StmtNode b_node = ArrayList_StmtNode_get(self->stmt_pool, b_idx);
             int64_t di = 0LL;
             while ((di < ArrayList_DropVarEntry_length((&b_node.block_drop_vars))))
             {
@@ -16389,6 +16442,7 @@ int64_t CodegenBuilder_lower_stmt(CodegenBuilder* self, int64_t kai_stmt_idx)
                 ArrayList_Int_push((&block_stmts), drop_stmt);
                 (di = (di + 1LL));
             }
+            (bi = (bi - 1LL));
         }
         if ((stmt.return_value >= 0LL))
         {
@@ -17711,8 +17765,8 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx)
     }
     if ((expr.kind == ExprKind_ek_asm))
     {
-        const char* decls_str = "";
-        const char* out_ops_str = "";
+        ArrayList_Int body_stmts = ArrayList_Int_init(self->allocator);
+        ArrayList_Str out_ops = ArrayList_Str_init(self->allocator);
         int64_t i = 0LL;
         while ((i < ArrayList_AsmOutput_length((&expr.asm_outputs))))
         {
@@ -17721,49 +17775,30 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx)
             {
                 const char* mapped_type = CodegenBuilder_map_type(self, out.type_name);
                 const char* var_name = concatAlloc("asm_ret_", cgb_int_to_str(i));
-                if ((strlen(decls_str) > 0LL))
-                {
-                    (decls_str = concatAlloc(decls_str, " "));
-                }
-                (decls_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(decls_str, mapped_type), " "), var_name), ";"));
-                if ((strlen(out_ops_str) > 0LL))
-                {
-                    (out_ops_str = concatAlloc(out_ops_str, ", "));
-                }
-                (out_ops_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(out_ops_str, "["), out.name), "] \""), out.constraint), "\" ("), var_name), ")"));
+                CType ct = ctype_new(mapped_type, 0LL, false, false);
+                ArrayList_Int_push((&body_stmts), CodegenBuilder_push_c_stmt(self, cstmt_new_var_decl(ct, var_name, (-1LL))));
+                ArrayList_Str_push((&out_ops), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("[", out.name), "] \""), out.constraint), "\" ("), var_name), ")"));
             } else if ((out.expr_idx >= 0LL))
             {
                 const char* val_str = CodegenBuilder_gen_expr_str(self, out.expr_idx);
-                if ((strlen(out_ops_str) > 0LL))
-                {
-                    (out_ops_str = concatAlloc(out_ops_str, ", "));
-                }
-                (out_ops_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(out_ops_str, "["), out.name), "] \""), out.constraint), "\" ("), val_str), ")"));
+                ArrayList_Str_push((&out_ops), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("[", out.name), "] \""), out.constraint), "\" ("), val_str), ")"));
             }
             (i = (i + 1LL));
         }
-        const char* in_ops_str = "";
+        ArrayList_Str in_ops = ArrayList_Str_init(self->allocator);
         int64_t j = 0LL;
         while ((j < ArrayList_AsmInput_length((&expr.asm_inputs))))
         {
             AsmInput inp = ArrayList_AsmInput_get((&expr.asm_inputs), j);
             const char* val_str = CodegenBuilder_gen_expr_str(self, inp.expr_idx);
-            if ((strlen(in_ops_str) > 0LL))
-            {
-                (in_ops_str = concatAlloc(in_ops_str, ", "));
-            }
-            (in_ops_str = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(in_ops_str, "["), inp.name), "] \""), inp.constraint), "\" ("), val_str), ")"));
+            ArrayList_Str_push((&in_ops), concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc("[", inp.name), "] \""), inp.constraint), "\" ("), val_str), ")"));
             (j = (j + 1LL));
         }
-        const char* clobs_str = "";
+        ArrayList_Str clobs = ArrayList_Str_init(self->allocator);
         int64_t k = 0LL;
         while ((k < ArrayList_Str_length((&expr.asm_clobbers))))
         {
-            if ((strlen(clobs_str) > 0LL))
-            {
-                (clobs_str = concatAlloc(clobs_str, ", "));
-            }
-            (clobs_str = concatAlloc(concatAlloc(concatAlloc(clobs_str, "\""), ArrayList_Str_get((&expr.asm_clobbers), k)), "\""));
+            ArrayList_Str_push((&clobs), concatAlloc(concatAlloc("\"", ArrayList_Str_get((&expr.asm_clobbers), k)), "\""));
             (k = (k + 1LL));
         }
         const char* volatile_prefix = "";
@@ -17771,57 +17806,67 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx)
         {
             (volatile_prefix = "volatile");
         }
-        const char* escaped_asm = "";
-        int64_t c_idx = 0LL;
-        while ((c_idx < strlen(expr.asm_code)))
+        const char* escaped_asm = cb_escape_asm(expr.asm_code);
+        const char* asm_line = concatAlloc(concatAlloc(concatAlloc(concatAlloc("__asm__ ", volatile_prefix), " (\""), escaped_asm), "\"");
+        if ((((ArrayList_Str_length((&out_ops)) > 0LL) || (ArrayList_Str_length((&in_ops)) > 0LL)) || (ArrayList_Str_length((&clobs)) > 0LL)))
         {
-            char c = expr.asm_code[c_idx];
-            if ((c == ((char)(10LL))))
+            const char* out_ops_str = "";
+            int64_t oi = 0LL;
+            while ((oi < ArrayList_Str_length((&out_ops))))
             {
-                (escaped_asm = concatAlloc(escaped_asm, "\\n\\t"));
-            } else if ((c == ((char)(34LL))))
-            {
-                (escaped_asm = concatAlloc(escaped_asm, "\\\""));
-            } else
-            {
-                (escaped_asm = concatAlloc(escaped_asm, cgb_char_to_str(c)));
+                if ((strlen(out_ops_str) > 0LL))
+                {
+                    (out_ops_str = concatAlloc(out_ops_str, ", "));
+                }
+                (out_ops_str = concatAlloc(out_ops_str, ArrayList_Str_get((&out_ops), oi)));
+                (oi = (oi + 1LL));
             }
-            (c_idx = (c_idx + 1LL));
+            (asm_line = concatAlloc(concatAlloc(asm_line, " : "), out_ops_str));
         }
-        const char* asm_stmt = concatAlloc(concatAlloc(concatAlloc(concatAlloc("__asm__ ", volatile_prefix), " (\""), escaped_asm), "\"");
-        if ((((strlen(out_ops_str) > 0LL) || (strlen(in_ops_str) > 0LL)) || (strlen(clobs_str) > 0LL)))
+        if (((ArrayList_Str_length((&in_ops)) > 0LL) || (ArrayList_Str_length((&clobs)) > 0LL)))
         {
-            if ((strlen(out_ops_str) == 0LL))
+            const char* in_ops_str = "";
+            int64_t ii = 0LL;
+            while ((ii < ArrayList_Str_length((&in_ops))))
             {
-                (out_ops_str = " ");
+                if ((strlen(in_ops_str) > 0LL))
+                {
+                    (in_ops_str = concatAlloc(in_ops_str, ", "));
+                }
+                (in_ops_str = concatAlloc(in_ops_str, ArrayList_Str_get((&in_ops), ii)));
+                (ii = (ii + 1LL));
             }
-            if ((strlen(in_ops_str) == 0LL))
-            {
-                (in_ops_str = " ");
-            }
-            if ((strlen(clobs_str) == 0LL))
-            {
-                (clobs_str = " ");
-            }
-            (asm_stmt = concatAlloc(concatAlloc(asm_stmt, " : "), out_ops_str));
-            (asm_stmt = concatAlloc(concatAlloc(asm_stmt, " : "), in_ops_str));
-            (asm_stmt = concatAlloc(concatAlloc(asm_stmt, " : "), clobs_str));
+            (asm_line = concatAlloc(concatAlloc(asm_line, " : "), in_ops_str));
         }
-        (asm_stmt = concatAlloc(asm_stmt, ");"));
-        const char* res = concatAlloc(concatAlloc("({\n", decls_str), "\n");
-        (res = concatAlloc(concatAlloc(concatAlloc(res, "    "), asm_stmt), "\n"));
+        if ((ArrayList_Str_length((&clobs)) > 0LL))
+        {
+            const char* clobs_str = "";
+            int64_t ci = 0LL;
+            while ((ci < ArrayList_Str_length((&clobs))))
+            {
+                if ((strlen(clobs_str) > 0LL))
+                {
+                    (clobs_str = concatAlloc(clobs_str, ", "));
+                }
+                (clobs_str = concatAlloc(clobs_str, ArrayList_Str_get((&clobs), ci)));
+                (ci = (ci + 1LL));
+            }
+            (asm_line = concatAlloc(concatAlloc(asm_line, " : "), clobs_str));
+        }
+        (asm_line = concatAlloc(asm_line, ");"));
+        ArrayList_Int_push((&body_stmts), CodegenBuilder_push_c_stmt(self, cstmt_new_asm(asm_line, expr.asm_is_volatile)));
+        int64_t ret_expr_idx = (-1LL);
         if ((ArrayList_AsmOutput_length((&expr.asm_outputs)) == 1LL))
         {
             AsmOutput out0 = ArrayList_AsmOutput_get((&expr.asm_outputs), 0LL);
             if ((strlen(out0.type_name) > 0LL))
             {
-                (res = concatAlloc(res, "    asm_ret_0;\n"));
+                (ret_expr_idx = CodegenBuilder_push_expr(self, cexpr_new_ident("asm_ret_0")));
             }
         } else if ((ArrayList_AsmOutput_length((&expr.asm_outputs)) > 1LL))
         {
-            const char* types_str = "";
-            int64_t ti = 0LL;
             bool all_typed = true;
+            int64_t ti = 0LL;
             while ((ti < ArrayList_AsmOutput_length((&expr.asm_outputs))))
             {
                 AsmOutput out = ArrayList_AsmOutput_get((&expr.asm_outputs), ti);
@@ -17829,21 +17874,21 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx)
                 {
                     (all_typed = false);
                 }
-                if ((strlen(types_str) > 0LL))
-                {
-                    (types_str = concatAlloc(types_str, ", "));
-                }
-                (types_str = concatAlloc(types_str, out.type_name));
                 (ti = (ti + 1LL));
             }
             if (all_typed)
             {
-                const char* tuple_type = concatAlloc(concatAlloc("(", types_str), ")");
-                const char* mapped_tuple = CodegenBuilder_map_type(self, tuple_type);
+                const char* kai_types_str = "";
                 const char* vals_str = "";
                 int64_t vi = 0LL;
                 while ((vi < ArrayList_AsmOutput_length((&expr.asm_outputs))))
                 {
+                    AsmOutput out = ArrayList_AsmOutput_get((&expr.asm_outputs), vi);
+                    if ((strlen(kai_types_str) > 0LL))
+                    {
+                        (kai_types_str = concatAlloc(kai_types_str, ", "));
+                    }
+                    (kai_types_str = concatAlloc(kai_types_str, out.type_name));
                     if ((strlen(vals_str) > 0LL))
                     {
                         (vals_str = concatAlloc(vals_str, ", "));
@@ -17851,11 +17896,15 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx)
                     (vals_str = concatAlloc(concatAlloc(vals_str, "asm_ret_"), cgb_int_to_str(vi)));
                     (vi = (vi + 1LL));
                 }
-                (res = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(res, "    ("), mapped_tuple), "){ "), vals_str), " };\n"));
+                const char* tuple_type = concatAlloc(concatAlloc("(", kai_types_str), ")");
+                const char* mapped_tuple = CodegenBuilder_map_type(self, tuple_type);
+                ArrayList_Str fields = ArrayList_Str_init(self->allocator);
+                ArrayList_Str_push((&fields), vals_str);
+                CType tuple_ct = ctype_new(mapped_tuple, 0LL, false, false);
+                (ret_expr_idx = CodegenBuilder_push_expr(self, cexpr_new_compound(tuple_ct, fields)));
             }
         }
-        (res = concatAlloc(res, "})"));
-        return CodegenBuilder_push_expr(self, cexpr_new_ident(res));
+        return CodegenBuilder_push_expr(self, cexpr_new_stmt_expr(body_stmts, ret_expr_idx));
     }
     return CodegenBuilder_push_expr(self, cexpr_new_ident(""));
 }
@@ -19309,6 +19358,11 @@ CStmtNode cstmt_new_for(int64_t init, int64_t cond, int64_t inc, int64_t body)
     ArrayList_Int block_stmts = (ArrayList_Int){ .data = ((int64_t*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
     return (CStmtNode){ .kind = CStmtKind_cs_for, .block_stmts = block_stmts, .expr_stmt = (-1LL), .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_init = init, .for_cond = cond, .for_inc = inc, .for_body = body, .do_body = (-1LL), .do_cond = (-1LL), .return_val = (-1LL), .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .switch_expr = (-1LL), .case_val = "", .label_name = "", .asm_code = "", .asm_volatile = false };
 }
+CStmtNode cstmt_new_asm(const char* code, bool is_volatile)
+{
+    ArrayList_Int block_stmts = (ArrayList_Int){ .data = ((int64_t*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
+    return (CStmtNode){ .kind = CStmtKind_cs_asm, .block_stmts = block_stmts, .expr_stmt = (-1LL), .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_init = (-1LL), .for_cond = (-1LL), .for_inc = (-1LL), .for_body = (-1LL), .do_body = (-1LL), .do_cond = (-1LL), .return_val = (-1LL), .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .switch_expr = (-1LL), .case_val = "", .label_name = "", .asm_code = code, .asm_volatile = is_volatile };
+}
 CDeclNode cdecl_new_func(const char* name, const char* ret_type, ArrayList_Str params, bool is_extern, bool is_vararg)
 {
     ArrayList_Int empty_stmts = (ArrayList_Int){ .data = ((int64_t*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
@@ -19570,6 +19624,10 @@ void CPrinter_print_stmt(CPrinter* self, int64_t idx)
     if ((node.kind == CStmtKind_cs_text))
     {
         CCodeBuilder_emit_line(self->builder, node.case_val);
+    }
+    if ((node.kind == CStmtKind_cs_asm))
+    {
+        CCodeBuilder_emit_line(self->builder, node.asm_code);
     }
 }
 void CPrinter_print_decl(CPrinter* self, CDeclNode decl)

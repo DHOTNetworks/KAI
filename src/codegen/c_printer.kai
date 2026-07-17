@@ -214,6 +214,9 @@ fn print_stmt(self, idx: Int) {
     if node.kind == CStmtKind.cs_text {
         self.builder.emit_line(node.case_val)
     }
+    if node.kind == CStmtKind.cs_asm {
+        self.builder.emit_line(node.asm_code)
+    }
 }
 
 fn print_decl(self, decl: CDeclNode) {

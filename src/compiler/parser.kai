@@ -498,6 +498,26 @@ impl Parser {
         node.asm_outputs = outputs
         node.asm_inputs = inputs
         node.asm_clobbers = clobbers
+        if outputs.length() == 1 {
+            let out0 = outputs.get(0)
+            if strlen(out0.type_name) > 0 {
+                node.inferred_type = out0.type_name
+            }
+        } else if outputs.length() > 1 {
+            var all_typed = true
+            var ti = 0
+            var types_str = ""
+            while ti < outputs.length() {
+                let out = outputs.get(ti)
+                if strlen(out.type_name) == 0 { all_typed = false }
+                if strlen(types_str) > 0 { types_str = types_str + ", " }
+                types_str = types_str + out.type_name
+                ti = ti + 1
+            }
+            if all_typed {
+                node.inferred_type = "(" + types_str + ")"
+            }
+        }
         self.expr_pool.push(node)
         return self.expr_pool.length() - 1
 
