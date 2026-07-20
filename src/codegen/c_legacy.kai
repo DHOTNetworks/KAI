@@ -1453,9 +1453,9 @@ fn gen_expr(self, expr_idx: Int) -> Str {
                 let expr_val = self.gen_expr(part.expr_idx)
                 let expr_type = self.get_expr_type(part.expr_idx)
                 if expr_type == "Int" {
-                    part_str = "int_to_str(" + expr_val + ")"
+                    part_str = "({ char _k_fb[24]; snprintf(_k_fb, 24, \"%lld\", (long long)(" + expr_val + ")); _k_fb; })"
                 } else if expr_type == "Char" {
-                    part_str = "char_to_str(" + expr_val + ")"
+                    part_str = "({ char _k_fb[2]; _k_fb[0] = " + expr_val + "; _k_fb[1] = 0; _k_fb; })"
                 } else if expr_type == "Bool" {
                     part_str = "((" + expr_val + ") ? \"true\" : \"false\")"
                 } else if expr_type == "Str" {
@@ -1580,6 +1580,22 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             let arg_val = self.gen_expr(expr.func_args.get(0))
             // NULL-safe: returns 0 for NULL strings instead of crashing
             return "(" + arg_val + " ? strlen(" + arg_val + ") : 0)"
+        }
+        //== Built-in NIFs — buffer-backed, handled inline by codegen
+        if name == "format_int" {
+            let n_arg = self.gen_expr(expr.func_args.get(0))
+            let buf_arg = self.gen_expr(expr.func_args.get(1))
+            let cap_arg = self.gen_expr(expr.func_args.get(2))
+            return "snprintf(" + buf_arg + ", " + cap_arg + ", \"%lld\", (long long)(" + n_arg + "))"
+        }
+        if name == "format_char" {
+            let c_arg = self.gen_expr(expr.func_args.get(0))
+            let buf_arg = self.gen_expr(expr.func_args.get(1))
+            return "((" + buf_arg + "[0] = " + c_arg + "), (" + buf_arg + "[1] = 0), 1)"
+        }
+        if name == "kai_alloca" {
+            let size_arg = self.gen_expr(expr.func_args.get(0))
+            return "__builtin_alloca(" + size_arg + ")"
         }
         var is_struct = false
         var s_idx = 0
@@ -2220,6 +2236,10 @@ fn is_standard_c_func(self, name: Str) -> Bool {
     if name == "sprintf" { return true }
     if name == "snprintf" { return true }
     if name == "sqrt" { return true }
+    if name == "kai_alloca" { return true }
+    if name == "__builtin_alloca" { return true }
+    if name == "format_int" { return true }
+    if name == "format_char" { return true }
     return false
 }
 

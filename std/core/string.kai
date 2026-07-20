@@ -1,5 +1,4 @@
 extern fn strlen(s: Str) -> Int
-extern fn malloc(size: Int) -> *Char
 
 fn char_at(s: Str, i: Int) -> Char {
     return s[i]
@@ -39,6 +38,51 @@ fn length(s: Str) -> Int {
     unsafe {
         return strlen(s)
     }
+}
+
+//== Buffer-backed primitives — write to caller-provided buffer, return bytes written
+// Both are recognized as builtins by the codegen. At runtime the codegen emits inline
+// C (snprintf / char-store). At compile-time the function bodies below run.
+
+fn format_int(n: Int, buf: *Char, cap: Int) -> Int {
+    if cap <= 0 { return 0 }
+    if n == 0 {
+        buf[0] = Char(48)
+        if cap >= 2 { buf[1] = Char(0) }
+        return 1
+    }
+    var num = n
+    var negative = false
+    if num < 0 { negative = true; num = -num }
+    var digits = 0
+    var tmp = num
+    while tmp > 0 {
+        digits = digits + 1
+        tmp = tmp / 10
+    }
+    var total = digits
+    if negative { total = total + 1 }
+    if total >= cap { return 0 }
+    var pos = total
+    buf[pos] = Char(0)
+    while digits > 0 {
+        pos = pos - 1
+        digits = digits - 1
+        buf[pos] = Char(48 + (num % 10))
+        num = num / 10
+    }
+    if negative {
+        pos = pos - 1
+        buf[pos] = Char(45)
+    }
+    return total
+}
+
+fn format_char(c: Char, buf: *Char, cap: Int) -> Int {
+    if cap < 2 { return 0 }
+    buf[0] = c
+    buf[1] = Char(0)
+    return 1
 }
 
 import Allocator from std.core.allocator
@@ -108,24 +152,9 @@ fn int_to_str(n: Int) -> Str {
     unsafe {
         var allocator = KaiAllocator(heads: 0 as *u8, used: 0)
         allocator.init()
-        var sb = StringBuilder(&allocator)
-        var num = n
-        if num < 0 {
-            sb.append_char(Char(45))
-            num = -num
-        }
-        var divisor = 1
-        var tmp = num
-        while tmp >= 10 {
-            divisor = divisor * 10
-            tmp = tmp / 10
-        }
-        while divisor > 0 {
-            let digit = (num / divisor) % 10
-            sb.append_char(Char(48 + digit))
-            divisor = divisor / 10
-        }
-        return sb.to_str()
+        let buf = allocator.alloc(24, 1) as *Char
+        let _ = format_int(n, buf, 24)
+        return buf as Str
     }
 }
 
@@ -133,9 +162,9 @@ fn char_to_str(c: Char) -> Str {
     unsafe {
         var allocator = KaiAllocator(heads: 0 as *u8, used: 0)
         allocator.init()
-        var sb = StringBuilder(&allocator)
-        sb.append_char(c)
-        return sb.to_str()
+        let buf = allocator.alloc(2, 1) as *Char
+        let _ = format_char(c, buf, 2)
+        return buf as Str
     }
 }
 
@@ -151,22 +180,22 @@ fn substring(s: Str, start: Int, end: Int) -> Str {
             real_start = 0
         }
         if real_start >= real_end {
-            let empty = malloc(1 as usize) as *Char
-            if empty != (0 as *Char) {
-                empty[0] = Char(0)
-            }
+            var allocator = KaiAllocator(heads: 0 as *u8, used: 0)
+            allocator.init()
+            let empty = allocator.alloc(1, 1) as *Char
+            empty[0] = Char(0)
             return empty as Str
         }
         let sub_len = real_end - real_start
-        let buf = malloc((sub_len + 1) as usize) as *Char
-        if buf != (0 as *Char) {
-            var i = 0
-            while i < sub_len {
-                buf[i] = s[real_start + i]
-                i = i + 1
-            }
-            buf[sub_len] = Char(0)
+        var allocator = KaiAllocator(heads: 0 as *u8, used: 0)
+        allocator.init()
+        let buf = allocator.alloc(sub_len + 1, 1) as *Char
+        var i = 0
+        while i < sub_len {
+            buf[i] = s[real_start + i]
+            i = i + 1
         }
+        buf[sub_len] = Char(0)
         return buf as Str
     }
 }

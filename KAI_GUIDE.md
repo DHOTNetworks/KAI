@@ -383,7 +383,7 @@ The standard library under `std/` provides modules for system programming:
 |---|---|---|
 | `std.core.allocator` | Heap allocations | `KaiAllocator`, `CAlloc`, `Allocator` |
 | `std.core.array` | Dynamic arrays | `ArrayList<T>` |
-| `std.core.string` | Core strings, converters | `StringBuilder`, `length`, `int_to_str` |
+| `std.core.string` | Core strings, converters | `StringBuilder`, `length`, `int_to_str`, `char_to_str`, `format_int`, `format_char` |
 | `std.io.file` | Filesystem IO | `read_to_string`, `write_string` |
 | `std.io.print` | Output printing | `print`, `printf` |
 | `std.os` | Operating system services | Command line args, env variables |
@@ -395,6 +395,36 @@ The standard library under `std/` provides modules for system programming:
 Kai prevents common bugs via:
 1. **Explicit Propagation**: Memory allocators are passed down; there is no hidden implicit global heap allocator.
 2. **Compile-Time Warnings**: The compiler checks for use-after-free (E0031) and double-free (E0032) conditions at compile-time.
+
+### String Conversion — Three Layers
+
+Choose the right level for the task — no `unsafe` needed most of the time:
+
+```kai
+// Layer 1 — Convenience (mmap-backed, persistent, no unsafe)
+let s = int_to_str(42)    // returns Str, persists until program exit
+let c = char_to_str('X')
+```
+
+```kai
+// Layer 2 — Buffer-backed (zero alloc, hot path). __builtin_alloca is
+// inherently a stack intrinsic, hence unsafe.
+unsafe {
+    let buf = __builtin_alloca(24) as *Char
+    let n = format_int(42, buf, 24)
+    some_func(buf as Str)  // valid until scope exit
+}
+```
+
+```kai
+// Layer 3 — Incremental (complex building with allocator)
+var sb = StringBuilder(&allocator)
+sb.append_str("value: ")
+sb.append_int(42)
+let s = sb.to_str()
+```
+
+**Rule of thumb:** Use `int_to_str` / `char_to_str` for one-off conversions and when the result must outlive the current scope. Use `format_int` / `format_char` in hot loops where you control buffer lifetime. Use `StringBuilder` when building incrementally.
 
 ---
 
@@ -409,6 +439,10 @@ Kai prevents common bugs via:
 3. **Allocator Lifetime**:
    * **DON'T** initialize local slab allocators (`KaiAllocator`) in loop stack frames and pass them to concurrent threads.
    * **DO** allocate dynamic heap data using `CAlloc` or initialize the allocator inside the thread's scope.
+4. **Prefer `int_to_str` / `char_to_str`**:
+   * **DON'T** use `format_int` / `format_char` with `alloca` for everyday string conversion — that's what `int_to_str` / `char_to_str` are for.
+   * **DO** use `int_to_str(n)` — it's clean, safe, and doesn't need `unsafe`.
+   * **DO** use `format_int(n, buf, cap)` only in performance-critical loops where you manage the buffer lifetime.
 
 ---
 

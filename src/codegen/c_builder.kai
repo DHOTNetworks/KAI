@@ -17,11 +17,13 @@ import AsmOutput from compiler.ast_nodes
 import AsmInput from compiler.ast_nodes
 import TokenValue from compiler.token_defs
 import CCodeBuilder from codegen.c_builder_utils
-import cgb_char_to_str from codegen.c_builder_utils
-import cgb_int_to_str from codegen.c_builder_utils
 import cb_escape_asm from codegen.c_builder_utils
 import ImportResolver from compiler.imports
 import StringPool from compiler.string_pool
+import int_to_str from std.core.string
+import char_to_str from std.core.string
+import format_int from std.core.string
+import format_char from std.core.string
 
 import CType from codegen.c_ast_nodes
 import CExprNode from codegen.c_ast_nodes
@@ -503,7 +505,7 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
         var ci = 0
         while ci < strlen(rec_type) {
             let c = rec_type[ci]
-            if c != Char(42) && c != Char(38) { clean_type = clean_type + cgb_char_to_str(c) }
+            if c != Char(42) && c != Char(38) { clean_type = clean_type + char_to_str(c) }
             ci = ci + 1
         }
         if strlen(clean_type) >= 4 && clean_type[0..4] == "mut " { clean_type = clean_type[4..strlen(clean_type)] }
@@ -596,7 +598,7 @@ fn escape_string(self, s: Str) -> Str {
         else if c == Char(9) { res = res + "\\t" }
         else if c == Char(92) { res = res + "\\\\" }
         else if c == Char(34) { res = res + "\\\"" }
-        else { res = res + cgb_char_to_str(c) }
+        else { res = res + char_to_str(c) }
         i = i + 1
     }
     return res
@@ -626,7 +628,7 @@ fn cgb_clean_type_for_mangling(self, s: Str) -> Str {
         else if c == Char(60) || c == Char(62) || c == Char(44) || c == Char(33) || c == Char(63) || c == Char(40) || c == Char(41) {
             result = result + "_"
         }
-        else { result = result + cgb_char_to_str(c) }
+        else { result = result + char_to_str(c) }
         i = i + 1
     }
     return result
@@ -840,7 +842,7 @@ fn substitute_type_params(self, type_name: Str, param_names: *ArrayList<Str>, ar
                         new_res = new_res + arg
                         ri = ri + pn_len
                     } else {
-                        new_res = new_res + cgb_char_to_str(result[ri])
+                        new_res = new_res + char_to_str(result[ri])
                         ri = ri + 1
                     }
                 }
@@ -961,7 +963,7 @@ fn map_type(self, resolved_type: Str) -> Str {
             self.struct_decls.append("struct " + clean_name + " {\n")
             var ti = 0
             while ti < types_list.length() {
-                self.struct_decls.append("    " + self.map_type(types_list.get(ti)) + " f" + cgb_int_to_str(ti) + ";\n")
+                self.struct_decls.append("    " + self.map_type(types_list.get(ti)) + " f" + int_to_str(ti) + ";\n")
                 ti = ti + 1
             }
             self.struct_decls.append("};\n")
@@ -1048,7 +1050,7 @@ fn map_type(self, resolved_type: Str) -> Str {
             self.struct_decls.append("struct " + clean_name + " {\n")
             var ti = 0
             while ti < types_list.length() {
-                self.struct_decls.append("    " + self.map_type(types_list.get(ti)) + " f" + cgb_int_to_str(ti) + ";\n")
+                self.struct_decls.append("    " + self.map_type(types_list.get(ti)) + " f" + int_to_str(ti) + ";\n")
                 ti = ti + 1
             }
             self.struct_decls.append("};\n")
@@ -1247,7 +1249,7 @@ fn cgb_replace_format_specifiers(self, s: Str) -> Str {
             result = result + "%\" PRId64 \""
             i = i + 3
         } else {
-            result = result + cgb_char_to_str(s[i])
+            result = result + char_to_str(s[i])
             i = i + 1
         }
     }
@@ -1307,6 +1309,10 @@ fn is_standard_c_func(self, name: Str) -> Bool {
     if name == "sprintf" { return true }
     if name == "snprintf" { return true }
     if name == "sqrt" { return true }
+    if name == "kai_alloca" { return true }
+    if name == "__builtin_alloca" { return true }
+    if name == "format_int" { return true }
+    if name == "format_char" { return true }
     return false
 }
 
@@ -1645,7 +1651,7 @@ fn lower_stmt(self, kai_stmt_idx: Int) -> Int {
             if pat_node.kind == PatternKind.pk_literal {
                 var lit_c_idx = -1
                 match pat_node.lit_value {
-                    case .tv_int(v) => { lit_c_idx = self.push_expr(cexpr_new_int(cgb_int_to_str(v))) }
+                    case .tv_int(v) => { lit_c_idx = self.push_expr(cexpr_new_int(int_to_str(v))) }
                     case .tv_str(v) => {
                         let raw_s = self.pool.get(v)
                         let esc = self.escape_string(raw_s)
@@ -1659,7 +1665,7 @@ fn lower_stmt(self, kai_stmt_idx: Int) -> Int {
                         else if v == Char(9) { escaped = "'\\t'" }
                         else if v == Char(92) { escaped = "'\\\\'" }
                         else if v == Char(39) { escaped = "'\\''" }
-                        else { escaped = "'" + cgb_char_to_str(v) + "'" }
+                        else { escaped = "'" + char_to_str(v) + "'" }
                         lit_c_idx = self.push_expr(cexpr_new_char(escaped))
                     }
                     case else => { lit_c_idx = self.push_expr(cexpr_new_int("0")) }
@@ -2092,7 +2098,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
             var val_str = "0"
             match expr.lit_value {
                 case .tv_str(v) => { val_str = self.pool.get(v) }
-                case .tv_int(v) => { val_str = cgb_int_to_str(v) }
+                case .tv_int(v) => { val_str = int_to_str(v) }
                 case else => {}
             }
             return self.push_expr(cexpr_new_int(val_str))
@@ -2132,7 +2138,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
                     else if v == Char(9) { lit_str = "'\\t'" }
                     else if v == Char(92) { lit_str = "'\\\\'" }
                     else if v == Char(39) { lit_str = "'\\''" }
-                    else { lit_str = "'" + cgb_char_to_str(v) + "'" }
+                    else { lit_str = "'" + char_to_str(v) + "'" }
                 }
                 case else => {}
             }
@@ -2302,6 +2308,41 @@ fn gen_expr(self, expr_idx: Int) -> Int {
             return self.push_expr(cexpr_new_int("0"))
         }
 
+        //== Built-in NIFs — buffer-backed, handled inline by codegen
+        if name == "format_int" {
+            let n_idx = self.gen_expr(expr.func_args.get(0))
+            let buf_idx = self.gen_expr(expr.func_args.get(1))
+            let cap_idx = self.gen_expr(expr.func_args.get(2))
+            let fmt_str = self.push_expr(cexpr_new_str("\"%lld\""))
+            let ct_ll = ctype_new("long long", 0, false, false)
+            let n_cast = self.push_expr(cexpr_new_cast(ct_ll, n_idx))
+            var snp_args = ArrayList<Int>(self.allocator)
+            snp_args.push(buf_idx)
+            snp_args.push(cap_idx)
+            snp_args.push(fmt_str)
+            snp_args.push(n_cast)
+            return self.push_expr(cexpr_new_call("snprintf", snp_args))
+        }
+        if name == "format_char" {
+            let c_idx = self.gen_expr(expr.func_args.get(0))
+            let buf_idx = self.gen_expr(expr.func_args.get(1))
+            let zero = self.push_expr(cexpr_new_int("0"))
+            let idx0 = self.push_expr(cexpr_new_int("0"))
+            let idx1 = self.push_expr(cexpr_new_int("1"))
+            let store0 = self.push_expr(cexpr_new_index(buf_idx, idx0))
+            let store1 = self.push_expr(cexpr_new_index(buf_idx, idx1))
+            let asgn0 = self.push_expr(cexpr_new_assign(store0, c_idx, "="))
+            let asgn1 = self.push_expr(cexpr_new_assign(store1, zero, "="))
+            let comma0 = self.push_expr(cexpr_new_comma(asgn0, asgn1))
+            return self.push_expr(cexpr_new_comma(comma0, self.push_expr(cexpr_new_int("1"))))
+        }
+        if name == "kai_alloca" {
+            let size_idx = self.gen_expr(expr.func_args.get(0))
+            var args = ArrayList<Int>(self.allocator)
+            args.push(size_idx)
+            return self.push_expr(cexpr_new_call("__builtin_alloca", args))
+        }
+
         var fn_name = name
         var is_struct = false
         var si = 0
@@ -2333,7 +2374,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
         while ai < expr.func_args.length() {
             var p_idx = ai
             if is_struct { p_idx = ai + 1 }
-            let p_key = fn_name + "_param_" + cgb_int_to_str(p_idx)
+            let p_key = fn_name + "_param_" + int_to_str(p_idx)
             let expected_type = cgb_map_get(&self.func_param_types, p_key)
             let arg_idx = self.gen_expr_with_expected_type(expr.func_args.get(ai), expected_type)
             call_args.push(arg_idx)
@@ -2422,7 +2463,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
         var ci = 0
         while ci < strlen(rec_type) {
             let c = rec_type[ci]
-            if c != Char(42) && c != Char(38) { clean_type = clean_type + cgb_char_to_str(c) }
+            if c != Char(42) && c != Char(38) { clean_type = clean_type + char_to_str(c) }
             ci = ci + 1
         }
         if strlen(clean_type) >= 4 && clean_type[0..4] == "mut " {
@@ -2452,7 +2493,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
         }
         var ai = 0
         while ai < expr.meth_args.length() {
-            let p_key = func_name + "_param_" + cgb_int_to_str(ai + 1)
+            let p_key = func_name + "_param_" + int_to_str(ai + 1)
             let expected_type = cgb_map_get(&self.func_param_types, p_key)
             let arg_idx = self.gen_expr(expr.meth_args.get(ai))
             // Wrap in type coercion via cast if needed
@@ -2644,13 +2685,39 @@ fn gen_expr(self, expr_idx: Int) -> Int {
                 let expr_idx = self.gen_expr(part.expr_idx)
                 let expr_type = self.get_expr_type(part.expr_idx)
                 if expr_type == "Int" {
-                    var int_args = ArrayList<Int>(self.allocator)
-                    int_args.push(expr_idx)
-                    part_idx = self.push_expr(cexpr_new_call("cgb_int_to_str", int_args))
+                    var stmts = ArrayList<Int>(self.allocator)
+                    var fb_ident = self.push_expr(cexpr_new_ident("_k_fb"))
+                    var decl_text = self.push_c_stmt(cstmt_new_text("char _k_fb[24];"))
+                    stmts.push(decl_text)
+                    var cap_int = self.push_expr(cexpr_new_int("24"))
+                    var fmt_str = self.push_expr(cexpr_new_str("\"%lld\""))
+                    var ct_ll = ctype_new("long long", 0, false, false)
+                    var n_cast = self.push_expr(cexpr_new_cast(ct_ll, expr_idx))
+                    var snp_args = ArrayList<Int>(self.allocator)
+                    snp_args.push(fb_ident)
+                    snp_args.push(cap_int)
+                    snp_args.push(fmt_str)
+                    snp_args.push(n_cast)
+                    var snp_call = self.push_expr(cexpr_new_call("snprintf", snp_args))
+                    var snp_stmt = self.push_c_stmt(cstmt_new_expr(snp_call))
+                    stmts.push(snp_stmt)
+                    part_idx = self.push_expr(cexpr_new_stmt_expr(stmts, fb_ident))
                 } else if expr_type == "Char" {
-                    var char_args = ArrayList<Int>(self.allocator)
-                    char_args.push(expr_idx)
-                    part_idx = self.push_expr(cexpr_new_call("cgb_char_to_str", char_args))
+                    var stmts = ArrayList<Int>(self.allocator)
+                    var fb_ident = self.push_expr(cexpr_new_ident("_k_fb"))
+                    var decl_text = self.push_c_stmt(cstmt_new_text("char _k_fb[2];"))
+                    stmts.push(decl_text)
+                    var zero = self.push_expr(cexpr_new_int("0"))
+                    var idx0 = self.push_expr(cexpr_new_int("0"))
+                    var idx1 = self.push_expr(cexpr_new_int("1"))
+                    var store0 = self.push_expr(cexpr_new_index(fb_ident, idx0))
+                    var store1 = self.push_expr(cexpr_new_index(fb_ident, idx1))
+                    var asgn0 = self.push_expr(cexpr_new_assign(store0, expr_idx, "="))
+                    var asgn1 = self.push_expr(cexpr_new_assign(store1, zero, "="))
+                    var comma_expr = self.push_expr(cexpr_new_comma(asgn0, asgn1))
+                    var comma_stmt = self.push_c_stmt(cstmt_new_expr(comma_expr))
+                    stmts.push(comma_stmt)
+                    part_idx = self.push_expr(cexpr_new_stmt_expr(stmts, fb_ident))
                 } else if expr_type == "Bool" {
                     let true_str = self.push_expr(cexpr_new_str("\"true\""))
                     let false_str = self.push_expr(cexpr_new_str("\"false\""))
@@ -2899,7 +2966,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
             let out = expr.asm_outputs.get(i)
             if strlen(out.type_name) > 0 {
                 let mapped_type = self.map_type(out.type_name)
-                let var_name = "asm_ret_" + cgb_int_to_str(i)
+                let var_name = "asm_ret_" + int_to_str(i)
                 let ct = ctype_new(mapped_type, 0, false, false)
                 body_stmts.push(self.push_c_stmt(cstmt_new_var_decl(ct, var_name, -1)))
                 out_ops.push("[" + out.name + "] \"" + out.constraint + "\" (" + var_name + ")")
@@ -2989,7 +3056,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
                     if strlen(kai_types_str) > 0 { kai_types_str = kai_types_str + ", " }
                     kai_types_str = kai_types_str + out.type_name
                     if strlen(vals_str) > 0 { vals_str = vals_str + ", " }
-                    vals_str = vals_str + "asm_ret_" + cgb_int_to_str(vi)
+                    vals_str = vals_str + "asm_ret_" + int_to_str(vi)
                     vi = vi + 1
                 }
                 let tuple_type = "(" + kai_types_str + ")"
@@ -3209,12 +3276,12 @@ fn build_func_types(self) -> Void {
         let stmt = self.stmt_pool.get(i)
         if stmt.kind == StmtKind.sk_struct_decl {
             if stmt.struct_type_params.length() > 0 {
-                cgb_map_put(&self.generic_struct_decls, stmt.struct_name, cgb_int_to_str(i))
+                cgb_map_put(&self.generic_struct_decls, stmt.struct_name, int_to_str(i))
             }
         }
         if stmt.kind == StmtKind.sk_enum_decl {
             if stmt.enum_type_params.length() > 0 {
-                cgb_map_put(&self.generic_enum_decls, stmt.enum_name, cgb_int_to_str(i))
+                cgb_map_put(&self.generic_enum_decls, stmt.enum_name, int_to_str(i))
             }
         }
         i = i + 1
@@ -3245,7 +3312,7 @@ fn build_func_types(self) -> Void {
             self.type_defs.append(local_builder.to_str())
         }
         if stmt.kind == StmtKind.sk_enum_decl && stmt.enum_type_params.length() == 0 {
-            cgb_map_put(&self.enum_decls, stmt.enum_name, cgb_int_to_str(i1))
+            cgb_map_put(&self.enum_decls, stmt.enum_name, int_to_str(i1))
             let cename = self.map_type(stmt.enum_name)
             var has_payload = false
             var vi = 0
@@ -3328,7 +3395,7 @@ fn build_func_types(self) -> Void {
             var vi5 = 0
             while vi5 < stmt.error_variants.length() {
                 let vname = stmt.error_variants.get(vi5)
-                variants_list.push("    " + cename + "_" + vname + " = " + cgb_int_to_str(vi5 + 1) + ",")
+                variants_list.push("    " + cename + "_" + vname + " = " + int_to_str(vi5 + 1) + ",")
                 vi5 = vi5 + 1
             }
             
@@ -3378,7 +3445,7 @@ fn build_func_types(self) -> Void {
                 var p_i = 0
                 while p_i < stmt.func_params.length() {
                     let p = stmt.func_params.get(p_i)
-                    let p_key = stmt.func_name + "_param_" + cgb_int_to_str(p_i)
+                    let p_key = stmt.func_name + "_param_" + int_to_str(p_i)
                     cgb_map_put(&self.func_param_types, p_key, p.ptype)
                     p_i = p_i + 1
                 }
@@ -3389,7 +3456,7 @@ fn build_func_types(self) -> Void {
             var p_i = 0
             while p_i < stmt.extern_params.length() {
                 let p = stmt.extern_params.get(p_i)
-                let p_key = stmt.extern_name + "_param_" + cgb_int_to_str(p_i)
+                let p_key = stmt.extern_name + "_param_" + int_to_str(p_i)
                 cgb_map_put(&self.func_param_types, p_key, p.ptype)
                 p_i = p_i + 1
             }
@@ -3410,7 +3477,7 @@ fn build_func_types(self) -> Void {
                     var p_i = 0
                     while p_i < m_node.func_params.length() {
                         let p = m_node.func_params.get(p_i)
-                        let p_key = key + "_param_" + cgb_int_to_str(p_i)
+                        let p_key = key + "_param_" + int_to_str(p_i)
                         cgb_map_put(&self.func_param_types, p_key, p.ptype)
                         p_i = p_i + 1
                     }
@@ -3753,7 +3820,7 @@ fn emit_struct_body_with_deps(self, stmt_idx: Int, emitted: *ArrayList<Str>) {
             var p_i = 0
             while p_i < m_node.func_params.length() {
                 let p = m_node.func_params.get(p_i)
-                let p_key = key + "_param_" + cgb_int_to_str(p_i)
+                let p_key = key + "_param_" + int_to_str(p_i)
                 cgb_map_put(&self.func_param_types, p_key, p.ptype)
                 p_i = p_i + 1
             }

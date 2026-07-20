@@ -1,6 +1,10 @@
 import ArrayList from std.core.array
 import Allocator from std.core.allocator
 import KaiAllocator from std.core.allocator
+import format_int from std.core.string
+import format_char from std.core.string
+import int_to_str from std.core.string
+import char_to_str from std.core.string
 
 extern fn strlen(s: Str) -> Int
 extern fn concatAlloc(left: Str, right: Str) -> Str
@@ -121,7 +125,7 @@ fn cb_escape_string(s: Str) -> Str {
         else if c == Char(9) { res = res + "\\t" }
         else if c == Char(92) { res = res + "\\\\" }
         else if c == Char(34) { res = res + "\\\"" }
-        else { res = res + cgb_char_to_str(c) }
+        else { res = res + char_to_str(c) }
         i = i + 1
     }
     return res
@@ -134,61 +138,10 @@ fn cb_escape_asm(s: Str) -> Str {
         let c = s[i]
         if c == Char(10) { res = res + "\\n\\t" }
         else if c == Char(34) { res = res + "\\\"" }
-        else { res = res + cgb_char_to_str(c) }
+        else { res = res + char_to_str(c) }
         i = i + 1
     }
     return res
 }
 
-//== Standalone replacements for buggy std.core.string functions
 
-// ponytail: cgb_char_to_str/cgb_int_to_str use raw malloc per call.
-// Each call leaks 2 or ~21 bytes — negligible vs concatAlloc chain.
-// No module-level mutable vars in Kai means we can't track last-buf.
-extern fn malloc(size: Int) -> *Char
-
-fn cgb_char_to_str(c: Char) -> Str {
-    unsafe {
-        let buf = malloc(2) as *Char
-        if buf != (0 as *Char) {
-            buf[0] = c
-            buf[1] = Char(0)
-        }
-        return buf as Str
-    }
-}
-
-fn cgb_int_to_str(n: Int) -> Str {
-    if n == 0 { return "0" }
-    var num = n
-    var digits = 0
-    var tmp = num
-    if tmp < 0 { tmp = -tmp }
-    while tmp > 0 {
-        digits = digits + 1
-        tmp = tmp / 10
-    }
-    var negative = false
-    if num < 0 { negative = true; num = -num }
-    var total_len = digits
-    if negative { total_len = total_len + 1 }
-    unsafe {
-        let buf = malloc((total_len + 1) as Int) as *Char
-        if buf != (0 as *Char) {
-            var pos = total_len
-            buf[pos] = Char(0)
-            while pos > 0 && digits > 0 {
-                pos = pos - 1
-                digits = digits - 1
-                let dv = num % 10
-                buf[pos] = Char(48 + dv)
-                num = num / 10
-            }
-            if negative {
-                pos = pos - 1
-                buf[pos] = Char(45)
-            }
-        }
-        return buf as Str
-    }
-}

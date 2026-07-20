@@ -155,6 +155,11 @@ fn print_expr(self, idx: Int) -> Str {
         }
         return "(" + type_str + "){0}"
     }
+    if node.kind == CExprKind.ck_comma {
+        let left = self.print_expr(node.comma_left)
+        let right = self.print_expr(node.comma_right)
+        return "(" + left + ", " + right + ")"
+    }
     if node.kind == CExprKind.ck_stmt_expr {
         var temp_builder = CCodeBuilder(self.builder.alloc)
         var temp_printer = CPrinter(builder: &temp_builder, expr_pool: self.expr_pool, stmt_pool: self.stmt_pool)
