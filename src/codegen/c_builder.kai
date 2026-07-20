@@ -487,6 +487,9 @@ fn get_expr_type(self, expr_idx: Int) -> Str {
                     }
                 }
             }
+            if s.kind == StmtKind.sk_enum_decl && s.enum_name == clean_base {
+                return clean_base
+            }
             fi = fi + 1
         }
         return "Void"
@@ -2097,7 +2100,6 @@ fn gen_expr(self, expr_idx: Int) -> Int {
         if vkind == "INT" {
             var val_str = "0"
             match expr.lit_value {
-                case .tv_str(v) => { val_str = self.pool.get(v) }
                 case .tv_int(v) => { val_str = int_to_str(v) }
                 case else => {}
             }
@@ -2244,6 +2246,43 @@ fn gen_expr(self, expr_idx: Int) -> Int {
     //== Function call
     if expr.kind == ExprKind.ek_func_call {
         let name = expr.func_name
+
+        //== Compile-time constant folding for string conversion
+        if name == "int_to_str" && expr.func_args.length() >= 1 {
+            let arg_expr = self.expr_pool.get(expr.func_args.get(0))
+            if arg_expr.kind == ExprKind.ek_literal && arg_expr.lit_vkind == "INT" {
+                var val_str = "0"
+                match arg_expr.lit_value {
+                    case .tv_int(v) => { val_str = int_to_str(v) }
+                    case else => {}
+                }
+                return self.push_expr(cexpr_new_str("\"" + val_str + "\""))
+            }
+            if arg_expr.kind == ExprKind.ek_unary_op && arg_expr.unop_op == "-" {
+                let inner = self.expr_pool.get(arg_expr.unop_operand)
+                if inner.kind == ExprKind.ek_literal && inner.lit_vkind == "INT" {
+                    var val_str = "0"
+                    match inner.lit_value {
+                        case .tv_int(v) => { val_str = int_to_str(-v) }
+                        case else => {}
+                    }
+                    return self.push_expr(cexpr_new_str("\"" + val_str + "\""))
+                }
+            }
+        }
+        if name == "char_to_str" && expr.func_args.length() >= 1 {
+            let arg_expr = self.expr_pool.get(expr.func_args.get(0))
+            if arg_expr.kind == ExprKind.ek_literal && arg_expr.lit_vkind == "CHAR" {
+                match arg_expr.lit_value {
+                    case .tv_char(v) => {
+                        let s = char_to_str(v)
+                        return self.push_expr(cexpr_new_str("\"" + self.escape_string(s) + "\""))
+                    }
+                    case else => {}
+                }
+            }
+        }
+
         if name == "cast" || name == "as" {
             let target_type = expr.func_type_args.get(0)
             if strlen(target_type) > 0 {
@@ -3517,6 +3556,7 @@ fn build_func_types(self) -> Void {
                     pi2 = pi2 + 1
                 }
                 let ret_type = self.map_type(stmt.func_return_type)
+                if strlen(params_str) == 0 { params_str = "void" }
 
                 self.cur_func_name = stmt.func_name
                 self.cur_return_type = stmt.func_return_type

@@ -2528,7 +2528,6 @@ fn gen_expr(self, expr_idx: Int) -> *Void {
             var val: Int = 0
             match expr.lit_value {
                 case .tv_int(v) => { val = v }
-                case .tv_str(v) => { val = self.str_to_int(self.pool.get(v)) }
                 case else => {}
             }
             return LLVMConstInt(self.int64_type, val, false)

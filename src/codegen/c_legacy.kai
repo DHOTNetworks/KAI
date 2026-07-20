@@ -1368,10 +1368,6 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         let vkind = expr.lit_vkind
         if vkind == "INT" {
             match expr.lit_value {
-                case .tv_str(v) => {
-                    let s: Str = self.pool.get(v)
-                    return s + "LL"
-                }
                 case .tv_int(v) => { return int_to_str(v) + "LL" }
                 case else => { return "0LL" }
             }
@@ -1385,7 +1381,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
         if vkind == "STRING" {
             match expr.lit_value {
                 case .tv_str(v) => {
-                    return "\"" + self.escape_string(self.pool.get(v)) + "\""
+                    return "\"" + self.replace_format_specifiers(self.escape_string(self.pool.get(v))) + "\""
                 }
                 case else => { return "\"\"" }
             }
@@ -1395,16 +1391,6 @@ fn gen_expr(self, expr_idx: Int) -> Str {
                 case .tv_bool(v) => {
                     if v { return "true" }
                     else { return "false" }
-                }
-                case .tv_str(v) => {
-                    var is_true = false
-                    unsafe {
-                        if strcmp(self.pool.get(v), "true") == 0 {
-                            is_true = true
-                        }
-                    }
-                    if is_true { return "true" }
-                    return "false"
                 }
                 case else => { return "false" }
             }
@@ -1447,7 +1433,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             var part_str = ""
             if part.kind == 0 {
                 // Literal string part
-                part_str = "\"" + self.escape_string(part.str_val) + "\""
+                part_str = "\"" + self.replace_format_specifiers(self.escape_string(part.str_val)) + "\""
             } else {
                 // Expression part - generate and format based on type
                 let expr_val = self.gen_expr(part.expr_idx)
@@ -1581,6 +1567,41 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             // NULL-safe: returns 0 for NULL strings instead of crashing
             return "(" + arg_val + " ? strlen(" + arg_val + ") : 0)"
         }
+        //== Compile-time constant folding for string conversion
+        if name == "int_to_str" && expr.func_args.length() >= 1 {
+            let arg_expr = self.expr_pool.get(expr.func_args.get(0))
+            if arg_expr.kind == ExprKind.ek_literal && arg_expr.lit_vkind == "INT" {
+                var val_str = "0"
+                match arg_expr.lit_value {
+                    case .tv_int(v) => { val_str = int_to_str(v) }
+                    case else => {}
+                }
+                return "\"" + val_str + "\""
+            }
+            if arg_expr.kind == ExprKind.ek_unary_op && arg_expr.unop_op == "-" {
+                let inner = self.expr_pool.get(arg_expr.unop_operand)
+                if inner.kind == ExprKind.ek_literal && inner.lit_vkind == "INT" {
+                    var val_str = "0"
+                    match inner.lit_value {
+                        case .tv_int(v) => { val_str = int_to_str(-v) }
+                        case else => {}
+                    }
+                    return "\"" + val_str + "\""
+                }
+            }
+        }
+        if name == "char_to_str" && expr.func_args.length() >= 1 {
+            let arg_expr = self.expr_pool.get(expr.func_args.get(0))
+            if arg_expr.kind == ExprKind.ek_literal && arg_expr.lit_vkind == "CHAR" {
+                match arg_expr.lit_value {
+                    case .tv_char(v) => {
+                        let s = char_to_str(v)
+                        return "\"" + self.escape_string(s) + "\""
+                    }
+                }
+            }
+        }
+
         //== Built-in NIFs — buffer-backed, handled inline by codegen
         if name == "format_int" {
             let n_arg = self.gen_expr(expr.func_args.get(0))
@@ -2953,7 +2974,7 @@ fn gen_stmt(self, stmt_idx: Int) -> Str {
                 var lit_str = ""
                 match pat_node.lit_value {
                     case .tv_int(v) => { lit_str = int_to_str(v) }
-                    case .tv_str(v) => { lit_str = "\"" + self.escape_string(self.pool.get(v)) + "\"" }
+                    case .tv_str(v) => { lit_str = "\"" + self.replace_format_specifiers(self.escape_string(self.pool.get(v))) + "\"" }
                     case .tv_bool(v) => {
                         if v { lit_str = "true" }
                         else { lit_str = "false" }
@@ -3167,6 +3188,20 @@ fn enum_has_payload(self, enum_name: Str) -> Bool {
     return has_payload
 }
 
+fn replace_format_specifiers(self, s: Str) -> Str {
+    var result = ""
+    var i = 0
+    while i < length(s) {
+        if i < length(s) - 2 && s[i] == Char(37) && s[i+1] == Char(108) && s[i+2] == Char(100) {
+            result = result + "%\" PRId64 \""
+            i = i + 3
+        } else {
+            result = result + char_to_str(s[i])
+            i = i + 1
+        }
+    }
+    return result
+}
 fn escape_string(self, s: Str) -> Str {
     var res = ""
     var i = 0
@@ -3355,6 +3390,7 @@ fn generate(self, top_stmt_idx: Int) -> Str {
     result.append("#include <stdio.h>\n")
     result.append("#include <stdlib.h>\n")
     result.append("#include <string.h>\n")
+    result.append("#include <inttypes.h>\n")
 
     // Compat: imported concatAlloc maps to __kai_std_str_concat_alloc
     result.append("#ifndef __kai_std_str_concat_alloc\n")

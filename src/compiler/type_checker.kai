@@ -408,7 +408,9 @@ impl TypeChecker {
 
     fn int_literal_value(self, expr: ExprNode) -> Int {
         match expr.lit_value {
+            case .tv_int(v) => { return v }
             case .tv_str(v) => {
+                // ponytail: legacy tv_str fallback, kept for bootstrap transition safety
                 let sval = self.pool.get(v)
                 let len = length(sval)
                 var res = 0
@@ -429,7 +431,6 @@ impl TypeChecker {
                 }
                 return res
             }
-            case .tv_int(v) => { return v }
             case else => { return 0 }
         }
     }

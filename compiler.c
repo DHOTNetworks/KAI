@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #ifndef __kai_std_str_concat_alloc
 #define __kai_std_str_concat_alloc concatAlloc
 #endif
@@ -1421,6 +1422,7 @@ void Lexer_lex_number(Lexer* self);
 void Lexer_lex_string(Lexer* self);
 void Lexer_lex_char(Lexer* self);
 int64_t Lexer_compute_indent(Lexer* self);
+int64_t Lexer_parse_int(Lexer* self, const char* s);
 void Lexer_lex(Lexer* self);
 char char_at(const char* s, int64_t i);
 bool is_digit(char c);
@@ -1686,6 +1688,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx);
 const char* Codegen_clean_enum_name(Codegen* self, const char* type_name);
 bool Codegen_is_enum_type(Codegen* self, const char* type_name);
 bool Codegen_enum_has_payload(Codegen* self, const char* enum_name);
+const char* Codegen_replace_format_specifiers(Codegen* self, const char* s);
 const char* Codegen_escape_string(Codegen* self, const char* s);
 ArrayList_Str Codegen__collect_loop_drops(Codegen* self);
 void Codegen_emit_struct_body_with_deps(Codegen* self, int64_t stmt_idx, ArrayList_Str* emitted);
@@ -4851,7 +4854,7 @@ void Lexer_lex_number(Lexer* self) {
     Lexer_emit(self, TokenType_FLOAT_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = StringPool_intern(self->pool, num_str) } } });
 } else {
     const char* num_str = StringBuilder_to_str(&(sb));
-    Lexer_emit(self, TokenType_INT_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .payload = { .tv_str = { .v = StringPool_intern(self->pool, num_str) } } });
+    Lexer_emit(self, TokenType_INT_LIT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .payload = { .tv_int = { .v = Lexer_parse_int(self, num_str) } } });
 }
 }
 void Lexer_lex_string(Lexer* self) {
@@ -4957,6 +4960,18 @@ int64_t Lexer_compute_indent(Lexer* self) {
     return indent;
 }
     return (-1LL);
+}
+int64_t Lexer_parse_int(Lexer* self, const char* s) {
+    int64_t res = 0LL;
+    int64_t i = 0LL;
+    while (i < strlen(s)) {
+    char c = (s)[i];
+    if ((c >= ((char)(48LL))) && (c <= ((char)(57LL)))) {
+    res = ((res * 10LL) + (((int64_t)(c)) - 48LL));
+}
+    i = (i + 1LL);
+}
+    return res;
 }
 void Lexer_lex(Lexer* self) {
     bool is_line_start = true;
@@ -5453,7 +5468,7 @@ const char* str_array_join(ArrayList_Str arr, const char* sep) {
     return result;
 }
 void parser_err(const char* source_file, const char* source, const char* code, const char* msg, int64_t line, int64_t col) {
-    printf("%s:%ld:%ld: error[%s]: %s\n", source_file, line, col, code, msg);
+    printf("%s:%" PRId64 ":%" PRId64 ": error[%s]: %s\n", source_file, line, col, code, msg);
     if (line >= 0LL) {
     const char* line_text = get_source_line(source, (line - 1LL));
     if ((line_text ? strlen(line_text) : 0) > 0LL) {
@@ -7375,7 +7390,7 @@ TypeChecker TypeChecker_init(KaiAllocator* allocator, ArrayList_StmtNode* stmt_p
     return self;
 }
 void TypeChecker_err(TypeChecker* self, const char* code, const char* msg, int64_t line, int64_t col) {
-    printf("%s:%ld:%ld: error[%s]: %s\n", self->source_file, line, col, code, msg);
+    printf("%s:%" PRId64 ":%" PRId64 ": error[%s]: %s\n", self->source_file, line, col, code, msg);
     if (line >= 0LL) {
     const char* line_text = get_source_line(self->source, (line - 1LL));
     if ((line_text ? strlen(line_text) : 0) > 0LL) {
@@ -7773,7 +7788,11 @@ bool TypeChecker_is_integer_literal(TypeChecker* self, int64_t expr_idx) {
     return ((expr.kind == ExprKind_ek_literal) && (strcmp(expr.lit_vkind, "INT") == 0));
 }
 int64_t TypeChecker_int_literal_value(TypeChecker* self, ExprNode expr) {
-    if (expr.lit_value.tag == TokenValue_tv_str_TAG) {
+    if (expr.lit_value.tag == TokenValue_tv_int_TAG) {
+    int64_t v = expr.lit_value.payload.tv_int.v;
+
+    return v;
+} else if (expr.lit_value.tag == TokenValue_tv_str_TAG) {
     int64_t v = expr.lit_value.payload.tv_str.v;
 
     const char* sval = StringPool_get(self->pool, v);
@@ -7806,10 +7825,6 @@ int64_t TypeChecker_int_literal_value(TypeChecker* self, ExprNode expr) {
     pos = (pos + 1LL);
 }
     return res;
-} else if (expr.lit_value.tag == TokenValue_tv_int_TAG) {
-    int64_t v = expr.lit_value.payload.tv_int.v;
-
-    return v;
 } else {
     return 0LL;
 } 
@@ -11394,12 +11409,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (expr.kind == ExprKind_ek_literal) {
     const char* vkind = expr.lit_vkind;
     if (strcmp(vkind, "INT") == 0) {
-    if (expr.lit_value.tag == TokenValue_tv_str_TAG) {
-    int64_t v = expr.lit_value.payload.tv_str.v;
-
-    const char* s = StringPool_get(self->pool, v);
-    return concatAlloc(s, "LL");
-} else if (expr.lit_value.tag == TokenValue_tv_int_TAG) {
+    if (expr.lit_value.tag == TokenValue_tv_int_TAG) {
     int64_t v = expr.lit_value.payload.tv_int.v;
 
     return concatAlloc(int_to_str(v), "LL");
@@ -11420,7 +11430,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (expr.lit_value.tag == TokenValue_tv_str_TAG) {
     int64_t v = expr.lit_value.payload.tv_str.v;
 
-    return concatAlloc(concatAlloc("\"", Codegen_escape_string(self, StringPool_get(self->pool, v))), "\"");
+    return concatAlloc(concatAlloc("\"", Codegen_replace_format_specifiers(self, Codegen_escape_string(self, StringPool_get(self->pool, v)))), "\"");
 } else {
     return "\"\"";
 } 
@@ -11434,19 +11444,6 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
 } else {
     return "false";
 }
-} else if (expr.lit_value.tag == TokenValue_tv_str_TAG) {
-    int64_t v = expr.lit_value.payload.tv_str.v;
-
-    bool is_true = false;
-    {
-    if (strcmp(StringPool_get(self->pool, v), "true") == 0LL) {
-    is_true = true;
-}
-}
-    if (is_true) {
-    return "true";
-}
-    return "false";
 } else {
     return "false";
 } 
@@ -11497,7 +11494,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     StrInterpPart part = ArrayList_StrInterpPart_get(&(expr.interp_parts), i);
     const char* part_str = "";
     if (part.kind == 0LL) {
-    part_str = concatAlloc(concatAlloc("\"", Codegen_escape_string(self, part.str_val)), "\"");
+    part_str = concatAlloc(concatAlloc("\"", Codegen_replace_format_specifiers(self, Codegen_escape_string(self, part.str_val))), "\"");
 } else {
     const char* expr_val = Codegen_gen_expr(self, part.expr_idx);
     const char* expr_type = Codegen_get_expr_type(self, part.expr_idx);
@@ -11620,6 +11617,43 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     if (strcmp(name, "length") == 0) {
     const char* arg_val = Codegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0LL));
     return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", arg_val), " ? strlen("), arg_val), ") : 0)");
+}
+    if ((strcmp(name, "int_to_str") == 0) && (ArrayList_Int_length(&(expr.func_args)) >= 1LL)) {
+    ExprNode arg_expr = ArrayList_ExprNode_get(self->expr_pool, ArrayList_Int_get(&(expr.func_args), 0LL));
+    if ((arg_expr.kind == ExprKind_ek_literal) && (strcmp(arg_expr.lit_vkind, "INT") == 0)) {
+    const char* val_str = "0";
+    if (arg_expr.lit_value.tag == TokenValue_tv_int_TAG) {
+    int64_t v = arg_expr.lit_value.payload.tv_int.v;
+
+    val_str = int_to_str(v);
+} else {
+} 
+    return concatAlloc(concatAlloc("\"", val_str), "\"");
+}
+    if ((arg_expr.kind == ExprKind_ek_unary_op) && (strcmp(arg_expr.unop_op, "-") == 0)) {
+    ExprNode inner = ArrayList_ExprNode_get(self->expr_pool, arg_expr.unop_operand);
+    if ((inner.kind == ExprKind_ek_literal) && (strcmp(inner.lit_vkind, "INT") == 0)) {
+    const char* val_str = "0";
+    if (inner.lit_value.tag == TokenValue_tv_int_TAG) {
+    int64_t v = inner.lit_value.payload.tv_int.v;
+
+    val_str = int_to_str((-v));
+} else {
+} 
+    return concatAlloc(concatAlloc("\"", val_str), "\"");
+}
+}
+}
+    if ((strcmp(name, "char_to_str") == 0) && (ArrayList_Int_length(&(expr.func_args)) >= 1LL)) {
+    ExprNode arg_expr = ArrayList_ExprNode_get(self->expr_pool, ArrayList_Int_get(&(expr.func_args), 0LL));
+    if ((arg_expr.kind == ExprKind_ek_literal) && (strcmp(arg_expr.lit_vkind, "CHAR") == 0)) {
+    if (arg_expr.lit_value.tag == TokenValue_tv_char_TAG) {
+    char v = arg_expr.lit_value.payload.tv_char.v;
+
+    const char* s = char_to_str(v);
+    return concatAlloc(concatAlloc("\"", Codegen_escape_string(self, s)), "\"");
+} 
+}
 }
     if (strcmp(name, "format_int") == 0) {
     const char* n_arg = Codegen_gen_expr(self, ArrayList_Int_get(&(expr.func_args), 0LL));
@@ -12959,7 +12993,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx) {
 } else if (pat_node.lit_value.tag == TokenValue_tv_str_TAG) {
     int64_t v = pat_node.lit_value.payload.tv_str.v;
 
-    lit_str = concatAlloc(concatAlloc("\"", Codegen_escape_string(self, StringPool_get(self->pool, v))), "\"");
+    lit_str = concatAlloc(concatAlloc("\"", Codegen_replace_format_specifiers(self, Codegen_escape_string(self, StringPool_get(self->pool, v)))), "\"");
 } else if (pat_node.lit_value.tag == TokenValue_tv_bool_TAG) {
     bool v = pat_node.lit_value.payload.tv_bool.v;
 
@@ -13173,6 +13207,20 @@ bool Codegen_enum_has_payload(Codegen* self, const char* enum_name) {
 }
     return has_payload;
 }
+const char* Codegen_replace_format_specifiers(Codegen* self, const char* s) {
+    const char* result = "";
+    int64_t i = 0LL;
+    while (i < (s ? strlen(s) : 0)) {
+    if ((((i < ((s ? strlen(s) : 0) - 2LL)) && ((s)[i] == ((char)(37LL)))) && ((s)[(i + 1LL)] == ((char)(108LL)))) && ((s)[(i + 2LL)] == ((char)(100LL)))) {
+    result = concatAlloc(result, "%\" PRId64 \"");
+    i = (i + 3LL);
+} else {
+    result = concatAlloc(result, char_to_str((s)[i]));
+    i = (i + 1LL);
+}
+}
+    return result;
+}
 const char* Codegen_escape_string(Codegen* self, const char* s) {
     const char* res = "";
     int64_t i = 0LL;
@@ -13352,6 +13400,7 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx) {
     StringBuilder_append(&(result), "#include <stdio.h>\n");
     StringBuilder_append(&(result), "#include <stdlib.h>\n");
     StringBuilder_append(&(result), "#include <string.h>\n");
+    StringBuilder_append(&(result), "#include <inttypes.h>\n");
     StringBuilder_append(&(result), "#ifndef __kai_std_str_concat_alloc\n");
     StringBuilder_append(&(result), "#define __kai_std_str_concat_alloc concatAlloc\n");
     StringBuilder_append(&(result), "#endif\n");
@@ -13933,6 +13982,9 @@ const char* CodegenBuilder_get_expr_type(CodegenBuilder* self, int64_t expr_idx)
     ff = (ff + 1LL);
 }
 }
+}
+    if ((s.kind == StmtKind_sk_enum_decl) && (strcmp(s.enum_name, clean_base) == 0)) {
+    return clean_base;
 }
     fi = (fi + 1LL);
 }
@@ -15788,11 +15840,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     const char* vkind = expr.lit_vkind;
     if (strcmp(vkind, "INT") == 0) {
     const char* val_str = "0";
-    if (expr.lit_value.tag == TokenValue_tv_str_TAG) {
-    int64_t v = expr.lit_value.payload.tv_str.v;
-
-    val_str = StringPool_get(self->pool, v);
-} else if (expr.lit_value.tag == TokenValue_tv_int_TAG) {
+    if (expr.lit_value.tag == TokenValue_tv_int_TAG) {
     int64_t v = expr.lit_value.payload.tv_int.v;
 
     val_str = int_to_str(v);
@@ -15941,6 +15989,44 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
 }
     if (expr.kind == ExprKind_ek_func_call) {
     const char* name = expr.func_name;
+    if ((strcmp(name, "int_to_str") == 0) && (ArrayList_Int_length(&(expr.func_args)) >= 1LL)) {
+    ExprNode arg_expr = ArrayList_ExprNode_get(self->expr_pool, ArrayList_Int_get(&(expr.func_args), 0LL));
+    if ((arg_expr.kind == ExprKind_ek_literal) && (strcmp(arg_expr.lit_vkind, "INT") == 0)) {
+    const char* val_str = "0";
+    if (arg_expr.lit_value.tag == TokenValue_tv_int_TAG) {
+    int64_t v = arg_expr.lit_value.payload.tv_int.v;
+
+    val_str = int_to_str(v);
+} else {
+} 
+    return CodegenBuilder_push_expr(self, cexpr_new_str(concatAlloc(concatAlloc("\"", val_str), "\"")));
+}
+    if ((arg_expr.kind == ExprKind_ek_unary_op) && (strcmp(arg_expr.unop_op, "-") == 0)) {
+    ExprNode inner = ArrayList_ExprNode_get(self->expr_pool, arg_expr.unop_operand);
+    if ((inner.kind == ExprKind_ek_literal) && (strcmp(inner.lit_vkind, "INT") == 0)) {
+    const char* val_str = "0";
+    if (inner.lit_value.tag == TokenValue_tv_int_TAG) {
+    int64_t v = inner.lit_value.payload.tv_int.v;
+
+    val_str = int_to_str((-v));
+} else {
+} 
+    return CodegenBuilder_push_expr(self, cexpr_new_str(concatAlloc(concatAlloc("\"", val_str), "\"")));
+}
+}
+}
+    if ((strcmp(name, "char_to_str") == 0) && (ArrayList_Int_length(&(expr.func_args)) >= 1LL)) {
+    ExprNode arg_expr = ArrayList_ExprNode_get(self->expr_pool, ArrayList_Int_get(&(expr.func_args), 0LL));
+    if ((arg_expr.kind == ExprKind_ek_literal) && (strcmp(arg_expr.lit_vkind, "CHAR") == 0)) {
+    if (arg_expr.lit_value.tag == TokenValue_tv_char_TAG) {
+    char v = arg_expr.lit_value.payload.tv_char.v;
+
+    const char* s = char_to_str(v);
+    return CodegenBuilder_push_expr(self, cexpr_new_str(concatAlloc(concatAlloc("\"", CodegenBuilder_escape_string(self, s)), "\"")));
+} else {
+} 
+}
+}
     if ((strcmp(name, "cast") == 0) || (strcmp(name, "as") == 0)) {
     const char* target_type = ArrayList_Str_get(&(expr.func_type_args), 0LL);
     if (strlen(target_type) > 0LL) {
@@ -17154,6 +17240,9 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self) {
     pi2 = (pi2 + 1LL);
 }
     const char* ret_type = CodegenBuilder_map_type(self, stmt.func_return_type);
+    if (strlen(params_str) == 0LL) {
+    params_str = "void";
+}
     self->cur_func_name = stmt.func_name;
     self->cur_return_type = stmt.func_return_type;
     self->cur_method_is_init = false;
@@ -18187,6 +18276,8 @@ void CPrinter_print_decl(CPrinter* self, CDeclNode decl) {
 } else {
     params_str = "...";
 }
+} else if (strlen(params_str) == 0LL) {
+    params_str = "void";
 }
     const char* ret_str = ctype_to_str(decl.func_ret);
     const char* header = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(ret_str, " "), decl.func_name), "("), params_str), ")");
@@ -20605,10 +20696,6 @@ void* LLVMCodegen_gen_expr(LLVMCodegen* self, int64_t expr_idx) {
     int64_t v = expr.lit_value.payload.tv_int.v;
 
     val = v;
-} else if (expr.lit_value.tag == TokenValue_tv_str_TAG) {
-    int64_t v = expr.lit_value.payload.tv_str.v;
-
-    val = LLVMCodegen_str_to_int(self, StringPool_get(self->pool, v));
 } else {
 } 
     return LLVMConstInt(self->int64_type, val, false);
@@ -22618,7 +22705,7 @@ void print_diag_json(const char* code, const char* message, const char* path, in
     print_json_string(message);
     printf("\",\"path\":\"");
     print_json_string(path);
-    printf("\",\"line\":%ld,\"column\":%ld,\"length\":%ld", line, column, len_val);
+    printf("\",\"line\":%" PRId64 ",\"column\":%" PRId64 ",\"length\":%" PRId64 "", line, column, len_val);
     printf(",\"expected\":\"");
     print_json_string(expected);
     printf("\",\"actual\":\"");
@@ -22655,11 +22742,11 @@ void print_plan(const char* path, bool json_mode, ArrayList_Str* codes, ArrayLis
     printf("No diagnostics found in '%s'\n", path);
     return;
 }
-    printf("Found %ld diagnostic(s) in '%s':\n", count, path);
+    printf("Found %" PRId64 " diagnostic(s) in '%s':\n", count, path);
     int64_t i = 0LL;
     while (i < count) {
     const char* cd = ArrayList_Str_get(codes, i);
-    printf("%s:%ld:%ld %s: %s\n", path, ArrayList_Int_get(dlines, i), ArrayList_Int_get(dcolumns, i), cd, ArrayList_Str_get(messages, i));
+    printf("%s:%" PRId64 ":%" PRId64 " %s: %s\n", path, ArrayList_Int_get(dlines, i), ArrayList_Int_get(dcolumns, i), cd, ArrayList_Str_get(messages, i));
     printf("  expected: %s\n", ArrayList_Str_get(expected, i));
     printf("  actual: %s\n", ArrayList_Str_get(actual, i));
     printf("  help: %s\n", ArrayList_Str_get(helpv, i));
@@ -22715,11 +22802,11 @@ void print_patch(const char* path, bool json_mode, bool apply, bool applied, Arr
 }
 }
     if (count > patch_count) {
-    printf("(%ld issue(s) without auto-fix — use kai patch to address them)\n", (count - patch_count));
+    printf("(%" PRId64 " issue(s) without auto-fix — use kai patch to address them)\n", (count - patch_count));
 }
     if (apply) {
     if (applied) {
-    printf("Applied %ld fix(es) to '%s'\n", patch_count, path);
+    printf("Applied %" PRId64 " fix(es) to '%s'\n", patch_count, path);
 } else {
     printf("No behavior-preserving edits to apply in '%s'\n", path);
 }
@@ -22784,7 +22871,7 @@ void print_patch(const char* path, bool json_mode, bool apply, bool applied, Arr
 }
     printf("\n    {\"path\":\"");
     print_json_string(path);
-    printf("\",\"line\":%ld,\"old\":\"", ArrayList_Int_get(patch_lines, i2));
+    printf("\",\"line\":%" PRId64 ",\"old\":\"", ArrayList_Int_get(patch_lines, i2));
     print_json_string(ArrayList_Str_get(patch_old, i2));
     printf("\",\"new\":\"");
     print_json_string(ArrayList_Str_get(patch_new, i2));
@@ -23982,7 +24069,7 @@ int64_t run_graph(int64_t argc, char** argv) {
     if (si > 0LL) {
     printf(",\n");
 }
-    printf("{\"id\":%ld,\"kind\":", si);
+    printf("{\"id\":%" PRId64 ",\"kind\":", si);
     StmtKind sk = stmt.kind;
     if (sk == 0LL) {
     printf("\"none\"");
@@ -24066,7 +24153,7 @@ int64_t run_graph(int64_t argc, char** argv) {
     if (ei > 0LL) {
     printf(",\n");
 }
-    printf("{\"id\":%ld,\"kind\":", ei);
+    printf("{\"id\":%" PRId64 ",\"kind\":", ei);
     ExprKind ek = expr.kind;
     if (ek == 0LL) {
     printf("\"none\"");

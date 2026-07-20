@@ -1214,7 +1214,7 @@ uint8_t* KaiAllocator_alloc(KaiAllocator* self, int64_t size, int64_t align);
 uint8_t* KaiAllocator_realloc(KaiAllocator* self, uint8_t* ptr, int64_t old_size, int64_t new_size, int64_t align);
 void KaiAllocator_free(KaiAllocator* self, uint8_t* ptr);
 void KaiAllocator_deinit(KaiAllocator* self);
-KaiAllocator KaiAllocator_new();
+KaiAllocator KaiAllocator_new(void);
 Result_Str_IoError read_to_string(KaiAllocator* allocator, const char* path);
 Result_Bool_IoError write_string(const char* path, const char* content);
 const char* concatAlloc(const char* left, const char* right);
@@ -1269,6 +1269,7 @@ void Lexer_lex_number(Lexer* self);
 void Lexer_lex_string(Lexer* self);
 void Lexer_lex_char(Lexer* self);
 int64_t Lexer_compute_indent(Lexer* self);
+int64_t Lexer_parse_int(Lexer* self, const char* s);
 void Lexer_lex(Lexer* self);
 char char_at(const char* s, int64_t i);
 bool is_digit(char c);
@@ -1453,7 +1454,7 @@ int64_t Parser_parse_expression(Parser* self, int64_t precedence);
 int64_t Parser_parse_primary(Parser* self);
 extern void __kai_print_int(int64_t i);
 extern void __kai_print_float(double f);
-void print_separator();
+void print_separator(void);
 void printi(int64_t i);
 void printff(double f);
 void prints(const char* s);
@@ -1465,14 +1466,14 @@ void ArrayList_DropVarEntry_set(ArrayList_DropVarEntry* self, int64_t index, Dro
 DropVarEntry ArrayList_DropVarEntry_pop(ArrayList_DropVarEntry* self);
 int64_t ArrayList_DropVarEntry_length(ArrayList_DropVarEntry* self);
 void ArrayList_DropVarEntry_deinit(ArrayList_DropVarEntry* self);
-ArrayList_DropVarEntry empty_dropvarentry_array();
-ArrayList_Str empty_str_array();
-ArrayList_Int empty_int_array();
-ArrayList_FieldInit empty_fieldinit_array();
-ArrayList_Param empty_param_array();
-ArrayList_StructField empty_structfield_array();
-ArrayList_Variant empty_variant_array();
-ArrayList_MatchCase empty_matchcase_array();
+ArrayList_DropVarEntry empty_dropvarentry_array(void);
+ArrayList_Str empty_str_array(void);
+ArrayList_Int empty_int_array(void);
+ArrayList_FieldInit empty_fieldinit_array(void);
+ArrayList_Param empty_param_array(void);
+ArrayList_StructField empty_structfield_array(void);
+ArrayList_Variant empty_variant_array(void);
+ArrayList_MatchCase empty_matchcase_array(void);
 ArrayList_StrInterpPart ArrayList_StrInterpPart_init(KaiAllocator* allocator);
 void ArrayList_StrInterpPart_push(ArrayList_StrInterpPart* self, StrInterpPart item);
 StrInterpPart ArrayList_StrInterpPart_get(ArrayList_StrInterpPart* self, int64_t index);
@@ -1480,9 +1481,9 @@ void ArrayList_StrInterpPart_set(ArrayList_StrInterpPart* self, int64_t index, S
 StrInterpPart ArrayList_StrInterpPart_pop(ArrayList_StrInterpPart* self);
 int64_t ArrayList_StrInterpPart_length(ArrayList_StrInterpPart* self);
 void ArrayList_StrInterpPart_deinit(ArrayList_StrInterpPart* self);
-ArrayList_StrInterpPart empty_strinterp_array();
-ArrayList_AsmOutput empty_asmoutput_array();
-ArrayList_AsmInput empty_asminput_array();
+ArrayList_StrInterpPart empty_strinterp_array(void);
+ArrayList_AsmOutput empty_asmoutput_array(void);
+ArrayList_AsmInput empty_asminput_array(void);
 ExprNode new_expr_node(ExprKind kind, int64_t line, int64_t col);
 StmtNode new_stmt_node(StmtKind kind, int64_t line, int64_t col);
 PatternNode new_pattern_node(PatternKind kind);
@@ -1667,6 +1668,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx);
 const char* Codegen_clean_enum_name(Codegen* self, const char* type_name);
 bool Codegen_is_enum_type(Codegen* self, const char* type_name);
 bool Codegen_enum_has_payload(Codegen* self, const char* enum_name);
+const char* Codegen_replace_format_specifiers(Codegen* self, const char* s);
 const char* Codegen_escape_string(Codegen* self, const char* s);
 ArrayList_Str Codegen__collect_loop_drops(Codegen* self);
 void Codegen_emit_struct_body_with_deps(Codegen* self, int64_t stmt_idx, ArrayList_Str* emitted);
@@ -1751,12 +1753,12 @@ int64_t CCodeBuilder_line_count(CCodeBuilder* self);
 const char* cb_escape_string(const char* s);
 const char* cb_escape_asm(const char* s);
 CType ctype_new(const char* base, int64_t pointer, bool is_const, bool is_unsigned);
-CType ctype_void();
-CType ctype_int();
-CType ctype_bool();
-CType ctype_char();
-CType ctype_float();
-CType ctype_str();
+CType ctype_void(void);
+CType ctype_int(void);
+CType ctype_bool(void);
+CType ctype_char(void);
+CType ctype_float(void);
+CType ctype_str(void);
 CType ctype_ptr(CType inner);
 CType ctype_const(CType inner);
 const char* ctype_to_str(CType t);
@@ -1788,8 +1790,8 @@ CExprNode cexpr_new_ternary(int64_t cond, int64_t then_expr, int64_t else_expr);
 CExprNode cexpr_new_comma(int64_t left, int64_t right);
 CStmtNode cstmt_new_var_decl(CType var_type, const char* var_name, int64_t var_init);
 CStmtNode cstmt_new_return(int64_t return_val);
-CStmtNode cstmt_new_break();
-CStmtNode cstmt_new_continue();
+CStmtNode cstmt_new_break(void);
+CStmtNode cstmt_new_continue(void);
 CStmtNode cstmt_new_while(int64_t cond, int64_t body);
 CStmtNode cstmt_new_for(int64_t init, int64_t cond, int64_t inc, int64_t body);
 CStmtNode cstmt_new_asm(const char* code, bool is_volatile);
@@ -2559,7 +2561,7 @@ void KaiAllocator_deinit(KaiAllocator* self)
         _kai_munmap(self->heads, page_align_up(96LL));
     }
 }
-KaiAllocator KaiAllocator_new()
+KaiAllocator KaiAllocator_new(void)
 {
     KaiAllocator a = (KaiAllocator){ .heads = ((uint8_t*)(((unsigned long long)(0LL)))), .used = 0LL };
     (a = KaiAllocator_init());
@@ -3412,10 +3414,10 @@ void Lexer_lex_identifier(Lexer* self)
     TokenType ktype = keyword_type(ident);
     if (ktype == TokenType_IDENTIFIER)
     {
-        Lexer_emit(self, ((TokenType)(TokenType_IDENTIFIER)), (TokenValue){ .tag = TokenValue_tv_str_TAG, .tv_str = { .v = StringPool_intern(self->pool, ident) } });
+        Lexer_emit(self, TokenType_IDENTIFIER, (TokenValue){ .tag = TokenValue_tv_str_TAG, .tv_str = { .v = StringPool_intern(self->pool, ident) } });
     } else if (ktype == TokenType_BOOL_LIT)
     {
-        Lexer_emit(self, ((TokenType)(TokenType_BOOL_LIT)), make_keyword_value(ident, TokenType_BOOL_LIT, self->pool));
+        Lexer_emit(self, TokenType_BOOL_LIT, make_keyword_value(ident, TokenType_BOOL_LIT, self->pool));
     } else
     {
         Lexer_emit(self, ktype, (TokenValue){ .tag = TokenValue_tv_str_TAG, .tv_str = { .v = StringPool_intern(self->pool, ident) } });
@@ -3452,11 +3454,11 @@ void Lexer_lex_number(Lexer* self)
             }
         }
         const char* num_str = StringBuilder_to_str((&sb));
-        Lexer_emit(self, ((TokenType)(TokenType_FLOAT_LIT)), (TokenValue){ .tag = TokenValue_tv_str_TAG, .tv_str = { .v = StringPool_intern(self->pool, num_str) } });
+        Lexer_emit(self, TokenType_FLOAT_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .tv_str = { .v = StringPool_intern(self->pool, num_str) } });
     } else
     {
         const char* num_str = StringBuilder_to_str((&sb));
-        Lexer_emit(self, ((TokenType)(TokenType_INT_LIT)), (TokenValue){ .tag = TokenValue_tv_str_TAG, .tv_str = { .v = StringPool_intern(self->pool, num_str) } });
+        Lexer_emit(self, TokenType_INT_LIT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .tv_int = { .v = Lexer_parse_int(self, num_str) } });
     }
 }
 void Lexer_lex_string(Lexer* self)
@@ -3504,7 +3506,7 @@ void Lexer_lex_string(Lexer* self)
         ((void)(Lexer_advance(self)));
     }
     const char* s = StringBuilder_to_str((&sb));
-    Lexer_emit(self, ((TokenType)(TokenType_STRING_LIT)), (TokenValue){ .tag = TokenValue_tv_str_TAG, .tv_str = { .v = StringPool_intern(self->pool, s) } });
+    Lexer_emit(self, TokenType_STRING_LIT, (TokenValue){ .tag = TokenValue_tv_str_TAG, .tv_str = { .v = StringPool_intern(self->pool, s) } });
 }
 void Lexer_lex_char(Lexer* self)
 {
@@ -3538,7 +3540,7 @@ void Lexer_lex_char(Lexer* self)
         (ch = c);
     }
     ((void)(Lexer_advance(self)));
-    Lexer_emit(self, ((TokenType)(TokenType_CHAR_LIT)), (TokenValue){ .tag = TokenValue_tv_char_TAG, .tv_char = { .v = ch } });
+    Lexer_emit(self, TokenType_CHAR_LIT, (TokenValue){ .tag = TokenValue_tv_char_TAG, .tv_char = { .v = ch } });
 }
 int64_t Lexer_compute_indent(Lexer* self)
 {
@@ -3598,6 +3600,21 @@ int64_t Lexer_compute_indent(Lexer* self)
     }
     return (-1LL);
 }
+int64_t Lexer_parse_int(Lexer* self, const char* s)
+{
+    int64_t res = 0LL;
+    int64_t i = 0LL;
+    while (i < strlen(s))
+    {
+        char c = s[i];
+        if ((c >= ((char)(48LL))) && (c <= ((char)(57LL))))
+        {
+            (res = ((res * 10LL) + (((int64_t)(c)) - 48LL)));
+        }
+        (i = (i + 1LL));
+    }
+    return res;
+}
 void Lexer_lex(Lexer* self)
 {
     bool is_line_start = true;
@@ -3614,13 +3631,13 @@ void Lexer_lex(Lexer* self)
                     if (indent > current)
                     {
                         ArrayList_Int_push(self->indent_stack, indent);
-                        Lexer_emit(self, ((TokenType)(TokenType_INDENT)), (TokenValue){ .tag = TokenValue_tv_int_TAG, .tv_int = { .v = indent } });
+                        Lexer_emit(self, TokenType_INDENT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .tv_int = { .v = indent } });
                     } else if (indent < current)
                     {
                         while (indent < ArrayList_Int_get(self->indent_stack, (ArrayList_Int_length(self->indent_stack) - 1LL)))
                         {
                             ((void)(ArrayList_Int_pop(self->indent_stack)));
-                            Lexer_emit(self, ((TokenType)(TokenType_DEDENT)), (TokenValue){ .tag = TokenValue_tv_int_TAG, .tv_int = { .v = indent } });
+                            Lexer_emit(self, TokenType_DEDENT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .tv_int = { .v = indent } });
                         }
                         if (indent != ArrayList_Int_get(self->indent_stack, (ArrayList_Int_length(self->indent_stack) - 1LL)))
                         {
@@ -3646,7 +3663,7 @@ void Lexer_lex(Lexer* self)
                         Token last_tok = ArrayList_Token_get(self->tokens, (last - 1LL));
                         if (((last_tok.tok_type != TokenType_NEWLINE) && (last_tok.tok_type != TokenType_INDENT)) && (last_tok.tok_type != TokenType_DEDENT))
                         {
-                            Lexer_emit(self, ((TokenType)(TokenType_NEWLINE)), ((TokenValue)((TokenValue){ .tag = TokenValue_tv_none_TAG })));
+                            Lexer_emit(self, TokenType_NEWLINE, (TokenValue){ .tag = TokenValue_tv_none_TAG });
                         }
                     }
                 }
@@ -3667,122 +3684,122 @@ void Lexer_lex(Lexer* self)
             {
                 ((void)(Lexer_advance(self)));
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_ARROW)), "->");
+                Lexer_emit_str(self, TokenType_ARROW, "->");
             } else if ((c == '=') && (Lexer_peek(self, 1LL) == '>'))
             {
                 ((void)(Lexer_advance(self)));
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_FAT_ARROW)), "=>");
+                Lexer_emit_str(self, TokenType_FAT_ARROW, "=>");
             } else if ((c == '+') && (Lexer_peek(self, 1LL) == '='))
             {
                 ((void)(Lexer_advance(self)));
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_PLUS_ASSIGN)), "+=");
+                Lexer_emit_str(self, TokenType_PLUS_ASSIGN, "+=");
             } else if ((c == '-') && (Lexer_peek(self, 1LL) == '='))
             {
                 ((void)(Lexer_advance(self)));
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_MINUS_ASSIGN)), "-=");
+                Lexer_emit_str(self, TokenType_MINUS_ASSIGN, "-=");
             } else if ((c == '=') && (Lexer_peek(self, 1LL) == '='))
             {
                 ((void)(Lexer_advance(self)));
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_EQ)), "==");
+                Lexer_emit_str(self, TokenType_EQ, "==");
             } else if ((c == '!') && (Lexer_peek(self, 1LL) == '='))
             {
                 ((void)(Lexer_advance(self)));
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_NE)), "!=");
+                Lexer_emit_str(self, TokenType_NE, "!=");
             } else if ((c == '<') && (Lexer_peek(self, 1LL) == '='))
             {
                 ((void)(Lexer_advance(self)));
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_LE)), "<=");
+                Lexer_emit_str(self, TokenType_LE, "<=");
             } else if ((c == '>') && (Lexer_peek(self, 1LL) == '='))
             {
                 ((void)(Lexer_advance(self)));
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_GE)), ">=");
+                Lexer_emit_str(self, TokenType_GE, ">=");
             } else if ((c == '&') && (Lexer_peek(self, 1LL) == '&'))
             {
                 ((void)(Lexer_advance(self)));
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_AND)), "&&");
+                Lexer_emit_str(self, TokenType_AND, "&&");
             } else if ((c == '|') && (Lexer_peek(self, 1LL) == '|'))
             {
                 ((void)(Lexer_advance(self)));
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_OR)), "||");
+                Lexer_emit_str(self, TokenType_OR, "||");
             } else if ((c == '<') && (Lexer_peek(self, 1LL) == '<'))
             {
                 ((void)(Lexer_advance(self)));
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_LSHIFT)), "<<");
+                Lexer_emit_str(self, TokenType_LSHIFT, "<<");
             } else if ((c == '>') && (Lexer_peek(self, 1LL) == '>'))
             {
                 ((void)(Lexer_advance(self)));
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_RSHIFT)), ">>");
+                Lexer_emit_str(self, TokenType_RSHIFT, ">>");
             } else if (((c == '.') && (Lexer_peek(self, 1LL) == '.')) && (Lexer_peek(self, 2LL) == '='))
             {
                 ((void)(Lexer_advance(self)));
                 ((void)(Lexer_advance(self)));
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_DOTDOTEQ)), "..=");
+                Lexer_emit_str(self, TokenType_DOTDOTEQ, "..=");
             } else if ((c == '.') && (Lexer_peek(self, 1LL) == '.'))
             {
                 ((void)(Lexer_advance(self)));
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_DOTDOT)), "..");
+                Lexer_emit_str(self, TokenType_DOTDOT, "..");
             } else if (c == '+')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_PLUS)), "+");
+                Lexer_emit_str(self, TokenType_PLUS, "+");
             } else if (c == '-')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_MINUS)), "-");
+                Lexer_emit_str(self, TokenType_MINUS, "-");
             } else if (c == '*')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_MUL)), "*");
+                Lexer_emit_str(self, TokenType_MUL, "*");
             } else if (c == '/')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_DIV)), "/");
+                Lexer_emit_str(self, TokenType_DIV, "/");
             } else if (c == '%')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_MOD)), "%");
+                Lexer_emit_str(self, TokenType_MOD, "%");
             } else if (c == '=')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_ASSIGN)), "=");
+                Lexer_emit_str(self, TokenType_ASSIGN, "=");
             } else if (c == '<')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_LT)), "<");
+                Lexer_emit_str(self, TokenType_LT, "<");
             } else if (c == '>')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_GT)), ">");
+                Lexer_emit_str(self, TokenType_GT, ">");
             } else if (c == ':')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_COLON)), ":");
+                Lexer_emit_str(self, TokenType_COLON, ":");
             } else if (c == ';')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_SEMICOLON)), ";");
+                Lexer_emit_str(self, TokenType_SEMICOLON, ";");
             } else if (c == ',')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_COMMA)), ",");
+                Lexer_emit_str(self, TokenType_COMMA, ",");
             } else if (c == '(')
             {
                 ((void)(Lexer_advance(self)));
                 (self->paren_depth = (self->paren_depth + 1LL));
-                Lexer_emit_str(self, ((TokenType)(TokenType_LPAREN)), "(");
+                Lexer_emit_str(self, TokenType_LPAREN, "(");
             } else if (c == ')')
             {
                 ((void)(Lexer_advance(self)));
@@ -3790,12 +3807,12 @@ void Lexer_lex(Lexer* self)
                 {
                     (self->paren_depth = (self->paren_depth - 1LL));
                 }
-                Lexer_emit_str(self, ((TokenType)(TokenType_RPAREN)), ")");
+                Lexer_emit_str(self, TokenType_RPAREN, ")");
             } else if (c == '[')
             {
                 ((void)(Lexer_advance(self)));
                 (self->paren_depth = (self->paren_depth + 1LL));
-                Lexer_emit_str(self, ((TokenType)(TokenType_LBRACKET)), "[");
+                Lexer_emit_str(self, TokenType_LBRACKET, "[");
             } else if (c == ']')
             {
                 ((void)(Lexer_advance(self)));
@@ -3803,12 +3820,12 @@ void Lexer_lex(Lexer* self)
                 {
                     (self->paren_depth = (self->paren_depth - 1LL));
                 }
-                Lexer_emit_str(self, ((TokenType)(TokenType_RBRACKET)), "]");
+                Lexer_emit_str(self, TokenType_RBRACKET, "]");
             } else if (c == '{')
             {
                 ((void)(Lexer_advance(self)));
                 (self->brace_depth = (self->brace_depth + 1LL));
-                Lexer_emit_str(self, ((TokenType)(TokenType_LBRACE)), "{");
+                Lexer_emit_str(self, TokenType_LBRACE, "{");
             } else if (c == '}')
             {
                 ((void)(Lexer_advance(self)));
@@ -3816,39 +3833,39 @@ void Lexer_lex(Lexer* self)
                 {
                     (self->brace_depth = (self->brace_depth - 1LL));
                 }
-                Lexer_emit_str(self, ((TokenType)(TokenType_RBRACE)), "}");
+                Lexer_emit_str(self, TokenType_RBRACE, "}");
             } else if (c == '&')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_AMP)), "&");
+                Lexer_emit_str(self, TokenType_AMP, "&");
             } else if (c == '#')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_HASH)), "#");
+                Lexer_emit_str(self, TokenType_HASH, "#");
             } else if (c == '!')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_NOT)), "!");
+                Lexer_emit_str(self, TokenType_NOT, "!");
             } else if (c == '?')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_QUESTION)), "?");
+                Lexer_emit_str(self, TokenType_QUESTION, "?");
             } else if (c == '^')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_BITXOR)), "^");
+                Lexer_emit_str(self, TokenType_BITXOR, "^");
             } else if (c == '~')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_BITNOT)), "~");
+                Lexer_emit_str(self, TokenType_BITNOT, "~");
             } else if (c == '|')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_PIPE)), "|");
+                Lexer_emit_str(self, TokenType_PIPE, "|");
             } else if (c == '.')
             {
                 ((void)(Lexer_advance(self)));
-                Lexer_emit_str(self, ((TokenType)(TokenType_DOT)), ".");
+                Lexer_emit_str(self, TokenType_DOT, ".");
             } else
             {
                 ((void)(Lexer_advance(self)));
@@ -3860,9 +3877,9 @@ void Lexer_lex(Lexer* self)
     while (false)
     {
         ((void)(ArrayList_Int_pop(self->indent_stack)));
-        Lexer_emit(self, ((TokenType)(TokenType_DEDENT)), (TokenValue){ .tag = TokenValue_tv_int_TAG, .tv_int = { .v = 0LL } });
+        Lexer_emit(self, TokenType_DEDENT, (TokenValue){ .tag = TokenValue_tv_int_TAG, .tv_int = { .v = 0LL } });
     }
-    Lexer_emit(self, ((TokenType)(TokenType_EOF)), ((TokenValue)((TokenValue){ .tag = TokenValue_tv_none_TAG })));
+    Lexer_emit(self, TokenType_EOF, (TokenValue){ .tag = TokenValue_tv_none_TAG });
 }
 char char_at(const char* s, int64_t i)
 {
@@ -4373,7 +4390,7 @@ Token Parser_expect(Parser* self, TokenType ttype)
 }
 void Parser_consume_newlines(Parser* self)
 {
-    while (Parser_match_token(self, ((TokenType)(TokenType_NEWLINE))))
+    while (Parser_match_token(self, TokenType_NEWLINE))
     {
     }
 }
@@ -4389,7 +4406,7 @@ void Parser_expect_end_of_statement(Parser* self)
         ((void)(Parser_advance(self)));
         return;
     }
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_NEWLINE)))));
+    ((void)(Parser_expect(self, TokenType_NEWLINE)));
 }
 bool Parser_is_generic_instantiation(Parser* self)
 {
@@ -4645,14 +4662,14 @@ StmtNode Parser_mk_stmt_node(Parser* self, StmtKind kind)
 }
 int64_t Parser_st_block(Parser* self, ArrayList_Int stmts)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_block)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_block);
     (node.block_stmts = stmts);
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_error(Parser* self, const char* name, ArrayList_Str variants)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_error_decl)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_error_decl);
     (node.error_name = name);
     (node.error_variants = variants);
     ArrayList_StmtNode_push(self->stmt_pool, node);
@@ -4660,7 +4677,7 @@ int64_t Parser_st_error(Parser* self, const char* name, ArrayList_Str variants)
 }
 int64_t Parser_st_var_decl(Parser* self, const char* name, const char* type_ann, int64_t value, bool is_mut)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_var_decl)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_var_decl);
     (node.vardecl_name = name);
     (node.vardecl_type = type_ann);
     (node.vardecl_value = value);
@@ -4670,7 +4687,7 @@ int64_t Parser_st_var_decl(Parser* self, const char* name, const char* type_ann,
 }
 int64_t Parser_st_assign(Parser* self, int64_t target, int64_t value, const char* op)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_assignment)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_assignment);
     (node.assign_target = target);
     (node.assign_value = value);
     (node.assign_op = op);
@@ -4679,7 +4696,7 @@ int64_t Parser_st_assign(Parser* self, int64_t target, int64_t value, const char
 }
 int64_t Parser_st_func(Parser* self, const char* name, ArrayList_Param params, const char* ret_type, int64_t body, const char* cap, ArrayList_Str tp)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_func_decl)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_func_decl);
     (node.func_name = name);
     (node.func_params = params);
     (node.func_return_type = ret_type);
@@ -4691,14 +4708,14 @@ int64_t Parser_st_func(Parser* self, const char* name, ArrayList_Param params, c
 }
 int64_t Parser_st_struct(Parser* self, const char* name, ArrayList_StructField fields, ArrayList_Str tp, ArrayList_Int methods, ArrayList_Int impls)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_struct_decl)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_struct_decl);
     (node.struct_name = name);
     (node.struct_fields = fields);
     (node.struct_type_params = tp);
     (node.struct_methods = methods);
     (node.struct_trait_impls = impls);
     ArrayList_StmtNode_push(self->stmt_pool, node);
-    StmtNode ctor = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_func_decl)));
+    StmtNode ctor = Parser_mk_stmt_node(self, StmtKind_sk_func_decl);
     (ctor.func_name = concatAlloc(name, "_new"));
     (ctor.func_params = ArrayList_Param_init(self->allocator));
     (ctor.func_return_type = name);
@@ -4709,7 +4726,7 @@ int64_t Parser_st_struct(Parser* self, const char* name, ArrayList_StructField f
 }
 int64_t Parser_st_impl(Parser* self, const char* struct_name, const char* trait_name, ArrayList_Int methods)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_impl_block)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_impl_block);
     (node.impl_struct_name = struct_name);
     (node.impl_trait_name = trait_name);
     (node.impl_methods = methods);
@@ -4718,7 +4735,7 @@ int64_t Parser_st_impl(Parser* self, const char* struct_name, const char* trait_
 }
 int64_t Parser_st_trait(Parser* self, const char* name, ArrayList_Int methods)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_trait_decl)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_trait_decl);
     (node.trait_name = name);
     (node.trait_methods = methods);
     ArrayList_StmtNode_push(self->stmt_pool, node);
@@ -4726,7 +4743,7 @@ int64_t Parser_st_trait(Parser* self, const char* name, ArrayList_Int methods)
 }
 int64_t Parser_st_enum(Parser* self, const char* name, ArrayList_Variant variants, ArrayList_Str tp)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_enum_decl)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_enum_decl);
     (node.enum_name = name);
     (node.enum_variants = variants);
     (node.enum_type_params = tp);
@@ -4735,7 +4752,7 @@ int64_t Parser_st_enum(Parser* self, const char* name, ArrayList_Variant variant
 }
 int64_t Parser_st_match(Parser* self, int64_t expr, ArrayList_MatchCase cases)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_match)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_match);
     (node.match_expr = expr);
     (node.match_cases = cases);
     ArrayList_StmtNode_push(self->stmt_pool, node);
@@ -4743,14 +4760,14 @@ int64_t Parser_st_match(Parser* self, int64_t expr, ArrayList_MatchCase cases)
 }
 int64_t Parser_st_unsafe(Parser* self, int64_t body)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_unsafe)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_unsafe);
     (node.unsafe_body = body);
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_extern(Parser* self, const char* name, ArrayList_Param params, const char* ret)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_extern)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_extern);
     (node.extern_name = name);
     (node.extern_params = params);
     (node.extern_return = ret);
@@ -4759,7 +4776,7 @@ int64_t Parser_st_extern(Parser* self, const char* name, ArrayList_Param params,
 }
 int64_t Parser_st_if(Parser* self, int64_t cond, int64_t then_b, int64_t else_b)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_if)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_if);
     (node.if_cond = cond);
     (node.if_then = then_b);
     (node.if_else = else_b);
@@ -4768,7 +4785,7 @@ int64_t Parser_st_if(Parser* self, int64_t cond, int64_t then_b, int64_t else_b)
 }
 int64_t Parser_st_if_let(Parser* self, const char* vname, int64_t expr, int64_t then_b, int64_t else_b)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_if_let)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_if_let);
     (node.iflet_var = vname);
     (node.iflet_expr = expr);
     (node.iflet_then = then_b);
@@ -4778,7 +4795,7 @@ int64_t Parser_st_if_let(Parser* self, const char* vname, int64_t expr, int64_t 
 }
 int64_t Parser_st_while(Parser* self, int64_t cond, int64_t body)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_while)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_while);
     (node.while_cond = cond);
     (node.while_body = body);
     ArrayList_StmtNode_push(self->stmt_pool, node);
@@ -4786,7 +4803,7 @@ int64_t Parser_st_while(Parser* self, int64_t cond, int64_t body)
 }
 int64_t Parser_st_for(Parser* self, const char* var_name, int64_t start, int64_t end, bool inc, int64_t body)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_for)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_for);
     (node.for_var = var_name);
     (node.for_start = start);
     (node.for_end = end);
@@ -4797,47 +4814,47 @@ int64_t Parser_st_for(Parser* self, const char* var_name, int64_t start, int64_t
 }
 int64_t Parser_st_return(Parser* self, int64_t value)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_return)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_return);
     (node.return_value = value);
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_expr(Parser* self, int64_t expr)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_expr)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_expr);
     (node.expr_stmt = expr);
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_defer(Parser* self, int64_t body)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_defer)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_defer);
     (node.defer_body = body);
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_errdefer(Parser* self, int64_t body)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_errdefer)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_errdefer);
     (node.errdefer_body = body);
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_break(Parser* self)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_break)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_break);
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_continue(Parser* self)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_continue)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_continue);
     ArrayList_StmtNode_push(self->stmt_pool, node);
     return (ArrayList_StmtNode_length(self->stmt_pool) - 1LL);
 }
 int64_t Parser_st_import(Parser* self, ArrayList_Str path, const char* alias)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_import)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_import);
     (node.import_path = path);
     (node.import_alias = alias);
     ArrayList_StmtNode_push(self->stmt_pool, node);
@@ -4845,7 +4862,7 @@ int64_t Parser_st_import(Parser* self, ArrayList_Str path, const char* alias)
 }
 int64_t Parser_st_cimport(Parser* self, const char* header, const char* alias)
 {
-    StmtNode node = Parser_mk_stmt_node(self, ((StmtKind)(StmtKind_sk_cimport)));
+    StmtNode node = Parser_mk_stmt_node(self, StmtKind_sk_cimport);
     (node.cimport_header = header);
     (node.cimport_alias = alias);
     ArrayList_StmtNode_push(self->stmt_pool, node);
@@ -4983,7 +5000,7 @@ int64_t Parser_parse_statement(Parser* self)
 const char* Parser_parse_type(Parser* self)
 {
     const char* base_type = Parser_parse_base_type(self);
-    if (Parser_match_token(self, ((TokenType)(TokenType_NOT))))
+    if (Parser_match_token(self, TokenType_NOT))
     {
         const char* error_set = Parser_parse_type(self);
         return concatAlloc(concatAlloc(base_type, "!"), error_set);
@@ -4992,17 +5009,17 @@ const char* Parser_parse_type(Parser* self)
 }
 const char* Parser_parse_base_type(Parser* self)
 {
-    if (Parser_match_token(self, ((TokenType)(TokenType_OWN))))
+    if (Parser_match_token(self, TokenType_OWN))
     {
         const char* inner = Parser_parse_type(self);
         return concatAlloc("own ", inner);
-    } else if (Parser_match_token(self, ((TokenType)(TokenType_QUESTION))))
+    } else if (Parser_match_token(self, TokenType_QUESTION))
     {
         return concatAlloc("?", Parser_parse_type(self));
-    } else if (Parser_match_token(self, ((TokenType)(TokenType_AMP))))
+    } else if (Parser_match_token(self, TokenType_AMP))
     {
         bool is_mut = false;
-        if (Parser_match_token(self, ((TokenType)(TokenType_MUT))))
+        if (Parser_match_token(self, TokenType_MUT))
         {
             (is_mut = true);
         }
@@ -5012,10 +5029,10 @@ const char* Parser_parse_base_type(Parser* self)
             return concatAlloc("*mut ", inner);
         }
         return concatAlloc("*", inner);
-    } else if (Parser_match_token(self, ((TokenType)(TokenType_MUL))))
+    } else if (Parser_match_token(self, TokenType_MUL))
     {
         bool is_mut = false;
-        if (Parser_match_token(self, ((TokenType)(TokenType_MUT))))
+        if (Parser_match_token(self, TokenType_MUT))
         {
             (is_mut = true);
         }
@@ -5025,11 +5042,11 @@ const char* Parser_parse_base_type(Parser* self)
             return concatAlloc("*mut ", inner);
         }
         return concatAlloc("*", inner);
-    } else if (Parser_match_token(self, ((TokenType)(TokenType_LBRACKET))))
+    } else if (Parser_match_token(self, TokenType_LBRACKET))
     {
-        ((void)(Parser_expect(self, ((TokenType)(TokenType_RBRACKET)))));
+        ((void)(Parser_expect(self, TokenType_RBRACKET)));
         return concatAlloc("[]", Parser_parse_type(self));
-    } else if (Parser_match_token(self, ((TokenType)(TokenType_LPAREN))))
+    } else if (Parser_match_token(self, TokenType_LPAREN))
     {
         ArrayList_Str types = ArrayList_Str_init(self->allocator);
         if (Parser_peek(self, 0LL).tok_type != TokenType_RPAREN)
@@ -5038,17 +5055,17 @@ const char* Parser_parse_base_type(Parser* self)
             while (!done)
             {
                 ArrayList_Str_push((&types), Parser_parse_type(self));
-                if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+                if (!Parser_match_token(self, TokenType_COMMA))
                 {
                     (done = true);
                 }
             }
         }
-        ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+        ((void)(Parser_expect(self, TokenType_RPAREN)));
         return concatAlloc(concatAlloc("(", str_array_join(types, ", ")), ")");
     } else
     {
-        const char* name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+        const char* name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
         if (Parser_peek(self, 0LL).tok_type == TokenType_LT)
         {
             ((void)(Parser_advance(self)));
@@ -5057,12 +5074,12 @@ const char* Parser_parse_base_type(Parser* self)
             while (!done)
             {
                 ArrayList_Str_push((&type_args), Parser_parse_type(self));
-                if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+                if (!Parser_match_token(self, TokenType_COMMA))
                 {
                     (done = true);
                 }
             }
-            ((void)(Parser_expect(self, ((TokenType)(TokenType_GT)))));
+            ((void)(Parser_expect(self, TokenType_GT)));
             return concatAlloc(concatAlloc(concatAlloc(name, "<"), str_array_join(type_args, ", ")), ">");
         }
         return name;
@@ -5077,20 +5094,20 @@ ArrayList_Str Parser_parse_generic_params(Parser* self)
         bool done = false;
         while (!done)
         {
-            const char* tp_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
-            if (Parser_match_token(self, ((TokenType)(TokenType_COLON))))
+            const char* tp_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
+            if (Parser_match_token(self, TokenType_COLON))
             {
-                ArrayList_Str_push((&type_params), concatAlloc(concatAlloc(tp_name, ":"), tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool)));
+                ArrayList_Str_push((&type_params), concatAlloc(concatAlloc(tp_name, ":"), tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool)));
             } else
             {
                 ArrayList_Str_push((&type_params), tp_name);
             }
-            if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+            if (!Parser_match_token(self, TokenType_COMMA))
             {
                 (done = true);
             }
         }
-        ((void)(Parser_expect(self, ((TokenType)(TokenType_GT)))));
+        ((void)(Parser_expect(self, TokenType_GT)));
     }
     return type_params;
 }
@@ -5104,25 +5121,25 @@ int64_t Parser_parse_var_decl(Parser* self, bool is_mutable)
         bool done = false;
         while (!done)
         {
-            ArrayList_Str_push((&names), tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool));
-            if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+            ArrayList_Str_push((&names), tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool));
+            if (!Parser_match_token(self, TokenType_COMMA))
             {
                 (done = true);
             }
         }
-        ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
-        ((void)(Parser_expect(self, ((TokenType)(TokenType_ASSIGN)))));
+        ((void)(Parser_expect(self, TokenType_RPAREN)));
+        ((void)(Parser_expect(self, TokenType_ASSIGN)));
         int64_t val_expr = Parser_parse_expression(self, 0LL);
         Parser_expect_end_of_statement(self);
         return Parser_st_var_decl(self, str_array_join(names, ","), "", val_expr, is_mutable);
     }
-    const char* name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+    const char* name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
     const char* type_ann = "";
-    if (Parser_match_token(self, ((TokenType)(TokenType_COLON))))
+    if (Parser_match_token(self, TokenType_COLON))
     {
         (type_ann = Parser_parse_type(self));
     }
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_ASSIGN)))));
+    ((void)(Parser_expect(self, TokenType_ASSIGN)));
     int64_t val_expr = Parser_parse_expression(self, 0LL);
     Parser_expect_end_of_statement(self);
     return Parser_st_var_decl(self, name, type_ann, val_expr, is_mutable);
@@ -5130,35 +5147,35 @@ int64_t Parser_parse_var_decl(Parser* self, bool is_mutable)
 int64_t Parser_parse_func_decl(Parser* self)
 {
     ((void)(Parser_advance(self)));
-    const char* name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+    const char* name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
     ArrayList_Str type_params = Parser_parse_generic_params(self);
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_LPAREN)))));
+    ((void)(Parser_expect(self, TokenType_LPAREN)));
     ArrayList_Param params = ArrayList_Param_init(self->allocator);
     if (Parser_peek(self, 0LL).tok_type != TokenType_RPAREN)
     {
         bool done = false;
         while (!done)
         {
-            const char* param_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+            const char* param_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
             const char* param_type = "";
             if ((strcmp(param_name, "self") == 0LL) && (Parser_peek(self, 0LL).tok_type != TokenType_COLON))
             {
                 (param_type = "self");
             } else
             {
-                ((void)(Parser_expect(self, ((TokenType)(TokenType_COLON)))));
+                ((void)(Parser_expect(self, TokenType_COLON)));
                 (param_type = Parser_parse_type(self));
             }
             ArrayList_Param_push((&params), (Param){ .name = param_name, .ptype = param_type });
-            if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+            if (!Parser_match_token(self, TokenType_COMMA))
             {
                 (done = true);
             }
         }
     }
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+    ((void)(Parser_expect(self, TokenType_RPAREN)));
     const char* return_type = "";
-    if (Parser_match_token(self, ((TokenType)(TokenType_ARROW))))
+    if (Parser_match_token(self, TokenType_ARROW))
     {
         (return_type = Parser_parse_type(self));
     } else
@@ -5170,9 +5187,9 @@ int64_t Parser_parse_func_decl(Parser* self)
         }
     }
     const char* capability = "";
-    if (Parser_match_token(self, ((TokenType)(TokenType_HASH))))
+    if (Parser_match_token(self, TokenType_HASH))
     {
-        (capability = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool));
+        (capability = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool));
     }
     Parser_expect_end_of_statement(self);
     int64_t saved_line = self->stmt_line;
@@ -5185,10 +5202,10 @@ int64_t Parser_parse_func_decl(Parser* self)
 int64_t Parser_parse_struct_decl(Parser* self)
 {
     ((void)(Parser_advance(self)));
-    const char* name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+    const char* name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
     ArrayList_Str type_params = Parser_parse_generic_params(self);
     Parser_expect_end_of_statement(self);
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_LBRACE)))));
+    ((void)(Parser_expect(self, TokenType_LBRACE)));
     ArrayList_StructField fields = ArrayList_StructField_init(self->allocator);
     ArrayList_Int methods = ArrayList_Int_init(self->allocator);
     ArrayList_Int trait_impls = ArrayList_Int_init(self->allocator);
@@ -5201,9 +5218,9 @@ int64_t Parser_parse_struct_decl(Parser* self)
         } else if (Parser_peek(self, 0LL).tok_type == TokenType_IMPL)
         {
             ((void)(Parser_advance(self)));
-            const char* trait_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+            const char* trait_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
             Parser_expect_end_of_statement(self);
-            ((void)(Parser_expect(self, ((TokenType)(TokenType_LBRACE)))));
+            ((void)(Parser_expect(self, TokenType_LBRACE)));
             ArrayList_Int impl_methods = ArrayList_Int_init(self->allocator);
             Parser_consume_newlines(self);
             while ((Parser_peek(self, 0LL).tok_type != TokenType_RBRACE) && (Parser_peek(self, 0LL).tok_type != TokenType_EOF))
@@ -5211,37 +5228,37 @@ int64_t Parser_parse_struct_decl(Parser* self)
                 ArrayList_Int_push((&impl_methods), Parser_parse_func_decl(self));
                 Parser_consume_newlines(self);
             }
-            ((void)(Parser_expect(self, ((TokenType)(TokenType_RBRACE)))));
+            ((void)(Parser_expect(self, TokenType_RBRACE)));
             ArrayList_Int_push((&trait_impls), Parser_st_impl(self, name, trait_name, impl_methods));
         } else
         {
-            const char* fname = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
-            ((void)(Parser_expect(self, ((TokenType)(TokenType_COLON)))));
+            const char* fname = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
+            ((void)(Parser_expect(self, TokenType_COLON)));
             ArrayList_StructField_push((&fields), (StructField){ .name = fname, .ftype = Parser_parse_type(self) });
             Parser_expect_end_of_statement(self);
         }
         Parser_consume_newlines(self);
     }
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_RBRACE)))));
+    ((void)(Parser_expect(self, TokenType_RBRACE)));
     return Parser_st_struct(self, name, fields, type_params, methods, trait_impls);
 }
 int64_t Parser_parse_impl_block(Parser* self)
 {
     ((void)(Parser_advance(self)));
-    const char* first_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+    const char* first_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
     const char* struct_name = "";
     const char* trait_name = "";
     if (Parser_peek(self, 0LL).tok_type == TokenType_FOR)
     {
         ((void)(Parser_advance(self)));
         (trait_name = first_name);
-        (struct_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool));
+        (struct_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool));
     } else
     {
         (struct_name = first_name);
     }
     Parser_expect_end_of_statement(self);
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_LBRACE)))));
+    ((void)(Parser_expect(self, TokenType_LBRACE)));
     ArrayList_Int methods = ArrayList_Int_init(self->allocator);
     Parser_consume_newlines(self);
     while ((Parser_peek(self, 0LL).tok_type != TokenType_RBRACE) && (Parser_peek(self, 0LL).tok_type != TokenType_EOF))
@@ -5249,15 +5266,15 @@ int64_t Parser_parse_impl_block(Parser* self)
         ArrayList_Int_push((&methods), Parser_parse_func_decl(self));
         Parser_consume_newlines(self);
     }
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_RBRACE)))));
+    ((void)(Parser_expect(self, TokenType_RBRACE)));
     return Parser_st_impl(self, struct_name, trait_name, methods);
 }
 int64_t Parser_parse_trait_decl(Parser* self)
 {
     ((void)(Parser_advance(self)));
-    const char* name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+    const char* name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
     Parser_expect_end_of_statement(self);
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_LBRACE)))));
+    ((void)(Parser_expect(self, TokenType_LBRACE)));
     ArrayList_Int methods = ArrayList_Int_init(self->allocator);
     Parser_consume_newlines(self);
     while ((Parser_peek(self, 0LL).tok_type != TokenType_RBRACE) && (Parser_peek(self, 0LL).tok_type != TokenType_EOF))
@@ -5265,32 +5282,32 @@ int64_t Parser_parse_trait_decl(Parser* self)
         ArrayList_Int_push((&methods), Parser_parse_func_decl(self));
         Parser_consume_newlines(self);
     }
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_RBRACE)))));
+    ((void)(Parser_expect(self, TokenType_RBRACE)));
     return Parser_st_trait(self, name, methods);
 }
 int64_t Parser_parse_enum_decl(Parser* self)
 {
     ((void)(Parser_advance(self)));
-    const char* name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+    const char* name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
     ArrayList_Str type_params = Parser_parse_generic_params(self);
     Parser_expect_end_of_statement(self);
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_LBRACE)))));
+    ((void)(Parser_expect(self, TokenType_LBRACE)));
     ArrayList_Variant variants = ArrayList_Variant_init(self->allocator);
     Parser_consume_newlines(self);
     while ((Parser_peek(self, 0LL).tok_type != TokenType_RBRACE) && (Parser_peek(self, 0LL).tok_type != TokenType_EOF))
     {
-        ((void)(Parser_expect(self, ((TokenType)(TokenType_CASE)))));
-        const char* v_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+        ((void)(Parser_expect(self, TokenType_CASE)));
+        const char* v_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
         ArrayList_Param v_params = ArrayList_Param_init(self->allocator);
         int64_t unnamed_count = 0LL;
-        if (Parser_match_token(self, ((TokenType)(TokenType_LPAREN))))
+        if (Parser_match_token(self, TokenType_LPAREN))
         {
             if (Parser_peek(self, 0LL).tok_type != TokenType_RPAREN)
             {
                 bool done = false;
                 while (!done)
                 {
-                    const char* pname_or_type = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+                    const char* pname_or_type = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
                     if (Parser_peek(self, 0LL).tok_type == TokenType_COLON)
                     {
                         ((void)(Parser_advance(self)));
@@ -5305,41 +5322,41 @@ int64_t Parser_parse_enum_decl(Parser* self)
                         (unnamed_count = (unnamed_count + 1LL));
                         ArrayList_Param_push((&v_params), (Param){ .name = pname, .ptype = pname_or_type });
                     }
-                    if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+                    if (!Parser_match_token(self, TokenType_COMMA))
                     {
                         (done = true);
                     }
                 }
             }
-            ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+            ((void)(Parser_expect(self, TokenType_RPAREN)));
         }
         ArrayList_Variant_push((&variants), (Variant){ .vname = v_name, .params = v_params });
         Parser_expect_end_of_statement(self);
         Parser_consume_newlines(self);
     }
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_RBRACE)))));
+    ((void)(Parser_expect(self, TokenType_RBRACE)));
     return Parser_st_enum(self, name, variants, type_params);
 }
 int64_t Parser_parse_error_decl(Parser* self)
 {
     ((void)(Parser_advance(self)));
-    const char* name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+    const char* name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
     Parser_expect_end_of_statement(self);
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_LBRACE)))));
+    ((void)(Parser_expect(self, TokenType_LBRACE)));
     ArrayList_Str variants = ArrayList_Str_init(self->allocator);
     Parser_consume_newlines(self);
     while ((Parser_peek(self, 0LL).tok_type != TokenType_RBRACE) && (Parser_peek(self, 0LL).tok_type != TokenType_EOF))
     {
-        if (Parser_match_token(self, ((TokenType)(TokenType_CASE))))
+        if (Parser_match_token(self, TokenType_CASE))
         {
             ((void)(0LL));
         }
-        const char* v_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+        const char* v_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
         ArrayList_Str_push((&variants), v_name);
         Parser_expect_end_of_statement(self);
         Parser_consume_newlines(self);
     }
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_RBRACE)))));
+    ((void)(Parser_expect(self, TokenType_RBRACE)));
     return Parser_st_error(self, name, variants);
 }
 int64_t Parser_parse_match_stmt(Parser* self)
@@ -5347,16 +5364,16 @@ int64_t Parser_parse_match_stmt(Parser* self)
     ((void)(Parser_advance(self)));
     int64_t expr = Parser_parse_expression(self, 0LL);
     Parser_expect_end_of_statement(self);
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_LBRACE)))));
+    ((void)(Parser_expect(self, TokenType_LBRACE)));
     ArrayList_MatchCase cases = ArrayList_MatchCase_init(self->allocator);
     Parser_consume_newlines(self);
     int64_t saved_line = self->stmt_line;
     int64_t saved_col = self->stmt_col;
     while ((Parser_peek(self, 0LL).tok_type != TokenType_RBRACE) && (Parser_peek(self, 0LL).tok_type != TokenType_EOF))
     {
-        ((void)(Parser_expect(self, ((TokenType)(TokenType_CASE)))));
+        ((void)(Parser_expect(self, TokenType_CASE)));
         int64_t pattern = Parser_parse_pattern(self);
-        ((void)(Parser_expect(self, ((TokenType)(TokenType_FAT_ARROW)))));
+        ((void)(Parser_expect(self, TokenType_FAT_ARROW)));
         Parser_consume_newlines(self);
         int64_t body = (-1LL);
         if (Parser_peek(self, 0LL).tok_type == TokenType_LBRACE)
@@ -5371,7 +5388,7 @@ int64_t Parser_parse_match_stmt(Parser* self)
         ArrayList_MatchCase_push((&cases), (MatchCase){ .pattern = pattern, .body = body });
         Parser_consume_newlines(self);
     }
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_RBRACE)))));
+    ((void)(Parser_expect(self, TokenType_RBRACE)));
     (self->stmt_line = saved_line);
     (self->stmt_col = saved_col);
     return Parser_st_match(self, expr, cases);
@@ -5382,23 +5399,23 @@ int64_t Parser_parse_pattern(Parser* self)
     if (tok.tok_type == TokenType_DOT)
     {
         ((void)(Parser_advance(self)));
-        const char* v_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+        const char* v_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
         ArrayList_Str bindings = ArrayList_Str_init(self->allocator);
-        if (Parser_match_token(self, ((TokenType)(TokenType_LPAREN))))
+        if (Parser_match_token(self, TokenType_LPAREN))
         {
             if (Parser_peek(self, 0LL).tok_type != TokenType_RPAREN)
             {
                 bool done = false;
                 while (!done)
                 {
-                    ArrayList_Str_push((&bindings), tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool));
-                    if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+                    ArrayList_Str_push((&bindings), tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool));
+                    if (!Parser_match_token(self, TokenType_COMMA))
                     {
                         (done = true);
                     }
                 }
             }
-            ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+            ((void)(Parser_expect(self, TokenType_RPAREN)));
         }
         PatternNode node = new_pattern_node(PatternKind_pk_variant);
         (node.variant_name = v_name);
@@ -5442,27 +5459,27 @@ int64_t Parser_parse_unsafe_block(Parser* self)
 int64_t Parser_parse_extern_decl(Parser* self)
 {
     ((void)(Parser_advance(self)));
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_FUNC)))));
-    const char* name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_LPAREN)))));
+    ((void)(Parser_expect(self, TokenType_FUNC)));
+    const char* name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
+    ((void)(Parser_expect(self, TokenType_LPAREN)));
     ArrayList_Param params = ArrayList_Param_init(self->allocator);
     if (Parser_peek(self, 0LL).tok_type != TokenType_RPAREN)
     {
         bool done = false;
         while (!done)
         {
-            const char* param_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
-            ((void)(Parser_expect(self, ((TokenType)(TokenType_COLON)))));
+            const char* param_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
+            ((void)(Parser_expect(self, TokenType_COLON)));
             ArrayList_Param_push((&params), (Param){ .name = param_name, .ptype = Parser_parse_type(self) });
-            if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+            if (!Parser_match_token(self, TokenType_COMMA))
             {
                 (done = true);
             }
         }
     }
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+    ((void)(Parser_expect(self, TokenType_RPAREN)));
     const char* return_type = "";
-    if (Parser_match_token(self, ((TokenType)(TokenType_ARROW))))
+    if (Parser_match_token(self, TokenType_ARROW))
     {
         (return_type = Parser_parse_type(self));
     } else
@@ -5484,8 +5501,8 @@ int64_t Parser_parse_if_stmt(Parser* self)
     if (Parser_peek(self, 0LL).tok_type == TokenType_LET)
     {
         ((void)(Parser_advance(self)));
-        const char* var_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
-        ((void)(Parser_expect(self, ((TokenType)(TokenType_ASSIGN)))));
+        const char* var_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
+        ((void)(Parser_expect(self, TokenType_ASSIGN)));
         int64_t cond_expr = Parser_parse_expression(self, 0LL);
         Parser_expect_end_of_statement(self);
         int64_t then_branch = Parser_parse_block(self);
@@ -5547,8 +5564,8 @@ int64_t Parser_parse_while_stmt(Parser* self)
 int64_t Parser_parse_for_stmt(Parser* self)
 {
     ((void)(Parser_advance(self)));
-    const char* var_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
-    ((void)(Parser_expect(self, ((TokenType)(TokenType_IN)))));
+    const char* var_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
+    ((void)(Parser_expect(self, TokenType_IN)));
     int64_t expr = Parser_parse_expression(self, 0LL);
     ExprNode expr_node = ArrayList_ExprNode_get(self->expr_pool, expr);
     int64_t range_start = (-1LL);
@@ -5658,7 +5675,7 @@ int64_t Parser_parse_block(Parser* self)
 {
     Parser_consume_newlines(self);
     ArrayList_Int stmts = ArrayList_Int_init(self->allocator);
-    Token brace_tok = Parser_expect(self, ((TokenType)(TokenType_LBRACE)));
+    Token brace_tok = Parser_expect(self, TokenType_LBRACE);
     (self->stmt_line = brace_tok.line);
     (self->stmt_col = brace_tok.column);
     Parser_consume_newlines(self);
@@ -5688,8 +5705,8 @@ int64_t Parser_parse_import_stmt(Parser* self)
     bool done = false;
     while (!done)
     {
-        ArrayList_Str_push((&path), tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool));
-        if (!Parser_match_token(self, ((TokenType)(TokenType_DOT))))
+        ArrayList_Str_push((&path), tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool));
+        if (!Parser_match_token(self, TokenType_DOT))
         {
             (done = true);
         }
@@ -5700,7 +5717,7 @@ int64_t Parser_parse_import_stmt(Parser* self)
 int64_t Parser_parse_import_stmt_new(Parser* self)
 {
     ((void)(Parser_advance(self)));
-    const char* first_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+    const char* first_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
     if (Parser_peek(self, 0LL).tok_type == TokenType_FROM)
     {
         ((void)(Parser_advance(self)));
@@ -5708,8 +5725,8 @@ int64_t Parser_parse_import_stmt_new(Parser* self)
         bool done = false;
         while (!done)
         {
-            ArrayList_Str_push((&path), tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool));
-            if (!Parser_match_token(self, ((TokenType)(TokenType_DOT))))
+            ArrayList_Str_push((&path), tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool));
+            if (!Parser_match_token(self, TokenType_DOT))
             {
                 (done = true);
             }
@@ -5718,7 +5735,7 @@ int64_t Parser_parse_import_stmt_new(Parser* self)
         if (Parser_peek(self, 0LL).tok_type == TokenType_AS)
         {
             ((void)(Parser_advance(self)));
-            (alias = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool));
+            (alias = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool));
         }
         Parser_expect_end_of_statement(self);
         return Parser_st_import(self, path, alias);
@@ -5726,15 +5743,15 @@ int64_t Parser_parse_import_stmt_new(Parser* self)
     {
         ArrayList_Str path = ArrayList_Str_init(self->allocator);
         ArrayList_Str_push((&path), first_name);
-        while (Parser_match_token(self, ((TokenType)(TokenType_DOT))))
+        while (Parser_match_token(self, TokenType_DOT))
         {
-            ArrayList_Str_push((&path), tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool));
+            ArrayList_Str_push((&path), tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool));
         }
         const char* alias = "";
         if (Parser_peek(self, 0LL).tok_type == TokenType_AS)
         {
             ((void)(Parser_advance(self)));
-            (alias = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool));
+            (alias = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool));
         }
         Parser_expect_end_of_statement(self);
         return Parser_st_import(self, path, alias);
@@ -5743,13 +5760,13 @@ int64_t Parser_parse_import_stmt_new(Parser* self)
 int64_t Parser_parse_cimport_stmt(Parser* self)
 {
     ((void)(Parser_advance(self)));
-    Token header_tok = Parser_expect(self, ((TokenType)(TokenType_STRING_LIT)));
+    Token header_tok = Parser_expect(self, TokenType_STRING_LIT);
     const char* header = tv_get_str(header_tok.value, self->pool);
     const char* alias = "";
     if (Parser_peek(self, 0LL).tok_type == TokenType_AS)
     {
         ((void)(Parser_advance(self)));
-        (alias = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool));
+        (alias = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool));
     }
     Parser_expect_end_of_statement(self);
     return Parser_st_cimport(self, header, alias);
@@ -5770,7 +5787,7 @@ int64_t Parser_parse_expression(Parser* self, int64_t precedence)
             ((void)(Parser_advance(self)));
             if (op_tok.tok_type == TokenType_DOT)
             {
-                const char* member_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
+                const char* member_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
                 if (Parser_peek(self, 0LL).tok_type == TokenType_LPAREN)
                 {
                     ((void)(Parser_advance(self)));
@@ -5782,16 +5799,16 @@ int64_t Parser_parse_expression(Parser* self, int64_t precedence)
                             bool fields_done = false;
                             while (!fields_done)
                             {
-                                const char* f_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
-                                ((void)(Parser_expect(self, ((TokenType)(TokenType_COLON)))));
+                                const char* f_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
+                                ((void)(Parser_expect(self, TokenType_COLON)));
                                 ArrayList_FieldInit_push((&fields), (FieldInit){ .name = f_name, .value = Parser_parse_expression(self, 0LL) });
-                                if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+                                if (!Parser_match_token(self, TokenType_COMMA))
                                 {
                                     (fields_done = true);
                                 }
                             }
                         }
-                        ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+                        ((void)(Parser_expect(self, TokenType_RPAREN)));
                         ExprNode left_node = ArrayList_ExprNode_get(self->expr_pool, left);
                         const char* full_name = "";
                         if (left_node.kind == ExprKind_ek_identifier)
@@ -5812,13 +5829,13 @@ int64_t Parser_parse_expression(Parser* self, int64_t precedence)
                             while (!args_done)
                             {
                                 ArrayList_Int_push((&args), Parser_parse_expression(self, 0LL));
-                                if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+                                if (!Parser_match_token(self, TokenType_COMMA))
                                 {
                                     (args_done = true);
                                 }
                             }
                         }
-                        ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+                        ((void)(Parser_expect(self, TokenType_RPAREN)));
                         (left = Parser_ex_method(self, left, member_name, args));
                     }
                 } else
@@ -5860,7 +5877,7 @@ int64_t Parser_parse_expression(Parser* self, int64_t precedence)
                         (left = Parser_ex_index(self, left, lower));
                     }
                 }
-                ((void)(Parser_expect(self, ((TokenType)(TokenType_RBRACKET)))));
+                ((void)(Parser_expect(self, TokenType_RBRACKET)));
             } else if ((op_tok.tok_type == TokenType_DOTDOT) || (op_tok.tok_type == TokenType_DOTDOTEQ))
             {
                 bool is_inclusive = (op_tok.tok_type == TokenType_DOTDOTEQ);
@@ -5874,10 +5891,10 @@ int64_t Parser_parse_expression(Parser* self, int64_t precedence)
             } else if (op_tok.tok_type == TokenType_CATCH)
             {
                 const char* var_name = "";
-                if (Parser_match_token(self, ((TokenType)(TokenType_PIPE))))
+                if (Parser_match_token(self, TokenType_PIPE))
                 {
-                    (var_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool));
-                    ((void)(Parser_expect(self, ((TokenType)(TokenType_PIPE)))));
+                    (var_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool));
+                    ((void)(Parser_expect(self, TokenType_PIPE)));
                 }
                 int64_t fallback = (-1LL);
                 Token next = Parser_peek(self, 0LL);
@@ -5951,7 +5968,7 @@ int64_t Parser_parse_primary(Parser* self)
     } else if (tok.tok_type == TokenType_NONE)
     {
         ((void)(Parser_advance(self)));
-        return Parser_ex_literal(self, ((TokenValue)((TokenValue){ .tag = TokenValue_tv_none_TAG })), "NONE");
+        return Parser_ex_literal(self, (TokenValue){ .tag = TokenValue_tv_none_TAG }, "NONE");
     } else if (tok.tok_type == TokenType_STRING_LIT)
     {
         ((void)(Parser_advance(self)));
@@ -5972,16 +5989,16 @@ int64_t Parser_parse_primary(Parser* self)
     {
         ((void)(Parser_advance(self)));
         bool is_volatile = false;
-        if (Parser_match_token(self, ((TokenType)(TokenType_VOLATILE))))
+        if (Parser_match_token(self, TokenType_VOLATILE))
         {
             (is_volatile = true);
         }
-        ((void)(Parser_expect(self, ((TokenType)(TokenType_LPAREN)))));
-        const char* asm_code = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_STRING_LIT))).value, self->pool);
+        ((void)(Parser_expect(self, TokenType_LPAREN)));
+        const char* asm_code = tv_get_str(Parser_expect(self, TokenType_STRING_LIT).value, self->pool);
         ArrayList_AsmOutput outputs = ArrayList_AsmOutput_init(self->allocator);
         ArrayList_AsmInput inputs = ArrayList_AsmInput_init(self->allocator);
         ArrayList_Str clobbers = ArrayList_Str_init(self->allocator);
-        if (Parser_match_token(self, ((TokenType)(TokenType_COLON))))
+        if (Parser_match_token(self, TokenType_COLON))
         {
             bool done = false;
             while (!done)
@@ -5992,30 +6009,30 @@ int64_t Parser_parse_primary(Parser* self)
                     (done = true);
                 } else
                 {
-                    ((void)(Parser_expect(self, ((TokenType)(TokenType_LBRACKET)))));
-                    const char* out_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
-                    ((void)(Parser_expect(self, ((TokenType)(TokenType_RBRACKET)))));
-                    const char* constraint = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_STRING_LIT))).value, self->pool);
-                    ((void)(Parser_expect(self, ((TokenType)(TokenType_LPAREN)))));
+                    ((void)(Parser_expect(self, TokenType_LBRACKET)));
+                    const char* out_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
+                    ((void)(Parser_expect(self, TokenType_RBRACKET)));
+                    const char* constraint = tv_get_str(Parser_expect(self, TokenType_STRING_LIT).value, self->pool);
+                    ((void)(Parser_expect(self, TokenType_LPAREN)));
                     const char* type_name = "";
                     int64_t expr_idx = (-1LL);
-                    if (Parser_match_token(self, ((TokenType)(TokenType_ARROW))))
+                    if (Parser_match_token(self, TokenType_ARROW))
                     {
                         (type_name = Parser_parse_type(self));
                     } else
                     {
                         (expr_idx = Parser_parse_expression(self, 0LL));
                     }
-                    ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+                    ((void)(Parser_expect(self, TokenType_RPAREN)));
                     ArrayList_AsmOutput_push((&outputs), (AsmOutput){ .name = out_name, .constraint = constraint, .type_name = type_name, .expr_idx = expr_idx });
-                    if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+                    if (!Parser_match_token(self, TokenType_COMMA))
                     {
                         (done = true);
                     }
                 }
             }
         }
-        if (Parser_match_token(self, ((TokenType)(TokenType_COLON))))
+        if (Parser_match_token(self, TokenType_COLON))
         {
             bool done = false;
             while (!done)
@@ -6026,22 +6043,22 @@ int64_t Parser_parse_primary(Parser* self)
                     (done = true);
                 } else
                 {
-                    ((void)(Parser_expect(self, ((TokenType)(TokenType_LBRACKET)))));
-                    const char* in_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
-                    ((void)(Parser_expect(self, ((TokenType)(TokenType_RBRACKET)))));
-                    const char* constraint = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_STRING_LIT))).value, self->pool);
-                    ((void)(Parser_expect(self, ((TokenType)(TokenType_LPAREN)))));
+                    ((void)(Parser_expect(self, TokenType_LBRACKET)));
+                    const char* in_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
+                    ((void)(Parser_expect(self, TokenType_RBRACKET)));
+                    const char* constraint = tv_get_str(Parser_expect(self, TokenType_STRING_LIT).value, self->pool);
+                    ((void)(Parser_expect(self, TokenType_LPAREN)));
                     int64_t expr_idx = Parser_parse_expression(self, 0LL);
-                    ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+                    ((void)(Parser_expect(self, TokenType_RPAREN)));
                     ArrayList_AsmInput_push((&inputs), (AsmInput){ .name = in_name, .constraint = constraint, .expr_idx = expr_idx });
-                    if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+                    if (!Parser_match_token(self, TokenType_COMMA))
                     {
                         (done = true);
                     }
                 }
             }
         }
-        if (Parser_match_token(self, ((TokenType)(TokenType_COLON))))
+        if (Parser_match_token(self, TokenType_COLON))
         {
             bool done = false;
             while (!done)
@@ -6052,16 +6069,16 @@ int64_t Parser_parse_primary(Parser* self)
                     (done = true);
                 } else
                 {
-                    const char* clobber = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_STRING_LIT))).value, self->pool);
+                    const char* clobber = tv_get_str(Parser_expect(self, TokenType_STRING_LIT).value, self->pool);
                     ArrayList_Str_push((&clobbers), clobber);
-                    if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+                    if (!Parser_match_token(self, TokenType_COMMA))
                     {
                         (done = true);
                     }
                 }
             }
         }
-        ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+        ((void)(Parser_expect(self, TokenType_RPAREN)));
         return Parser_ex_asm(self, asm_code, is_volatile, outputs, inputs, clobbers);
     } else if (tok.tok_type == TokenType_IDENTIFIER)
     {
@@ -6074,12 +6091,12 @@ int64_t Parser_parse_primary(Parser* self)
             while (!done)
             {
                 ArrayList_Str_push((&type_args), Parser_parse_type(self));
-                if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+                if (!Parser_match_token(self, TokenType_COMMA))
                 {
                     (done = true);
                 }
             }
-            ((void)(Parser_expect(self, ((TokenType)(TokenType_GT)))));
+            ((void)(Parser_expect(self, TokenType_GT)));
             ArrayList_Str id_type_args = ArrayList_Str_init(self->allocator);
             int64_t ci = 0LL;
             while (ci < ArrayList_Str_length((&type_args)))
@@ -6098,16 +6115,16 @@ int64_t Parser_parse_primary(Parser* self)
                         bool fields_done = false;
                         while (!fields_done)
                         {
-                            const char* f_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
-                            ((void)(Parser_expect(self, ((TokenType)(TokenType_COLON)))));
+                            const char* f_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
+                            ((void)(Parser_expect(self, TokenType_COLON)));
                             ArrayList_FieldInit_push((&fields), (FieldInit){ .name = f_name, .value = Parser_parse_expression(self, 0LL) });
-                            if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+                            if (!Parser_match_token(self, TokenType_COMMA))
                             {
                                 (fields_done = true);
                             }
                         }
                     }
-                    ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+                    ((void)(Parser_expect(self, TokenType_RPAREN)));
                     ArrayList_Str sa_type_args = ArrayList_Str_init(self->allocator);
                     int64_t cj = 0LL;
                     while (cj < ArrayList_Str_length((&type_args)))
@@ -6125,13 +6142,13 @@ int64_t Parser_parse_primary(Parser* self)
                     while (!args_done)
                     {
                         ArrayList_Int_push((&args), Parser_parse_expression(self, 0LL));
-                        if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+                        if (!Parser_match_token(self, TokenType_COMMA))
                         {
                             (args_done = true);
                         }
                     }
                 }
-                ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+                ((void)(Parser_expect(self, TokenType_RPAREN)));
                 return Parser_ex_call_with(self, ident, args, type_args);
             }
             ExprNode id_node = new_expr_node(ExprKind_ek_identifier, Parser_peek(self, 0LL).line, Parser_peek(self, 0LL).column);
@@ -6151,16 +6168,16 @@ int64_t Parser_parse_primary(Parser* self)
                     bool fields_done = false;
                     while (!fields_done)
                     {
-                        const char* f_name = tv_get_str(Parser_expect(self, ((TokenType)(TokenType_IDENTIFIER))).value, self->pool);
-                        ((void)(Parser_expect(self, ((TokenType)(TokenType_COLON)))));
+                        const char* f_name = tv_get_str(Parser_expect(self, TokenType_IDENTIFIER).value, self->pool);
+                        ((void)(Parser_expect(self, TokenType_COLON)));
                         ArrayList_FieldInit_push((&fields), (FieldInit){ .name = f_name, .value = Parser_parse_expression(self, 0LL) });
-                        if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+                        if (!Parser_match_token(self, TokenType_COMMA))
                         {
                             (fields_done = true);
                         }
                     }
                 }
-                ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+                ((void)(Parser_expect(self, TokenType_RPAREN)));
                 return Parser_ex_struct_init(self, ident, fields);
             } else
             {
@@ -6171,13 +6188,13 @@ int64_t Parser_parse_primary(Parser* self)
                     while (!args_done)
                     {
                         ArrayList_Int_push((&args), Parser_parse_expression(self, 0LL));
-                        if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+                        if (!Parser_match_token(self, TokenType_COMMA))
                         {
                             (args_done = true);
                         }
                     }
                 }
-                ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+                ((void)(Parser_expect(self, TokenType_RPAREN)));
                 return Parser_ex_call(self, ident, args);
             }
         } else
@@ -6200,9 +6217,9 @@ int64_t Parser_parse_primary(Parser* self)
     } else if (tok.tok_type == TokenType_SIZEOF)
     {
         ((void)(Parser_advance(self)));
-        ((void)(Parser_expect(self, ((TokenType)(TokenType_LPAREN)))));
+        ((void)(Parser_expect(self, TokenType_LPAREN)));
         const char* type_name = Parser_parse_type(self);
-        ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+        ((void)(Parser_expect(self, TokenType_RPAREN)));
         ArrayList_Str targs = ArrayList_Str_init(self->allocator);
         ArrayList_Str_push((&targs), type_name);
         return Parser_ex_call_with(self, "size_of", ArrayList_Int_init(self->allocator), targs);
@@ -6210,7 +6227,7 @@ int64_t Parser_parse_primary(Parser* self)
     {
         ((void)(Parser_advance(self)));
         bool is_mut = false;
-        if (Parser_match_token(self, ((TokenType)(TokenType_MUT))))
+        if (Parser_match_token(self, TokenType_MUT))
         {
             (is_mut = true);
         }
@@ -6229,13 +6246,13 @@ int64_t Parser_parse_primary(Parser* self)
             while (!done)
             {
                 ArrayList_Int_push((&elements), Parser_parse_expression(self, 0LL));
-                if (!Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+                if (!Parser_match_token(self, TokenType_COMMA))
                 {
                     (done = true);
                 }
             }
         }
-        ((void)(Parser_expect(self, ((TokenType)(TokenType_RBRACKET)))));
+        ((void)(Parser_expect(self, TokenType_RBRACKET)));
         return Parser_ex_array(self, elements);
     } else if (tok.tok_type == TokenType_LPAREN)
     {
@@ -6245,17 +6262,17 @@ int64_t Parser_parse_primary(Parser* self)
         {
             ArrayList_Int elements = ArrayList_Int_init(self->allocator);
             ArrayList_Int_push((&elements), first);
-            while (Parser_match_token(self, ((TokenType)(TokenType_COMMA))))
+            while (Parser_match_token(self, TokenType_COMMA))
             {
                 if (Parser_peek(self, 0LL).tok_type != TokenType_RPAREN)
                 {
                     ArrayList_Int_push((&elements), Parser_parse_expression(self, 0LL));
                 }
             }
-            ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+            ((void)(Parser_expect(self, TokenType_RPAREN)));
             return Parser_ex_tuple(self, elements);
         }
-        ((void)(Parser_expect(self, ((TokenType)(TokenType_RPAREN)))));
+        ((void)(Parser_expect(self, TokenType_RPAREN)));
         return first;
     } else
     {
@@ -6266,7 +6283,7 @@ int64_t Parser_parse_primary(Parser* self)
         return (-1LL);
     }
 }
-void print_separator()
+void print_separator(void)
 {
     printf("---\n");
 }
@@ -6286,47 +6303,47 @@ void printc(char c)
 {
     printf("%c\n", c);
 }
-ArrayList_DropVarEntry empty_dropvarentry_array()
+ArrayList_DropVarEntry empty_dropvarentry_array(void)
 {
     return (ArrayList_DropVarEntry){ .data = ((DropVarEntry*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
 }
-ArrayList_Str empty_str_array()
+ArrayList_Str empty_str_array(void)
 {
     return (ArrayList_Str){ .data = ((const char**)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
 }
-ArrayList_Int empty_int_array()
+ArrayList_Int empty_int_array(void)
 {
     return (ArrayList_Int){ .data = ((int64_t*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
 }
-ArrayList_FieldInit empty_fieldinit_array()
+ArrayList_FieldInit empty_fieldinit_array(void)
 {
     return (ArrayList_FieldInit){ .data = ((FieldInit*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
 }
-ArrayList_Param empty_param_array()
+ArrayList_Param empty_param_array(void)
 {
     return (ArrayList_Param){ .data = ((Param*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
 }
-ArrayList_StructField empty_structfield_array()
+ArrayList_StructField empty_structfield_array(void)
 {
     return (ArrayList_StructField){ .data = ((StructField*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
 }
-ArrayList_Variant empty_variant_array()
+ArrayList_Variant empty_variant_array(void)
 {
     return (ArrayList_Variant){ .data = ((Variant*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
 }
-ArrayList_MatchCase empty_matchcase_array()
+ArrayList_MatchCase empty_matchcase_array(void)
 {
     return (ArrayList_MatchCase){ .data = ((MatchCase*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
 }
-ArrayList_StrInterpPart empty_strinterp_array()
+ArrayList_StrInterpPart empty_strinterp_array(void)
 {
     return (ArrayList_StrInterpPart){ .data = ((StrInterpPart*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
 }
-ArrayList_AsmOutput empty_asmoutput_array()
+ArrayList_AsmOutput empty_asmoutput_array(void)
 {
     return (ArrayList_AsmOutput){ .data = ((AsmOutput*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
 }
-ArrayList_AsmInput empty_asminput_array()
+ArrayList_AsmInput empty_asminput_array(void)
 {
     return (ArrayList_AsmInput){ .data = ((AsmInput*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
 }
@@ -6997,7 +7014,13 @@ bool TypeChecker_is_integer_literal(TypeChecker* self, int64_t expr_idx)
 }
 int64_t TypeChecker_int_literal_value(TypeChecker* self, ExprNode expr)
 {
-    if (expr.lit_value.tag == TokenValue_tv_str_TAG)
+    if (expr.lit_value.tag == TokenValue_tv_int_TAG)
+    {
+        int64_t v = expr.lit_value.tv_int.v;
+        {
+            return v;
+        }
+    } else if (expr.lit_value.tag == TokenValue_tv_str_TAG)
     {
         int64_t v = expr.lit_value.tv_str.v;
         {
@@ -7042,12 +7065,6 @@ int64_t TypeChecker_int_literal_value(TypeChecker* self, ExprNode expr)
                 (pos = (pos + 1LL));
             }
             return res;
-        }
-    } else if (expr.lit_value.tag == TokenValue_tv_int_TAG)
-    {
-        int64_t v = expr.lit_value.tv_int.v;
-        {
-            return v;
         }
     } else if (true)
     {
@@ -11517,14 +11534,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx)
         const char* vkind = expr.lit_vkind;
         if (strcmp(vkind, "INT") == 0LL)
         {
-            if (expr.lit_value.tag == TokenValue_tv_str_TAG)
-            {
-                int64_t v = expr.lit_value.tv_str.v;
-                {
-                    const char* s = StringPool_get(self->pool, ((int64_t)(v)));
-                    return concatAlloc(s, "LL");
-                }
-            } else if (expr.lit_value.tag == TokenValue_tv_int_TAG)
+            if (expr.lit_value.tag == TokenValue_tv_int_TAG)
             {
                 int64_t v = expr.lit_value.tv_int.v;
                 {
@@ -11558,7 +11568,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx)
             {
                 int64_t v = expr.lit_value.tv_str.v;
                 {
-                    return concatAlloc(concatAlloc("\"", Codegen_escape_string(self, StringPool_get(self->pool, ((int64_t)(v))))), "\"");
+                    return concatAlloc(concatAlloc("\"", Codegen_replace_format_specifiers(self, Codegen_escape_string(self, StringPool_get(self->pool, ((int64_t)(v)))))), "\"");
                 }
             } else if (true)
             {
@@ -11580,23 +11590,6 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx)
                     {
                         return "false";
                     }
-                }
-            } else if (expr.lit_value.tag == TokenValue_tv_str_TAG)
-            {
-                int64_t v = expr.lit_value.tv_str.v;
-                {
-                    bool is_true = false;
-                    {
-                        if (strcmp(StringPool_get(self->pool, ((int64_t)(v))), "true") == 0LL)
-                        {
-                            (is_true = true);
-                        }
-                    }
-                    if (is_true)
-                    {
-                        return "true";
-                    }
-                    return "false";
                 }
             } else if (true)
             {
@@ -11669,7 +11662,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx)
             const char* part_str = "";
             if (part.kind == 0LL)
             {
-                (part_str = concatAlloc(concatAlloc("\"", Codegen_escape_string(self, part.str_val)), "\""));
+                (part_str = concatAlloc(concatAlloc("\"", Codegen_replace_format_specifiers(self, Codegen_escape_string(self, part.str_val))), "\""));
             } else
             {
                 const char* expr_val = Codegen_gen_expr(self, part.expr_idx);
@@ -11827,6 +11820,61 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx)
         {
             const char* arg_val = Codegen_gen_expr(self, ArrayList_Int_get((&expr.func_args), 0LL));
             return concatAlloc(concatAlloc(concatAlloc(concatAlloc("(", arg_val), " ? strlen("), arg_val), ") : 0)");
+        }
+        if ((strcmp(name, "int_to_str") == 0LL) && (ArrayList_Int_length((&expr.func_args)) >= 1LL))
+        {
+            ExprNode arg_expr = ArrayList_ExprNode_get(self->expr_pool, ArrayList_Int_get((&expr.func_args), 0LL));
+            if ((arg_expr.kind == ExprKind_ek_literal) && (strcmp(arg_expr.lit_vkind, "INT") == 0LL))
+            {
+                const char* val_str = "0";
+                if (arg_expr.lit_value.tag == TokenValue_tv_int_TAG)
+                {
+                    int64_t v = arg_expr.lit_value.tv_int.v;
+                    {
+                        (val_str = int_to_str(v));
+                    }
+                } else if (true)
+                {
+                    {
+                    }
+                }
+                return concatAlloc(concatAlloc("\"", val_str), "\"");
+            }
+            if ((arg_expr.kind == ExprKind_ek_unary_op) && (strcmp(arg_expr.unop_op, "-") == 0LL))
+            {
+                ExprNode inner = ArrayList_ExprNode_get(self->expr_pool, arg_expr.unop_operand);
+                if ((inner.kind == ExprKind_ek_literal) && (strcmp(inner.lit_vkind, "INT") == 0LL))
+                {
+                    const char* val_str = "0";
+                    if (inner.lit_value.tag == TokenValue_tv_int_TAG)
+                    {
+                        int64_t v = inner.lit_value.tv_int.v;
+                        {
+                            (val_str = int_to_str((-v)));
+                        }
+                    } else if (true)
+                    {
+                        {
+                        }
+                    }
+                    return concatAlloc(concatAlloc("\"", val_str), "\"");
+                }
+            }
+        }
+        if ((strcmp(name, "char_to_str") == 0LL) && (ArrayList_Int_length((&expr.func_args)) >= 1LL))
+        {
+            ExprNode arg_expr = ArrayList_ExprNode_get(self->expr_pool, ArrayList_Int_get((&expr.func_args), 0LL));
+            if ((arg_expr.kind == ExprKind_ek_literal) && (strcmp(arg_expr.lit_vkind, "CHAR") == 0LL))
+            {
+                if (arg_expr.lit_value.tag == TokenValue_tv_char_TAG)
+                {
+                    char v = arg_expr.lit_value.tv_char.v;
+                    {
+                        const char* s = char_to_str(v);
+                        return concatAlloc(concatAlloc("\"", Codegen_escape_string(self, s)), "\"");
+                    }
+                }
+            }
         }
         if (strcmp(name, "format_int") == 0LL)
         {
@@ -13484,7 +13532,7 @@ const char* Codegen_gen_stmt(Codegen* self, int64_t stmt_idx)
                 {
                     int64_t v = pat_node.lit_value.tv_str.v;
                     {
-                        (lit_str = concatAlloc(concatAlloc("\"", Codegen_escape_string(self, StringPool_get(self->pool, ((int64_t)(v))))), "\""));
+                        (lit_str = concatAlloc(concatAlloc("\"", Codegen_replace_format_specifiers(self, Codegen_escape_string(self, StringPool_get(self->pool, ((int64_t)(v)))))), "\""));
                     }
                 } else if (pat_node.lit_value.tag == TokenValue_tv_bool_TAG)
                 {
@@ -13765,6 +13813,24 @@ bool Codegen_enum_has_payload(Codegen* self, const char* enum_name)
     }
     return has_payload;
 }
+const char* Codegen_replace_format_specifiers(Codegen* self, const char* s)
+{
+    const char* result = "";
+    int64_t i = 0LL;
+    while (i < strlen(s))
+    {
+        if ((((i < (strlen(s) - 2LL)) && (s[i] == ((char)(37LL)))) && (s[(i + 1LL)] == ((char)(108LL)))) && (s[(i + 2LL)] == ((char)(100LL))))
+        {
+            (result = concatAlloc(result, "%\" PRId64 \""));
+            (i = (i + 3LL));
+        } else
+        {
+            (result = concatAlloc(result, char_to_str(s[i])));
+            (i = (i + 1LL));
+        }
+    }
+    return result;
+}
 const char* Codegen_escape_string(Codegen* self, const char* s)
 {
     const char* res = "";
@@ -13989,6 +14055,7 @@ const char* Codegen_generate(Codegen* self, int64_t top_stmt_idx)
     StringBuilder_append((&result), "#include <stdio.h>\n");
     StringBuilder_append((&result), "#include <stdlib.h>\n");
     StringBuilder_append((&result), "#include <string.h>\n");
+    StringBuilder_append((&result), "#include <inttypes.h>\n");
     StringBuilder_append((&result), "#ifndef __kai_std_str_concat_alloc\n");
     StringBuilder_append((&result), "#define __kai_std_str_concat_alloc concatAlloc\n");
     StringBuilder_append((&result), "#endif\n");
@@ -14709,6 +14776,10 @@ const char* CodegenBuilder_get_expr_type(CodegenBuilder* self, int64_t expr_idx)
                         (ff = (ff + 1LL));
                     }
                 }
+            }
+            if ((s.kind == StmtKind_sk_enum_decl) && (strcmp(s.enum_name, clean_base) == 0LL))
+            {
+                return clean_base;
             }
             (fi = (fi + 1LL));
         }
@@ -17031,13 +17102,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx)
         if (strcmp(vkind, "INT") == 0LL)
         {
             const char* val_str = "0";
-            if (expr.lit_value.tag == TokenValue_tv_str_TAG)
-            {
-                int64_t v = expr.lit_value.tv_str.v;
-                {
-                    (val_str = StringPool_get(self->pool, ((int64_t)(v))));
-                }
-            } else if (expr.lit_value.tag == TokenValue_tv_int_TAG)
+            if (expr.lit_value.tag == TokenValue_tv_int_TAG)
             {
                 int64_t v = expr.lit_value.tv_int.v;
                 {
@@ -17240,6 +17305,65 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx)
     if (expr.kind == ExprKind_ek_func_call)
     {
         const char* name = expr.func_name;
+        if ((strcmp(name, "int_to_str") == 0LL) && (ArrayList_Int_length((&expr.func_args)) >= 1LL))
+        {
+            ExprNode arg_expr = ArrayList_ExprNode_get(self->expr_pool, ArrayList_Int_get((&expr.func_args), 0LL));
+            if ((arg_expr.kind == ExprKind_ek_literal) && (strcmp(arg_expr.lit_vkind, "INT") == 0LL))
+            {
+                const char* val_str = "0";
+                if (arg_expr.lit_value.tag == TokenValue_tv_int_TAG)
+                {
+                    int64_t v = arg_expr.lit_value.tv_int.v;
+                    {
+                        (val_str = int_to_str(v));
+                    }
+                } else if (true)
+                {
+                    {
+                    }
+                }
+                return CodegenBuilder_push_expr(self, cexpr_new_str(concatAlloc(concatAlloc("\"", val_str), "\"")));
+            }
+            if ((arg_expr.kind == ExprKind_ek_unary_op) && (strcmp(arg_expr.unop_op, "-") == 0LL))
+            {
+                ExprNode inner = ArrayList_ExprNode_get(self->expr_pool, arg_expr.unop_operand);
+                if ((inner.kind == ExprKind_ek_literal) && (strcmp(inner.lit_vkind, "INT") == 0LL))
+                {
+                    const char* val_str = "0";
+                    if (inner.lit_value.tag == TokenValue_tv_int_TAG)
+                    {
+                        int64_t v = inner.lit_value.tv_int.v;
+                        {
+                            (val_str = int_to_str((-v)));
+                        }
+                    } else if (true)
+                    {
+                        {
+                        }
+                    }
+                    return CodegenBuilder_push_expr(self, cexpr_new_str(concatAlloc(concatAlloc("\"", val_str), "\"")));
+                }
+            }
+        }
+        if ((strcmp(name, "char_to_str") == 0LL) && (ArrayList_Int_length((&expr.func_args)) >= 1LL))
+        {
+            ExprNode arg_expr = ArrayList_ExprNode_get(self->expr_pool, ArrayList_Int_get((&expr.func_args), 0LL));
+            if ((arg_expr.kind == ExprKind_ek_literal) && (strcmp(arg_expr.lit_vkind, "CHAR") == 0LL))
+            {
+                if (arg_expr.lit_value.tag == TokenValue_tv_char_TAG)
+                {
+                    char v = arg_expr.lit_value.tv_char.v;
+                    {
+                        const char* s = char_to_str(v);
+                        return CodegenBuilder_push_expr(self, cexpr_new_str(concatAlloc(concatAlloc("\"", CodegenBuilder_escape_string(self, s)), "\"")));
+                    }
+                } else if (true)
+                {
+                    {
+                    }
+                }
+            }
+        }
         if ((strcmp(name, "cast") == 0LL) || (strcmp(name, "as") == 0LL))
         {
             const char* target_type = ArrayList_Str_get((&expr.func_type_args), 0LL);
@@ -18695,6 +18819,10 @@ void CodegenBuilder_build_func_types(CodegenBuilder* self)
                     (pi2 = (pi2 + 1LL));
                 }
                 const char* ret_type = CodegenBuilder_map_type(self, stmt.func_return_type);
+                if (strlen(params_str) == 0LL)
+                {
+                    (params_str = "void");
+                }
                 (self->cur_func_name = stmt.func_name);
                 (self->cur_return_type = stmt.func_return_type);
                 (self->cur_method_is_init = false);
@@ -19244,27 +19372,27 @@ CType ctype_new(const char* base, int64_t pointer, bool is_const, bool is_unsign
     CType t = (CType){ .base = base, .pointer = pointer, .is_const = is_const, .is_unsigned = is_unsigned, .array_sizes = (ArrayList_Str){ .data = ((const char**)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) } };
     return t;
 }
-CType ctype_void()
+CType ctype_void(void)
 {
     return ctype_new("void", 0LL, false, false);
 }
-CType ctype_int()
+CType ctype_int(void)
 {
     return ctype_new("int64_t", 0LL, false, false);
 }
-CType ctype_bool()
+CType ctype_bool(void)
 {
     return ctype_new("bool", 0LL, false, false);
 }
-CType ctype_char()
+CType ctype_char(void)
 {
     return ctype_new("char", 0LL, false, false);
 }
-CType ctype_float()
+CType ctype_float(void)
 {
     return ctype_new("double", 0LL, false, false);
 }
-CType ctype_str()
+CType ctype_str(void)
 {
     return ctype_new("char", 1LL, true, false);
 }
@@ -19524,12 +19652,12 @@ CStmtNode cstmt_new_return(int64_t return_val)
     ArrayList_Int block_stmts = (ArrayList_Int){ .data = ((int64_t*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
     return (CStmtNode){ .kind = CStmtKind_cs_return, .block_stmts = block_stmts, .expr_stmt = (-1LL), .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_init = (-1LL), .for_cond = (-1LL), .for_inc = (-1LL), .for_body = (-1LL), .do_body = (-1LL), .do_cond = (-1LL), .return_val = return_val, .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .switch_expr = (-1LL), .case_val = "", .label_name = "", .asm_code = "", .asm_volatile = false };
 }
-CStmtNode cstmt_new_break()
+CStmtNode cstmt_new_break(void)
 {
     ArrayList_Int block_stmts = (ArrayList_Int){ .data = ((int64_t*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
     return (CStmtNode){ .kind = CStmtKind_cs_break, .block_stmts = block_stmts, .expr_stmt = (-1LL), .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_init = (-1LL), .for_cond = (-1LL), .for_inc = (-1LL), .for_body = (-1LL), .do_body = (-1LL), .do_cond = (-1LL), .return_val = (-1LL), .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .switch_expr = (-1LL), .case_val = "", .label_name = "", .asm_code = "", .asm_volatile = false };
 }
-CStmtNode cstmt_new_continue()
+CStmtNode cstmt_new_continue(void)
 {
     ArrayList_Int block_stmts = (ArrayList_Int){ .data = ((int64_t*)(((unsigned long long)(0LL)))), .len = 0LL, .cap = 0LL, .allocator = ((KaiAllocator*)(((unsigned long long)(0LL)))) };
     return (CStmtNode){ .kind = CStmtKind_cs_continue, .block_stmts = block_stmts, .expr_stmt = (-1LL), .if_cond = (-1LL), .if_then = (-1LL), .if_else = (-1LL), .while_cond = (-1LL), .while_body = (-1LL), .for_init = (-1LL), .for_cond = (-1LL), .for_inc = (-1LL), .for_body = (-1LL), .do_body = (-1LL), .do_cond = (-1LL), .return_val = (-1LL), .var_type = ctype_void(), .var_name = "", .var_init = (-1LL), .switch_expr = (-1LL), .case_val = "", .label_name = "", .asm_code = "", .asm_volatile = false };
@@ -19970,6 +20098,9 @@ void CPrinter_print_decl(CPrinter* self, CDeclNode decl)
             {
                 (params_str = "...");
             }
+        } else if (strlen(params_str) == 0LL)
+        {
+            (params_str = "void");
         }
         const char* ret_str = ctype_to_str(decl.func_ret);
         const char* header = concatAlloc(concatAlloc(concatAlloc(concatAlloc(concatAlloc(ret_str, " "), decl.func_name), "("), params_str), ")");
@@ -22949,12 +23080,6 @@ void* LLVMCodegen_gen_expr(LLVMCodegen* self, int64_t expr_idx)
                 int64_t v = expr.lit_value.tv_int.v;
                 {
                     (val = v);
-                }
-            } else if (expr.lit_value.tag == TokenValue_tv_str_TAG)
-            {
-                int64_t v = expr.lit_value.tv_str.v;
-                {
-                    (val = LLVMCodegen_str_to_int(self, StringPool_get(self->pool, ((int64_t)(v)))));
                 }
             } else if (true)
             {

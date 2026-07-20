@@ -424,6 +424,8 @@ sb.append_int(42)
 let s = sb.to_str()
 ```
 
+**Compile-time constant folding:** When the argument to `int_to_str` or `char_to_str` is a literal (e.g. `int_to_str(42)`), the compiler evaluates it at compile time and emits a string literal directly — no runtime function call or allocation. Same zero-cost outcome as Zig's `comptime` for this pattern.
+
 **Rule of thumb:** Use `int_to_str` / `char_to_str` for one-off conversions and when the result must outlive the current scope. Use `format_int` / `format_char` in hot loops where you control buffer lifetime. Use `StringBuilder` when building incrementally.
 
 ---

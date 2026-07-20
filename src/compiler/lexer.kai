@@ -269,7 +269,7 @@ impl Lexer {
             self.emit(TokenType.FLOAT_LIT, TokenValue.tv_str(v: self.pool.intern(num_str)))
         } else {
             let num_str = sb.to_str()
-            self.emit(TokenType.INT_LIT, TokenValue.tv_str(v: self.pool.intern(num_str)))
+            self.emit(TokenType.INT_LIT, TokenValue.tv_int(v: self.parse_int(num_str)))
 
         }
     }
@@ -382,6 +382,18 @@ impl Lexer {
         return -1
     }
 
+    fn parse_int(self, s: Str) -> Int {
+        var res = 0
+        var i = 0
+        while i < strlen(s) {
+            let c = s[i]
+            if c >= Char(48) && c <= Char(57) {
+                res = res * 10 + (Int(c) - 48)
+            }
+            i = i + 1
+        }
+        return res
+    }
     fn lex(self) {
         var is_line_start = true
         while self.cursor < self.source_len {
