@@ -2029,9 +2029,11 @@ fn gen_expr_with_expected_type(self, expr_idx: Int, expected_type: Str) -> Int {
     }
     let gen_idx = self.gen_expr(expr_idx)
     if strlen(actual_type) > 0 && actual_type[0] == Char(42) {
-        let pointer_target = actual_type[1..strlen(actual_type)]
-        if pointer_target == expected_type {
-            return self.push_expr(cexpr_new_unary("*", gen_idx, true))
+        if strlen(expected_type) > 0 && expected_type[0] != Char(42) && expected_type[0] != Char(38) {
+            let pointer_target = actual_type[1..strlen(actual_type)]
+            if pointer_target == expected_type {
+                return self.push_expr(cexpr_new_unary("*", gen_idx, true))
+            }
         }
     }
     if strlen(expected_type) > 0 && expected_type[0] == Char(63) {
@@ -2136,8 +2138,21 @@ fn gen_expr(self, expr_idx: Int) -> Int {
             }
             return self.push_expr(cexpr_new_char(lit_str))
         }
-        if vkind == "NONE" { return self.push_expr(cexpr_new_ident("NULL")) }
-        return self.push_expr(cexpr_new_ident(""))
+        if vkind == "NONE" {
+            if strlen(expr.inferred_type) > 0 && expr.inferred_type[0] == Char(63) {
+                let val_type = expr.inferred_type[1..strlen(expr.inferred_type)]
+                if self.is_pointer_type(val_type) {
+                    return self.push_expr(cexpr_new_ident("NULL"))
+                }
+                let mapped = self.map_type(expr.inferred_type)
+                let ct = ctype_new(mapped, 0, false, false)
+                var fields = ArrayList<Str>(self.allocator)
+                fields.push("0")
+                return self.push_expr(cexpr_new_compound(ct, fields))
+            }
+            return self.push_expr(cexpr_new_ident("NULL"))
+        }
+        return self.push_expr(cexpr_new_int("0"))
     }
 
     //== Identifier
@@ -2758,7 +2773,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
 
             var else_stmts_arr = ArrayList<Int>(self.allocator)
             if fb_is_stmt {
-                else_stmts_arr.push(self.push_c_stmt(cstmt_new_text(fb_raw + " __builtin_unreachable();")))
+                else_stmts_arr.push(self.push_c_stmt(cstmt_new_text(fb_raw + " while(1){}")))
             } else {
                 var fb_val = self.push_expr(cexpr_new_int("0"))
                 if fb_expr >= 0 { fb_val = fb_expr }
@@ -2824,7 +2839,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
                     then_stmts_arr.push(self.push_c_stmt(cstmt_new_var_decl(err_ct, expr.catch_var, tag_field)))
                 }
                 if fb_is_stmt {
-                    let raw_c = fb_raw + " __builtin_unreachable();"
+                    let raw_c = fb_raw + " while(1){}"
                     then_stmts_arr.push(self.push_c_stmt(cstmt_new_text(raw_c)))
                 } else {
                     var fb_val = zero
@@ -2989,7 +3004,7 @@ fn gen_expr(self, expr_idx: Int) -> Int {
         return self.push_expr(cexpr_new_stmt_expr(body_stmts, ret_expr_idx))
     }
 
-    return self.push_expr(cexpr_new_ident(""))
+    return self.push_expr(cexpr_new_int("0"))
 }
 
 //== Statement Codegen

@@ -1423,6 +1423,13 @@ fn gen_expr(self, expr_idx: Int) -> Str {
             }
         }
         if vkind == "NONE" {
+            if length(expr.inferred_type) > 0 && expr.inferred_type[0] == Char(63) {
+                let val_type = expr.inferred_type[1..length(expr.inferred_type)]
+                if self.is_pointer_type(val_type) {
+                    return "NULL"
+                }
+                return "(" + self.map_type(expr.inferred_type) + "){0}"
+            }
             return "NULL"
         }
         return "0"
@@ -2047,7 +2054,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
                 catch_code = catch_code + val_ctype + " _kai_cv; "
                 catch_code = catch_code + "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } "
                 if fallback_is_stmt2 {
-                    catch_code = catch_code + "else { " + fallback_code + " __builtin_unreachable(); } _kai_cv; })"
+                    catch_code = catch_code + "else { " + fallback_code + " while(1){} } _kai_cv; })"
                 } else {
                     catch_code = catch_code + "else { _kai_cv = (" + fallback_code + "); } _kai_cv; })"
                 }
@@ -2056,7 +2063,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
                 catch_code = catch_code + val_ctype + " _kai_cv; "
                 catch_code = catch_code + "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } "
                 if fallback_is_stmt2 {
-                    catch_code = catch_code + "else { " + fallback_code + " __builtin_unreachable(); } _kai_cv; })"
+                    catch_code = catch_code + "else { " + fallback_code + " while(1){} } _kai_cv; })"
                 } else {
                     catch_code = catch_code + "else { _kai_cv = (" + fallback_code + "); } _kai_cv; })"
                 }
@@ -2114,7 +2121,7 @@ fn gen_expr(self, expr_idx: Int) -> Str {
                 catch_code = catch_code + "int64_t " + expr.catch_var + " = _kai_cr.tag; "
             }
             if fallback_is_stmt {
-                catch_code = catch_code + fallback_code + " __builtin_unreachable(); "
+                catch_code = catch_code + fallback_code + " while(1){} "
             } else {
                 catch_code = catch_code + "_kai_cv = (" + fallback_code + "); "
             }

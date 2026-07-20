@@ -1799,6 +1799,7 @@ CStmtNode cstmt_new_for(int64_t init, int64_t cond, int64_t inc, int64_t body);
 CStmtNode cstmt_new_asm(const char* code, bool is_volatile);
 CDeclNode cdecl_new_func(const char* name, const char* ret_type, ArrayList_Str params, bool is_extern, bool is_vararg);
 CPrinter CPrinter_init(CCodeBuilder* builder, ArrayList_CExprNode* expr_pool, ArrayList_CStmtNode* stmt_pool);
+bool CPrinter_is_fully_parenthesized(CPrinter* self, const char* s);
 const char* CPrinter_format_cond(CPrinter* self, const char* cond);
 const char* CPrinter_print_expr(CPrinter* self, int64_t idx);
 void CPrinter_print_else_chain(CPrinter* self, int64_t else_idx);
@@ -4112,6 +4113,24 @@ void KaiAllocator_free(KaiAllocator* self, uint8_t* ptr) {
     fb->next = hdr->free_head;
     hdr->free_head = (uint8_t*)(ptr);
     hdr->free_cnt = (hdr->free_cnt + 1LL);
+    if (hdr->free_cnt == hdr->next_bump_idx) {
+    int64_t idx = class_for(hdr->obj_size);
+    uint8_t* prev = 0LL;
+    uint8_t* curr = KaiAllocator_get_head(self, idx);
+    while (curr != (uint8_t*)(unsigned long long)(0LL)) {
+    if (curr == (uint8_t*)(unsigned long long)(slab_addr)) {
+    if (prev == (uint8_t*)(unsigned long long)(0LL)) {
+    KaiAllocator_set_head(self, idx, hdr->next);
+} else {
+    ((SlabHeader*)(prev))->next = hdr->next;
+}
+    _kai_munmap((uint8_t*)(unsigned long long)(slab_addr), 65536LL);
+    break;
+}
+    prev = curr;
+    curr = ((SlabHeader*)(curr))->next;
+}
+}
 } else {
     KaiAllocator_free_large(self, (uint8_t*)(ptr));
 }
@@ -7436,6 +7455,13 @@ void TypeChecker_exit_scope(TypeChecker* self) {
     si = (si + 1LL);
 }
     TypeChecker_merge_and_apply_tracking_state(self, states);
+    int64_t dsi = 0LL;
+    while (dsi < ArrayList_ArrayList_SymTrackState__length(&(states))) {
+    ArrayList_SymTrackState s = ArrayList_ArrayList_SymTrackState__get(&(states), dsi);
+    ArrayList_SymTrackState_deinit(&(s));
+    dsi = (dsi + 1LL);
+}
+    ArrayList_ArrayList_SymTrackState__deinit(&(states));
     int64_t pi = 0LL;
     while (pi < snap_count) {
     ArrayList_Int_pop(&(self->scope_deferred_sizes));
@@ -8908,6 +8934,14 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     ArrayList_ArrayList_SymTrackState__push(&(states), then_state);
     ArrayList_ArrayList_SymTrackState__push(&(states), else_state);
     TypeChecker_merge_and_apply_tracking_state(self, states);
+    ArrayList_SymTrackState_deinit(&(snapshot));
+    int64_t si2 = 0LL;
+    while (si2 < ArrayList_ArrayList_SymTrackState__length(&(states))) {
+    ArrayList_SymTrackState s = ArrayList_ArrayList_SymTrackState__get(&(states), si2);
+    ArrayList_SymTrackState_deinit(&(s));
+    si2 = (si2 + 1LL);
+}
+    ArrayList_ArrayList_SymTrackState__deinit(&(states));
     return;
 }
     if (stmt.kind == StmtKind_sk_if_let) {
@@ -8931,6 +8965,14 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     ArrayList_ArrayList_SymTrackState__push(&(states), then_state);
     ArrayList_ArrayList_SymTrackState__push(&(states), else_state);
     TypeChecker_merge_and_apply_tracking_state(self, states);
+    ArrayList_SymTrackState_deinit(&(snapshot));
+    int64_t si2 = 0LL;
+    while (si2 < ArrayList_ArrayList_SymTrackState__length(&(states))) {
+    ArrayList_SymTrackState s = ArrayList_ArrayList_SymTrackState__get(&(states), si2);
+    ArrayList_SymTrackState_deinit(&(s));
+    si2 = (si2 + 1LL);
+}
+    ArrayList_ArrayList_SymTrackState__deinit(&(states));
     return;
 }
     if (stmt.kind == StmtKind_sk_while) {
@@ -9032,6 +9074,14 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     if (ArrayList_ArrayList_SymTrackState__length(&(arm_states)) > 0LL) {
     TypeChecker_merge_and_apply_tracking_state(self, arm_states);
 }
+    ArrayList_SymTrackState_deinit(&(snapshot));
+    int64_t ai = 0LL;
+    while (ai < ArrayList_ArrayList_SymTrackState__length(&(arm_states))) {
+    ArrayList_SymTrackState s = ArrayList_ArrayList_SymTrackState__get(&(arm_states), ai);
+    ArrayList_SymTrackState_deinit(&(s));
+    ai = (ai + 1LL);
+}
+    ArrayList_ArrayList_SymTrackState__deinit(&(arm_states));
     return;
 }
     if (stmt.kind == StmtKind_sk_impl_block) {
@@ -9104,8 +9154,10 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     int64_t count = ArrayList_Int_get(&(self->scope_deferred_counts), idx);
     count = (count + 1LL);
     ArrayList_Int_set(&(self->scope_deferred_counts), idx, count);
+    ArrayList_SymTrackState_deinit(&(post_state));
 }
     TypeChecker_restore_tracking_state(self, snapshot);
+    ArrayList_SymTrackState_deinit(&(snapshot));
     return;
 }
     if (stmt.kind == StmtKind_sk_errdefer) {
@@ -9123,8 +9175,10 @@ void TypeChecker_check_stmt(TypeChecker* self, int64_t stmt_idx) {
     int64_t count = ArrayList_Int_get(&(self->scope_deferred_counts), idx);
     count = (count + 1LL);
     ArrayList_Int_set(&(self->scope_deferred_counts), idx, count);
+    ArrayList_SymTrackState_deinit(&(post_state));
 }
     TypeChecker_restore_tracking_state(self, snapshot);
+    ArrayList_SymTrackState_deinit(&(snapshot));
     return;
 }
 }
@@ -11384,6 +11438,13 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
 } 
 }
     if (strcmp(vkind, "NONE") == 0) {
+    if (((expr.inferred_type ? strlen(expr.inferred_type) : 0) > 0LL) && ((expr.inferred_type)[0LL] == ((char)(63LL)))) {
+    const char* val_type = __kai_str_sub(expr.inferred_type, 1LL, (expr.inferred_type ? strlen(expr.inferred_type) : 0));
+    if (Codegen_is_pointer_type(self, val_type)) {
+    return "NULL";
+}
+    return concatAlloc(concatAlloc("(", Codegen_map_type(self, expr.inferred_type)), "){0}");
+}
     return "NULL";
 }
     return "0";
@@ -11956,7 +12017,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     catch_code = concatAlloc(concatAlloc(catch_code, val_ctype), " _kai_cv; ");
     catch_code = concatAlloc(catch_code, "if (_kai_opt != NULL) { _kai_cv = _kai_opt; } ");
     if (fallback_is_stmt2) {
-    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "else { "), fallback_code), " while(1){} } _kai_cv; })");
 } else {
     catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
 }
@@ -11965,7 +12026,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     catch_code = concatAlloc(concatAlloc(catch_code, val_ctype), " _kai_cv; ");
     catch_code = concatAlloc(catch_code, "if (_kai_opt.has_value) { _kai_cv = _kai_opt.value; } ");
     if (fallback_is_stmt2) {
-    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "else { "), fallback_code), " __builtin_unreachable(); } _kai_cv; })");
+    catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "else { "), fallback_code), " while(1){} } _kai_cv; })");
 } else {
     catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "else { _kai_cv = ("), fallback_code), "); } _kai_cv; })");
 }
@@ -12022,7 +12083,7 @@ const char* Codegen_gen_expr(Codegen* self, int64_t expr_idx) {
     catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "int64_t "), expr.catch_var), " = _kai_cr.tag; ");
 }
     if (fallback_is_stmt) {
-    catch_code = concatAlloc(concatAlloc(catch_code, fallback_code), " __builtin_unreachable(); ");
+    catch_code = concatAlloc(concatAlloc(catch_code, fallback_code), " while(1){} ");
 } else {
     catch_code = concatAlloc(concatAlloc(concatAlloc(catch_code, "_kai_cv = ("), fallback_code), "); ");
 }
@@ -15586,9 +15647,11 @@ int64_t CodegenBuilder_gen_expr_with_expected_type(CodegenBuilder* self, int64_t
 }
     int64_t gen_idx = CodegenBuilder_gen_expr(self, expr_idx);
     if ((strlen(actual_type) > 0LL) && ((actual_type)[0LL] == ((char)(42LL)))) {
+    if (((strlen(expected_type) > 0LL) && ((expected_type)[0LL] != ((char)(42LL)))) && ((expected_type)[0LL] != ((char)(38LL)))) {
     const char* pointer_target = __kai_str_sub(actual_type, 1LL, strlen(actual_type));
     if (strcmp(pointer_target, expected_type) == 0) {
     return CodegenBuilder_push_expr(self, cexpr_new_unary("*", gen_idx, true));
+}
 }
 }
     if ((strlen(expected_type) > 0LL) && ((expected_type)[0LL] == ((char)(63LL)))) {
@@ -15713,9 +15776,20 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     return CodegenBuilder_push_expr(self, cexpr_new_char(lit_str));
 }
     if (strcmp(vkind, "NONE") == 0) {
+    if ((strlen(expr.inferred_type) > 0LL) && ((expr.inferred_type)[0LL] == ((char)(63LL)))) {
+    const char* val_type = __kai_str_sub(expr.inferred_type, 1LL, strlen(expr.inferred_type));
+    if (CodegenBuilder_is_pointer_type(self, val_type)) {
     return CodegenBuilder_push_expr(self, cexpr_new_ident("NULL"));
 }
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(""));
+    const char* mapped = CodegenBuilder_map_type(self, expr.inferred_type);
+    CType ct = ctype_new(mapped, 0LL, false, false);
+    ArrayList_Str fields = ArrayList_Str_init(self->allocator);
+    ArrayList_Str_push(&(fields), "0");
+    return CodegenBuilder_push_expr(self, cexpr_new_compound(ct, fields));
+}
+    return CodegenBuilder_push_expr(self, cexpr_new_ident("NULL"));
+}
+    return CodegenBuilder_push_expr(self, cexpr_new_int("0"));
 }
     if (expr.kind == ExprKind_ek_identifier) {
     return CodegenBuilder_push_expr(self, cexpr_new_ident(expr.ident_name));
@@ -16310,7 +16384,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     ArrayList_Int_push(&(then_stmts_arr), CodegenBuilder_push_c_stmt(self, cstmt_new_expr(then_assign)));
     ArrayList_Int else_stmts_arr = ArrayList_Int_init(self->allocator);
     if (fb_is_stmt) {
-    ArrayList_Int_push(&(else_stmts_arr), CodegenBuilder_push_c_stmt(self, cstmt_new_text(concatAlloc(fb_raw, " __builtin_unreachable();"))));
+    ArrayList_Int_push(&(else_stmts_arr), CodegenBuilder_push_c_stmt(self, cstmt_new_text(concatAlloc(fb_raw, " while(1){}"))));
 } else {
     int64_t fb_val = CodegenBuilder_push_expr(self, cexpr_new_int("0"));
     if (fb_expr >= 0LL) {
@@ -16371,7 +16445,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
     ArrayList_Int_push(&(then_stmts_arr), CodegenBuilder_push_c_stmt(self, cstmt_new_var_decl(err_ct, expr.catch_var, tag_field)));
 }
     if (fb_is_stmt) {
-    const char* raw_c = concatAlloc(fb_raw, " __builtin_unreachable();");
+    const char* raw_c = concatAlloc(fb_raw, " while(1){}");
     ArrayList_Int_push(&(then_stmts_arr), CodegenBuilder_push_c_stmt(self, cstmt_new_text(raw_c)));
 } else {
     int64_t fb_val = zero;
@@ -16534,7 +16608,7 @@ int64_t CodegenBuilder_gen_expr(CodegenBuilder* self, int64_t expr_idx) {
 }
     return CodegenBuilder_push_expr(self, cexpr_new_stmt_expr(body_stmts, ret_expr_idx));
 }
-    return CodegenBuilder_push_expr(self, cexpr_new_ident(""));
+    return CodegenBuilder_push_expr(self, cexpr_new_int("0"));
 }
 void CodegenBuilder_gen_stmt(CodegenBuilder* self, int64_t stmt_idx) {
     if (stmt_idx < 0LL) {
@@ -17702,8 +17776,47 @@ CPrinter CPrinter_init(CCodeBuilder* builder, ArrayList_CExprNode* expr_pool, Ar
     self.stmt_pool = stmt_pool;
     return self;
 }
+bool CPrinter_is_fully_parenthesized(CPrinter* self, const char* s) {
+    if (strlen(s) < 2LL) {
+    return false;
+}
+    if (((s)[0LL] != ((char)(40LL))) || ((s)[(strlen(s) - 1LL)] != ((char)(41LL)))) {
+    return false;
+}
+    int64_t depth = 0LL;
+    int64_t i = 0LL;
+    while (i < (strlen(s) - 1LL)) {
+    char c = (s)[i];
+    if (c == ((char)(39LL))) {
+    i = (i + 1LL);
+    while ((i < (strlen(s) - 1LL)) && ((s)[i] != ((char)(39LL)))) {
+    if ((s)[i] == ((char)(92LL))) {
+    i = (i + 1LL);
+}
+    i = (i + 1LL);
+}
+} else if (c == ((char)(34LL))) {
+    i = (i + 1LL);
+    while ((i < (strlen(s) - 1LL)) && ((s)[i] != ((char)(34LL)))) {
+    if ((s)[i] == ((char)(92LL))) {
+    i = (i + 1LL);
+}
+    i = (i + 1LL);
+}
+} else if (c == ((char)(40LL))) {
+    depth = (depth + 1LL);
+} else if (c == ((char)(41LL))) {
+    depth = (depth - 1LL);
+}
+    if (depth == 0LL) {
+    return false;
+}
+    i = (i + 1LL);
+}
+    return true;
+}
 const char* CPrinter_format_cond(CPrinter* self, const char* cond) {
-    if (((strlen(cond) > 1LL) && ((cond)[0LL] == ((char)(40LL)))) && ((cond)[(strlen(cond) - 1LL)] == ((char)(41LL)))) {
+    if (CPrinter_is_fully_parenthesized(self, cond)) {
     return cond;
 }
     return concatAlloc(concatAlloc("(", cond), ")");

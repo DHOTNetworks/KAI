@@ -142,6 +142,11 @@ fn cb_escape_asm(s: Str) -> Str {
 
 //== Standalone replacements for buggy std.core.string functions
 
+// ponytail: cgb_char_to_str/cgb_int_to_str use raw malloc per call.
+// Each call leaks 2 or ~21 bytes — negligible vs concatAlloc chain.
+// No module-level mutable vars in Kai means we can't track last-buf.
+extern fn malloc(size: Int) -> *Char
+
 fn cgb_char_to_str(c: Char) -> Str {
     unsafe {
         let buf = malloc(2) as *Char
@@ -152,8 +157,6 @@ fn cgb_char_to_str(c: Char) -> Str {
         return buf as Str
     }
 }
-
-extern fn malloc(size: Int) -> *Char
 
 fn cgb_int_to_str(n: Int) -> Str {
     if n == 0 { return "0" }

@@ -24,8 +24,38 @@ fn init(self, builder: *CCodeBuilder, expr_pool: *ArrayList<CExprNode>, stmt_poo
     self.stmt_pool = stmt_pool
 }
 
+fn is_fully_parenthesized(self, s: Str) -> Bool {
+    if strlen(s) < 2 { return false }
+    if s[0] != Char(40) || s[strlen(s) - 1] != Char(41) { return false }
+    var depth = 0
+    var i = 0
+    while i < strlen(s) - 1 {
+        let c = s[i]
+        if c == Char(39) {
+            i = i + 1
+            while i < strlen(s) - 1 && s[i] != Char(39) {
+                if s[i] == Char(92) { i = i + 1 }
+                i = i + 1
+            }
+        } else if c == Char(34) {
+            i = i + 1
+            while i < strlen(s) - 1 && s[i] != Char(34) {
+                if s[i] == Char(92) { i = i + 1 }
+                i = i + 1
+            }
+        } else if c == Char(40) {
+            depth = depth + 1
+        } else if c == Char(41) {
+            depth = depth - 1
+        }
+        if depth == 0 { return false }
+        i = i + 1
+    }
+    return true
+}
+
 fn format_cond(self, cond: Str) -> Str {
-    if strlen(cond) > 1 && cond[0] == Char(40) && cond[strlen(cond) - 1] == Char(41) {
+    if self.is_fully_parenthesized(cond) {
         return cond
     }
     return "(" + cond + ")"
@@ -330,6 +360,7 @@ fn emit_runtime_preamble(self, cimport_headers: *ArrayList<Str>) {
     self.builder.emit_blank()
 
     //== Runtime: __kai_str_sub / __kai_arr_sub
+    // ponytail: malloc per call, no free — compiler is short-lived, leak is bounded
     self.builder.emit_line("static char* __kai_str_sub(const char* s, int64_t start, int64_t end) {")
     self.builder.emit_line("    int64_t len = strlen(s);")
     self.builder.emit_line("    if (end > len) end = len;")

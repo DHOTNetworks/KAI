@@ -179,6 +179,9 @@ impl TypeChecker {
                     si = si + 1
                 }
                 self.merge_and_apply_tracking_state(states)
+                var dsi = 0
+                while dsi < states.length() { let s = states.get(dsi); s.deinit(); dsi = dsi + 1 }
+                states.deinit()
                 // Pop the processed snapshot metadata
                 var pi = 0
                 while pi < snap_count {
@@ -1585,6 +1588,14 @@ impl TypeChecker {
             states.push(then_state)
             states.push(else_state)
             self.merge_and_apply_tracking_state(states)
+            // ponytail: manual deinit — Kai has no destructors, so
+            // tracking-state ArrayLists must be freed explicitly.
+            // Note: after states.push(), the struct is copied (sharing the
+            // data pointer), so deinit only through states, not originals.
+            snapshot.deinit()
+            var si2 = 0
+            while si2 < states.length() { let s = states.get(si2); s.deinit(); si2 = si2 + 1 }
+            states.deinit()
             return
         }
         
@@ -1611,6 +1622,10 @@ impl TypeChecker {
             states.push(then_state)
             states.push(else_state)
             self.merge_and_apply_tracking_state(states)
+            snapshot.deinit()
+            var si2 = 0
+            while si2 < states.length() { let s = states.get(si2); s.deinit(); si2 = si2 + 1 }
+            states.deinit()
             return
         }
         
@@ -1719,6 +1734,10 @@ impl TypeChecker {
             if arm_states.length() > 0 {
                 self.merge_and_apply_tracking_state(arm_states)
             }
+            snapshot.deinit()
+            var ai = 0
+            while ai < arm_states.length() { let s = arm_states.get(ai); s.deinit(); ai = ai + 1 }
+            arm_states.deinit()
             return
         }
         
@@ -1799,8 +1818,10 @@ impl TypeChecker {
                 var count = self.scope_deferred_counts.get(idx)
                 count = count + 1
                 self.scope_deferred_counts.set(idx, count)
+                post_state.deinit()
             }
             self.restore_tracking_state(snapshot)
+            snapshot.deinit()
             return
         }
         if stmt.kind == StmtKind.sk_errdefer {
@@ -1818,8 +1839,10 @@ impl TypeChecker {
                 var count = self.scope_deferred_counts.get(idx)
                 count = count + 1
                 self.scope_deferred_counts.set(idx, count)
+                post_state.deinit()
             }
             self.restore_tracking_state(snapshot)
+            snapshot.deinit()
             return
         }
     }

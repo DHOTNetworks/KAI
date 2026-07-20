@@ -261,6 +261,25 @@ impl Allocator for KaiAllocator {
                 fb.next = hdr.free_head
                 hdr.free_head = ptr as *u8
                 hdr.free_cnt = hdr.free_cnt + 1
+                // Munmap slab when all objects are freed (server-friendly)
+                if hdr.free_cnt == hdr.next_bump_idx {
+                    let idx = class_for(hdr.obj_size)
+                    var prev: *u8 = 0
+                    var curr = self.get_head(idx)
+                    while curr != 0 as *u8 {
+                        if curr == slab_addr as *u8 {
+                            if prev == 0 as *u8 {
+                                self.set_head(idx, hdr.next)
+                            } else {
+                                (prev as *SlabHeader).next = hdr.next
+                            }
+                            _kai_munmap(slab_addr as *u8, 65536)
+                            break
+                        }
+                        prev = curr
+                        curr = (curr as *SlabHeader).next
+                    }
+                }
             } else {
                 self.free_large(ptr as *u8)
             }
