@@ -13543,13 +13543,35 @@ void StrBuf_append(StrBuf* self, const char* s) {
     ArrayList_Str_push(&(self->parts), s);
 }
 const char* StrBuf_to_str(StrBuf* self) {
-    const char* result = "";
+    int64_t total = 0LL;
     int64_t i = 0LL;
     while (i < ArrayList_Str_length(&(self->parts))) {
-    result = concatAlloc(result, ArrayList_Str_get(&(self->parts), i));
+    total = (total + strlen(ArrayList_Str_get(&(self->parts), i)));
     i = (i + 1LL);
 }
-    return result;
+    if (total == 0LL) {
+    return "";
+}
+    {
+    char* raw = malloc((total + 1LL));
+    if (raw == 0LL) {
+    return "";
+}
+    int64_t pos = 0LL;
+    i = 0LL;
+    while (i < ArrayList_Str_length(&(self->parts))) {
+    const char* part = ArrayList_Str_get(&(self->parts), i);
+    int64_t j = 0LL;
+    while (j < strlen(part)) {
+    (raw)[(pos + j)] = (part)[j];
+    j = (j + 1LL);
+}
+    pos = (pos + strlen(part));
+    i = (i + 1LL);
+}
+    (raw)[total] = ((char)(0LL));
+    return (const char*)(raw);
+}
 }
 int64_t cgb_map_find(ArrayList_CgbMapEntry* arr, const char* key) {
     int64_t i = (ArrayList_CgbMapEntry_length(arr) - 1LL);

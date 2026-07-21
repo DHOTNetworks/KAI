@@ -31,6 +31,7 @@ import CExprKind from codegen.c_ast_nodes
 import CStmtNode from codegen.c_ast_nodes
 import CStmtKind from codegen.c_ast_nodes
 import CDeclNode from codegen.c_ast_nodes
+extern fn malloc(size: Int) -> *u8
 import CPrinter from codegen.c_printer
 import ctype_void from codegen.c_ast_nodes
 import ctype_int from codegen.c_ast_nodes
@@ -90,13 +91,31 @@ impl StrBuf {
     }
 
     fn to_str(self) -> Str {
-        var result = ""
+        var total = 0
         var i = 0
         while i < self.parts.length() {
-            result = result + self.parts.get(i)
+            total = total + strlen(self.parts.get(i))
             i = i + 1
         }
-        return result
+        if total == 0 { return "" }
+        unsafe {
+            let raw = malloc(total + 1)
+            if raw == 0 { return "" }
+            var pos = 0
+            i = 0
+            while i < self.parts.length() {
+                let part = self.parts.get(i)
+                var j = 0
+                while j < strlen(part) {
+                    raw[pos + j] = part[j]
+                    j = j + 1
+                }
+                pos = pos + strlen(part)
+                i = i + 1
+            }
+            raw[total] = Char(0)
+            return raw as Str
+        }
     }
 }
 
